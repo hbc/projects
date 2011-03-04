@@ -13,24 +13,34 @@ from Bio import SeqIO
 from Bio.Blast import NCBIXML
 from Bio.Blast.Applications import NcbiblastnCommandline
 
-from bcbio.picard import utils
+from bcbio import utils
 
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
     _setup_dirs(config)
-    blast_db = prepare_blast_db(config["ref"]["cdna"], "nucl")
+    for ref in config["ref"]:
+        process_ref(ref, config)
+
+def process_ref(ref, config):
+    ref_file = ref.get("file", ref.get("cdna", None))
+    blast_db = prepare_blast_db(ref_file, "nucl")
     out_file = "%s-%s.tsv" % (os.path.splitext(config["cdna_reads"])[0],
-                              config["ref"]["name"])
+                              ref["name"])
     with open(config["cdna_reads"]) as in_handle:
         with open(out_file, "w") as out_handle:
             writer = csv.writer(out_handle)
             writer.writerow(["query", "length", "hit", "hitlength", "hitidentities"])
-            results = (blast_homology(rec, blast_db, config["dir"]["work"])
-                       for rec in SeqIO.parse(in_handle, "fasta"))
-            for info in results:
-                writer.writerow(info)
+            with utils.cpmap(config["algorithm"]["cores"]) as cpmap:
+                #recs = [(rec, blast_db, config["dir"]["work"])
+                #        for rec in itertools.islice(SeqIO.parse(in_handle, "fasta"), 10)]
+                results = cpmap(blast_homology,
+                                ((rec, blast_db, config["dir"]["work"])
+                                 for rec in SeqIO.parse(in_handle, "fasta")))
+                for info in results:
+                    writer.writerow(info)
 
+@utils.map_wrap
 def blast_homology(rec, blast_db, tmp_dir):
     with utils.tmpfile(prefix="in", dir=tmp_dir) as in_file:
         with open(in_file, "w") as out_handle:
@@ -64,7 +74,7 @@ def _parse_ensembl_name(title):
     for p in title.split():
         if p.startswith("ENS"):
             return p
-    raise ValueError(title)
+    return title
 
 def prepare_blast_db(db_file, dbtype):
     exts = {"prot" : "pin", "nucl": "nin"}
