@@ -16,7 +16,7 @@ def _java_dir(base_dir):
 
 @_if_not_installed("mvn")
 def install_maven(base_dir):
-    version = "3.0.3"
+    version = "2.2.1"
     mirror = "mirror.cc.columbia.edu/pub/software/apache"
     java_dir = _java_dir(base_dir)
     url = "http://%s/maven/binaries/apache-maven-%s-bin.tar.gz" % ( mirror, version)

@@ -21,9 +21,18 @@ def _install_bii(config):
     """Main target for installing the bioinvestigator index.
     """
     dirs = _install_bii_tools(config)
-    print dirs
     _configure_bii(dirs, config)
     _configure_manager(dirs, config)
+    _deploy_bii(dirs, config)
+
+def _deploy_bii(dirs, config):
+    with cd(dirs["bii"]):
+        run("mvn clean package install -Pdeploy,postgresql,index_local " \
+            "-Dmaven.test.skip=true")
+        ear_reg = os.path.join("ear", "target", "bii*ear")
+        ear_file = run("ls %s" % ear_reg).strip().split()[0]
+        jboss_dir = os.path.join(config["jboss"], "server", "default", "deploy")
+        run("cp %s %s" % (ear_file, jboss_dir))
 
 def _install_bii_tools(config):
     mgr_version = "1.2"
@@ -52,7 +61,31 @@ def _install_bii_tools(config):
 def _configure_bii(dirs, config):
     """Site specific configuration for BII.
     """
-    pass
+    _configure_bii_webapp(dirs, config)
+    _configure_bii_profile(dirs, config)
+
+def _configure_bii_profile(dirs, config):
+    pro_file = os.path.join(dirs["bii"], "profiles.xml")
+    props = ["jdbc.username", "jdbc.password", "hibernate.search.default.indexBase"]
+    orig_vals = ["CHANGEME", "CHANGEME", "/tmp/bii/luceneindex"]
+    new_vals = [config["db_user"], config["db_pass"], dirs["index"]]
+    def make_str(prop, val):
+        return "<%s>%s" % (prop, val)
+    if contains(pro_file, orig_vals[0]):
+        for prop, orig, new in zip(props, orig_vals, new_vals):
+            sed(pro_file, make_str(prop, orig), make_str(prop, new))
+
+def _configure_bii_webapp(dirs, config):
+    web_dir = os.path.join(dirs["bii"], "web", "src", "main", "webapp")
+    with settings(hide('everything')):
+        to_mod = [f.strip() for f in run("ls -1 %s/*.xhtml" % web_dir).split()]
+    ignore = ("debug",)
+    def tpl_str(name):
+        return "layout/%s.xhtml" % name
+    for fname in (f for f in to_mod if not os.path.basename(f).startswith(ignore)):
+        if not contains(fname, tpl_str(config["bii_layout_template"])):
+            sed(fname, tpl_str("local-template"),
+                tpl_str(config["bii_layout_template"]))
 
 def _configure_manager(dirs, config):
     """Site specific configuration for the upload manager.
