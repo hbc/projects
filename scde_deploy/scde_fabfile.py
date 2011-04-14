@@ -13,6 +13,7 @@ def install_scde():
     config = _read_config()
     _setup_environment(config)
     config = _install_prereqs(config)
+    _configure_system(config)
     _install_bii(config)
 
 # ## BII installation
@@ -127,6 +128,46 @@ def _configure_manager_datalocation(dirs, config):
         for prop, orig_val, new_val in zip(props, orig_vals, new_vals):
             sed(dl_file, dl_str(prop, orig_val), dl_str(prop, new_val))
 
+# ## Configuration for standard system utilities -- nginx, postgresql
+
+def _configure_system(config):
+    _configure_postgres(config)
+
+def _configure_postgres(config):
+    """Setup required databases and access permissions in postgresql.
+    """
+    pg_base = "/var/lib/pgsql"
+    _configure_postgres_access(pg_base)
+    _create_postgres_db("bioinvindex", pg_base, config)
+
+def _create_postgres_db(db_name, pg_base, config):
+    with cd(pg_base):
+        with settings(warn_only=True):
+            result = sudo("psql --list | grep %s" % db_name, user="postgres")
+        if not result.strip():
+            user_sql = "CREATE USER %s WITH PASSWORD '%s'" % (config["db_user"],
+                                                              config["db_pass"])
+            sudo('psql -c "%s"' % user_sql, user="postgres")
+            sudo('psql -c "CREATE DATABASE %s WITH OWNER %s"' %
+                 (db_name, config["db_user"]), user="postgres")
+
+def _configure_postgres_access(pg_base):
+    def restart():
+        with settings(warn_only=True):
+            sudo("/etc/init.d/postgresql restart")
+    conf_file = os.path.join(pg_base, "data", "postgresql.conf")
+    hba_file = os.path.join(pg_base, "data", "pg_hba.conf")
+    orig_auth = "host    all         all         127.0.0.1/32          ident sameuser"
+    new_auth = "host    all         all         127.0.0.1/32          md5"
+    if (not exists(hba_file) and
+          not (contains(hba_file, new_auth, use_sudo=True).strip() == new_auth)):
+        restart()
+        uncomment(conf_file, "^#listen_addresses = ", use_sudo=True)
+        uncomment(conf_file, "^#port = 5432", use_sudo=True)
+        comment(hba_file, orig_auth, use_sudo=True)
+        append(hba_file, new_auth, use_sudo=True)
+        restart()
+
 # ## Setup and system pre-requesites
 
 def _install_prereqs(config):
@@ -146,6 +187,8 @@ def _setup_environment(config):
         environ.setup_vagrant_environment()
     result = run("echo $HOSTNAME")
     config["host"] = result.strip()
+    run("chmod a+rx $HOME")
+    run("chmod a+r .bash_profile")
 
 def _read_config():
     config_dir = os.path.join(os.path.dirname(__file__), "config")

@@ -5,19 +5,33 @@ Automated deployment for [Galaxy][1] and the
 
 - Build libraries
 
+        cd ~/hsph/projects/scde_deploy
         python setup.py build && sudo python setup.py install
 
-- Install CloudBioLinux box with Vagrant
+- Edit `config/scde.yaml` to specify system directories and passwords
 
-        mkdir tmp/biolinux
-        cd tmp/biolinux
+- Install CloudBioLinux box with Vagrant. Creates a `Vagrantfile` for
+  configuring and running the virtual machine
+
+        mkdir tmp/vagrant/galaxy_bii
+        cd tmp/vagrant/galaxy_bii
         vagrant box add biolinux_centos_20110412 https://s3.amazonaws.com/chapmanb/biolinux_centos_20110412.box
         vagrant init biolinux_centos_20110412
+
+- Allow web access to your machine from a port on your computer. Edit
+  the `Vagrantfile` to forward port 80 from the machine to 8082 on
+  your local computer:
+
+        config.vm.forward_port "http", 80, 8082
+
+- Start the virtual machine:
+
+        cd tmp/vagrant/galaxy_bii
         vagrant up
 
 - Run fabric script to install BII
 
-        cd tmp/biolinux
+        cd tmp/vagrant/galaxy_bii
         fab -f ~/hsph/projects/scde_deploy/scde_fabfile.py -H vagrant install_scde
 
 [1]: http://usegalaxy.org
