@@ -14,7 +14,19 @@ def install_scde():
     _setup_environment(config)
     config = _install_prereqs(config)
     _configure_system(config)
-    _install_bii(config)
+    #_install_bii(config)
+    _start_servers(config)
+
+# ## Deployed servers
+
+def _start_servers(config):
+    jboss_bin = os.path.join(config["jboss"], "bin")
+    jboss_run = os.path.join(jboss_bin, "run.sh")
+    jboss_stop = os.path.join(jboss_bin, "shutdown.sh")
+    jboss_args = "-Djboss.service.binding.set=ports-01"
+    with settings(hide="everything", warn_only=True):
+        sudo("%s -S" % jboss_stop)
+    sudo("screen -d -m %s %s >/dev/null 2>&1" % (jboss_run, jboss_args))
 
 # ## BII installation
 
@@ -132,6 +144,16 @@ def _configure_manager_datalocation(dirs, config):
 
 def _configure_system(config):
     _configure_postgres(config)
+    _configure_nginx(config)
+
+def _configure_nginx(config):
+    config_file = "/etc/nginx/nginx.conf"
+    local_config = os.path.join(config["fab_base_dir"], "install_files",
+                                "nginx.conf")
+    if not contains(config_file, "SCDE"):
+        sudo("mv %s %s.orig" % (config_file, config_file))
+        put(local_config, config_file, use_sudo=True)
+        sudo("/etc/init.d/nginx restart")
 
 def _configure_postgres(config):
     """Setup required databases and access permissions in postgresql.
@@ -172,10 +194,8 @@ def _configure_postgres_access(pg_base):
 
 def _install_prereqs(config):
     java.install_maven(config["base_install"])
-    jboss_dir = java.install_jboss(config["base_install"])
-    config["jboss"] = jboss_dir
-    jdbc_driver = java.install_postgresql_jdbc(config["base_install"])
-    config["jdbc_driver"] = jdbc_driver
+    config["jboss"] = java.install_jboss(config["base_install"])
+    config["jdbc_driver"] = java.install_postgresql_jdbc(config["base_install"])
     return config
 
 def _setup_environment(config):
@@ -195,4 +215,5 @@ def _read_config():
     config_file = os.path.join(config_dir, "scde.yaml")
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
+    config["fab_base_dir"] = os.path.dirname(config_dir)
     return config

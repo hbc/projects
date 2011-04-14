@@ -29,10 +29,12 @@ Automated deployment for [Galaxy][1] and the
         cd tmp/vagrant/galaxy_bii
         vagrant up
 
-- Run fabric script to install BII
+- Run fabric script to install dependencies, BII and deploy servers
 
         cd tmp/vagrant/galaxy_bii
         fab -f ~/hsph/projects/scde_deploy/scde_fabfile.py -H vagrant install_scde
+
+- Browse away: http://localhost:8082/bioinvindex
 
 [1]: http://usegalaxy.org
 [2]: http://isatab.sourceforge.net/
