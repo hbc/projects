@@ -5,7 +5,7 @@ from fabric.contrib.files import *
 import yaml
 
 from bcbio.deploy import environ, java
-from bcbio.deploy.shared import (_fetch_and_unpack)
+from bcbio.deploy.shared import (_fetch_and_unpack, _is_running)
 
 # ## Install targets
 
@@ -14,19 +14,21 @@ def install_scde():
     _setup_environment(config)
     config = _install_prereqs(config)
     _configure_system(config)
-    #_install_bii(config)
-    _start_servers(config)
+    galaxy_servers = _install_galaxy(config)
+    _install_bii(config)
+    _start_servers(config, galaxy_servers)
 
 # ## Deployed servers
 
-def _start_servers(config):
+def _start_servers(config, server_fns):
     jboss_bin = os.path.join(config["jboss"], "bin")
     jboss_run = os.path.join(jboss_bin, "run.sh")
     jboss_stop = os.path.join(jboss_bin, "shutdown.sh")
     jboss_args = "-Djboss.service.binding.set=ports-01"
-    with settings(hide="everything", warn_only=True):
-        sudo("%s -S" % jboss_stop)
-    sudo("screen -d -m %s %s >/dev/null 2>&1" % (jboss_run, jboss_args))
+    if not _is_running(jboss_run):
+        sudo("screen -d -m %s %s >/dev/null 2>&1" % (jboss_run, jboss_args))
+    for start_server in server_fns:
+        start_server()
 
 # ## BII installation
 
@@ -140,6 +142,57 @@ def _configure_manager_datalocation(dirs, config):
         for prop, orig_val, new_val in zip(props, orig_vals, new_vals):
             sed(dl_file, dl_str(prop, orig_val), dl_str(prop, new_val))
 
+# ## Galaxy installation and configuration
+
+def _install_galaxy(config):
+    dirs = _install_galaxy_python(config)
+    search_server = _install_galaxy_search(dirs, config)
+    galaxy_server = _install_galaxy_code(dirs, config)
+    return [search_server, galaxy_server]
+
+def _install_galaxy_code(dirs, config):
+    with cd(dirs["base"]):
+        code_dir = _fetch_and_unpack("hg clone %s" % config["galaxy_repo"])
+    code_dir = os.path.join(dirs["base"], code_dir)
+
+    def run_galaxy(galaxy_dir):
+        def do_work():
+            run("sh run.sh --daemon")
+        return do_work
+    return run_galaxy(code_dir)
+
+def _install_galaxy_search(dirs, config):
+    """Full text search capability with Lucene.
+    """
+    search_url = "git clone git://github.com/chapmanb/kwd-doc-find.git"
+    with cd(dirs["base"]):
+        lucene_dir = _fetch_and_unpack(search_url)
+    lucene_dir = os.path.join(dirs["base"], lucene_dir)
+    def run_search(lucene_dir):
+        def do_work():
+            print "Starting lucene search server"
+            with cd(lucene_dir):
+                lein_cmd = "lein run :web 8081"
+                if not _is_running(lein_cmd):
+                    run("lein deps")
+                    run("screen -d -m %s >/dev/null 2>&1" % (lein_cmd))
+        return do_work
+    return run_search(lucene_dir)
+
+def _install_galaxy_python(config):
+    base_dir = os.path.join(config["base_install"], config["galaxy_dirname"])
+    if not exists(base_dir):
+        sudo("mkdir -p %s" % base_dir)
+        sudo("chown %s %s" % (env.user, base_dir))
+    python_dir = os.path.join(base_dir, "python_galaxy")
+    if not exists(python_dir):
+        run("mkdir -p %s" % python_dir)
+        run("virtualenv %s" % python_dir)
+    path_str = "export PATH=%s/bin:$PATH" % python_dir
+    if not contains(config["shell_config"], path_str.split(":")[0]):
+        append(config["shell_config"], path_str)
+    return dict(base=base_dir, python=python_dir)
+
 # ## Configuration for standard system utilities -- nginx, postgresql
 
 def _configure_system(config):
@@ -208,7 +261,11 @@ def _setup_environment(config):
     result = run("echo $HOSTNAME")
     config["host"] = result.strip()
     run("chmod a+rx $HOME")
-    run("chmod a+r .bash_profile")
+    shell_config = ".bash_profile"
+    run("chmod a+r %s" % shell_config)
+    if contains(shell_config, "^export PATH$"):
+        comment(shell_config, "^export PATH$")
+    config["shell_config"] = shell_config
 
 def _read_config():
     config_dir = os.path.join(os.path.dirname(__file__), "config")

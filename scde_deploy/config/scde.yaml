@@ -6,5 +6,7 @@ bii_lucene_index: index
 bii_data_dirname: bii_data
 bii_data_url: biidata
 bii_layout_template: harvard-template
+galaxy_dirname: galaxy
+galaxy_repo: https://bitbucket.org/hbc/galaxy-central-hbc
 db_user: galaxy
 db_pass: galaxym3

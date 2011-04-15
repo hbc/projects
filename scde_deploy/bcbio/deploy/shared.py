@@ -142,3 +142,15 @@ def _symlinked_java_version_dir(pname, version):
         sudo("ln -s %s %s" % (install_dir, base_dir))
         return install_dir
     return None
+
+def _is_running(cmd):
+    """Check if a given command is currently running.
+    """
+    with settings(hide('everything')):
+        result = run("ps ax | grep '%s'" % cmd)
+    is_running = False
+    for line in result.split("\n"):
+        if line.find(cmd) >= 0 and line.find("grep") == -1:
+            is_running = True
+            break
+    return is_running
