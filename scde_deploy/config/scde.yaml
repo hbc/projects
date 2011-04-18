@@ -1,5 +1,5 @@
 ---
-distribution: centos
+distribution: ubuntu
 base_install: /usr/local
 bii_dirname: bioinvindex
 bii_lucene_index: index
@@ -8,5 +8,8 @@ bii_data_url: biidata
 bii_layout_template: harvard-template
 galaxy_dirname: galaxy
 galaxy_repo: https://bitbucket.org/hbc/galaxy-central-hbc
+galaxy_dbname: scde_galaxy
+galaxy_adminusers: youradmin@email.com,anotheradmin@email.com
+galaxy_datalib: datalibrary
 db_user: galaxy
 db_pass: galaxym3

@@ -5,7 +5,7 @@ from fabric.contrib.files import *
 import yaml
 
 from bcbio.deploy import environ, java
-from bcbio.deploy.shared import (_fetch_and_unpack, _is_running)
+from bcbio.deploy.shared import (_fetch_and_unpack, _run_in_screen)
 
 # ## Install targets
 
@@ -15,20 +15,14 @@ def install_scde():
     config = _install_prereqs(config)
     _configure_system(config)
     galaxy_servers = _install_galaxy(config)
-    _install_bii(config)
-    _start_servers(config, galaxy_servers)
+    bii_servers = _install_bii(config)
+    _start_servers(config, bii_servers + galaxy_servers)
 
 # ## Deployed servers
 
-def _start_servers(config, server_fns):
-    jboss_bin = os.path.join(config["jboss"], "bin")
-    jboss_run = os.path.join(jboss_bin, "run.sh")
-    jboss_stop = os.path.join(jboss_bin, "shutdown.sh")
-    jboss_args = "-Djboss.service.binding.set=ports-01"
-    if not _is_running(jboss_run):
-        sudo("screen -d -m %s %s >/dev/null 2>&1" % (jboss_run, jboss_args))
-    for start_server in server_fns:
-        start_server()
+def _start_servers(config, server_info):
+    for name, cmd, dname, check_cmd, use_sudo in server_info:
+        _run_in_screen(name, cmd, dname, check_cmd, use_sudo)
 
 # ## BII installation
 
@@ -39,15 +33,25 @@ def _install_bii(config):
     _configure_bii(dirs, config)
     _configure_manager(dirs, config)
     _deploy_bii(dirs, config)
+    jboss_cp = "export JBOSS_CLASSPATH=%s:$JBOSS_CLASSPATH" % (config["jdbc_driver"])
+    jboss_run = os.path.join(config["jboss"], "bin", "run.sh")
+    jboss_args = "-Djboss.service.binding.set=ports-01"
+    return [("jboss", os.path.dirname(jboss_run),
+             "%s && %s %s" % (jboss_cp, jboss_run, jboss_args),
+             "run.jar org.jboss.Main", True)]
 
 def _deploy_bii(dirs, config):
-    with cd(dirs["bii"]):
-        run("mvn clean package install -Pdeploy,postgresql,index_local " \
-            "-Dmaven.test.skip=true")
+    def get_ear_file():
         ear_reg = os.path.join("ear", "target", "bii*ear")
-        ear_file = run("ls %s" % ear_reg).strip().split()[0]
+        with settings(hide("everything"), warn_only=True):
+            result = run("ls %s" % ear_reg).strip().split()[0].replace("ls:", "").strip()
+        return result
+    with cd(dirs["bii"]):
+        if not get_ear_file():
+            run("mvn clean package install -Pdeploy,postgresql,index_local " \
+                "-Dmaven.test.skip=true")
         jboss_dir = os.path.join(config["jboss"], "server", "default", "deploy")
-        run("cp %s %s" % (ear_file, jboss_dir))
+        run("cp %s %s" % (get_ear_file(), jboss_dir))
 
 def _install_bii_tools(config):
     mgr_version = "1.2"
@@ -154,12 +158,20 @@ def _install_galaxy_code(dirs, config):
     with cd(dirs["base"]):
         code_dir = _fetch_and_unpack("hg clone %s" % config["galaxy_repo"])
     code_dir = os.path.join(dirs["base"], code_dir)
-
-    def run_galaxy(galaxy_dir):
-        def do_work():
-            run("sh run.sh --daemon")
-        return do_work
-    return run_galaxy(code_dir)
+    library_dir = os.path.join(dirs["base"], config["galaxy_datalib"])
+    config_file = "universe_wsgi.ini"
+    remote_config = os.path.join(code_dir, config_file)
+    if not exists(remote_config):
+        local_config = os.path.join(config["fab_base_dir"], "install_files",
+                                    config_file)
+        origs = ["DBUSER", "DBPASSWD", "DBNAME", "ADMINUSERS", "LIBRARYDIR"]
+        vals = [config["db_user"], config["db_pass"], config["galaxy_dbname"],
+                config["galaxy_adminusers"], library_dir]
+        put(local_config, remote_config)
+        for old, new in zip(origs, vals):
+            sed(remote_config, old, new)
+    return ("galaxy", code_dir, "sh run.sh",
+            "paster.py serve universe_wsgi.ini", False)
 
 def _install_galaxy_search(dirs, config):
     """Full text search capability with Lucene.
@@ -168,16 +180,8 @@ def _install_galaxy_search(dirs, config):
     with cd(dirs["base"]):
         lucene_dir = _fetch_and_unpack(search_url)
     lucene_dir = os.path.join(dirs["base"], lucene_dir)
-    def run_search(lucene_dir):
-        def do_work():
-            print "Starting lucene search server"
-            with cd(lucene_dir):
-                lein_cmd = "lein run :web 8081"
-                if not _is_running(lein_cmd):
-                    run("lein deps")
-                    run("screen -d -m %s >/dev/null 2>&1" % (lein_cmd))
-        return do_work
-    return run_search(lucene_dir)
+    return ("fulltext_search", lucene_dir, "lein deps && lein run :web 8081",
+            "run :web 8081", False)
 
 def _install_galaxy_python(config):
     base_dir = os.path.join(config["base_install"], config["galaxy_dirname"])
@@ -203,17 +207,30 @@ def _configure_nginx(config):
     config_file = "/etc/nginx/nginx.conf"
     local_config = os.path.join(config["fab_base_dir"], "install_files",
                                 "nginx.conf")
+    nginx_user = None
+    for test_user in ["nginx", "www-data"]:
+        with settings(hide('everything'), warn_only=True):
+            result = sudo("grep %s /etc/passwd" % test_user)
+            if result.startswith(test_user):
+                nginx_user = test_user
+                break
+    assert nginx_user is not None
     if not contains(config_file, "SCDE"):
         sudo("mv %s %s.orig" % (config_file, config_file))
         put(local_config, config_file, use_sudo=True)
+        sed(config_file, "NGINXUSER", nginx_user, use_sudo=True)
         sudo("/etc/init.d/nginx restart")
 
 def _configure_postgres(config):
     """Setup required databases and access permissions in postgresql.
     """
-    pg_base = "/var/lib/pgsql"
+    with settings(hide('everything'), warn_only=True):
+        pg_base = run("ls -d /etc/postgresql/*/main").strip()
+    if not pg_base or pg_base.find("No such file") >= 0:
+        pg_base = "/var/lib/pgsql/data"
     _configure_postgres_access(pg_base)
     _create_postgres_db("bioinvindex", pg_base, config)
+    _create_postgres_db(config["galaxy_dbname"], pg_base, config)
 
 def _create_postgres_db(db_name, pg_base, config):
     with cd(pg_base):
@@ -222,7 +239,8 @@ def _create_postgres_db(db_name, pg_base, config):
         if not result.strip():
             user_sql = "CREATE USER %s WITH PASSWORD '%s'" % (config["db_user"],
                                                               config["db_pass"])
-            sudo('psql -c "%s"' % user_sql, user="postgres")
+            with settings(warn_only=True):
+                sudo('psql -c "%s"' % user_sql, user="postgres")
             sudo('psql -c "CREATE DATABASE %s WITH OWNER %s"' %
                  (db_name, config["db_user"]), user="postgres")
 
@@ -230,8 +248,8 @@ def _configure_postgres_access(pg_base):
     def restart():
         with settings(warn_only=True):
             sudo("/etc/init.d/postgresql restart")
-    conf_file = os.path.join(pg_base, "data", "postgresql.conf")
-    hba_file = os.path.join(pg_base, "data", "pg_hba.conf")
+    conf_file = os.path.join(pg_base, "postgresql.conf")
+    hba_file = os.path.join(pg_base, "pg_hba.conf")
     orig_auth = "host    all         all         127.0.0.1/32          ident sameuser"
     new_auth = "host    all         all         127.0.0.1/32          md5"
     if (not exists(hba_file) and
@@ -254,6 +272,8 @@ def _install_prereqs(config):
 def _setup_environment(config):
     if config["distribution"] == "centos":
         environ.setup_centos()
+    elif config["distribution"] == "ubuntu":
+        environ.setup_ubuntu()
     else:
         raise NotImplementedError
     if env.hosts == ["vagrant"]:
@@ -261,7 +281,12 @@ def _setup_environment(config):
     result = run("echo $HOSTNAME")
     config["host"] = result.strip()
     run("chmod a+rx $HOME")
-    shell_config = ".bash_profile"
+    shell_config = None
+    for test in [".bash_profile", ".bashrc"]:
+        if exists(test):
+            shell_config = test
+            break
+    assert shell_config is not None
     run("chmod a+r %s" % shell_config)
     if contains(shell_config, "^export PATH$"):
         comment(shell_config, "^export PATH$")

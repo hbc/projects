@@ -1,6 +1,7 @@
 """Reusable decorators and functions for custom installations.
 """
 import os
+import time
 from contextlib import contextmanager
 
 from fabric.api import *
@@ -143,6 +144,8 @@ def _symlinked_java_version_dir(pname, version):
         return install_dir
     return None
 
+# --- Running servers and daemons
+
 def _is_running(cmd):
     """Check if a given command is currently running.
     """
@@ -154,3 +157,21 @@ def _is_running(cmd):
             is_running = True
             break
     return is_running
+
+def _run_in_screen(name, run_dir, cmd, check_cmd=None, use_sudo=False):
+    """Run the given command in a named screen session in the background.
+
+    check_cmd is optional and used to check if the command is running, in cases
+    where the running script spawns a process with a different name.
+    """
+    if check_cmd is None: check_cmd = cmd
+    do_run = sudo if use_sudo else run
+    send_return = "`echo -ne '\015'`"
+    stdout_redirect = ">/dev/null 2>&1"
+    if not _is_running(check_cmd):
+        with cd(run_dir):
+            # Start a detached screen session and then send the command to it
+            do_run("screen -d -m -S %s %s" % (name, stdout_redirect), pty=False)
+            time.sleep(5)
+            do_run("screen -S %s -p0 -X stuff '%s'%s %s" % (name, cmd,
+                                                            send_return, stdout_redirect))

@@ -36,7 +36,7 @@ def install_jboss(base_dir):
     return os.path.join(java_dir, jboss_dir)
 
 def install_postgresql_jdbc(base_dir):
-    version = "9.0-801"
+    version = "8.4-702"
     url = "http://jdbc.postgresql.org/download/postgresql-%s.jdbc3.jar" % version
     java_dir = _java_dir(base_dir)
     jdbc_dir = os.path.join(java_dir, "postgresql_jdbc")
