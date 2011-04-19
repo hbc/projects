@@ -54,20 +54,30 @@ def _deploy_bii(dirs, config):
         run("cp %s %s" % (get_ear_file(), jboss_dir))
 
 def _install_bii_tools(config):
-    mgr_version = "1.2"
+    bii_git = "git clone git://github.com/ISA-tools/BioInvIndex.git"
+    mgr_git = "git clone git://github.com/ISA-tools/ISAvalidator-ISAconverter-BIImanager.git"
     base_dir = os.path.join(config["base_install"], config["bii_dirname"])
     if not exists(base_dir):
         sudo("mkdir -p %s" % base_dir)
         sudo("chown %s %s" % (env.user, base_dir))
     with cd(base_dir):
-        git_cmd = "git clone git://github.com/ISA-tools/BioInvIndex.git"
-        bii_dir = _fetch_and_unpack(git_cmd)
+        bii_dir = _fetch_and_unpack(bii_git)
         bii_dir = os.path.join(base_dir, bii_dir)
-    url = "https://github.com/downloads/ISA-tools/" \
-          "ISAvalidator-ISAconverter-BIImanager/BII-data-mgr-%s.zip" % mgr_version
     with cd(base_dir):
-        mgr_dir = _fetch_and_unpack(url)
-        mgr_dir = os.path.join(base_dir, mgr_dir)
+        mgr_base_dir = _fetch_and_unpack(mgr_git)
+        mgr_build_dir = "val_conv_manager_gui"
+        with cd(os.path.join(mgr_base_dir, mgr_build_dir)):
+            target_dir = "target"
+            if not exists(target_dir):
+                run("sh package.sh")
+                with cd(target_dir):
+                    run("unzip BII-data-mgr-*.zip")
+    mgr_dir = os.path.join(base_dir, mgr_base_dir, mgr_build_dir, target_dir)
+    with cd(mgr_dir):
+        with settings(hide("everything"), warn_only=True):
+            result = run("ls -1d BII-data-mgr-*")
+        data_mgr_dir = result.split()[0].strip()
+    mgr_dir = os.path.join(mgr_dir, data_mgr_dir)
     index_dir = os.path.join(base_dir, config["bii_lucene_index"])
     if not exists(index_dir):
         run("mkdir -p %s" % index_dir)
