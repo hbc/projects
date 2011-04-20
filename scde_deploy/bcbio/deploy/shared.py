@@ -50,6 +50,7 @@ def _make_tmp_dir():
 
 def _get_expected_file(url):
     tar_file = os.path.split(url)[-1]
+    tar_file = tar_file.split("?")[0] # remove any extra arguments
     safe_tar = "--pax-option='delete=SCHILY.*,delete=LIBARCHIVE.*'"
     exts = {(".tar.gz", ".tgz") : "tar %s -xzpf" % safe_tar,
             (".tar.bz2",): "tar %s -xjpf" % safe_tar,
@@ -85,7 +86,7 @@ def _fetch_and_unpack(url, need_dir=True):
     else:
         tar_file, dir_name, tar_cmd = _get_expected_file(url)
         if not exists(tar_file):
-            run("wget --no-check-certificate %s" % url)
+            run("wget --no-check-certificate -O %s '%s'" % (tar_file, url))
         if not exists(dir_name):
             run("%s %s" % (tar_cmd, tar_file))
         return _safe_dir_name(dir_name, need_dir)

@@ -6,6 +6,10 @@ bii_lucene_index: index
 bii_data_dirname: bii_data
 bii_data_url: biidata
 bii_layout_template: harvard-template
+isatab_data_dirname: isatab_prepared_data
+#isatab_config: isaconfig-2011412-hsci
+isatab_config: isaconfig-default_v2011-02-18
+isatab_s3_bucket: hsph_perdera
 galaxy_dirname: galaxy
 galaxy_repo: https://bitbucket.org/hbc/galaxy-central-hbc
 galaxy_dbname: scde_galaxy
