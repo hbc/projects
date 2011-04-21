@@ -172,7 +172,8 @@ def _run_in_screen(name, run_dir, cmd, check_cmd=None, use_sudo=False):
     if not _is_running(check_cmd):
         with cd(run_dir):
             # Start a detached screen session and then send the command to it
-            do_run("screen -d -m -S %s %s" % (name, stdout_redirect), pty=False)
+            if use_sudo is False:
+                do_run("screen -d -m -S %s %s" % (name, stdout_redirect), pty=False)
             time.sleep(5)
             do_run("screen -S %s -p0 -X stuff '%s'%s %s" % (name, cmd,
                                                             send_return, stdout_redirect))

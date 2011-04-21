@@ -46,14 +46,15 @@ public:
 - SCDE-S-2
 - DEPINHO-S-1
 - ORKIN-S-1
-- SHIVDASANI-I-1
 private:
 - ARMSTRONG-S-2
 - ARMSTRONG-S-4
 - ORKIN-S-2
 - DEPINHO-S-2
-- harvard-CD133_fixed
+problem_validating:
 - SYSCO-I-1
+- SHIVDASANI-I-1
+- harvard-CD133_fixed
 extras:
 - ARMSTRONG-I-1 
 - SB-S-23

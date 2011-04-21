@@ -69,6 +69,11 @@ def _install_bii_tools(config):
         with cd(os.path.join(mgr_base_dir, mgr_build_dir)):
             target_dir = "target"
             if not exists(target_dir):
+                # need artifacts from BII for tool build
+                with cd(bii_dir):
+                    run("mvn clean install -Dmaven.test.skip=true")
+                    run("rm -rf ear/target")
+                # now build BII data manager
                 run("sh package.sh")
                 with cd(target_dir):
                     run("unzip BII-data-mgr-*.zip")
@@ -262,7 +267,7 @@ def _configure_postgres_access(pg_base):
     hba_file = os.path.join(pg_base, "pg_hba.conf")
     orig_auth = "host    all         all         127.0.0.1/32          ident sameuser"
     new_auth = "host    all         all         127.0.0.1/32          md5"
-    if (not exists(hba_file) and
+    if (not exists(hba_file, use_sudo=True) and
           not (contains(hba_file, new_auth, use_sudo=True).strip() == new_auth)):
         restart()
         uncomment(conf_file, "^#listen_addresses = ", use_sudo=True)
