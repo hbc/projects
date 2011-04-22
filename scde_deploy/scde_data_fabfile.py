@@ -22,12 +22,13 @@ def scde_data():
 def _add_isatab_to_bii(config):
     dirs = _setup_bii_directories(config)
     dirs = _get_isatab_config(dirs, config)
+    user = _add_bii_user(dirs, config)
     for upload_dir, perm_type in _get_isatab_uploads(dirs, config):
-        _upload_isatab_to_bii(upload_dir, perm_type, dirs, config)
+        _upload_isatab_to_bii(upload_dir, perm_type, user, dirs, config)
     _run_bii_cl("org.isatools.isatab.commandline.ReindexShellCommand",
                 [], dirs, config)
 
-def _upload_isatab_to_bii(upload_dir, perm_type, dirs, config):
+def _upload_isatab_to_bii(upload_dir, perm_type, user, dirs, config):
     """Use SimpleManager target from Eamonn to upload to database.
     """
     if _check_if_uploaded(upload_dir, dirs):
@@ -37,12 +38,9 @@ def _upload_isatab_to_bii(upload_dir, perm_type, dirs, config):
                       args, dirs, config)
     if out.find("Loading failed") >= 0 or out.find("FATAL:") >= 0:
         raise ValueError("Upload to BII failed")
+    perm_flags = {"public" : "-p", "private": "-v"}
     for study in _get_studies(upload_dir):
-        if perm_type == "public":
-            args = ["-p", study]
-        elif perm_type == "private":
-            user = _add_bii_user(dirs, config)
-            args = ["-v", study, "-o", user]
+        args = [perm_flags[perm_type], study, "-o", "%s=%s" % (study, user)]
         _run_bii_cl("org.isatools.isatab.commandline.PermModShellCommand",
                     args, dirs, config)
 
@@ -59,7 +57,8 @@ def _add_bii_user(dirs, config):
     return config["db_user"]
 
 def _run_bii_cl(main, args, dirs, config):
-    common = "-Xms256m -Xmx1024m -XX:PermSize=64m -XX:MaxPermSize=128m"
+    #common = "-Xms256m -Xmx1024m -XX:PermSize=64m -XX:MaxPermSize=128m"
+    common = ""
     isatools_jar = os.path.join(dirs["mgr"], "isatools_deps.jar")
     classpath = "%s:%s" % (isatools_jar, config["jdbc_driver"])
     with settings(warn_only=True):
