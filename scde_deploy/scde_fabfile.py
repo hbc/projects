@@ -222,6 +222,8 @@ def _configure_nginx(config):
     config_file = "/etc/nginx/nginx.conf"
     local_config = os.path.join(config["fab_base_dir"], "install_files",
                                 "nginx.conf")
+    bii_data_dir = os.path.join(config["base_install"], config["bii_dirname"],
+                                config["bii_data_dirname"])
     nginx_user = None
     for test_user in ["nginx", "www-data"]:
         with settings(hide('everything'), warn_only=True):
@@ -234,6 +236,7 @@ def _configure_nginx(config):
         sudo("mv %s %s.orig" % (config_file, config_file))
         put(local_config, config_file, use_sudo=True)
         sed(config_file, "NGINXUSER", nginx_user, use_sudo=True)
+        sed(config_file, "BIIDATADIR", bii_data_dir, use_sudo=True)
         sudo("/etc/init.d/nginx restart")
 
 def _configure_postgres(config):
