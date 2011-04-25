@@ -21,9 +21,11 @@ def parse(isatab_ref):
         assert len(fnames) == 1
         isatab_ref = fnames[0]
     assert os.path.exists(isatab_ref), "Did not find investigation file: %s" % isatab_ref
-    parser = InvestigationParser()
+    i_parser = InvestigationParser()
     with open(isatab_ref) as in_handle:
-        rec = parser.parse(in_handle)
+        rec = i_parser.parse(in_handle)
+    s_parser = StudyAssayParser(isatab_ref)
+    rec = s_parser.parse(rec)
     return rec
 
 class InvestigationParser:
@@ -110,6 +112,25 @@ class InvestigationParser:
                     out[i][line[0]] = line[i+1]
                 line = None
         return out, line
+
+class StudyAssayParser:
+    """Parse row oriented metadata about study souress and assay samples.
+    """
+    def __init__(self, base_file):
+        self._dir = os.path.dirname(base_file)
+
+    def parse(self, rec):
+        """Retrieve row data from files associated with the ISATabRecord.
+        """
+        for study in rec.studies:
+            source_data = self._parse_study(study.metadata["Study File Name"])
+        return rec
+
+    def _parse_study(self, fname):
+        with open(os.path.join(self._dir, fname)) as in_handle:
+            reader = csv.reader(in_handle, dialect="excel-tab")
+            for line in reader:
+                print line
 
 class ISATabRecord:
     """Represent ISA-Tab metadata in structured format.
