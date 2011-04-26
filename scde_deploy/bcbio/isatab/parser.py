@@ -123,7 +123,7 @@ class InvestigationParser:
         out = None
         line = None
         for line in line_iter:
-            if len(line) == 1:
+            if len(line) == 1 and line[0].upper() == line[0]:
                 break
             else:
                 # setup output dictionaries, trimming off blank columns
