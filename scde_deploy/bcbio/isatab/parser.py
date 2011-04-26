@@ -2,6 +2,31 @@
 
 Works with ISA-Tab (http://isatab.sourceforge.net), which provides a structured
 format for describing experimental metdata.
+
+The entry point for the module is the parse function, which takes an ISA-Tab
+directory (or investigator file) to parse. It returns a ISATabRecord object
+which contains details about the investigation. This is top level information
+like associated publications and contacts.
+
+This record contains a list of associated studies (ISATabStudyRecord objects).
+Each study contains a metadata attribute, which has the key/value pairs
+associated with the study in the investigation file. It also contains other
+high level data like publications, contacts, and details about the experimental
+design.
+
+The nodes attribute of each record captures the information from the Study file.
+This is a dictionary, where the keys are sample names and the values are
+NodeRecord objects. This collapses the study information on samples, and
+contains the associated information of each sample as key/value pairs in the
+metadata attribute.
+
+Finally, each study contains a list of assays, as ISATabAssayRecord objects.
+Similar to the study objects, these have a metadata attribute with key/value
+information about the assay. They also have a dictionary of nodes with data from
+the Assay file; in assays the keys are raw data files.
+
+This is a biased representation of the Study and Assay files which focuses on
+collapsing the data across the samples and raw data.
 """
 from __future__ import with_statement
 
@@ -139,7 +164,7 @@ class StudyAssayParser:
         self._synonyms = {"Array Data File" : "Raw Data File",
                           "Derived Array Data File" : "Derived Data File",
                           "Hybridization Assay Name": "Assay Name",
-                          "Derived Array Data Matrix File": "Raw Data File",
+                          "Derived Array Data Matrix File": "Derived Data File",
                           "Raw Spectral Data File": "Raw Data File",
                           "Derived Spectral Data File": "Derived Data File"}
 
@@ -149,9 +174,15 @@ class StudyAssayParser:
         for study in rec.studies:
             source_data = self._parse_study(study.metadata["Study File Name"],
                                             "Sample Name")
+            study.nodes = source_data
+            final_assays = []
             for assay in study.assays:
+                cur_assay = ISATabAssayRecord(assay)
                 assay_data = self._parse_study(assay["Study Assay File Name"],
                                                "Raw Data File")
+                cur_assay.nodes = assay_data
+                final_assays.append(cur_assay)
+            study.assays = final_assays
         return rec
 
     def _parse_study(self, fname, node_type):
@@ -170,21 +201,31 @@ class StudyAssayParser:
                     node = nodes[name]
                 except KeyError:
                     node = NodeRecord(name, node_type)
-                attrs = self._line_keyvals(line, header, hgroups, htypes)
-                print attrs
-                for i, oi in enumerate(g[0] for g in hgroups):
-                    print htypes[i], header[oi], line[oi]
-                print
-                break
-        return nodes.values()
+                    node.metadata = collections.defaultdict(set)
+                    nodes[name] = node
+                attrs = self._line_keyvals(line, header, hgroups, htypes,
+                                           node.metadata)
+                nodes[name].metadata = attrs
+        return dict([(k, self._finalize_metadata(v)) for k, v in nodes.items()])
 
-    def _line_keyvals(self, line, header, hgroups, htypes):
-        out = collections.defaultdict(list)
+    def _finalize_metadata(self, node):
+        """Convert node metadata back into a standard dictionary and list.
+        """
+        final = {}
+        for key, val in node.metadata.iteritems():
+            val = list(val)
+            if isinstance(val[0], tuple):
+                val = [dict(v) for v in val]
+            final[key] = val
+        node.metadata = final
+        return node
+
+    def _line_keyvals(self, line, header, hgroups, htypes, out):
         out = self._line_by_type(line, header, hgroups, htypes, out, "attribute")
         out = self._line_by_type(line, header, hgroups, htypes, out, "processing",
                                  self._extract_protocol_info)
         out = self._line_by_type(line, header, hgroups, htypes, out, "node")
-        return dict(out)
+        return out
 
     def _line_by_type(self, line, header, hgroups, htypes, out, want_type,
                       collapse_quals_fn = None):
@@ -192,21 +233,27 @@ class StudyAssayParser:
         """
         for index, htype in ((i, t) for i, t in enumerate(htypes) if t == want_type):
             col = hgroups[index][0]
-            key = header[col]
-            if key.find("[") >= 0:
-                key = key.replace("]", "").split("[")[-1]
+            key = self._clean_header(header[col])
             if collapse_quals_fn:
                 val = collapse_quals_fn(line, header, hgroups[index])
             else:
                 val = line[col]
-            out[key].append(val)
+            out[key].add(val)
         return out
 
     def _extract_protocol_info(self, line, header, indexes):
-        print indexes
+        out = dict()
         for i in indexes:
-            print header[i], line[i]
-        print
+            key = self._clean_header(header[i])
+            out[key] = line[i]
+        return tuple(out.items())
+
+    def _clean_header(self, header):
+        """Remove ISA-Tab specific information from Header[real name] headers.
+        """
+        if header.find("[") >= 0:
+            header = header.replace("]", "").split("[")[-1]
+        return header
 
     def _characterize_header(self, header, hgroups):
         """Characterize header groups into different data types.
@@ -265,6 +312,15 @@ class ISATabStudyRecord:
         self.assays = []
         self.protocols = []
         self.contacts = []
+        self.nodes = {}
+
+class ISATabAssayRecord:
+    """Represent an assay within an ISA-Tab record.
+    """
+    def __init__(self, metadata=None):
+        if metadata is None: metadata = {}
+        self.metadata = metadata
+        self.nodes = {}
 
 class NodeRecord:
     """Represent a data node within an ISA-Tab Study/Assay file.
