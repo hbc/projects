@@ -135,7 +135,7 @@ class InvestigationParser:
                 while len(line) < len(out) + 1:
                     line.append("")
                 for i in range(len(out)):
-                    out[i][line[0]] = line[i+1]
+                    out[i][line[0]] = line[i+1].strip()
                 line = None
         return out, line
 
