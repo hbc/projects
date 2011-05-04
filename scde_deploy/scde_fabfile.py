@@ -199,6 +199,7 @@ def _install_galaxy_search(dirs, config):
             "run :web 8081", False)
 
 def _install_galaxy_python(config):
+    # XXX ToDo: Install rpy into virtual environment.
     base_dir = os.path.join(config["base_install"], config["galaxy_dirname"])
     if not exists(base_dir):
         sudo("mkdir -p %s" % base_dir)
@@ -224,19 +225,23 @@ def _configure_nginx(config):
                                 "nginx.conf")
     bii_data_dir = os.path.join(config["base_install"], config["bii_dirname"],
                                 config["bii_data_dirname"])
-    nginx_user = None
-    for test_user in ["nginx", "www-data"]:
-        with settings(hide('everything'), warn_only=True):
-            result = sudo("grep %s /etc/passwd" % test_user)
-            if result.startswith(test_user):
-                nginx_user = test_user
-                break
+    galaxy_dir = os.path.join(config["base_install"], config["galaxy_dirname"],
+                              os.path.basename(config["galaxy_repo"]))
+    nginx_user = config.get("nginx_user", None)
+    if nginx_user is None:
+        for test_user in ["nginx", "www-data"]:
+            with settings(hide('everything'), warn_only=True):
+                result = sudo("grep %s /etc/passwd" % test_user)
+                if result.startswith(test_user):
+                    nginx_user = test_user
+                    break
     assert nginx_user is not None
     if not contains(config_file, "SCDE"):
         sudo("mv %s %s.orig" % (config_file, config_file))
         put(local_config, config_file, use_sudo=True)
         sed(config_file, "NGINXUSER", nginx_user, use_sudo=True)
         sed(config_file, "BIIDATADIR", bii_data_dir, use_sudo=True)
+        sed(config_file, "GALAXYDATADIR", galaxy_dir, use_sudo=True)
         sudo("/etc/init.d/nginx restart")
 
 def _configure_postgres(config):
@@ -282,6 +287,8 @@ def _configure_postgres_access(pg_base):
 # ## Setup and system pre-requesites
 
 def _install_prereqs(config):
+    # XXX To Do -- install nginx with upload module. Use cloudman install
+    # defaults
     java.install_maven(config["base_install"])
     config["jboss"] = java.install_jboss(config["base_install"])
     config["jdbc_driver"] = java.install_postgresql_jdbc(config["base_install"])

@@ -15,5 +15,6 @@ galaxy_repo: https://bitbucket.org/hbc/galaxy-central-hbc
 galaxy_dbname: scde_galaxy
 galaxy_adminusers: youradmin@email.com,anotheradmin@email.com
 galaxy_datalib: datalibrary
+nginx_user: 'galaxy biotools'
 db_user: galaxy
 db_pass: galaxym3
