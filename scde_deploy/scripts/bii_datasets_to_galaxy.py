@@ -19,23 +19,37 @@ def main(config_file):
         config = yaml.load(in_handle)
     bii_dir = os.path.join(config["base_install"], config["bii_dirname"],
                            config["bii_data_dirname"])
-    o = organize_datafiles(bii_dir)
-
-def organize_datafiles(bii_dir):
     groups = [("Study Assay Technology Type", "Study Assay Measurement Type"),
               ("organism",),
               ("organism part",),
               ("Study Title",)]
+    prepped_files = organize_datafiles(bii_dir, groups)
+    add_to_galaxy_datalibs(prepped_files, len(groups))
+
+# ## Synchronize BII files with Galaxy data libraries
+
+def add_to_galaxy_datalibs(prepped_files, levels):
+    """Add the organized files to synchronized Galaxy data libraries.
+    """
+    pass
+
+# ## Organize data files into high level structure for Galaxy deployment
+
+def organize_datafiles(bii_dir, groups):
     all_files = []
     for study_dirs in bii_studies(bii_dir):
-        for data_file in study_datafiles(study_dirs["isatab"]):
+        for data_file in study_datafiles(study_dirs["isatab"],
+                                         study_dirs["data"]):
             all_files.append(data_file)
     organized_files = _organize_by_first_group(all_files, groups)
     cur = [organized_files]
-    for i in range(len(groups) - 1):
+    for i in range(len(groups)):
         for c in cur:
             print c.keys(), len(c)
         cur = reduce(operator.add, [c.values() for c in cur])
+    for c in cur:
+        print c[0]
+    return organized_files
 
 def _organize_by_first_group(items, groups):
     """Recursively organize items based on subsetting into groups.
@@ -59,7 +73,9 @@ def _group_by(items, groups):
         out[name].append(item)
     return dict(out)
 
-def study_datafiles(isatab_dir):
+# ## Parse ISA-Tab metadata, retrieving files of interest
+
+def study_datafiles(isatab_dir, data_dirs):
     """Retrieve data files and associated metadata for a study.
     """
     ftypes = ["Derived Data File", "Raw Data File"]
@@ -75,9 +91,24 @@ def study_datafiles(isatab_dir):
         study_info.update(sample_info)
         for ftype in ftypes:
             for fname in info.get(ftype, []):
-                out = {"name": fname, "type": ftype}
-                out.update(study_info)
-                yield out
+                try:
+                    out = {"name": _get_full_path(fname, ftype, data_dirs),
+                           "type": ftype}
+                    out.update(study_info)
+                    yield out
+                except ValueError:
+                    print "Missing file", fname, data_dirs
+
+def _get_full_path(name, ftype, data_dirs):
+    """Retrieve the full path in BII to the data file.
+    """
+    ftype_dirs = {"Derived Data File": "processed_data",
+                  "Raw Data File": "raw_data"}
+    for data_dir in data_dirs:
+        test_fname = os.path.join(data_dir, ftype_dirs[ftype], name)
+        if os.path.exists(test_fname):
+            return test_fname
+    raise ValueError("Did not find %s in %s" % (name, data_dirs))
 
 def _get_study_matadata(study, assay):
     attrs = ["Study Assay Technology Type", "Study Assay Technology Platform",
