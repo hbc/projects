@@ -83,7 +83,7 @@ def _get_studies(isatab_dir):
     """Retrieve a list of studies from an ISA-tab directory.
     """
     study_text = "Study Identifier"
-    file_to_check = "i_Investigation.txt"
+    file_to_check = "i_*gation.txt"
     with settings(hide("everything")):
         result = run("grep '%s' %s/%s" % (study_text, isatab_dir, file_to_check))
     out = []

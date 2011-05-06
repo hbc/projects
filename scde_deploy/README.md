@@ -1,6 +1,8 @@
 Automated deployment for [Galaxy][1] and the
 [BioInvestigatorIndex (BII)][2] to support the [Stem Cell Discovery Engine][3].
 
+## Galaxy and BII Installation
+
 - Install [VirtualBox][5], [Vagrant][4] and Python
 
 - Build libraries
@@ -45,3 +47,15 @@ http://localhost:8082/galaxy
 [3]: http://discovery.hsci.harvard.edu/
 [4]: http://vagrantup.com/
 [5]: http://www.virtualbox.org/
+
+## ISA-Tab record management
+
+- Directories of ISA-Tab metadata, raw and derived data files are
+  stored in Amazon S3 buckets for reliable backup
+
+- Edit `config/isatab_studies.yaml` to specify public and private
+  datasets that should be downloaded.
+
+- Download data from S3 bucket and install into BII
+
+       fab -f scde_data_fabfile.py -H localhost scde_data

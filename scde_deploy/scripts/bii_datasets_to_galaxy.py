@@ -13,6 +13,7 @@ import collections
 import yaml
 
 from bcbio import isatab
+from bcbio.galaxy.api import GalaxyApiAccess
 
 def main(config_file):
     with open(config_file) as in_handle:
@@ -24,14 +25,20 @@ def main(config_file):
               ("organism part",),
               ("Study Title",)]
     prepped_files = organize_datafiles(bii_dir, groups)
-    add_to_galaxy_datalibs(prepped_files, len(groups))
+    add_to_galaxy_datalibs(prepped_files, len(groups), config)
 
 # ## Synchronize BII files with Galaxy data libraries
 
-def add_to_galaxy_datalibs(prepped_files, levels):
+def add_to_galaxy_datalibs(prepped_files, levels, config):
     """Add the organized files to synchronized Galaxy data libraries.
+
+    3 actions needed:
+      - create data library for each top level item
+      - create folders and sub-folders to subsequent levels
+      - add data libraries in final folders
     """
-    pass
+    galaxy_api = GalaxyApiAccess(config["galaxy_url"], config["galaxy_apikey"])
+    data_library = galaxy_api.get_datalibrary_id(name)
 
 # ## Organize data files into high level structure for Galaxy deployment
 
