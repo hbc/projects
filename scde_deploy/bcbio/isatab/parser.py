@@ -48,7 +48,7 @@ def parse(isatab_ref):
         isatab_ref = fnames[0]
     assert os.path.exists(isatab_ref), "Did not find investigation file: %s" % isatab_ref
     i_parser = InvestigationParser()
-    with open(isatab_ref) as in_handle:
+    with open(isatab_ref, "rU") as in_handle:
         rec = i_parser.parse(in_handle)
     s_parser = StudyAssayParser(isatab_ref)
     rec = s_parser.parse(rec)
@@ -171,25 +171,31 @@ class StudyAssayParser:
     def parse(self, rec):
         """Retrieve row data from files associated with the ISATabRecord.
         """
+        final_studies = []
         for study in rec.studies:
             source_data = self._parse_study(study.metadata["Study File Name"],
                                             "Sample Name")
-            study.nodes = source_data
-            final_assays = []
-            for assay in study.assays:
-                cur_assay = ISATabAssayRecord(assay)
-                assay_data = self._parse_study(assay["Study Assay File Name"],
-                                               "Raw Data File")
-                cur_assay.nodes = assay_data
-                final_assays.append(cur_assay)
-            study.assays = final_assays
+            if source_data:
+                study.nodes = source_data
+                final_assays = []
+                for assay in study.assays:
+                    cur_assay = ISATabAssayRecord(assay)
+                    assay_data = self._parse_study(assay["Study Assay File Name"],
+                                                   "Raw Data File")
+                    cur_assay.nodes = assay_data
+                    final_assays.append(cur_assay)
+                study.assays = final_assays
+                final_studies.append(study)
+        rec.studies = final_studies
         return rec
 
     def _parse_study(self, fname, node_type):
         """Parse study or assay row oriented file around the supplied base node.
         """
+        if not os.path.exists(os.path.join(self._dir, fname)):
+            return None
         nodes = {}
-        with open(os.path.join(self._dir, fname)) as in_handle:
+        with open(os.path.join(self._dir, fname), "rU") as in_handle:
             reader = csv.reader(in_handle, dialect="excel-tab")
             header = self._swap_synonyms(reader.next())
             hgroups = self._collapse_header(header)

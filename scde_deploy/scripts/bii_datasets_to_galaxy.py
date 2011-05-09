@@ -9,6 +9,7 @@ import sys
 import glob
 import operator
 import collections
+import subprocess
 
 import yaml
 
@@ -25,20 +26,82 @@ def main(config_file):
               ("organism part",),
               ("Study Title",)]
     prepped_files = organize_datafiles(bii_dir, groups)
-    add_to_galaxy_datalibs(prepped_files, len(groups), config)
+    add_to_galaxy_datalibs(prepped_files, config)
 
 # ## Synchronize BII files with Galaxy data libraries
 
-def add_to_galaxy_datalibs(prepped_files, levels, config):
+def add_to_galaxy_datalibs(prepped_files, config):
     """Add the organized files to synchronized Galaxy data libraries.
 
     3 actions needed:
       - create data library for each top level item
       - create folders and sub-folders to subsequent levels
-      - add data libraries in final folders
+      - add links to data in final folders
     """
     galaxy_api = GalaxyApiAccess(config["galaxy_url"], config["galaxy_apikey"])
-    data_library = galaxy_api.get_datalibrary_id(name)
+    for key, vals in prepped_files.iteritems():
+        dl_name = "SCDE: %s" % ("; ".join([k for k in key if k]))
+        _add_data_library(galaxy_api, dl_name, vals)
+
+def _add_data_library(galaxy_api, name, info):
+    print name
+    #data_library = galaxy_api.get_datalibrary_id(name)
+    data_library = None
+    # root = [f for f in galaxy_api.library_contents(data_library)
+    #         if f["type"] == "folder" and f["name"] == "/"][0]
+    root = [{"id": None}]
+    for folder, info in _add_folders(info, root, data_library, galaxy_api):
+        _add_data_links(data_library, folder, info, galaxy_api)
+
+def _add_folders(info, parent_folder, data_library, galaxy_api):
+    """Recursively add folders to get at study items.
+    """
+    out = []
+    for fname, items in info.iteritems():
+        #folder = galaxy_api.create_folder(data_library, parent_folder["id"], fname[0])
+        folder = fname[0]
+        if isinstance(items, dict):
+            out.extend(_add_folders(items, folder, data_library, galaxy_api))
+        else:
+            out.append((folder, items))
+    return out
+
+def _add_data_links(data_library, folder, items, galaxy_api):
+    """Provide links to the raw and processed BII data from within Galaxy.
+    """
+    def _get_ext(data_file):
+        return os.path.splitext(data_file["name"])[-1].lower()
+    def _gunzip(fname):
+        out_fname = os.path.splitext(fname)[0]
+        if not os.path.exists(out_fname):
+            cl = ["gunzip", fname]
+            subprocess.check_call(cl)
+        return out_fname
+    act_exts = {".gz": _gunzip}
+    want_exts = [".tiff", ".cel", ".txt", "", ".bed"]
+    org_builds = {"Homo sapiens (Human)" : "hg19",
+                  "Homo sapiens": "hg19",
+                  "Mus musculus (Mouse)": "mm9",
+                  "Mus musculus musculus": "mm9",
+                  "Rattus norvegicus (Rat)": "rn4"}
+    data_types = collections.defaultdict(list)
+    for x in items:
+        data_types[x["type"].split()[0]].append(x)
+    for data_type, data_items in data_types.iteritems():
+        #data_folder = galaxy_api.create_folder(data_library, folder["id"], data_type)
+        for data_file in data_items:
+            ext = _get_ext(data_file)
+            if act_exts.has_key(ext):
+                data_file["name"] = act_exts[ext](data_file["name"])
+                ext = _get_ext(data_file)
+            if ext in want_exts or len(ext) > 10:
+                pass
+                #print data_file, org_builds[data_file["organism"][0]]
+                # galaxy_api.upload_from_filesystem(data_library, data_folder["id"], data_file["name"],
+                #                                   org_builds[data_file["organism"][0]])
+            else:
+                print data_file["name"]
+
 
 # ## Organize data files into high level structure for Galaxy deployment
 
@@ -76,7 +139,7 @@ def _group_by(items, groups):
     """
     out = collections.defaultdict(list)
     for item in items:
-        name = tuple([item[g][0] for g in groups])
+        name = tuple([item.get(g, [""])[0] for g in groups])
         out[name].append(item)
     return dict(out)
 
@@ -130,9 +193,10 @@ def _get_study_matadata(study, assay):
     return _collectionset_to_dict(out)
 
 def _get_sample_metadata(study, samples, verbose=False):
-    attrs = [("organism part", "Organism Part", "cell type"),
-             ("organism", "taxID", "Organism"),
-             ("strain", "developmental stage", "health status", "phenotype")]
+    attrs = [("organism", "taxID", "Organism"),
+             ("strain", "developmental stage", "health status", "phenotype"),
+             ("organism part", "Organism Part", "cell type", "primary tumor site"),
+             ]
     out = collections.defaultdict(set)
     for s in samples:
         node = study.nodes.get(s, None)
@@ -167,7 +231,9 @@ def _fill_attrs_from_node(node, attrs, out):
             if added:
                 break
         if not found and attr_group[0] not in allowed_miss:
-            raise ValueError("Missing %s %s" % (attr_group, node.metadata.keys()))
+            keys = node.metadata.keys()
+            vals = [node.metadata[k][0] for k in keys]
+            raise ValueError("Missing %s %s %s" % (attr_group, keys, vals))
     return out
 
 def _collectionset_to_dict(out):
