@@ -169,9 +169,14 @@ def study_datafiles(isatab_dir, data_dirs, study_config):
     """Retrieve data files and associated metadata for a study.
     """
     ftypes = ["Derived Data File", "Raw Data File"]
+    private = study_config["private"]
     rec = isatab.parse(isatab_dir)
     assert len(rec.studies) == 1
     study = rec.studies[0]
+    # Do not load private libraries into Galaxy
+    if (rec.metadata.get("Investigation Identifier", "") in private or
+        study.metadata["Study Identifier"] in private):
+        study.assays = []
     for assay in study.assays:
         study_info = _get_study_matadata(study, assay)
         info = _get_assay_info(assay)
