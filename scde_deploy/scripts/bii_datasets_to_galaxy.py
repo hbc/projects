@@ -45,11 +45,9 @@ def add_to_galaxy_datalibs(prepped_files, config):
 
 def _add_data_library(galaxy_api, name, info):
     print name
-    #data_library = galaxy_api.get_datalibrary_id(name)
-    data_library = None
-    # root = [f for f in galaxy_api.library_contents(data_library)
-    #         if f["type"] == "folder" and f["name"] == "/"][0]
-    root = [{"id": None}]
+    data_library = galaxy_api.get_datalibrary_id(name)
+    root = [f for f in galaxy_api.library_contents(data_library)
+            if f["type"] == "folder" and f["name"] == "/"][0]
     for folder, info in _add_folders(info, root, data_library, galaxy_api):
         _add_data_links(data_library, folder, info, galaxy_api)
 
@@ -58,8 +56,7 @@ def _add_folders(info, parent_folder, data_library, galaxy_api):
     """
     out = []
     for fname, items in info.iteritems():
-        #folder = galaxy_api.create_folder(data_library, parent_folder["id"], fname[0])
-        folder = fname[0]
+        folder = galaxy_api.create_folder(data_library, parent_folder["id"], fname[0])
         if isinstance(items, dict):
             out.extend(_add_folders(items, folder, data_library, galaxy_api))
         else:
@@ -88,17 +85,16 @@ def _add_data_links(data_library, folder, items, galaxy_api):
     for x in items:
         data_types[x["type"].split()[0]].append(x)
     for data_type, data_items in data_types.iteritems():
-        #data_folder = galaxy_api.create_folder(data_library, folder["id"], data_type)
+        data_folder = galaxy_api.create_folder(data_library, folder["id"], data_type)
         for data_file in data_items:
             ext = _get_ext(data_file)
             if act_exts.has_key(ext):
                 data_file["name"] = act_exts[ext](data_file["name"])
                 ext = _get_ext(data_file)
             if ext in want_exts or len(ext) > 10:
-                pass
-                #print data_file, org_builds[data_file["organism"][0]]
-                # galaxy_api.upload_from_filesystem(data_library, data_folder["id"], data_file["name"],
-                #                                   org_builds[data_file["organism"][0]])
+                galaxy_api.upload_from_filesystem(data_library, data_folder["id"],
+                                                  data_file["name"],
+                                                  org_builds[data_file["organism"][0]])
             else:
                 print data_file["name"]
 

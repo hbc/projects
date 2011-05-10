@@ -39,8 +39,8 @@ Automated deployment for [Galaxy][1] and the
 
 - Browse BII and Galaxy:
 
-http://localhost:8082/bioinvindex
-http://localhost:8082/galaxy
+http://127.0.0.1:8082/bioinvindex
+http://127.0.0.1:8082/galaxy
 
 [1]: http://usegalaxy.org
 [2]: http://isatab.sourceforge.net/
