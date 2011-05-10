@@ -2,7 +2,7 @@
 """Share BII data files with Galaxy using data libraries.
 
 Usage:
-  bii_datasets_to_galaxy.py <YAML config file>
+  bii_datasets_to_galaxy.py <YAML config file> <Study config file>
 """
 import os
 import sys
@@ -16,16 +16,18 @@ import yaml
 from bcbio import isatab
 from bcbio.galaxy.api import GalaxyApiAccess
 
-def main(config_file):
+def main(config_file, study_config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
+    with open(study_config_file) as in_handle:
+        study_config = yaml.load(in_handle)
     bii_dir = os.path.join(config["base_install"], config["bii_dirname"],
                            config["bii_data_dirname"])
     groups = [("Study Assay Technology Type", "Study Assay Measurement Type"),
               ("organism",),
               ("organism part",),
               ("Study Title",)]
-    prepped_files = organize_datafiles(bii_dir, groups)
+    prepped_files = organize_datafiles(bii_dir, groups, study_config)
     add_to_galaxy_datalibs(prepped_files, config)
 
 # ## Synchronize BII files with Galaxy data libraries
@@ -40,30 +42,47 @@ def add_to_galaxy_datalibs(prepped_files, config):
     """
     galaxy_api = GalaxyApiAccess(config["galaxy_url"], config["galaxy_apikey"])
     for key, vals in prepped_files.iteritems():
-        dl_name = "SCDE: %s" % ("; ".join([k for k in key if k]))
+        dl_name = "SCDE: %s" % (", ".join([k for k in key if k]))
         _add_data_library(galaxy_api, dl_name, vals)
 
 def _add_data_library(galaxy_api, name, info):
     print name
     data_library = galaxy_api.get_datalibrary_id(name)
-    root = [f for f in galaxy_api.library_contents(data_library)
+    cur_items = galaxy_api.library_contents(data_library)
+    root = [f for f in cur_items
             if f["type"] == "folder" and f["name"] == "/"][0]
-    for folder, info in _add_folders(info, root, data_library, galaxy_api):
-        _add_data_links(data_library, folder, info, galaxy_api)
+    for folder, info in _add_folders(info, root, data_library,
+                                     cur_items, galaxy_api):
+        _add_data_links(data_library, folder, info, cur_items, galaxy_api)
 
-def _add_folders(info, parent_folder, data_library, galaxy_api):
+def _add_folders(info, parent_folder, data_library, cur_items,
+                 galaxy_api):
     """Recursively add folders to get at study items.
     """
     out = []
     for fname, items in info.iteritems():
-        folder = galaxy_api.create_folder(data_library, parent_folder["id"], fname[0])
+        folder = _add_or_get_folder(data_library, parent_folder, fname[0],
+                                    cur_items, galaxy_api)
         if isinstance(items, dict):
-            out.extend(_add_folders(items, folder, data_library, galaxy_api))
+            out.extend(_add_folders(items, folder, data_library, cur_items, galaxy_api))
         else:
             out.append((folder, items))
     return out
 
-def _add_data_links(data_library, folder, items, galaxy_api):
+def _add_or_get_folder(data_library, base_folder, new_name, cur_items, galaxy_api):
+    """Retrieve or add the new folder
+    """
+    folder_path = os.path.join(base_folder["name"], new_name)
+    existing = [f for f in cur_items
+                if f["type"] == "folder" and f["name"] == folder_path]
+    if len(existing) == 0:
+        folder = galaxy_api.create_folder(data_library, base_folder["id"], new_name)
+        return folder[0]
+    else:
+        assert len(existing) == 1
+        return existing[0]
+
+def _add_data_links(data_library, folder, items, cur_items, galaxy_api):
     """Provide links to the raw and processed BII data from within Galaxy.
     """
     def _get_ext(data_file):
@@ -85,27 +104,32 @@ def _add_data_links(data_library, folder, items, galaxy_api):
     for x in items:
         data_types[x["type"].split()[0]].append(x)
     for data_type, data_items in data_types.iteritems():
-        data_folder = galaxy_api.create_folder(data_library, folder["id"], data_type)
+        data_folder = _add_or_get_folder(data_library, folder, data_type,
+                                         cur_items, galaxy_api)
         for data_file in data_items:
             ext = _get_ext(data_file)
             if act_exts.has_key(ext):
                 data_file["name"] = act_exts[ext](data_file["name"])
                 ext = _get_ext(data_file)
             if ext in want_exts or len(ext) > 10:
-                galaxy_api.upload_from_filesystem(data_library, data_folder["id"],
-                                                  data_file["name"],
-                                                  org_builds[data_file["organism"][0]])
+                full_path = os.path.join(data_folder["name"],
+                                         os.path.basename(data_file["name"]))
+                existing = [f for f in cur_items
+                            if f["name"] == full_path and f["type"] == "file"]
+                if len(existing) == 0:
+                    galaxy_api.upload_from_filesystem(data_library, data_folder["id"],
+                                                      data_file["name"],
+                                                      org_builds[data_file["organism"][0]])
             else:
                 print data_file["name"]
 
-
 # ## Organize data files into high level structure for Galaxy deployment
 
-def organize_datafiles(bii_dir, groups):
+def organize_datafiles(bii_dir, groups, study_config):
     all_files = []
     for study_dirs in bii_studies(bii_dir):
         for data_file in study_datafiles(study_dirs["isatab"],
-                                         study_dirs["data"]):
+                                         study_dirs["data"], study_config):
             all_files.append(data_file)
     organized_files = _organize_by_first_group(all_files, groups)
     cur = [organized_files]
@@ -141,7 +165,7 @@ def _group_by(items, groups):
 
 # ## Parse ISA-Tab metadata, retrieving files of interest
 
-def study_datafiles(isatab_dir, data_dirs):
+def study_datafiles(isatab_dir, data_dirs, study_config):
     """Retrieve data files and associated metadata for a study.
     """
     ftypes = ["Derived Data File", "Raw Data File"]
