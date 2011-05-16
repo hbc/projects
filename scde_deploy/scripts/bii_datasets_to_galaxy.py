@@ -23,8 +23,7 @@ def main(config_file, study_config_file):
         study_config = yaml.load(in_handle)
     bii_dir = os.path.join(config["base_install"], config["bii_dirname"],
                            config["bii_data_dirname"])
-    groups = [("Study Assay Technology Type", "Study Assay Measurement Type"),
-              ("organism",),
+    groups = [("organism", "Study Assay Technology Type", "Study Assay Measurement Type"),
               ("organism part",),
               ("Study Title",)]
     prepped_files = organize_datafiles(bii_dir, groups, study_config)
@@ -42,7 +41,7 @@ def add_to_galaxy_datalibs(prepped_files, config):
     """
     galaxy_api = GalaxyApiAccess(config["galaxy_url"], config["galaxy_apikey"])
     for key, vals in prepped_files.iteritems():
-        dl_name = "SCDE: %s" % (", ".join([k for k in key if k]))
+        dl_name = "SCDE: %s -- %s" % (key[0], ", ".join([k for k in key[1:] if k]))
         _add_data_library(galaxy_api, dl_name, vals)
 
 def _add_data_library(galaxy_api, name, info):
@@ -62,18 +61,24 @@ def _add_folders(info, parent_folder, data_library, cur_items,
     out = []
     for fname, items in info.iteritems():
         folder = _add_or_get_folder(data_library, parent_folder, fname[0],
-                                    cur_items, galaxy_api)
-        if isinstance(items, dict):
-            out.extend(_add_folders(items, folder, data_library, cur_items, galaxy_api))
-        else:
-            out.append((folder, items))
+                                    cur_items, items, galaxy_api)
+        if folder is not None:
+            if isinstance(items, dict):
+                out.extend(_add_folders(items, folder, data_library, cur_items, galaxy_api))
+            else:
+                out.append((folder, items))
     return out
 
-def _add_or_get_folder(data_library, base_folder, new_name, cur_items, galaxy_api):
+def _add_or_get_folder(data_library, base_folder, new_name, lib_items,
+                       data_items, galaxy_api):
     """Retrieve or add the new folder
     """
+    counts = _get_file_counts(data_items)
+    if counts == 0:
+        return None
+    new_name = "%s (%s)" % (new_name, counts)
     folder_path = os.path.join(base_folder["name"], new_name)
-    existing = [f for f in cur_items
+    existing = [f for f in lib_items
                 if f["type"] == "folder" and f["name"] == folder_path]
     if len(existing) == 0:
         folder = galaxy_api.create_folder(data_library, base_folder["id"], new_name)
@@ -81,6 +86,17 @@ def _add_or_get_folder(data_library, base_folder, new_name, cur_items, galaxy_ap
     else:
         assert len(existing) == 1
         return existing[0]
+
+def _get_file_counts(data_items):
+    """Retrieve counts of all files in the current set of items.
+    """
+    count = 0
+    if isinstance(data_items, dict):
+        for val in data_items.values():
+            count += _get_file_counts(val)
+    else:
+        count = len(data_items)
+    return count
 
 def _add_data_links(data_library, folder, items, cur_items, galaxy_api):
     """Provide links to the raw and processed BII data from within Galaxy.
@@ -94,7 +110,7 @@ def _add_data_links(data_library, folder, items, cur_items, galaxy_api):
             subprocess.check_call(cl)
         return out_fname
     act_exts = {".gz": _gunzip}
-    want_exts = [".tiff", ".cel", ".txt", "", ".bed"]
+    want_exts = [".cel", ".txt", "", ".bed"]
     org_builds = {"Homo sapiens (Human)" : "hg19",
                   "Homo sapiens": "hg19",
                   "Mus musculus (Mouse)": "mm9",
@@ -105,7 +121,7 @@ def _add_data_links(data_library, folder, items, cur_items, galaxy_api):
         data_types[x["type"].split()[0]].append(x)
     for data_type, data_items in data_types.iteritems():
         data_folder = _add_or_get_folder(data_library, folder, data_type,
-                                         cur_items, galaxy_api)
+                                         cur_items, data_items, galaxy_api)
         for data_file in data_items:
             ext = _get_ext(data_file)
             if act_exts.has_key(ext):
