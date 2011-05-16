@@ -65,4 +65,4 @@ http://127.0.0.1:8082/galaxy
 On BII/Galaxy machine, run script to parse ISA-Tab and prepare associated 
 data libraries in Galaxy for raw and derived data:
 
-       python2.6 scripts/bii_datasets_to_galaxy.py config/scde.yaml config/isatab_studies.yam
+       python2.6 scripts/bii_datasets_to_galaxy.py config/scde.yaml config/isatab_studies.yaml
