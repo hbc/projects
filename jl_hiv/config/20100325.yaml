@@ -1,0 +1,23 @@
+---
+input:
+  - fastq: Sequences/s_6_sequence.txt
+    old_style_barcodes: true
+    barcodes:
+      - [bc1_outer, ATCACGA]
+      - [bc2_itermed, CGATGTA]
+      - [bc3_inner, TTAGGCA]
+      - [bc4_genomic, TGACCAA]
+
+ref: Resources/Genomes/hxb2.fa
+
+
+algorithm:
+  barcode_mismatch: 1
+  allowed_ns: 0
+  
+program:
+  barcode: barcode_sort_trim.py
+  uniquify: fastq-brentbioplayground
+
+dir:
+  tmp: tmp
