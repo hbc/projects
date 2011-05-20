@@ -48,8 +48,11 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
     align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
                                 qual_format=cur_config.get("format", None))
     align_bam = to_bamsort(align_sam, in_file, config, config_file)
-    picard.run_fn("picard_index", align_bam)
-    print align_bam
+    realign_bam = picard.run_fn("gatk_realigner", align_bam, config["ref"],
+                                deep_coverage=True)
+
+    picard.run_fn("picard_index", realign_bam)
+    print realign_bam
     position_percent_file(align_bam, in_file, config)
 
 def position_percent_file(align_bam, read_file, config):

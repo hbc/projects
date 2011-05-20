@@ -15,19 +15,19 @@ algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-  kmer_size: 15
+  kmer_size: 13
   detection_thresh: 0.05
   # processing details
-  cores: 4
+  cores: 1
   platform: illumina
-  java_memory: 4g
+  java_memory: 12g
   
 program:
   barcode: barcode_sort_trim.py
   bamsort: picard_sam_to_bam.py
   uniquify: fastq-brentbioplayground
   picard: /n/sw/picard-tools-1.44
-  gatk:
+  gatk: /n/home05/bchapman/mylocal/share/java/gatk
 
 dir:
   tmp: tmp
