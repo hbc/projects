@@ -2,6 +2,7 @@
 input:
   - fastq: Sequences/s_6_sequence.txt
     old_style_barcodes: true
+    format: ILMFQ
     barcodes:
       - [bc1_outer, ATCACGA]
       - [bc2_itermed, CGATGTA]
@@ -10,14 +11,22 @@ input:
 
 ref: Resources/Genomes/hxb2.fa
 
-
 algorithm:
+  # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
+  kmer_size: 13
+  # processing details
+  cores: 4
+  platform: illumina
+  java_memory: 4g
   
 program:
   barcode: barcode_sort_trim.py
+  bamsort: picard_sam_to_bam.py
   uniquify: fastq-brentbioplayground
+  picard: /n/sw/picard-tools-1.44
 
 dir:
   tmp: tmp
+  align: align

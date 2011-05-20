@@ -36,8 +36,8 @@ def _write_sabre_bcfile(barcodes, base_file, out_file):
 def sabre_demultiplex(input_file, barcodes, tmp_dir, config):
     """Do barcode de-multiplexing using sabre.
 
-    XXX Sabre appears to trim off the 5' side of the read even if barcode
-    if on 3' end. Need to send in a bug report.
+    Sabre only appears to trim off the 5' side of the read so
+    currently not supported.
     """
     raise NotImplementedError
     with tmpfile(dir=tmp_dir, prefix="sabrebc") as bc_file:
