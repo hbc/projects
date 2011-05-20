@@ -15,7 +15,8 @@ algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-  kmer_size: 13
+  kmer_size: 15
+  detection_thresh: 0.05
   # processing details
   cores: 4
   platform: illumina
@@ -26,7 +27,9 @@ program:
   bamsort: picard_sam_to_bam.py
   uniquify: fastq-brentbioplayground
   picard: /n/sw/picard-tools-1.44
+  gatk:
 
 dir:
   tmp: tmp
   align: align
+  vrn: variation
