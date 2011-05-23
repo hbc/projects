@@ -10,12 +10,23 @@ input:
       - [bc4_genomic, TGACCAA]
 
 ref: Resources/Genomes/hxb2.fa
+expected:
+  - name: gag
+    file: Resources/ExpectedPercents/GagExpected-100_NO_INSERT.txt
+    offset:
+      790-1167: -1
+      1168-1176:
+      1177-2301: -10
+  - name: rt
+    file: Resources/ExpectedPercents/RTExpected-100.txt
+    offset: -10
 
 algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
   kmer_size: 13
+  min_qual: 20
   detection_thresh: 0.05
   # processing details
   cores: 1
