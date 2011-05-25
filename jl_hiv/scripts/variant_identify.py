@@ -56,8 +56,9 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
     unique_file = uniquify_bioplayground(in_file, config)
     align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
                                 qual_format=cur_config.get("format", None))
-    align_bam = to_bamsort(align_sam, in_file, config, config_file)
+    align_bam = to_bamsort(align_sam, unique_file, config, config_file)
     if do_realignment == "gatk":
+        picard.run_fn("picard_index", align_bam)
         align_bam = picard.run_fn("gatk_realigner", align_bam, config["ref"],
                                   deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
@@ -71,7 +72,7 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
 def _print_expect_info(name, counts):
     print name
     print " Single base"
-    print "  Correct       :", counts["single_pos"]
+    print "  Correct       :", counts.get("single_pos", 0)
     print "  Wrong (mixed) :", (counts.get("single_neg_multi", 0) +
                                 counts.get("single_neg_multi_nomatch", 0))
     print "  Wrong         :", counts.get("single_neg", 0)
