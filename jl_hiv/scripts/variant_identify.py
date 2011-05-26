@@ -90,6 +90,7 @@ def position_percent_file(align_bam, read_file, config):
     kmer_size = config["algorithm"]["kmer_size"]
     min_thresh = config["algorithm"]["detection_thresh"]
     min_qual = int(config["algorithm"]["min_qual"])
+    print "k-mer", min_thresh, "qual", min_qual
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
                             os.path.splitext(os.path.basename(align_bam))[0])
