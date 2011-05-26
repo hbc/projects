@@ -72,7 +72,7 @@ def bcbb_demultiplex(input_file, barcodes, tmp_dir, config):
                   "--mismatch=%s" % (config["algorithm"]["barcode_mismatch"]),
                   "--metrics=%s" % metrics_file]
             subprocess.check_call(cl)
-    return [f for f in glob.glob("%s_*%s" % (base_name, ext))
+    return [f for f in glob.glob("%s_*_[1-9]%s" % (base_name, ext))
             if f.find("unmatched") == -1]
 
 # # Barcode conversion and manipulation

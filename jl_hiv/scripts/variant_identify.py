@@ -25,6 +25,7 @@ from bcbio.broad import BroadRunner
 from bcbio.fastq.barcode import demultiplex, convert_illumina_oldstyle
 from bcbio.fastq.unique import uniquify_bioplayground
 from bcbio.fastq.trim import trim_fastq
+from bcbio.fastq.filter import kmer_filter, remove_ns
 from bcbio.ngsalign import novoalign
 from bcbio.variation import mixed
 
@@ -53,6 +54,9 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
                          config["algorithm"]["java_memory"])
     if trim_three:
         in_file = trim_fastq(in_file, three=int(trim_three))
+    if do_kmercorrect:
+        in_file = remove_ns(in_file)
+        in_file = kmer_filter(in_file, do_kmercorrect, config)
     unique_file = uniquify_bioplayground(in_file, config)
     align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
                                 qual_format=cur_config.get("format", None))
