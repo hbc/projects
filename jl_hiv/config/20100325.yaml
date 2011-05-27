@@ -25,14 +25,17 @@ algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-  #kmer_correct: shrec -c 5
+  kmer_correct: shrec -c 5
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
-  min_qual: 30
-  detection_thresh: 0.0025
+  #min_qual: 20
+  #detection_thresh: 0.0075
+  range_params: [min_qual, detection_thresh]
+  min_qual: [10, 20, 30]
+  detection_thresh: [0.01, 0.0075, 0.005, 0.0025, 0.001]
   # processing details
-  cores: 1
+  cores: 4
   platform: illumina
   java_memory: 12g
   
@@ -47,3 +50,4 @@ dir:
   tmp: tmp
   align: align
   vrn: variation
+  stats: variation_stats

@@ -20,19 +20,20 @@ def compare_calls(calls, expected, offset=0):
     expected is a list (or generator) with chromosome/space positions and
     dictionaries of bases and frequencies.
 
-    Returns a dictionaries with counts for:
+    Returns a dictionary keyed with the minimal expected percent in the expected
+    calls. Each dictionary has three count values:
 
-    - single_pos: single base position with correct call
-    - single_neg: single base position with wrong single call
-    - single_neg_multi: single base position with multiple call
-    - single_neg_multi_nomatch: single base position with multiple calls, unmatching
-    - multi_pos: multiple base positions with correct call
-    - multi_neg: multiple base position with wrong multi call
-    - multi_neg_single: multiple base position with single call
-    - multi_neg_single_nomatch: multiple base position with single call, unmatching
+    - correct: Same call in the the test and expected.
+    - partial: Partially correct. In the case of single (100%) regions, the
+      test call had a single call plus additional calls. In the case of multiple
+      expected calls, the test call had only one of the expected.
+    - wrong: The test call is totally wrong compared to expected.
+
+    So both partial and wrong are, well, wrong, but partial lets you know you are
+    in the ballpark of making a correct call.
     """
     offset = _manage_offset_dict(offset)
-    counts = collections.defaultdict(int)
+    counts = collections.defaultdict(lambda: collections.defaultdict(int))
     for (space, pos), ebases in expected:
         if isinstance(offset, dict):
             cur_offset = offset[pos]
@@ -42,22 +43,30 @@ def compare_calls(calls, expected, offset=0):
             cur_offset = offset
         cbases = calls.get((space, pos+cur_offset),
                            collections.defaultdict(lambda: None))
-        #print space, pos, ebases, cbases
+        percent_target = min(v for v in ebases.values() if v is not None)
+        if percent_target == 99.5:
+            print ebases.values()
+            raise NotImplementedError
         if _is_single(ebases):
             if _is_single(cbases):
                 outcome = _compare_single(ebases, cbases)
             else:
-                ext = "_nomatch" if not _single_multi_match(ebases, cbases) else ""
-                outcome = "single_neg_multi%s" % ext
+                outcome = "partial" if _single_multi_match(ebases, cbases) else "wrong"
         else:
             if _is_single(cbases):
-                #print space, pos, ebases, cbases
-                ext = "_nomatch" if not _single_multi_match(ebases, cbases) else ""
-                outcome = "multi_neg_single%s" % ext
+                outcome = "partial" if _single_multi_match(ebases, cbases) else "wrong"
             else:
                 outcome = _compare_multi(ebases, cbases)
-        counts[outcome] += 1
-    return dict(counts)
+        counts[percent_target][outcome] += 1
+    return _convert_to_dict(counts)
+
+def _convert_to_dict(counts):
+    out = {}
+    for percent, vals in counts.iteritems():
+        out[percent] = {}
+        for k, v in vals.iteritems():
+            out[percent][k] = v
+    return out
 
 def _manage_offset_dict(offset):
     """Handle complicated offsets passed in as dictionaries.
@@ -80,15 +89,15 @@ def _has_base(base, bases):
 
 def _compare_single(expect, call):
     if _has_base(_present_bases(expect)[0], call):
-        return "single_pos"
+        return "correct"
     else:
-        return "single_neg"
+        return "wrong"
 
 def _compare_multi(expect, call):
     if _present_bases(expect) == _present_bases(call):
-        return "multi_pos"
+        return "correct"
     else:
-        return "multi_neg"
+        return "wrong"
 
 def _is_single(bases):
     """Determine if this is a single or multiple base position.
@@ -107,7 +116,7 @@ def _read_call_line(parts, ignore_space):
             val = float(val)
             if val <= 1:
                 val *= 100.0
-            if int(val) == 0:
+            if val == 0.0:
                 val = None
         else:
             val = None

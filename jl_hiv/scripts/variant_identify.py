@@ -8,9 +8,11 @@ import os
 import sys
 import csv
 import glob
+import copy
 import operator
 import subprocess
 import collections
+import itertools
 from contextlib import closing
 
 import yaml
@@ -66,35 +68,65 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
         align_bam = picard.run_fn("gatk_realigner", align_bam, config["ref"],
                                   deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
-    print align_bam
-    call_file = position_percent_file(align_bam, in_file, config)
+    if config["algorithm"].get("range_params", None):
+        call_analyze_multiple(align_bam, in_file, config)
+    else:
+        call_bases_and_analyze(align_bam, in_file, config)
+
+def call_analyze_multiple(align_bam, in_file, config):
+    """Write output from multiple parameter settings in YAML format.
+
+    This sets up an output file with the raw data for post-processing
+    analysis.
+    """
+    call_stats = []
+    for cur_params in apply(itertools.product,
+                            [config["algorithm"][p]
+                             for p in config["algorithm"]["range_params"]]):
+        cur_config = copy.deepcopy(config)
+        for name, val in zip(config["algorithm"]["range_params"], cur_params):
+            cur_config["algorithm"][name] = val
+        stats = call_bases_and_analyze(align_bam, in_file, cur_config, memoize=False)
+        call_stats.extend(stats)
+    out_file = os.path.join(config["dir"]["stats"], "%s.yaml" %
+                            os.path.splitext(os.path.basename(in_file))[0])
+    with open(out_file, "w") as out_handle:
+        yaml.dump(call_stats, out_handle)
+
+def call_bases_and_analyze(align_bam, in_file, config, memoize=True):
+    out = []
+    call_file, params = position_percent_file(align_bam, in_file, config, memoize)
     for expect in config["expected"]:
+        out_info = {"file": align_bam, "region": expect["name"], "calls": []}
+        out_info.update(params)
         counts = mixed.compare_files(call_file, expect["file"],
                                      expect["offset"], True)
         _print_expect_info(expect["name"], counts)
+        for percent, vals in counts.items():
+            vals["percent"] = percent
+            out_info["calls"].append(vals)
+        out.append(out_info)
+    return out
 
 def _print_expect_info(name, counts):
     print name
-    print " Single base"
-    print "  Correct       :", counts.get("single_pos", 0)
-    print "  Wrong (mixed) :", (counts.get("single_neg_multi", 0) +
-                                counts.get("single_neg_multi_nomatch", 0))
-    print "  Wrong         :", counts.get("single_neg", 0)
-    print " Mixed base"
-    print "  Correct       :", counts.get("multi_pos", 0)
-    print "  Wrong (single):", counts.get("multi_neg_single", 0)
-    print "  Wrong         :", (counts.get("multi_neg", 0) +
-                                counts.get("multi_neg_single_nomatch", 0))
+    percents = sorted(counts.keys(), reverse=True)
+    for percent in percents:
+        print " Percent target: %s" % percent
+        print "  Correct         :", counts[percent].get("correct", 0)
+        print "  Wrong (partial) :", counts[percent].get("partial", 0)
+        print "  Wrong           :", counts[percent].get("wrong", 0)
 
-def position_percent_file(align_bam, read_file, config):
+def position_percent_file(align_bam, read_file, config, memoize=True):
     kmer_size = config["algorithm"]["kmer_size"]
     min_thresh = config["algorithm"]["detection_thresh"]
     min_qual = int(config["algorithm"]["min_qual"])
-    print "k-mer", min_thresh, "qual", min_qual
+    params = {"kmer": min_thresh, "qual": min_qual}
+    print params
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
                             os.path.splitext(os.path.basename(align_bam))[0])
-    if not os.path.exists(out_file):
+    if not memoize or not os.path.exists(out_file):
         with open(out_file, "w") as out_handle:
             writer = csv.writer(out_handle, dialect="excel-tab")
             writer.writerow(["space", "pos"] + bases)
@@ -105,7 +137,7 @@ def position_percent_file(align_bam, read_file, config):
                                                         min_thresh):
                     base_percents[base] = "%.1f" % (percent * 100.0)
                 writer.writerow([chrom, pos] + [base_percents.get(b, "") for b in bases])
-    return out_file
+    return out_file, params
 
 def base_kmer_percents(kmers, ktable, read_counts, min_thresh):
     """Retrieve percentages of each base call based on k-mer counts.

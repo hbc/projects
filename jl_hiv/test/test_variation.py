@@ -22,21 +22,21 @@ class MixedVariationEvaluation(unittest.TestCase):
         vals2 = [None, 100.0, None, None]
         vals3 = [None, None, 50.0, 50.0]
         vals4 = [50.0, 50.0, None, None]
-        pairs = [(vals, vals), (vals2, vals), (vals4, vals), (vals3, vals),
-                 (vals3, vals3), (vals4, vals3), (vals, vals4), (vals, vals3)]
-        expect = ["single_pos", "single_neg", "single_neg_multi",
-                  "single_neg_multi_nomatch",
-                  "multi_pos", "multi_neg", "multi_neg_single",
-                  "multi_neg_single_nomatch"]
-        for (one, two), e in zip(pairs, expect):
+        pairs = [(vals, vals), (vals2, vals), (vals4, vals),
+                 (vals3, vals), (vals3, vals3), (vals4, vals3),
+                 (vals, vals4), (vals, vals3)]
+        expect = [(100.0, "correct"), (100.0, "wrong"), (100.0, "partial"),
+                  (100.0, "wrong"), (50.0, "correct"), (50.0, "wrong"),
+                  (50.0, "partial"), (50.0, "wrong")]
+        for (one, two), (e1, e2) in zip(pairs, expect):
             c = compare_calls(self._calls(1, one), self._expected(1, two))
-            assert c.get(e, 0) == 1, (one, two, c, e)
+            assert c.get(e1, {}).get(e2, 0) == 1, (one, two, c, e)
 
     def test_call_offset(self):
         """Call with an offset in the expected bases.
         """
         vals = [100.0, None, None, None]
         c = compare_calls(self._calls(1, vals), self._expected(2, vals), offset=-1)
-        assert c.get("single_pos", 0) == 1
+        assert c.get(100.0, {}).get("correct", 0) == 1
         c = compare_calls(self._calls(4, vals), self._expected(2, vals), offset=2)
-        assert c.get("single_pos", 0) == 1
+        assert c.get(100.0, {}).get("correct", 0) == 1
