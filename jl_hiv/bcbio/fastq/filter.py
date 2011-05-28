@@ -17,7 +17,8 @@ def remove_ns(in_file, out_file):
 
 def kmer_filter(in_fastq, method, config):
     if method.startswith("shrec"):
-        return kmer_filter_shrec(in_fastq, method, config)
+        shrec_out = kmer_filter_shrec(in_fastq, method, config)
+        return _remove_corrected_shrec(shrec_out)
     else:
         raise ValueError("Unexpected method %s" % method)
 
@@ -32,3 +33,11 @@ def kmer_filter_shrec(in_fastq, method, config, out_file):
         cl += ["-f", "fastq", in_file, os.path.basename(out_file), "/dev/null"]
         subprocess.check_call(cl)
     return out_file
+
+@memoize_outfile("-fix.fastq")
+def _remove_corrected_shrec(in_fastq, out_file):
+    """Remove "(corrected)" lines from shrec output which can cause problems.
+    """
+    with open(out_file, "w") as out_handle:
+        cl = ["awk", '{gsub(" [(]corrected)", ""); print}', in_fastq]
+        subprocess.check_call(cl, stdout=out_handle)
