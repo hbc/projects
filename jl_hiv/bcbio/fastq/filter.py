@@ -38,6 +38,9 @@ def kmer_filter_shrec(in_fastq, method, config, out_file):
 def _remove_corrected_shrec(in_fastq, out_file):
     """Remove "(corrected)" lines from shrec output which can cause problems.
     """
-    with open(out_file, "w") as out_handle:
-        cl = ["awk", '{gsub(" [(]corrected)", ""); print}', in_fastq]
-        subprocess.check_call(cl, stdout=out_handle)
+    to_remove = [" (corrected)", " + (identified)"]
+    with nested(open(in_fastq), open(out_file, "w")) as (in_handle, out_handle):
+        for line in in_handle:
+            for to_rem in to_remove:
+                line = line.replace(to_rem, "")
+            out_handle.write(line)
