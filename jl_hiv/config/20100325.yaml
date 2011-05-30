@@ -25,19 +25,32 @@ algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-  kmer_correct: shrec -c 5
+  #kmer_correct: shrec -c 5
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
-  #min_qual: 20
-  #detection_thresh: 0.0075
-  range_params: [min_qual, detection_thresh]
-  min_qual: [10, 20, 30]
-  detection_thresh: [0.01, 0.0075, 0.005, 0.0025, 0.001]
+  min_qual: 20
+  detection_thresh: 0.0025
+  #range_params: [min_qual, detection_thresh]
+  #min_qual: [10, 20, 30]
+  #detection_thresh: [0.01, 0.0075, 0.005, 0.0025, 0.001]
   # processing details
-  cores: 4
+  cores: 1
   platform: illumina
   java_memory: 12g
+
+roc_plot:
+  region: rt
+  qual: 20
+  small_thresh: 5.0
+  file: plot/roc_bc2.pdf
+  curves:
+    - name: Base
+      file: variation_stats/6_bc2_itermed_1.yaml
+    - name: Shrec
+      file: variation_stats/6_bc2_itermed_1-no_ns-shrec-fix.yaml
+    - name: Trim
+      file: variation_stats/6_bc2_itermed_1-trim.yaml
   
 program:
   barcode: barcode_sort_trim.py
@@ -51,3 +64,4 @@ dir:
   align: align
   vrn: variation
   stats: variation_stats
+  plot: plot

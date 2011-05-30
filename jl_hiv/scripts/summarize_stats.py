@@ -14,7 +14,7 @@ def main(in_file):
         stats = yaml.load(in_handle)
     regions = ["rt", "gag"]
     for region in regions:
-        print region
+        print "** %s" % region
         rstats = [(float(s["qual"]), float(s["kmer"]), s)
                   for s in stats if s["region"] == region]
         rstats.sort()
@@ -26,7 +26,9 @@ def summarize_counts(info):
     selects = [lambda x: x["percent"] == 100.0,
                lambda x: x["percent"] < 100.0 and x["percent"] >= 5.0,
                lambda x: x["percent"] < 5.0]
-    print " quality: %s, kmer %s" % (info["qual"], info["kmer"])
+    print "*** quality: %s, kmer %s" % (info["qual"], info["kmer"])
+    print "| % 8s | % 12s | % 12s |" % ("", "Correct", "Wrong")
+    print "|%s+%s+%s|" % ("-" * 10, "-" * 14, "-" * 14)
     for name, select in zip(names, selects):
         vals = collections.defaultdict(int)
         for d in filter(select, info["calls"]):
@@ -36,7 +38,7 @@ def summarize_counts(info):
         total = float(sum(vals.values()))
         right = vals["correct"]
         wrong = vals["wrong"] + vals["partial"]
-        print "% 8s:  Correct % 4s (%.1f%%); Wrong % 3s (%.1f%%)" % \
+        print "| % 8s | % 4s (%.1f%%) | % 3s (%.1f%%) |" % \
               (name, right, right / total * 100.0, wrong, wrong / total * 100.0)
 
 if __name__ == "__main__":

@@ -109,20 +109,22 @@ def call_bases_and_analyze(align_bam, in_file, config, memoize=True):
     return out
 
 def _print_expect_info(name, counts):
-    print name
+    print "** %s" % name
     percents = sorted(counts.keys(), reverse=True)
+    print "| Percent | Correct | Wrong (partial) | Wrong |"
+    print "|---------+---------+-----------------+-------|"
     for percent in percents:
-        print " Percent target: %s" % percent
-        print "  Correct         :", counts[percent].get("correct", 0)
-        print "  Wrong (partial) :", counts[percent].get("partial", 0)
-        print "  Wrong           :", counts[percent].get("wrong", 0)
+        print "| % 7s | % 7s | % 15s | % 5s |" % (percent,
+                                                  counts[percent].get("correct", 0),
+                                                  counts[percent].get("partial", 0),
+                                                  counts[percent].get("wrong", 0))
 
 def position_percent_file(align_bam, read_file, config, memoize=True):
     kmer_size = config["algorithm"]["kmer_size"]
     min_thresh = config["algorithm"]["detection_thresh"]
     min_qual = int(config["algorithm"]["min_qual"])
     params = {"kmer": min_thresh, "qual": min_qual}
-    print params
+    print align_bam, params
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
                             os.path.splitext(os.path.basename(align_bam))[0])
