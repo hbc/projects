@@ -26,7 +26,8 @@ def summarize_counts(info):
     selects = [lambda x: x["percent"] == 100.0,
                lambda x: x["percent"] < 100.0 and x["percent"] >= 5.0,
                lambda x: x["percent"] < 5.0]
-    print "*** quality: %s, kmer %s" % (info["qual"], info["kmer"])
+    print "*** quality: %s, kmer %s, align score %s" % (info["qual"], info["kmer"],
+                                                        info["align_score"])
     print "| % 8s | % 12s | % 12s |" % ("", "Correct", "Wrong")
     print "|%s+%s+%s|" % ("-" * 10, "-" * 14, "-" * 14)
     for name, select in zip(names, selects):

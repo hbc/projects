@@ -120,10 +120,10 @@ def _print_expect_info(name, counts):
                                                   counts[percent].get("wrong", 0))
 
 def position_percent_file(align_bam, read_file, config, memoize=True):
-    kmer_size = config["algorithm"]["kmer_size"]
-    min_thresh = config["algorithm"]["detection_thresh"]
-    min_qual = int(config["algorithm"]["min_qual"])
-    params = {"kmer": min_thresh, "qual": min_qual}
+    params = {"kmer_size": config["algorithm"]["kmer_size"],
+              "kmer": config["algorithm"]["kmer_thresh"],
+              "qual": int(config["algorithm"]["qual_thresh"]),
+              "align_score": config["algorithm"].get("align_score_thresh", None)}
     print align_bam, params
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
@@ -132,16 +132,15 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
         with open(out_file, "w") as out_handle:
             writer = csv.writer(out_handle, dialect="excel-tab")
             writer.writerow(["space", "pos"] + bases)
-            ktable, read_counts = count_kmers_and_reads(read_file, kmer_size)
-            for chrom, pos, kmers in positional_kmers(align_bam, kmer_size, min_qual):
+            ktable, read_counts = count_kmers_and_reads(read_file, params["kmer_size"])
+            for chrom, pos, kmers in positional_kmers(align_bam, params):
                 base_percents = {}
-                for base, percent in base_kmer_percents(kmers, ktable, read_counts,
-                                                        min_thresh):
+                for base, percent in base_kmer_percents(kmers, ktable, read_counts, params):
                     base_percents[base] = "%.1f" % (percent * 100.0)
                 writer.writerow([chrom, pos] + [base_percents.get(b, "") for b in bases])
     return out_file, params
 
-def base_kmer_percents(kmers, ktable, read_counts, min_thresh):
+def base_kmer_percents(kmers, ktable, read_counts, params):
     """Retrieve percentages of each base call based on k-mer counts.
     """
     kmer_counts = []
@@ -150,7 +149,7 @@ def base_kmer_percents(kmers, ktable, read_counts, min_thresh):
     total = float(sum(kmer_counts))
     base_counts = collections.defaultdict(int)
     for (kmer, base, orig_seq), kcount in zip(kmers, kmer_counts):
-        if total > 0 and kcount / total > min_thresh:
+        if total > 0 and kcount / total > params["kmer"]:
             base_counts[base] += read_counts[orig_seq]
     pass_total = float(sum(base_counts.values()))
     final = []
@@ -159,7 +158,7 @@ def base_kmer_percents(kmers, ktable, read_counts, min_thresh):
     final.sort(key=operator.itemgetter(1), reverse=True)
     return final
 
-def positional_kmers(in_bam, kmer_size, min_qual):
+def positional_kmers(in_bam, params):
     """Retrieve informative kmers at each piled up position in an alignment.
     """
     qual_map = {}
@@ -169,23 +168,28 @@ def positional_kmers(in_bam, kmer_size, min_qual):
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
             kmers = list(set(filter(lambda x: x is not None,
-                                    [_read_surround_region(r, kmer_size, min_qual, qual_map)
+                                    [_read_surround_region(r, params, qual_map)
                                      for r in col.pileups])))
             yield space, col.pos, kmers
 
-def _read_surround_region(read, kmer_size, min_qual, qual_map):
+def _read_surround_region(read, params, qual_map):
     """Provide context for an aligned read at a particular position.
 
     Requires a full length kmer at each side so excludes information near
     start and end of reads.
     """
+    kmer_size = params["kmer_size"]
     assert kmer_size % 2 == 1, "Need odd kmer size"
     extend = (kmer_size - 1) // 2
     if read.indel == 0:
         seq = read.alignment.seq
-        if read.qpos >= extend and read.qpos < len(seq) - extend:
+        align_pass = True
+        if params["align_score"]:
+            cur_score = [n for (t, n) in read.alignment.tags if t == "AS"][0]
+            align_pass = cur_score >= params["align_score"]
+        if align_pass and read.qpos >= extend and read.qpos < len(seq) - extend:
             qual = qual_map[read.alignment.qual[read.qpos]]
-            if qual >= min_qual:
+            if qual >= params["qual"]:
                 kmer = seq[read.qpos-extend:read.qpos+extend+1]
                 assert len(kmer) == kmer_size, (kmer, seq, read.qpos, len(seq))
                 call = seq[read.qpos]

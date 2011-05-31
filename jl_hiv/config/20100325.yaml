@@ -29,13 +29,15 @@ algorithm:
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
-  min_qual: 20
-  detection_thresh: 0.0025
-  #range_params: [min_qual, detection_thresh]
-  #min_qual: [10, 20, 30]
-  #detection_thresh: [0.01, 0.0075, 0.005, 0.0025, 0.001]
+  qual_thresh: 20
+  kmer_thresh: 0.0025
+  align_score_thresh: 150
+  #range_params: [align_score_thresh]
+  #align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
+  #qual_thresh: [10, 20, 30]
+  #kmer_thresh: [0.01, 0.0075, 0.005, 0.0025, 0.001]
   # processing details
-  cores: 1
+  cores: 4
   platform: illumina
   java_memory: 12g
 
