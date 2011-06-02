@@ -122,7 +122,7 @@ def _print_expect_info(name, counts):
 def position_percent_file(align_bam, read_file, config, memoize=True):
     params = {"kmer_size": config["algorithm"]["kmer_size"],
               "kmer": config["algorithm"]["kmer_thresh"],
-              "qual": int(config["algorithm"]["qual_thresh"]),
+              "qual": int(config["algorithm"].get("qual_thresh", 0)),
               "align_score": config["algorithm"].get("align_score_thresh", None)}
     print align_bam, params
     bases = ["A", "C", "G", "T"]
@@ -143,14 +143,14 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
 def base_kmer_percents(kmers, ktable, read_counts, params):
     """Retrieve percentages of each base call based on k-mer counts.
     """
-    kmer_counts = []
-    for kmer in list(set(k[0] for k in kmers)):
-        kmer_counts.append(ktable.get(kmer))
-    total = float(sum(kmer_counts))
+    kmer_counts = dict((k, ktable.get(k))
+                       for k in list(set(x.kmer for x in kmers)))
+    total = float(sum(kmer_counts.values()))
     base_counts = collections.defaultdict(int)
-    for (kmer, base, orig_seq), kcount in zip(kmers, kmer_counts):
+    for kmer in kmers:
+        kcount = kmer_counts[kmer.kmer]
         if total > 0 and kcount / total > params["kmer"]:
-            base_counts[base] += read_counts[orig_seq]
+            base_counts[kmer.call] += read_counts[kmer.seq]
     pass_total = float(sum(base_counts.values()))
     final = []
     for base, count in base_counts.iteritems():
@@ -165,11 +165,13 @@ def positional_kmers(in_bam, params):
     for k, v in _phred_to_sanger_quality_str.iteritems():
         qual_map[v] = k
     with closing(pysam.Samfile(in_bam, 'rb')) as work_bam:
+        #for col in (p for p in work_bam.pileup() if p.pos > 815 and p.pos < 835):
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
             kmers = list(set(filter(lambda x: x is not None,
                                     [_read_surround_region(r, params, qual_map)
                                      for r in col.pileups])))
+            calls = list(set(k.call for k in kmers))
             yield space, col.pos, kmers
 
 def _read_surround_region(read, params, qual_map):
@@ -178,24 +180,28 @@ def _read_surround_region(read, params, qual_map):
     Requires a full length kmer at each side so excludes information near
     start and end of reads.
     """
+    Kmer = collections.namedtuple('Kmer', ['kmer', 'call', 'seq'])
     kmer_size = params["kmer_size"]
     assert kmer_size % 2 == 1, "Need odd kmer size"
     extend = (kmer_size - 1) // 2
     if read.indel == 0:
-        seq = read.alignment.seq
         align_pass = True
         if params["align_score"]:
             cur_score = [n for (t, n) in read.alignment.tags if t == "AS"][0]
             align_pass = cur_score >= params["align_score"]
-        if align_pass and read.qpos >= extend and read.qpos < len(seq) - extend:
-            qual = qual_map[read.alignment.qual[read.qpos]]
-            if qual >= params["qual"]:
-                kmer = seq[read.qpos-extend:read.qpos+extend+1]
-                assert len(kmer) == kmer_size, (kmer, seq, read.qpos, len(seq))
-                call = seq[read.qpos]
-                if read.alignment.is_reverse:
-                    seq = str(Seq(seq).reverse_complement())
-                return (kmer, call, seq)
+        qual = qual_map[read.alignment.qual[read.qpos]]
+        seq = read.alignment.seq
+        pos = read.qpos
+        if (align_pass and qual >= params["qual"] and
+              pos >= extend and pos < len(seq) - extend):
+            call = seq[pos]
+            kmer = seq[pos-extend:pos+extend+1]
+            # if we are reversed, return forward read values for counting
+            if read.alignment.is_reverse:
+                seq = str(Seq(seq).reverse_complement())
+                kmer = str(Seq(kmer).reverse_complement())
+            assert len(kmer) == kmer_size, (kmer, seq, pos, len(seq))
+            return Kmer(kmer, call, seq)
 
 def count_kmers_and_reads(in_fastq, kmer_size):
     ktable = khmer.new_ktable(kmer_size)
