@@ -56,10 +56,10 @@ def annotated_refs(in_file, ref, config, out_file):
     if (org != "") {
         txs <- unique(in.tbl$hit)
         mart <- useMart("ensembl", dataset=org)
-        attrs <- c("ensembl_transcript_id", "description")
+        attrs <- c("ensembl_transcript_id", "embl", "description")
         filters <- c("ensembl_transcript_id")
         mart.result <- getBM(attributes=attrs, filters=filters, values=txs, mart=mart)
-        names(mart.result) <- c("hit", "description")
+        names(mart.result) <- c("hit", "genbank.id", "description")
         final <- merge(in.tbl, mart.result, by="hit", all.x=TRUE)
         final.sort <- final[order(final$query),]
         print(head(final.sort))

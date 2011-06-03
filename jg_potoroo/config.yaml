@@ -8,7 +8,7 @@ ref:
     file: ref/Monodelphis_domestica.BROADO5.61.cdna.all.fa
   - name: human
     ensembl_name: hsapiens_gene_ensembl
-    url: ftp://ftp.ensembl.org/pub/current/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh37.61.cdna.all.fa.gz
+    url: ftp://ftp.ensembl.org/pub/release-62/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh37.62.cdna.all.fa.gz
   #- name: opossum_ncrna
   #  ensembl_name: mdomestica_gene_ensembl
   #  file: ref/Monodelphis_domestica.BROADO5.61.ncrna.fa
