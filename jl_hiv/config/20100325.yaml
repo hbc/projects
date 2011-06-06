@@ -29,10 +29,10 @@ algorithm:
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
-  #kmer_thresh: 0.005
-  #qual_thresh: 0
   #align_score_thresh: 0
-  kmer_thresh: 0.0075
+  qual_thresh: 20
+  kmer_thresh: 0.0025
+  call_thresh: 0.005
   #range_params: [kmer_thresh]
   #align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
   #qual_thresh: [10, 20, 30]
@@ -65,6 +65,6 @@ program:
 dir:
   tmp: tmp
   align: align
-  vrn: variation
+  vrn: variation2
   stats: variation_stats
   plot: plot

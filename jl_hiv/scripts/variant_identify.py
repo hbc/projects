@@ -123,7 +123,8 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
     params = {"kmer_size": config["algorithm"]["kmer_size"],
               "kmer": config["algorithm"]["kmer_thresh"],
               "qual": int(config["algorithm"].get("qual_thresh", 0)),
-              "align_score": config["algorithm"].get("align_score_thresh", None)}
+              "align_score": config["algorithm"].get("align_score_thresh", None),
+              "call_thresh": config["algorithm"]["call_thresh"]}
     print align_bam, params
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
@@ -143,20 +144,35 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
 def base_kmer_percents(kmers, ktable, read_counts, params):
     """Retrieve percentages of each base call based on k-mer counts.
     """
+    param_checker = param_position_checker(params)
     kmer_counts = dict((k, ktable.get(k))
                        for k in list(set(x.kmer for x in kmers)))
-    total = float(sum(kmer_counts.values()))
     base_counts = collections.defaultdict(int)
-    for kmer in kmers:
-        kcount = kmer_counts[kmer.kmer]
-        if total > 0 and kcount / total > params["kmer"]:
-            base_counts[kmer.call] += read_counts[kmer.seq]
+    total = float(sum(kmer_counts.values()))
+    kmers_w_percents = (k._replace(kmer_percent=kmer_counts[k.kmer] / total if total > 0 else 0)
+                        for k in kmers)
+    for kmer in filter(param_checker, kmers_w_percents):
+        base_counts[kmer.call] += read_counts[kmer.seq]
+    print dict(base_counts)
     pass_total = float(sum(base_counts.values()))
     final = []
     for base, count in base_counts.iteritems():
-        final.append((base, count / pass_total))
+        percent = count / pass_total
+        if percent >= params["call_thresh"]:
+            final.append((base, count / pass_total))
     final.sort(key=operator.itemgetter(1), reverse=True)
     return final
+
+def param_position_checker(params):
+    """Determine if a position passes all parameter filters.
+    """
+    def _check_position(kmer):
+        if kmer.kmer_percent >= params["kmer"]:
+            if not params["align_score"] or kmer.align_score >= params["align_score"]:
+                if kmer.qual >= params["qual"]:
+                    return True
+        return False
+    return _check_position
 
 def positional_kmers(in_bam, params):
     """Retrieve informative kmers at each piled up position in an alignment.
@@ -166,12 +182,12 @@ def positional_kmers(in_bam, params):
         qual_map[v] = k
     with closing(pysam.Samfile(in_bam, 'rb')) as work_bam:
         #for col in (p for p in work_bam.pileup() if p.pos > 815 and p.pos < 835):
+        #for col in (p for p in work_bam.pileup() if p.pos > 862 and p.pos < 891):
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
-            kmers = list(set(filter(lambda x: x is not None,
-                                    [_read_surround_region(r, params, qual_map)
-                                     for r in col.pileups])))
-            calls = list(set(k.call for k in kmers))
+            kmers = filter(lambda x: x is not None,
+                           [_read_surround_region(r, params, qual_map)
+                            for r in col.pileups])
             yield space, col.pos, kmers
 
 def _read_surround_region(read, params, qual_map):
@@ -180,28 +196,25 @@ def _read_surround_region(read, params, qual_map):
     Requires a full length kmer at each side so excludes information near
     start and end of reads.
     """
-    Kmer = collections.namedtuple('Kmer', ['kmer', 'call', 'seq'])
+    Kmer = collections.namedtuple('Kmer', ['kmer', 'call', 'seq', 'qual',
+                                           'align_score', 'kmer_percent'])
     kmer_size = params["kmer_size"]
     assert kmer_size % 2 == 1, "Need odd kmer size"
     extend = (kmer_size - 1) // 2
     if read.indel == 0:
-        align_pass = True
-        if params["align_score"]:
-            cur_score = [n for (t, n) in read.alignment.tags if t == "AS"][0]
-            align_pass = cur_score >= params["align_score"]
-        qual = qual_map[read.alignment.qual[read.qpos]]
         seq = read.alignment.seq
         pos = read.qpos
-        if (align_pass and qual >= params["qual"] and
-              pos >= extend and pos < len(seq) - extend):
+        if (pos >= extend and pos < len(seq) - extend):
+            qual = qual_map[read.alignment.qual[read.qpos]]
+            align_score = [n for (t, n) in read.alignment.tags if t == "AS"][0]
             call = seq[pos]
             kmer = seq[pos-extend:pos+extend+1]
-            # if we are reversed, return forward read values for counting
+            # if reverse, return forward original read values for counting
             if read.alignment.is_reverse:
                 seq = str(Seq(seq).reverse_complement())
                 kmer = str(Seq(kmer).reverse_complement())
             assert len(kmer) == kmer_size, (kmer, seq, pos, len(seq))
-            return Kmer(kmer, call, seq)
+            return Kmer(kmer, call, seq, qual, align_score, 0.0)
 
 def count_kmers_and_reads(in_fastq, kmer_size):
     ktable = khmer.new_ktable(kmer_size)
