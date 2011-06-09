@@ -30,7 +30,7 @@ class MixedVariationEvaluation(unittest.TestCase):
                   (50.0, "partial"), (50.0, "wrong")]
         for (one, two), (e1, e2) in zip(pairs, expect):
             c = compare_calls(self._calls(1, one), self._expected(1, two))
-            assert c.get(e1, {}).get(e2, 0) == 1, (one, two, c, e)
+            assert c.get(e1, {}).get(e2, 0) == 1, (one, two, c, e1, e2)
 
     def test_call_offset(self):
         """Call with an offset in the expected bases.
@@ -40,3 +40,15 @@ class MixedVariationEvaluation(unittest.TestCase):
         assert c.get(100.0, {}).get("correct", 0) == 1
         c = compare_calls(self._calls(4, vals), self._expected(2, vals), offset=2)
         assert c.get(100.0, {}).get("correct", 0) == 1
+
+    def test_call_multiple(self):
+        """Test for incorrect calls with multiple samples.
+        """
+        vals = [95.0, 5.0, None, None]
+        vals2 = [95.0, 4.0, 1.0, None]
+
+        pairs = [(vals2, vals), (vals, vals)]
+        expect = [(5.0, "wrong"), (5.0, "correct")]
+        for (one, two), (e1, e2) in zip(pairs, expect):
+            c = compare_calls(self._calls(1, one), self._expected(1, two))
+            assert c.get(e1, {}).get(e2, 0) == 1, (one, two, c, e1, e2)
