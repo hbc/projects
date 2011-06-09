@@ -123,7 +123,7 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
     params = {"kmer_size": config["algorithm"]["kmer_size"],
               "kmer": config["algorithm"]["kmer_thresh"],
               "qual": int(config["algorithm"].get("qual_thresh", 0)),
-              "align_score": config["algorithm"].get("align_score_thresh", None),
+              "align_score": config["algorithm"].get("align_score_thresh", 0),
               "call_thresh": config["algorithm"]["call_thresh"]}
     print align_bam, params
     bases = ["A", "C", "G", "T"]
@@ -153,7 +153,6 @@ def base_kmer_percents(kmers, ktable, read_counts, params):
                         for k in kmers)
     for kmer in filter(param_checker, kmers_w_percents):
         base_counts[kmer.call] += read_counts[kmer.seq]
-    print dict(base_counts)
     pass_total = float(sum(base_counts.values()))
     final = []
     for base, count in base_counts.iteritems():
@@ -168,7 +167,7 @@ def param_position_checker(params):
     """
     def _check_position(kmer):
         if kmer.kmer_percent >= params["kmer"]:
-            if not params["align_score"] or kmer.align_score >= params["align_score"]:
+            if kmer.align_score >= params["align_score"]:
                 if kmer.qual >= params["qual"]:
                     return True
         return False
@@ -181,8 +180,8 @@ def positional_kmers(in_bam, params):
     for k, v in _phred_to_sanger_quality_str.iteritems():
         qual_map[v] = k
     with closing(pysam.Samfile(in_bam, 'rb')) as work_bam:
-        #for col in (p for p in work_bam.pileup() if p.pos > 815 and p.pos < 835):
         #for col in (p for p in work_bam.pileup() if p.pos > 862 and p.pos < 891):
+        #for col in (p for p in work_bam.pileup() if p.pos > 3280 and p.pos < 3310):
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
             kmers = filter(lambda x: x is not None,

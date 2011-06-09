@@ -30,15 +30,15 @@ algorithm:
   #trim_three: 36
   kmer_size: 13
   #align_score_thresh: 0
-  qual_thresh: 20
-  kmer_thresh: 0.0025
-  call_thresh: 0.005
-  #range_params: [kmer_thresh]
-  #align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
-  #qual_thresh: [10, 20, 30]
-  #kmer_thresh: [0.01, 0.0075, 0.006, 0.005, 0.004, 0.0025, 0.001]
+  qual_thresh: 15
+  kmer_thresh: 0.0004
+  call_thresh: 0.0035
+  #range_params: [kmer_thresh, qual_thresh]
+  #qual_thresh: [0, 10, 20]
+  #kmer_thresh: [0.0025, 0.0015, 0.0005]
+  ##align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
   # processing details
-  cores: 1
+  cores: 4
   platform: illumina
   java_memory: 12g
 
