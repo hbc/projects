@@ -12,6 +12,20 @@ def compare_files(call_file, expected_file, offset=0, ignore_space=False):
     return compare_calls(call_info, _read_call_file(expected_file, ignore_space),
                          offset)
 
+def call_expected_iter(call_file, expected_file, offset=0, ignore_space=True):
+    """Generate call and expected information for each position.
+    """
+    Call = collections.namedtuple('Call', ['space', 'pos', 'expected', 'called'])
+    offset_pos = _pos_with_offset(offset)
+    calls = {}
+    for k, v in _read_call_file(call_file, ignore_space):
+        calls[k] = v
+    for (space, pos), ebases in _read_call_file(expected_file, ignore_space):
+        opos = offset_pos(pos)
+        cbases = calls.get((space, opos),
+                           collections.defaultdict(lambda: None))
+        yield Call(space, pos, ebases, cbases)
+
 def compare_calls(calls, expected, offset=0):
     """Provide statistics on overlaps between calls and expected values.
 
@@ -32,16 +46,12 @@ def compare_calls(calls, expected, offset=0):
     So both partial and wrong are, well, wrong, but partial lets you know you are
     in the ballpark of making a correct call.
     """
-    offset = _manage_offset_dict(offset)
     counts = collections.defaultdict(lambda: collections.defaultdict(int))
+    offset_pos = _pos_with_offset(offset)
     for (space, pos), ebases in expected:
-        if isinstance(offset, dict):
-            cur_offset = offset[pos]
-            if cur_offset is None:
-                continue
-        else:
-            cur_offset = offset
-        cbases = calls.get((space, pos+cur_offset),
+        opos = offset_pos(pos)
+        if opos is None: continue
+        cbases = calls.get((space, opos),
                            collections.defaultdict(lambda: None))
         percent_target = min(v for v in ebases.values() if v is not None)
         if percent_target == 99.5:
@@ -81,6 +91,19 @@ def _manage_offset_dict(offset):
     else:
         return int(offset)
 
+def _pos_with_offset(offset=0):
+    offset = _manage_offset_dict(offset)
+    def _calc(pos):
+        if isinstance(offset, dict):
+            cur_offset = offset[pos]
+        else:
+            cur_offset = offset
+        if cur_offset is not None:
+            return pos+cur_offset
+        else:
+            return None
+    return _calc
+
 def _present_bases(bases):
     return [b for (b, v) in bases.iteritems() if v is not None]
 
@@ -111,10 +134,11 @@ def _single_multi_match(one, two):
 
 def _read_call_line(parts, ignore_space):
     base_order = ["A", "C", "G", "T"]
-    def _parse_base(val):
+    def _parse_base(val, all_vals):
+        total = sum(float(v) for v in all_vals if v)
         if val:
             val = float(val)
-            if val <= 1:
+            if total < 1.1:
                 val *= 100.0
             if val == 0.0:
                 val = None
@@ -129,7 +153,7 @@ def _read_call_line(parts, ignore_space):
             parts[0] = ""
     else:
         raise ValueError(parts)
-    bases = dict(zip(base_order, [_parse_base(v) for v in parts[2:]]))
+    bases = dict(zip(base_order, [_parse_base(v, parts[2:]) for v in parts[2:]]))
     return (parts[0], int(parts[1])), bases
 
 def _read_call_file(in_file, ignore_space=False):

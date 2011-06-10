@@ -6,16 +6,16 @@ input:
     barcodes:
       - name: bc1_outer
         seq: ATCACGA
-        call_bases: false
+        call_bases: true
       - name: bc2_itermed
         seq: CGATGTA
         control: true
       - name: bc3_inner
         seq: TTAGGCA
-        call_bases: false
+        call_bases: true
       - name: bc4_genomic
         seq: TGACCAA
-        call_bases: false
+        call_bases: true
 
 ref: Resources/Genomes/hxb2.fa
 expected:
@@ -75,4 +75,5 @@ dir:
   align: align
   vrn: variation2
   stats: variation_stats
+  calls: variation_calls
   plot: plot

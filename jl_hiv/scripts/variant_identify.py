@@ -49,6 +49,8 @@ def main(config_file):
                                              for bc in bcs)):
                 pass
 
+# ## Processing and analysis pipeline
+
 @map_wrap
 def process_fastq(bc, ref_index, cur_config, config, config_file):
     do_realignment = config["algorithm"].get("realignment", "")
@@ -100,18 +102,26 @@ def call_bases_and_analyze(align_bam, bc, in_file, config, memoize=True):
     out = []
     if bc.get("call_bases", True):
         call_file, params = position_percent_file(align_bam, in_file, config, memoize)
-    if bc.get("control", False):
-        for expect in config["expected"]:
-            out_info = {"file": align_bam, "region": expect["name"], "calls": []}
-            out_info.update(params)
-            counts = mixed.compare_files(call_file, expect["file"],
-                                         expect["offset"], True)
-            _print_expect_info(expect["name"], counts)
-            for percent, vals in counts.items():
-                vals["percent"] = percent
-                out_info["calls"].append(vals)
-            out.append(out_info)
-            print_summary_counts(out_info)
+        if bc.get("control", False):
+            out = _print_control_summary(call_file, align_bam, config, params, out)
+        else:
+            identify_patient_variations(call_file, align_bam, config, params)
+    return out
+
+# ## Output stats for assessing reliability
+
+def _print_control_summary(call_file, align_bam, config, params, out):
+    for expect in config["expected"]:
+        out_info = {"file": align_bam, "region": expect["name"], "calls": []}
+        out_info.update(params)
+        counts = mixed.compare_files(call_file, expect["file"],
+                                     expect["offset"], True)
+        _print_expect_info(expect["name"], counts)
+        for percent, vals in counts.items():
+            vals["percent"] = percent
+            out_info["calls"].append(vals)
+        out.append(out_info)
+        print_summary_counts(out_info)
     return out
 
 def _print_expect_info(name, counts):
@@ -124,6 +134,33 @@ def _print_expect_info(name, counts):
                                                   counts[percent].get("correct", 0),
                                                   counts[percent].get("partial", 0),
                                                   counts[percent].get("wrong", 0))
+
+# ## Summary of minor variants in a new patient population
+
+def identify_patient_variations(call_file, align_bam, config, params):
+    base_order = ["A", "C", "G", "T"]
+    out_file = os.path.join(config["dir"]["calls"],
+                            "{0}.csv".format(os.path.splitext(os.path.basename(align_bam))[0]))
+    with open(out_file, "w") as out_handle:
+        writer = csv.writer(out_handle)
+        writer.writerow(["gene", "pos", "called.base"] + base_order)
+        for call_info in _patient_variation_iterator(call_file, config["expected"],
+                                                     base_order):
+            writer.writerow(call_info)
+
+def _patient_variation_iterator(call_file, expect_configs, base_order):
+    for expect in expect_configs:
+        print expect["name"]
+        for call in mixed.call_expected_iter(call_file, expect["file"],
+                                             expect["offset"], True):
+            for base, percent in call.called.iteritems():
+                if percent is not None and percent < 50:
+                    epercent = call.expected[base]
+                    if epercent is None or int(epercent) < 50:
+                        yield ([expect["name"], call.pos, base] +
+                               [call.called[b] for b in base_order])
+
+# ## Variant calling based on k-mer filtering and read analysis
 
 def position_percent_file(align_bam, read_file, config, memoize=True):
     params = {"kmer_size": config["algorithm"]["kmer_size"],
@@ -234,6 +271,8 @@ def count_kmers_and_reads(in_fastq, kmer_size):
                 read_count[seq] += 1
     return ktable, dict(read_count)
 
+# ## Utility functions
+
 def to_bamsort(sam_file, fastq_file, config, config_file):
     sample_name = os.path.splitext(os.path.basename(sam_file))[0]
     cl = [config["program"]["bamsort"], "--name=%s" % sample_name,
@@ -241,7 +280,6 @@ def to_bamsort(sam_file, fastq_file, config, config_file):
     subprocess.check_call(cl)
     return glob.glob("%s*-sort.bam" % os.path.splitext(sam_file)[0])[0]
 
-# ## Utility functions
 def _assign_bc_files(bcs, files):
     """Assign file names projected by demultiplexing to the barcode.
     """
