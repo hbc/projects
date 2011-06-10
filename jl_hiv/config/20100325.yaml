@@ -4,10 +4,18 @@ input:
     old_style_barcodes: true
     format: ILMFQ
     barcodes:
-      - [bc1_outer, ATCACGA]
-      - [bc2_itermed, CGATGTA]
-      - [bc3_inner, TTAGGCA]
-      - [bc4_genomic, TGACCAA]
+      - name: bc1_outer
+        seq: ATCACGA
+        call_bases: false
+      - name: bc2_itermed
+        seq: CGATGTA
+        control: true
+      - name: bc3_inner
+        seq: TTAGGCA
+        call_bases: false
+      - name: bc4_genomic
+        seq: TGACCAA
+        call_bases: false
 
 ref: Resources/Genomes/hxb2.fa
 expected:
@@ -38,7 +46,7 @@ algorithm:
   #kmer_thresh: [0.0025, 0.0015, 0.0005]
   ##align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
   # processing details
-  cores: 4
+  cores: 1
   platform: illumina
   java_memory: 12g
 

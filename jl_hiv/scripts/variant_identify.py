@@ -30,6 +30,7 @@ from bcbio.fastq.trim import trim_fastq
 from bcbio.fastq.filter import kmer_filter, remove_ns
 from bcbio.ngsalign import novoalign
 from bcbio.variation import mixed
+from bcbio.variation.summarize import print_summary_counts
 
 def main(config_file):
     with open(config_file) as in_handle:
@@ -40,20 +41,22 @@ def main(config_file):
         in_fastq = cur["fastq"]
         if cur.get("old_style_barcodes", False):
             in_fastq = convert_illumina_oldstyle(in_fastq)
-        bc_files = demultiplex(in_fastq, cur["barcodes"],
+        bc_files = demultiplex(in_fastq, [(b["name"], b["seq"]) for b in cur["barcodes"]],
                                config["dir"]["tmp"], config)
+        bcs = _assign_bc_files(cur["barcodes"], bc_files)
         with cpmap(config["algorithm"]["cores"]) as cur_map:
-            for _ in cur_map(process_fastq, ((bc_file, ref_index, cur, config, config_file)
-                                             for bc_file in bc_files)):
+            for _ in cur_map(process_fastq, ((bc, ref_index, cur, config, config_file)
+                                             for bc in bcs)):
                 pass
 
 @map_wrap
-def process_fastq(in_file, ref_index, cur_config, config, config_file):
+def process_fastq(bc, ref_index, cur_config, config, config_file):
     do_realignment = config["algorithm"].get("realignment", "")
     do_kmercorrect = config["algorithm"].get("kmer_correct", "")
     trim_three = config["algorithm"].get("trim_three", "")
     picard = BroadRunner(config["program"]["picard"], config["program"]["gatk"],
                          config["algorithm"]["java_memory"])
+    in_file = bc["file"]
     if trim_three:
         in_file = trim_fastq(in_file, three=int(trim_three))
     if do_kmercorrect:
@@ -69,11 +72,11 @@ def process_fastq(in_file, ref_index, cur_config, config, config_file):
                                   deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     if config["algorithm"].get("range_params", None):
-        call_analyze_multiple(align_bam, in_file, config)
+        call_analyze_multiple(align_bam, bc, in_file, config)
     else:
-        call_bases_and_analyze(align_bam, in_file, config)
+        call_bases_and_analyze(align_bam, bc, in_file, config)
 
-def call_analyze_multiple(align_bam, in_file, config):
+def call_analyze_multiple(align_bam, bc, in_file, config):
     """Write output from multiple parameter settings in YAML format.
 
     This sets up an output file with the raw data for post-processing
@@ -86,26 +89,29 @@ def call_analyze_multiple(align_bam, in_file, config):
         cur_config = copy.deepcopy(config)
         for name, val in zip(config["algorithm"]["range_params"], cur_params):
             cur_config["algorithm"][name] = val
-        stats = call_bases_and_analyze(align_bam, in_file, cur_config, memoize=False)
+        stats = call_bases_and_analyze(align_bam, bc, in_file, cur_config, memoize=False)
         call_stats.extend(stats)
     out_file = os.path.join(config["dir"]["stats"], "%s.yaml" %
                             os.path.splitext(os.path.basename(in_file))[0])
     with open(out_file, "w") as out_handle:
         yaml.dump(call_stats, out_handle)
 
-def call_bases_and_analyze(align_bam, in_file, config, memoize=True):
+def call_bases_and_analyze(align_bam, bc, in_file, config, memoize=True):
     out = []
-    call_file, params = position_percent_file(align_bam, in_file, config, memoize)
-    for expect in config["expected"]:
-        out_info = {"file": align_bam, "region": expect["name"], "calls": []}
-        out_info.update(params)
-        counts = mixed.compare_files(call_file, expect["file"],
-                                     expect["offset"], True)
-        _print_expect_info(expect["name"], counts)
-        for percent, vals in counts.items():
-            vals["percent"] = percent
-            out_info["calls"].append(vals)
-        out.append(out_info)
+    if bc.get("call_bases", True):
+        call_file, params = position_percent_file(align_bam, in_file, config, memoize)
+    if bc.get("control", False):
+        for expect in config["expected"]:
+            out_info = {"file": align_bam, "region": expect["name"], "calls": []}
+            out_info.update(params)
+            counts = mixed.compare_files(call_file, expect["file"],
+                                         expect["offset"], True)
+            _print_expect_info(expect["name"], counts)
+            for percent, vals in counts.items():
+                vals["percent"] = percent
+                out_info["calls"].append(vals)
+            out.append(out_info)
+            print_summary_counts(out_info)
     return out
 
 def _print_expect_info(name, counts):
@@ -234,6 +240,22 @@ def to_bamsort(sam_file, fastq_file, config, config_file):
           config_file, sam_file, config["ref"], fastq_file]
     subprocess.check_call(cl)
     return glob.glob("%s*-sort.bam" % os.path.splitext(sam_file)[0])[0]
+
+# ## Utility functions
+def _assign_bc_files(bcs, files):
+    """Assign file names projected by demultiplexing to the barcode.
+    """
+    final_bcs = []
+    for bc in bcs:
+        cur_file = None
+        for fname in files:
+            if fname.find(bc["name"]) >= 0:
+                assert cur_file is None
+                cur_file = fname
+        assert cur_file is not None
+        bc["file"] = cur_file
+        final_bcs.append(bc)
+    return final_bcs
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
