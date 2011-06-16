@@ -3,7 +3,7 @@
 import os
 import unittest
 
-from bcbio.variation.mixed import compare_calls
+from bcbio.varcall.mixed import compare_calls
 
 class MixedVariationEvaluation(unittest.TestCase):
     """Evaluation of variation in mixed populations.

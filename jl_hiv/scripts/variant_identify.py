@@ -23,14 +23,16 @@ from Bio.SeqIO.QualityIO import (FastqGeneralIterator,
 from Bio.Seq import Seq
 
 from bcbio.utils import create_dirs, map_wrap, cpmap
-from bcbio.broad import BroadRunner
+from bcbio import broad
 from bcbio.fastq.barcode import demultiplex, convert_illumina_oldstyle
 from bcbio.fastq.unique import uniquify_bioplayground
 from bcbio.fastq.trim import trim_fastq
 from bcbio.fastq.filter import kmer_filter, remove_ns
 from bcbio.ngsalign import novoalign
-from bcbio.variation import mixed
-from bcbio.variation.summarize import print_summary_counts
+from bcbio.variation.realign import gatk_realigner
+from bcbio.pipeline.alignment import sam_to_sort_bam
+from bcbio.varcall import mixed
+from bcbio.varcall.summarize import print_summary_counts
 
 def main(config_file):
     with open(config_file) as in_handle:
@@ -56,8 +58,7 @@ def process_fastq(bc, ref_index, cur_config, config, config_file):
     do_realignment = config["algorithm"].get("realignment", "")
     do_kmercorrect = config["algorithm"].get("kmer_correct", "")
     trim_three = config["algorithm"].get("trim_three", "")
-    picard = BroadRunner(config["program"]["picard"], config["program"]["gatk"],
-                         config["algorithm"]["java_memory"])
+    picard = broad.runner_from_config(config)
     in_file = bc["file"]
     if trim_three:
         in_file = trim_fastq(in_file, three=int(trim_three))
@@ -67,11 +68,10 @@ def process_fastq(bc, ref_index, cur_config, config, config_file):
     unique_file = uniquify_bioplayground(in_file, config)
     align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
                                 qual_format=cur_config.get("format", None))
-    align_bam = to_bamsort(align_sam, unique_file, config, config_file)
+    align_bam = sam_to_sort_bam(align_sam, config["ref"], unique_file, None,
+                                "", bc["name"], config)
     if do_realignment == "gatk":
-        picard.run_fn("picard_index", align_bam)
-        align_bam = picard.run_fn("gatk_realigner", align_bam, config["ref"],
-                                  deep_coverage=True)
+        align_bam = gatk_realigner(align_bam, config["ref"], config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     if config["algorithm"].get("range_params", None):
         call_analyze_multiple(align_bam, bc, in_file, config)
@@ -272,13 +272,6 @@ def count_kmers_and_reads(in_fastq, kmer_size):
     return ktable, dict(read_count)
 
 # ## Utility functions
-
-def to_bamsort(sam_file, fastq_file, config, config_file):
-    sample_name = os.path.splitext(os.path.basename(sam_file))[0]
-    cl = [config["program"]["bamsort"], "--name=%s" % sample_name,
-          config_file, sam_file, config["ref"], fastq_file]
-    subprocess.check_call(cl)
-    return glob.glob("%s*-sort.bam" % os.path.splitext(sam_file)[0])[0]
 
 def _assign_bc_files(bcs, files):
     """Assign file names projected by demultiplexing to the barcode.
