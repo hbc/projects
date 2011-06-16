@@ -18,6 +18,7 @@ from contextlib import closing
 import yaml
 import pysam
 import khmer
+import numpy
 from Bio.SeqIO.QualityIO import (FastqGeneralIterator,
                                  _phred_to_sanger_quality_str)
 from Bio.Seq import Seq
@@ -114,9 +115,9 @@ def _print_control_summary(call_file, align_bam, config, params, out):
     for expect in config["expected"]:
         out_info = {"file": align_bam, "region": expect["name"], "calls": []}
         out_info.update(params)
-        counts = mixed.compare_files(call_file, expect["file"],
-                                     expect["offset"], True)
-        _print_expect_info(expect["name"], counts)
+        counts, calls = mixed.compare_files(call_file, expect["file"],
+                                            expect["offset"], True)
+        _print_expect_info(expect["name"], counts, calls)
         for percent, vals in counts.items():
             vals["percent"] = percent
             out_info["calls"].append(vals)
@@ -124,16 +125,24 @@ def _print_control_summary(call_file, align_bam, config, params, out):
         print_summary_counts(out_info)
     return out
 
-def _print_expect_info(name, counts):
+def _print_expect_info(name, counts, calls):
     print "** %s" % name
     percents = sorted(counts.keys(), reverse=True)
-    print "| Percent | Correct | Wrong (partial) | Wrong |"
-    print "|---------+---------+-----------------+-------|"
+    print "| Percent | Correct | Wrong (partial) | Wrong | 1st  | Median | 3rd   |"
+    print "|---------+---------+-----------------+-------+------+--------+-------|"
     for percent in percents:
-        print "| % 7s | % 7s | % 15s | % 5s |" % (percent,
-                                                  counts[percent].get("correct", 0),
-                                                  counts[percent].get("partial", 0),
-                                                  counts[percent].get("wrong", 0))
+        ns = calls.get(percent, [])
+        if len(ns) > 0:
+            vals = [numpy.percentile(ns, p) for p in [25.0, 50.0, 75.0]]
+            stats = ["%.2f" % v for v in vals]
+        else:
+            stats = ["", "", ""]
+        vals = [percent,
+                counts[percent].get("correct", 0),
+                counts[percent].get("partial", 0),
+                counts[percent].get("wrong", 0)] + stats
+        print "| % 7s | % 7s | % 15s | % 5s | % 5s | % 5s | % 5s |" % \
+              tuple(vals)
 
 # ## Summary of minor variants in a new patient population
 

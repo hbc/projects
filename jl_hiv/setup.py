@@ -16,4 +16,5 @@ setup(name = "bcbio-hiv",
       install_requires = [
           "biopython >= 1.57",
           "pysam >= 0.4.1",
-          "PyYAML >= 3.09"])
+          "PyYAML >= 3.09",
+          "numpy >= 1.5.1"])
