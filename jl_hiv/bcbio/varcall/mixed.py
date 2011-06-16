@@ -47,6 +47,7 @@ def compare_calls(calls, expected, offset=0):
     in the ballpark of making a correct call.
     """
     counts = collections.defaultdict(lambda: collections.defaultdict(int))
+    vrn_values = collections.defaultdict(list)
     offset_pos = _pos_with_offset(offset)
     for (space, pos), ebases in expected:
         opos = offset_pos(pos)
@@ -54,9 +55,6 @@ def compare_calls(calls, expected, offset=0):
         cbases = calls.get((space, opos),
                            collections.defaultdict(lambda: None))
         percent_target = min(v for v in ebases.values() if v is not None)
-        if percent_target == 99.5:
-            print ebases.values()
-            raise NotImplementedError
         if _is_single(ebases):
             if _is_single(cbases):
                 outcome = _compare_single(ebases, cbases)
@@ -67,8 +65,10 @@ def compare_calls(calls, expected, offset=0):
                 outcome = "partial" if _single_multi_match(ebases, cbases) else "wrong"
             else:
                 outcome = _compare_multi(ebases, cbases)
+        if outcome == "correct":
+            vrn_values[percent_target].append(_call_vrn_percent(ebases, cbases))
         counts[percent_target][outcome] += 1
-    return _convert_to_dict(counts)
+    return _convert_to_dict(counts), dict(vrn_values)
 
 def _convert_to_dict(counts):
     out = {}
@@ -77,6 +77,15 @@ def _convert_to_dict(counts):
         for k, v in vals.iteritems():
             out[percent][k] = v
     return out
+
+def _call_vrn_percent(expect, call):
+    """Retrieve the percentage variation of the call.
+    """
+    # first get the base we want to query -- lowest percent in the expect
+    vals = [(v, b) for (b, v) in expect.iteritems() if v is not None]
+    vals.sort()
+    base = vals[0][1]
+    return call[base]
 
 def _manage_offset_dict(offset):
     """Handle complicated offsets passed in as dictionaries.
