@@ -115,9 +115,10 @@ def _print_control_summary(call_file, align_bam, config, params, out):
     for expect in config["expected"]:
         out_info = {"file": align_bam, "region": expect["name"], "calls": []}
         out_info.update(params)
-        counts, calls = mixed.compare_files(call_file, expect["file"],
-                                            expect["offset"], True)
+        counts, calls, wrong = mixed.compare_files(call_file, expect["file"],
+                                                   expect["offset"], True)
         _print_expect_info(expect["name"], counts, calls)
+        _print_wrong_info(wrong)
         for percent, vals in counts.items():
             vals["percent"] = percent
             out_info["calls"].append(vals)
@@ -143,6 +144,13 @@ def _print_expect_info(name, counts, calls):
                 counts[percent].get("wrong", 0)] + stats
         print "| % 7s | % 7s | % 15s | % 5s | % 5s | % 5s | % 5s |" % \
               tuple(vals)
+
+def _print_wrong_info(wrong):
+    """Output of incorrect calls at various positions.
+    """
+    freqs = sorted(wrong.keys(), reverse=True)
+    for freq in freqs[1:]:
+        print freq, [pos for (_, pos) in wrong[freq]]
 
 # ## Summary of minor variants in a new patient population
 

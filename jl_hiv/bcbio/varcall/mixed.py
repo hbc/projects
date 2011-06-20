@@ -48,6 +48,7 @@ def compare_calls(calls, expected, offset=0):
     """
     counts = collections.defaultdict(lambda: collections.defaultdict(int))
     vrn_values = collections.defaultdict(list)
+    missed_pos = collections.defaultdict(list)
     offset_pos = _pos_with_offset(offset)
     for (space, pos), ebases in expected:
         opos = offset_pos(pos)
@@ -65,10 +66,12 @@ def compare_calls(calls, expected, offset=0):
                 outcome = "partial" if _single_multi_match(ebases, cbases) else "wrong"
             else:
                 outcome = _compare_multi(ebases, cbases)
+        counts[percent_target][outcome] += 1
         if outcome == "correct":
             vrn_values[percent_target].append(_call_vrn_percent(ebases, cbases))
-        counts[percent_target][outcome] += 1
-    return _convert_to_dict(counts), dict(vrn_values)
+        else:
+            missed_pos[percent_target].append((space, pos))
+    return _convert_to_dict(counts), dict(vrn_values), dict(missed_pos)
 
 def _convert_to_dict(counts):
     out = {}
