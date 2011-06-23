@@ -17,36 +17,34 @@ input:
         seq: TGACCAA
         call_bases: true
 
-ref: Resources/Genomes/hxb2.fa
+ref: Resources/Genomes/hxb2_iupac_93-5.fa
 expected:
   - name: gag
     file: Resources/ExpectedPercents/GagExpected-100_NO_INSERT.txt
-    offset:
-      790-1167: -1
-      1168-1176:
-      1177-2301: -10
+    offset: -1 
   - name: rt
     file: Resources/ExpectedPercents/RTExpected-100.txt
-    offset: -10
+    offset: -1
 
 algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-  #kmer_correct: shrec -c 5
+  kmer_correct: shrec 
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
   #align_score_thresh: 0
-  qual_thresh: 15
-  kmer_thresh: 0.0004
+  qual_thresh: 10
+  #kmer_thresh: 0.0004
+  kmer_thresh: 0.0025
   call_thresh: 0.0035
   #range_params: [kmer_thresh, qual_thresh]
   #qual_thresh: [0, 10, 20]
   #kmer_thresh: [0.0025, 0.0015, 0.0005]
   ##align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
   # processing details
-  cores: 1
+  cores: 4
   platform: illumina
   java_memory: 12g
 
@@ -73,7 +71,7 @@ program:
 dir:
   tmp: tmp
   align: align
-  vrn: variation2
+  vrn: variation
   stats: variation_stats
   calls: variation_calls
   plot: plot

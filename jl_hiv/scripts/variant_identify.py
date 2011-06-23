@@ -13,7 +13,7 @@ import operator
 import subprocess
 import collections
 import itertools
-from contextlib import closing
+from contextlib import closing, nested
 
 import yaml
 import pysam
@@ -189,16 +189,24 @@ def position_percent_file(align_bam, read_file, config, memoize=True):
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
                             os.path.splitext(os.path.basename(align_bam))[0])
+    raw_file = "%s/raw_%s" % os.path.split(out_file)
     if not memoize or not os.path.exists(out_file):
-        with open(out_file, "w") as out_handle:
+        with nested(open(out_file, "w"), open(raw_file, "w")) as \
+                   (out_handle, raw_handle):
             writer = csv.writer(out_handle, dialect="excel-tab")
+            raw_writer = csv.writer(raw_handle, dialect="excel-tab")
             writer.writerow(["space", "pos"] + bases)
             ktable, read_counts = count_kmers_and_reads(read_file, params["kmer_size"])
             for chrom, pos, kmers in positional_kmers(align_bam, params):
                 base_percents = {}
-                for base, percent in base_kmer_percents(kmers, ktable, read_counts, params):
+                base_info, final_kmers = base_kmer_percents(kmers, ktable,
+                                                            read_counts, params)
+                for base, percent in base_info:
                     base_percents[base] = "%.1f" % (percent * 100.0)
                 writer.writerow([chrom, pos] + [base_percents.get(b, "") for b in bases])
+                for kmer in final_kmers:
+                    raw_writer.writerow([chrom, pos, kmer.call, kmer.qual,
+                                         kmer.kmer_percent, kmer.align_score])
     return out_file, params
 
 def base_kmer_percents(kmers, ktable, read_counts, params):
@@ -209,8 +217,8 @@ def base_kmer_percents(kmers, ktable, read_counts, params):
                        for k in list(set(x.kmer for x in kmers)))
     base_counts = collections.defaultdict(int)
     total = float(sum(kmer_counts.values()))
-    kmers_w_percents = (k._replace(kmer_percent=kmer_counts[k.kmer] / total if total > 0 else 0)
-                        for k in kmers)
+    kmers_w_percents = [k._replace(kmer_percent=kmer_counts[k.kmer] / total if total > 0 else 0)
+                        for k in kmers]
     for kmer in filter(param_checker, kmers_w_percents):
         base_counts[kmer.call] += read_counts[kmer.seq]
     pass_total = float(sum(base_counts.values()))
@@ -220,7 +228,7 @@ def base_kmer_percents(kmers, ktable, read_counts, params):
         if percent >= params["call_thresh"]:
             final.append((base, count / pass_total))
     final.sort(key=operator.itemgetter(1), reverse=True)
-    return final
+    return final, kmers_w_percents
 
 def param_position_checker(params):
     """Determine if a position passes all parameter filters.
