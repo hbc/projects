@@ -48,7 +48,7 @@ def compare_calls(calls, expected, offset=0):
     """
     counts = collections.defaultdict(lambda: collections.defaultdict(int))
     vrn_values = collections.defaultdict(list)
-    missed_pos = collections.defaultdict(list)
+    missed_values = collections.defaultdict(list)
     offset_pos = _pos_with_offset(offset)
     for (space, pos), ebases in expected:
         opos = offset_pos(pos)
@@ -67,11 +67,12 @@ def compare_calls(calls, expected, offset=0):
             else:
                 outcome = _compare_multi(ebases, cbases)
         counts[percent_target][outcome] += 1
+        call_pct, expect_pct = _call_vrn_percent(ebases, cbases)
         if outcome == "correct":
-            vrn_values[percent_target].append(_call_vrn_percent(ebases, cbases))
+            vrn_values[percent_target].append(call_pct)
         else:
-            missed_pos[percent_target].append((space, pos))
-    return _convert_to_dict(counts), dict(vrn_values), dict(missed_pos)
+            missed_values[percent_target].append((space, opos))
+    return _convert_to_dict(counts), dict(vrn_values), dict(missed_values)
 
 def _convert_to_dict(counts):
     out = {}
@@ -88,7 +89,7 @@ def _call_vrn_percent(expect, call):
     vals = [(v, b) for (b, v) in expect.iteritems() if v is not None]
     vals.sort()
     base = vals[0][1]
-    return call[base]
+    return call[base], expect[base]
 
 def _manage_offset_dict(offset):
     """Handle complicated offsets passed in as dictionaries.
