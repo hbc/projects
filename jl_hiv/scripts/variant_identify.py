@@ -165,7 +165,7 @@ def _write_train_info(train, align_bam, config):
     with open(out_file, "w") as out_handle:
         writer = csv.writer(out_handle, dialect="excel-tab")
         for t in train:
-            writer.writerow([space, t.pos, t.base, t.freq, t.outcome])
+            writer.writerow([space, t.pos, t.base, t.outcome, t.freq])
 
 # ## Summary of minor variants in a new patient population
 
@@ -196,10 +196,14 @@ def _patient_variation_iterator(call_file, expect_configs, base_order):
 
 def position_percent_file(align_bam, read_file, config, memoize=True):
     params = {"kmer_size": config["algorithm"]["kmer_size"],
-              "kmer": config["algorithm"]["kmer_thresh"],
+              "kmer": config["algorithm"].get("kmer_thresh", 0),
               "qual": int(config["algorithm"].get("qual_thresh", 0)),
               "align_score": config["algorithm"].get("align_score_thresh", 0),
-              "call_thresh": config["algorithm"]["call_thresh"]}
+              "call_thresh": config["algorithm"]["call_thresh"],
+              "norm_thresh": config["algorithm"]["normal_score_thresh"],
+              "kmer_range": config["algorithm"]["kmer_range"],
+              "qual_range": config["algorithm"]["qual_range"],
+              "mapscore_range": config["algorithm"]["mapscore_range"]}
     print align_bam, params
     bases = ["A", "C", "G", "T"]
     out_file = os.path.join(config["dir"]["vrn"], "%s-variations.tsv" %
@@ -248,12 +252,22 @@ def base_kmer_percents(kmers, ktable, read_counts, params):
 def param_position_checker(params):
     """Determine if a position passes all parameter filters.
     """
+    def _min_max_norm(val, valrange):
+        minv, maxv = valrange
+        if val < minv: val = minv
+        if val > maxv: val = maxv
+        return (val - minv) / (maxv - minv)
+    def _norm_score(kmer):
+        return _min_max_norm(kmer.kmer_percent, params["kmer_range"]) + \
+               _min_max_norm(kmer.align_score, params["mapscore_range"]) + \
+               _min_max_norm(kmer.qual, params["qual_range"])
     def _check_position(kmer):
-        if kmer.kmer_percent >= params["kmer"]:
-            if kmer.align_score >= params["align_score"]:
-                if kmer.qual >= params["qual"]:
-                    return True
-        return False
+        return _norm_score(kmer) > params["norm_thresh"]
+        #if kmer.kmer_percent >= params["kmer"]:
+        #    if kmer.align_score >= params["align_score"]:
+        #        if kmer.qual >= params["qual"]:
+        #            return True
+        #return False
     return _check_position
 
 def positional_kmers(in_bam, params):

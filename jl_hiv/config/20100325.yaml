@@ -34,11 +34,15 @@ algorithm:
   realignment: gatk
   #trim_three: 36
   kmer_size: 13
-  #align_score_thresh: 0
-  qual_thresh: 10
-  #kmer_thresh: 0.0004
-  kmer_thresh: 0.0025
   call_thresh: 0.0035
+  normal_score_thresh: 1.0
+  kmer_range: [0.00001, 0.1]
+  qual_range: [4.0, 35.0]
+  mapscore_range: [0.0, 250.0]
+  #align_score_thresh: 0
+  #qual_thresh: 10
+  #kmer_thresh: 0.0004
+  #kmer_thresh: 0.0025
   #range_params: [kmer_thresh, qual_thresh]
   #qual_thresh: [0, 10, 20]
   #kmer_thresh: [0.0025, 0.0015, 0.0005]
