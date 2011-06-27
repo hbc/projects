@@ -30,7 +30,7 @@ algorithm:
   # current algorithm parameters
   barcode_mismatch: 1
   allowed_ns: 0
-#  kmer_correct: shrec 
+  # kmer_correct: shrec 
   realignment: gatk
   #trim_three: 36
   kmer_size: 13

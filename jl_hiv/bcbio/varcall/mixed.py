@@ -46,9 +46,10 @@ def compare_calls(calls, expected, offset=0):
     So both partial and wrong are, well, wrong, but partial lets you know you are
     in the ballpark of making a correct call.
     """
+    Train = collections.namedtuple('Train', ['space', 'pos', 'base', 'freq', 'outcome'])
     counts = collections.defaultdict(lambda: collections.defaultdict(int))
     vrn_values = collections.defaultdict(list)
-    missed_values = collections.defaultdict(list)
+    train_positions = []
     offset_pos = _pos_with_offset(offset)
     for (space, pos), ebases in expected:
         opos = offset_pos(pos)
@@ -67,12 +68,23 @@ def compare_calls(calls, expected, offset=0):
             else:
                 outcome = _compare_multi(ebases, cbases)
         counts[percent_target][outcome] += 1
-        call_pct, expect_pct = _call_vrn_percent(ebases, cbases)
         if outcome == "correct":
+            call_pct, expect_pct, expect_base = _call_vrn_percent(ebases, cbases)
+            train_positions.append(Train(space, opos, expect_base,
+                                         expect_pct, "true_positive"))
             vrn_values[percent_target].append(call_pct)
         else:
-            missed_values[percent_target].append((space, opos))
-    return _convert_to_dict(counts), dict(vrn_values), dict(missed_values)
+            (_, expect_pct, _) = _call_vrn_percent(ebases, cbases)
+            call_pct, call_base = sorted((v, b) for (b, v) in cbases.iteritems()
+                                         if v is not None)[0]
+            if call_pct < expect_pct:
+                report_pct = call_pct
+                wrong_type = "false_positive"
+            else:
+                report_pct = expect_pct
+                wrong_type = "false_negative"
+            train_positions.append(Train(space, opos, call_base, report_pct, wrong_type))
+    return _convert_to_dict(counts), dict(vrn_values), train_positions
 
 def _convert_to_dict(counts):
     out = {}
@@ -89,7 +101,7 @@ def _call_vrn_percent(expect, call):
     vals = [(v, b) for (b, v) in expect.iteritems() if v is not None]
     vals.sort()
     base = vals[0][1]
-    return call[base], expect[base]
+    return call[base], expect[base], base
 
 def _manage_offset_dict(offset):
     """Handle complicated offsets passed in as dictionaries.

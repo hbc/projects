@@ -112,21 +112,27 @@ def call_bases_and_analyze(align_bam, bc, in_file, config, memoize=True):
 # ## Output stats for assessing reliability
 
 def _print_control_summary(call_file, align_bam, config, params, out):
-    all_wrong = {}
+    all_train = []
     for expect in config["expected"]:
         out_info = {"file": align_bam, "region": expect["name"], "calls": []}
         out_info.update(params)
-        counts, calls, wrong = mixed.compare_files(call_file, expect["file"],
+        counts, calls, train = mixed.compare_files(call_file, expect["file"],
                                                    expect["offset"], True)
-        all_wrong.update(wrong)
+        all_train.extend(filter(_check_training, train))
         _print_expect_info(expect["name"], counts, calls)
         for percent, vals in counts.items():
             vals["percent"] = percent
             out_info["calls"].append(vals)
         out.append(out_info)
         print_summary_counts(out_info)
-    _write_position_info(all_wrong, align_bam, config)
+    _write_train_info(all_train, align_bam, config)
     return out
+
+def _check_training(train):
+    """Determine if we want to include a training data point.
+    """
+    return (train.outcome != "true_positive" or
+            train.freq <= 5)
 
 def _print_expect_info(name, counts, calls):
     print "** %s" % name
@@ -147,8 +153,8 @@ def _print_expect_info(name, counts, calls):
         print "| % 7s | % 7s | % 15s | % 5s | % 5s | % 5s | % 5s |" % \
               tuple(vals)
 
-def _write_position_info(wrong, align_bam, config):
-    """Output of incorrect calls at various positions.
+def _write_train_info(train, align_bam, config):
+    """Output of training information on useful correct and wrong calls.
     """
     with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
         refs = work_bam.header['SQ']
@@ -158,10 +164,8 @@ def _write_position_info(wrong, align_bam, config):
                             os.path.splitext(os.path.basename(align_bam))[0])
     with open(out_file, "w") as out_handle:
         writer = csv.writer(out_handle, dialect="excel-tab")
-        freqs = sorted(wrong.keys(), reverse=True)
-        for freq in freqs:
-            for (_, pos) in wrong[freq]:
-                writer.writerow([space, pos, "wrong_%s" % freq])
+        for t in train:
+            writer.writerow([space, t.pos, t.base, t.freq, t.outcome])
 
 # ## Summary of minor variants in a new patient population
 
