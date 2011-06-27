@@ -1,2 +1,2 @@
-HXB2_IUPAC_93-5	951	test1
-HXB2_IUPAC_93-5	953	test2
+HXB2_IUPAC_93-5	951	T	false_positive	0.7
+HXB2_IUPAC_93-5	953	A	true_positive	4.0
