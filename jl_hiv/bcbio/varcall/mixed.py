@@ -74,16 +74,18 @@ def compare_calls(calls, expected, offset=0):
                                          expect_pct, "true_positive"))
             vrn_values[percent_target].append(call_pct)
         else:
-            (_, expect_pct, _) = _call_vrn_percent(ebases, cbases)
+            (_, expect_pct, expect_base) = _call_vrn_percent(ebases, cbases)
             call_pct, call_base = sorted((v, b) for (b, v) in cbases.iteritems()
                                          if v is not None)[0]
             if call_pct < expect_pct:
                 report_pct = call_pct
+                report_base = call_base
                 wrong_type = "false_positive"
             else:
                 report_pct = expect_pct
+                report_base = expect_base
                 wrong_type = "false_negative"
-            train_positions.append(Train(space, opos, call_base, report_pct, wrong_type))
+            train_positions.append(Train(space, opos, report_base, report_pct, wrong_type))
     return _convert_to_dict(counts), dict(vrn_values), train_positions
 
 def _convert_to_dict(counts):

@@ -40,22 +40,32 @@ def main(config_file):
         config = yaml.load(in_handle)
     ref_index = novoalign.refindex(config["ref"], kmer_size=13, step_size=1)
     create_dirs(config)
+    with cpmap(config["algorithm"]["cores"]) as cur_map:
+        for _ in cur_map(process_fastq, ((fastq, ref_index, config, config_file)
+                                         for fastq in fastq_to_process(config))):
+            pass
+
+# ## Processing and analysis pipeline
+
+def fastq_to_process(config):
+    """Retrieve fastq files to process, handling demultiplexing.
+    """
     for cur in config["input"]:
         in_fastq = cur["fastq"]
         if cur.get("old_style_barcodes", False):
             in_fastq = convert_illumina_oldstyle(in_fastq)
-        bc_files = demultiplex(in_fastq, [(b["name"], b["seq"]) for b in cur["barcodes"]],
-                               config["dir"]["tmp"], config)
-        bcs = _assign_bc_files(cur["barcodes"], bc_files)
-        with cpmap(config["algorithm"]["cores"]) as cur_map:
-            for _ in cur_map(process_fastq, ((bc, ref_index, cur, config, config_file)
-                                             for bc in bcs)):
-                pass
-
-# ## Processing and analysis pipeline
+        if cur.get("barcodes", None):
+            bc_files = demultiplex(in_fastq, [(b["name"], b["seq"]) for b in cur["barcodes"]],
+                                   config["dir"]["tmp"], config)
+            fastqs = _assign_bc_files(cur, bc_files)
+        else:
+            cur["file"] = in_fastq
+            fastqs = [cur]
+        for fq in fastqs:
+            yield fq
 
 @map_wrap
-def process_fastq(bc, ref_index, cur_config, config, config_file):
+def process_fastq(bc, ref_index, config, config_file):
     do_realignment = config["algorithm"].get("realignment", "")
     do_kmercorrect = config["algorithm"].get("kmer_correct", "")
     trim_three = config["algorithm"].get("trim_three", "")
@@ -68,7 +78,7 @@ def process_fastq(bc, ref_index, cur_config, config, config_file):
         in_file = kmer_filter(in_file, do_kmercorrect, config)
     unique_file = uniquify_bioplayground(in_file, config)
     align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
-                                qual_format=cur_config.get("format", None))
+                                qual_format=bc["format"])
     align_bam = sam_to_sort_bam(align_sam, config["ref"], unique_file, None,
                                 "", bc["name"], config)
     if do_realignment == "gatk":
@@ -327,11 +337,11 @@ def count_kmers_and_reads(in_fastq, kmer_size):
 
 # ## Utility functions
 
-def _assign_bc_files(bcs, files):
+def _assign_bc_files(cur, files):
     """Assign file names projected by demultiplexing to the barcode.
     """
     final_bcs = []
-    for bc in bcs:
+    for bc in cur["barcodes"]:
         cur_file = None
         for fname in files:
             if fname.find(bc["name"]) >= 0:
@@ -339,6 +349,7 @@ def _assign_bc_files(bcs, files):
                 cur_file = fname
         assert cur_file is not None
         bc["file"] = cur_file
+        bc["format"] = cur["format"]
         final_bcs.append(bc)
     return final_bcs
 
