@@ -47,3 +47,37 @@ alignment score at each position and base:
 [1]: http://github.com/nathanmarz/cascalog
 [2]: https://github.com/technomancy/leiningen#readme
 [3]: http://www.cloudera.com/hadoop/
+
+## Off-target variation
+
+The off-target limit of detection assesses what range of variation can
+be accurately detected by looking at the distribution of minority
+variants in positions without any expected variation. The approach to
+plot this is:
+
+* Start with list of positions without expected variation and
+  expected base at that position.
+* Calculate frequency of non-expected variations at each position.
+* Calculate frequency of non-expected variations after filtration.
+* Collect counts of off-target frequencies within bins.
+* Plot as histogram
+
+## Required coverage
+
+by sample multiplexing, we would like to be able to reduce coverage to
+maximize samples processed but still be able to detect variants of
+interest. To do this, plot percentage of variants detected at
+different amounts of coverage:
+
+* Start with list of minority variant positions, expected base
+  and frequency of variation.
+* Define function to determine if variant is detected.
+* Reduce coverage by randomly removing reads. Repeat until we lose
+  ability to detect. Can repeat multiple times to sample.
+* Report minimum detection coverage.
+* Plot distribution of minimum detection coverage at each frequency
+  of interest.
+
+Another useful graph is a histogram of coverage at each position,
+to assess the coverage distribution for a given number of total
+reads.
