@@ -3,6 +3,7 @@
   :dependencies [[org.clojure/clojure "1.2.1"]
                  [cascalog "1.8.0-SNAPSHOT"]
                  [incanter "1.2.3" :exclusions [swank-clojure]]]
-  :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]]
+  :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
+                     [midje "1.1.1"]]
   :run-aliases {:snp-data snp-assess.core}
   :aot [snp-assess.core])

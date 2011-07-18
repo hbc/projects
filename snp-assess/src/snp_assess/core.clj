@@ -5,13 +5,13 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [snp-assess.config :only [default-config]]
-        [snp-assess.score :only [combine-score-w-config]])
+        [snp-assess.score :only [score-calc-cascalog]])
   (:require [cascalog [ops :as ops]])
   (:gen-class))
 
 ;; Summary statistics for positions of interest
 
-(defn calc-snpdata-stats [snpdata targets score-combine-fn]
+(defn calc-snpdata-stats [snpdata targets score-calc-fn]
   (??<- [?chr ?pos ?base ?count ?avg-score ?avg-kmer-pct ?avg-qual ?avg-map ?type]
         (snpdata ?chr ?pos ?base ?qual ?kmer-pct ?map-score)
         (targets ?chr ?pos ?base ?type)
@@ -19,7 +19,7 @@
         (ops/avg ?kmer-pct :> ?avg-kmer-pct)
         (ops/avg ?qual :> ?avg-qual)
         (ops/avg ?map-score :> ?avg-map)
-        (score-combine-fn ?kmer-pct ?qual ?map-score :> ?score)
+        (score-calc-fn ?kmer-pct ?qual ?map-score :> ?score)
         (ops/avg ?score :> ?avg-score)))
 
 ;; Parsing variation data files
@@ -53,7 +53,7 @@
   "Output individual base call statistics at specified positions."
   (let [out (calc-snpdata-stats (snpdata-from-hfs data-dir)
                                 (target-pos-from-hfs pos-dir)
-                                (combine-score-w-config default-config))
+                                (score-calc-cascalog default-config))
         sort-out (sort-by #(vec (map % [0 1 2])) out)]
     (doseq [row sort-out]
       (println (apply format "| %s | %s | %s | %5s | %.1f | %.1e | %.1f | %.1f | %10s |" row)))))
