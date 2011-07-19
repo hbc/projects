@@ -17,6 +17,7 @@ setup(name = "bcbio-scde-deploy",
           'config' : ['*.yaml'],
           },
       install_requires = [
+          "biopy-isatab >= 0.1",
           "PyYAML >= 3.09",
           "fabric >= 1.0.1",
           "boto >= 2.0b4",
