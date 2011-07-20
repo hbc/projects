@@ -9,8 +9,12 @@
   (minority-variants
    {"A" 10 "C" 5  "G" 15 "T" 20} default-config) => [["G" 3/10] ["A" 1/5] ["C" 1/10]])
 
-;.;. FAIL at (NO_SOURCE_FILE:1)
-;.;.     Expected: [["C" 1/3]]
-;.;.       Actual: #<workflow$buffer$fn__368 cascalog.workflow$buffer$fn__368@5043cc83>
 (facts "Retrieve minority frequencies from list of bases"
-  (minor-target-freq [["G"] ["G"] ["C"]]) => [["C" 1/3]])
+  (minor-target-freq [["G"] ["G"] ["C"]] default-config) => [["C" 1/3]]
+  (minor-target-freq (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                     default-config) => [["G" 5/56]])
+
+(facts "Test for presence of a variant"
+  (has-variant? "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                default-config) => true
+  (has-variant? "G" [["G"] ["G"] ["C"]] default-config) => false)

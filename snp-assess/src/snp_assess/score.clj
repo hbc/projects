@@ -31,6 +31,22 @@
          rest
          (filter #(>= (second %) (:min-freq config))))))
 
+(defn minor-target-freq [read-bases config]
+  "Return frequency of minority variants at the position.
+  read-bases are a list of called bases, returns list of base/frequency"
+  (->> read-bases
+       (map first)
+       frequencies
+       (#(minority-variants % config))))
+
+(defn has-variant? [base read-bases config]
+  "Determine if the read bases correspond to the expected variant."
+  (let [minor-freqs (minor-target-freq read-bases config)]
+    (and (== 1 (count minor-freqs))
+         (= base (ffirst minor-freqs)))))
+
+;; Cascalog ready functions that need the configuration passed
+
 (defn score-calc-cascalog [config]
   "Prepare cascalog ready function for calculating scores."
   (defmapop score-calc [kmer-pct qual map-score]
@@ -41,9 +57,6 @@
   (deffilterop read-filter [kmer-pct qual map-score]
     (read-passes? kmer-pct qual map-score config)))
 
-(defbufferop minor-target-freq [read-bases]
-  "Return frequency of minority variants at the position.
-   read-bases are a list of called bases, returns list of base/frequency"
-  (-> read-bases
-      frequencies
-      minority-variants {}))
+(defn minor-target-cascalog [config]
+  (defbufferop minor-target [read-bases]
+    (minor-target-freq read-bases config)))
