@@ -20,7 +20,16 @@
       (:min-score config)))
 
 (defn minority-variants [base-counts config]
-  "List of minority variant bases and frequencies.")
+  "List of minority variant bases and frequencies.
+  The highest frequency base, the majority variant, is removed,
+  along with any that are below the minimum configured frequency."
+  (let [total (apply + (vals base-counts))]
+    (->> (interleave (keys base-counts)
+                     (map #(/ % total) (vals base-counts)))
+         (partition 2)
+         (sort-by second >)
+         rest
+         (filter #(>= (second %) (:min-freq config))))))
 
 (defn score-calc-cascalog [config]
   "Prepare cascalog ready function for calculating scores."
@@ -32,6 +41,9 @@
   (deffilterop read-filter [kmer-pct qual map-score]
     (read-passes? kmer-pct qual map-score config)))
 
-(defbufferop minor-target-freq [read-scores]
+(defbufferop minor-target-freq [read-bases]
   "Return frequency of minority variants at the position.
-   read-score is: base, score.")
+   read-bases are a list of called bases, returns list of base/frequency"
+  (-> read-bases
+      frequencies
+      minority-variants {}))
