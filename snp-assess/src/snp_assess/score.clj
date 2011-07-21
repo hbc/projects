@@ -59,7 +59,7 @@
 
 (defn score-calc-cascalog [config]
   "Prepare cascalog ready function for calculating scores."
-  (defmapop score-calc [kmer-pct qual map-score]
+  (defmapop score-calc-c [kmer-pct qual map-score]
     (score-calc kmer-pct qual map-score config)))
 
 (defn read-filter-cascalog [config]
@@ -69,4 +69,5 @@
 
 (defn minor-target-cascalog [config]
   (defbufferop minor-target [read-bases]
-    (minor-target-freq read-bases config)))
+    (map #(-> % second float)
+     (minor-target-freq read-bases config))))

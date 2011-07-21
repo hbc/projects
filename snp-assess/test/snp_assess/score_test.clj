@@ -12,7 +12,9 @@
 (facts "Retrieve minority frequencies from list of bases"
   (minor-target-freq [["G"] ["G"] ["C"]] default-config) => [["C" 1/3]]
   (minor-target-freq (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
-                     default-config) => [["G" 5/56]])
+                     default-config) => [["G" 5/56]]
+  (minor-target-freq (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 5 ["C"]))
+                     default-config) => [["G" 1/12] ["C" 1/12]])
 
 (facts "Test for presence of a variant"
   (has-variant? "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
