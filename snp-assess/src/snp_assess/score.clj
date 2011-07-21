@@ -55,7 +55,7 @@
               (count cur-bases))
        cur-count))))
 
-;; Cascalog ready functions that need the configuration passed
+;; Cascalog ready generating functions -- need configuration dictionary
 
 (defn score-calc-cascalog [config]
   "Prepare cascalog ready function for calculating scores."
