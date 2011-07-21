@@ -88,6 +88,13 @@
     (read-passes? kmer-pct qual map-score config)))
 
 (defn minor-target-cascalog [config]
+  "Cascalog function for getting minor target frequencies given positional calls."
   (defbufferop minor-target [read-bases]
     (map #(-> % second float)
      (minor-target-freq read-bases config))))
+
+(defn min-coverage-cascalog [config]
+  "Cacalog function to generate"
+  (defbufferop min-coverage [exp-base read-bases]
+    (repeatedly (:random-coverage-sample config)
+                (random-min-coverage exp-base read-bases config))))
