@@ -45,6 +45,16 @@
     (and (== 1 (count minor-freqs))
          (= base (ffirst minor-freqs)))))
 
+(defn random-min-coverage [base read-bases config]
+  "Randomly remove reads to determine minimum coverage to detect a variant base."
+  (letfn [(remove-random [bases step]
+            (drop step (shuffle bases)))]
+   (loop [cur-bases read-bases, cur-count nil]
+     (if (has-variant? base cur-bases config)
+       (recur (remove-random cur-bases (:random-coverage-step config))
+              (count cur-bases))
+       cur-count))))
+
 ;; Cascalog ready functions that need the configuration passed
 
 (defn score-calc-cascalog [config]

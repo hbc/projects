@@ -18,3 +18,8 @@
   (has-variant? "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
                 default-config) => true
   (has-variant? "G" [["G"] ["G"] ["C"]] default-config) => false)
+
+(facts "Sample for minimum coverage by random removal."
+  (random-min-coverage "G" [["G"] ["G"] ["C"]] default-config) => nil
+  (random-min-coverage "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                       default-config) => (roughly 31 25))
