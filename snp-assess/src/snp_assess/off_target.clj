@@ -3,8 +3,10 @@
 ;; detection by examining the distribution of background variants.
 
 (ns snp-assess.off-target
-  (:use [cascalog.api]
-        [clojure.string :only [split]]
+  (:use [clojure.string :only [split]]
+        [cascalog.api]
+        [incanter.core :only [save]]
+        [incanter.charts :only [histogram add-histogram]]
         [snp-assess.config :only [default-config]]
         [snp-assess.score :only [minor-target-cascalog read-filter-cascalog]]
         [snp-assess.core :only [snpdata-from-hfs]])
@@ -43,6 +45,10 @@
                                              (pos-from-hfs pos-dir)
                                              (minor-target-cascalog default-config)
                                              (read-filter-cascalog default-config))]
+    (doto (histogram (flatten freq) :nbins 100 :series-label "raw" :legend true
+                     :title "Off-target" :x-label "Frequency" :y-label "")
+      (add-histogram (flatten filter-freq) :nbins 100 :series-label "filtered")
+      (save "off-target-frequencies.png"))
     (println (flatten freq))
     (println (flatten filter-freq))))
 
