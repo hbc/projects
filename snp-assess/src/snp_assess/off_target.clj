@@ -6,9 +6,10 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [incanter.core :only [save]]
-        [incanter.charts :only [histogram add-histogram]]
+        [incanter.charts :only [xy-plot add-lines]]
         [snp-assess.config :only [default-config]]
-        [snp-assess.score :only [minor-target-cascalog read-filter-cascalog]]
+        [snp-assess.score :only [minor-target-cascalog read-filter-cascalog
+                                 histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs]])
   (:require [cascalog [ops :as ops]])
   (:gen-class))
@@ -45,12 +46,16 @@
                                              (pos-from-hfs pos-dir)
                                              (minor-target-cascalog default-config)
                                              (read-filter-cascalog default-config))]
-    (doto (histogram (flatten freq) :nbins 100 :series-label "raw" :legend true
+    (let [num-bins 100.0
+          [freq-x freq-hist] (histogram-bins freq num-bins)
+          [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins)]
+      (doto (xy-plot freq-x freq-hist :series-label "raw"
+                     :legend true :title "Off-target"
                      :title "Off-target" :x-label "Frequency" :y-label "")
-      (add-histogram (flatten filter-freq) :nbins 100 :series-label "filtered")
-      (save "off-target-frequencies.png"))
-    (println (flatten freq))
-    (println (flatten filter-freq))))
+        (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
+        (save "off-target-frequencies.png")))
+    (println (histogram-bins freq 100.0))
+    (println (histogram-bins filter-freq 100.0))))
 
 (defn -main [data-dir pos-dir]
   (off-target-plots data-dir pos-dir))

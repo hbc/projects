@@ -1,7 +1,8 @@
 ;; Score and assess reads
 
 (ns snp-assess.score
-  (:use [cascalog.api]))
+  (:use [cascalog.api]
+        [clojure.contrib.math]))
 
 (defn min-max-norm [score [minv maxv]]
   "Perform min-max normalization, truncated larger values at max and min."
@@ -54,6 +55,25 @@
        (recur (remove-random cur-bases (:random-coverage-step config))
               (count cur-bases))
        cur-count))))
+
+;; Create data bins for visualization; adapted from John Lawrence Aspden:
+;; https://github.com/johnlawrenceaspden/hobby-code/blob/master/rule_of_succession.clj
+
+(defn ceil-places [number decimals]
+  "Get the ceiling at the specified decimal place
+  http://stackoverflow.com/questions/5072492/
+  how-do-i-trim-the-decimal-of-a-number-using-clojure-or-jython"
+  (let [factor (expt 10 decimals)]
+    (bigdec (/ (ceil (* factor number)) factor))))
+
+(defn histogram-bins [vals bins]
+  (letfn [(intervals [n max] (partition 2 1 (range 0.0 max (/ max n))))
+          (between [xs a b] (/ (count (filter #(and (>= % a) (< % b)) xs))
+                               (count xs)))]
+    (let [sort-vals (sort (flatten vals))
+          max (ceil-places (last sort-vals) 1)]
+      [(map first (intervals bins max))
+       (map (fn [[a b]] (between sort-vals a b)) (intervals bins max))])))
 
 ;; Cascalog ready generating functions -- need configuration dictionary
 
