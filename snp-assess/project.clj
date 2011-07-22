@@ -6,5 +6,6 @@
   :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
                      [midje "1.1.1"]]
   :run-aliases {:snp-data snp-assess.core
-                :off-target snp-assess.off-target}
+                :off-target snp-assess.off-target
+                :min-coverage snp-assess.min-coverage}
   :aot [snp-assess.core])
