@@ -66,12 +66,12 @@
   (let [factor (expt 10 decimals)]
     (bigdec (/ (ceil (* factor number)) factor))))
 
-(defn histogram-bins [vals bins]
+(defn histogram-bins [vals bins & [max-val]]
   (letfn [(intervals [n max] (partition 2 1 (range 0.0 max (/ max n))))
           (between [xs a b] (/ (count (filter #(and (>= % a) (< % b)) xs))
                                (count xs)))]
     (let [sort-vals (sort (flatten vals))
-          max (ceil-places (last sort-vals) 1)]
+          max (if (nil? max-val) (ceil-places (last sort-vals) 1) max-val)]
       [(map first (intervals bins max))
        (map (fn [[a b]] (between sort-vals a b)) (intervals bins max))])))
 
