@@ -91,7 +91,7 @@
   "Cascalog function for getting minor target frequencies given positional calls."
   (defbufferop minor-target [read-bases]
     (map #(-> % second float)
-     (minor-target-freq read-bases config))))
+         (minor-target-freq read-bases config))))
 
 (defn min-coverage-cascalog [config]
   "Cacalog function to generate"

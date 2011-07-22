@@ -15,13 +15,13 @@
   (:gen-class))
 
 (defn off-target-freqs [snpdata no-var-positions minority-freq-fn]
-  (??<- [?freq]
+  (??<- [?chr ?pos ?freq]
         (snpdata ?chr ?pos ?base _ _ _)
         (no-var-positions ?chr ?pos _ _)
         (minority-freq-fn ?base :> ?freq)))
 
 (defn off-target-freqs-filter [snpdata no-var-positions minority-freq-fn filter-fn]
-  (??<- [?freq]
+  (??<- [?chr ?pos ?freq]
         (snpdata ?chr ?pos ?base ?qual ?kmer-pct ?map-score)
         (no-var-positions ?chr ?pos _ _)
         (filter-fn ?kmer-pct ?qual ?map-score)
@@ -38,14 +38,17 @@
         (source ?line)
         (parse-pos-line ?line :> ?chr ?pos ?base ?freq))))
 
+(defn freqs-only [from-cascalog]
+  (map last from-cascalog))
+
 (defn off-target-plots [data-dir pos-dir]
-  (let [freq (off-target-freqs (snpdata-from-hfs data-dir)
-                               (pos-from-hfs pos-dir)
-                               (minor-target-cascalog default-config))
-        filter-freq (off-target-freqs-filter (snpdata-from-hfs data-dir)
-                                             (pos-from-hfs pos-dir)
-                                             (minor-target-cascalog default-config)
-                                             (read-filter-cascalog default-config))]
+  (let [freq (freqs-only (off-target-freqs (snpdata-from-hfs data-dir)
+                                           (pos-from-hfs pos-dir)
+                                           (minor-target-cascalog default-config)))
+        filter-freq (freqs-only (off-target-freqs-filter (snpdata-from-hfs data-dir)
+                                                         (pos-from-hfs pos-dir)
+                                                         (minor-target-cascalog default-config)
+                                                         (read-filter-cascalog default-config)))]
     (let [num-bins 100.0
           [freq-x freq-hist] (histogram-bins freq num-bins)
           [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins)]
