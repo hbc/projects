@@ -26,12 +26,12 @@ algorithm:
   realignment: gatk
   kmer_size: 13
   call_thresh: 0.0035
-  normal_score_thresh: 1.2
+  normal_score_thresh: 1.0
   kmer_range: [0.00001, 0.1]
   qual_range: [4.0, 35.0]
   mapscore_range: [0.0, 250.0]
   # processing details
-  cores: 2
+  cores: 1
   platform: illumina
   java_memory: 12g
 
