@@ -30,7 +30,19 @@
         cov-by-freq (reduce (fn [cov-map [freq cov]]
                               (assoc cov-map freq (cons cov (get cov-map freq))))
                             {} (map #(drop 3 %) freq-cov))]
-    (println cov-by-freq)))
+    (let [num-bins 100.0
+          hist-info (sort-by first
+                             (map (fn [[ x cs]] (cons x (histogram-bins cs num-bins)))
+                                  cov-by-freq))
+          [freq x y] (first hist-info)
+          plot (xy-plot x y :series-label freq
+                        :legend true :title "Minimum detection coverage"
+                        :x-label "Passing reads" :y-label "")]
+        (doseq [[freq x y] (rest hist-info)]
+          (add-lines plot x y :series-label freq))
+        (doto plot
+          (save "min-coverage-frequencies.png"))
+      (println hist-info))))
 
 (defn -main [data-dir pos-dir]
   (min-coverage-plots data-dir pos-dir))
