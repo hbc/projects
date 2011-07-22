@@ -96,7 +96,8 @@
 (defn min-coverage-cascalog [config]
   "Cacalog function to generate"
   (defbufferop min-coverage [info]
-    (println info)
-    ;(repeatedly (:random-coverage-sample config) (random-min-coverage
-    ;exp-base read-bases config))
-    ))
+    (let [exp-base (ffirst info)
+          read-bases (map second info)]
+      (println
+       ;(repeatedly (:random-coverage-sample config))
+       (random-min-coverage exp-base read-bases config)))))

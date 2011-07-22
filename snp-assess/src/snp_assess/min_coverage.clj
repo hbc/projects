@@ -16,7 +16,7 @@
   (:gen-class))
 
 (defn min-coverage [snpdata var-positions min-coverage-fn filter-fn]
-  (??<- [?var-freq ?coverage]
+  (??<- [?chr ?pos ?var-base ?var-freq ?coverage]
         (snpdata ?chr ?pos ?base ?qual ?kmer-pct ?map-score)
         (var-positions ?chr ?pos ?var-base ?var-freq)
         (filter-fn ?kmer-pct ?qual ?map-score)

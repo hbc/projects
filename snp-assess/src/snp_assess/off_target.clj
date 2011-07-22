@@ -42,13 +42,14 @@
   (map last from-cascalog))
 
 (defn off-target-plots [data-dir pos-dir]
-  (let [freq (freqs-only (off-target-freqs (snpdata-from-hfs data-dir)
+  (let [config (assoc default-config :min-freq 0.0)
+        freq (freqs-only (off-target-freqs (snpdata-from-hfs data-dir)
                                            (pos-from-hfs pos-dir)
-                                           (minor-target-cascalog default-config)))
+                                           (minor-target-cascalog config)))
         filter-freq (freqs-only (off-target-freqs-filter (snpdata-from-hfs data-dir)
                                                          (pos-from-hfs pos-dir)
-                                                         (minor-target-cascalog default-config)
-                                                         (read-filter-cascalog default-config)))]
+                                                         (minor-target-cascalog config)
+                                                         (read-filter-cascalog config)))]
     (let [num-bins 100.0
           [freq-x freq-hist] (histogram-bins freq num-bins)
           [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins)]
