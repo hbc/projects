@@ -51,15 +51,16 @@
                                                          (minor-target-cascalog config)
                                                          (read-filter-cascalog config)))]
     (let [num-bins 100.0
-          [freq-x freq-hist] (histogram-bins freq num-bins)
-          [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins)]
+          max-val 0.07
+          [freq-x freq-hist] (histogram-bins freq num-bins max-val)
+          [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins max-val)]
       (doto (xy-plot freq-x freq-hist :series-label "raw"
                      :legend true :title "Off-target"
                      :x-label "Frequency" :y-label "")
         (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
         (save "off-target-frequencies.png"))
-      (println (histogram-bins freq num-bins))
-      (println (histogram-bins filter-freq num-bins)))))
+      (println freq-x freq-hist)
+      (println freq-filter-hist))))
 
 (defn -main [data-dir pos-dir]
   (off-target-plots data-dir pos-dir))
