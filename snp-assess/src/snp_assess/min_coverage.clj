@@ -19,15 +19,18 @@
   (??<- [?chr ?pos ?var-base ?var-freq ?coverage]
         (snpdata ?chr ?pos ?base ?qual ?kmer-pct ?map-score)
         (var-positions ?chr ?pos ?var-base ?var-freq)
-        (filter-fn ?kmer-pct ?qual ?map-score)
+        ;(filter-fn ?kmer-pct ?qual ?map-score)
         (min-coverage-fn ?var-base ?base :> ?coverage)))
 
 (defn min-coverage-plots [data-dir pos-dir]
   (let [freq-cov (min-coverage (snpdata-from-hfs data-dir)
                                (pos-from-hfs pos-dir)
                                (min-coverage-cascalog default-config)
-                               (read-filter-cascalog default-config))]
-    (println freq-cov)))
+                               (read-filter-cascalog default-config))
+        cov-by-freq (reduce (fn [cov-map [freq cov]]
+                              (assoc cov-map freq (cons cov (get cov-map freq))))
+                            {} (map #(drop 3 %) freq-cov))]
+    (println cov-by-freq)))
 
 (defn -main [data-dir pos-dir]
   (min-coverage-plots data-dir pos-dir))

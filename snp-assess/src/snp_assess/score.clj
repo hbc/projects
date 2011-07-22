@@ -43,18 +43,18 @@
 (defn has-variant? [base read-bases config]
   "Determine if the read bases correspond to the expected variant."
   (let [minor-freqs (minor-target-freq read-bases config)]
-    (and (== 1 (count minor-freqs))
-         (= base (ffirst minor-freqs)))))
+    (and (>= (count minor-freqs) 1)
+         (= base (str (ffirst minor-freqs))))))
 
 (defn random-min-coverage [base read-bases config]
   "Randomly remove reads to determine minimum coverage to detect a variant base."
   (letfn [(remove-random [bases step]
             (drop step (shuffle bases)))]
-   (loop [cur-bases read-bases, cur-count nil]
-     (if (has-variant? base cur-bases config)
-       (recur (remove-random cur-bases (:random-coverage-step config))
-              (count cur-bases))
-       cur-count))))
+    (loop [cur-bases read-bases, cur-count nil]
+      (if (has-variant? base cur-bases config)
+        (recur (remove-random cur-bases (:random-coverage-step config))
+               (count cur-bases))
+        cur-count))))
 
 ;; Create data bins for visualization; adapted from John Lawrence Aspden:
 ;; https://github.com/johnlawrenceaspden/hobby-code/blob/master/rule_of_succession.clj
@@ -94,10 +94,9 @@
          (minor-target-freq read-bases config))))
 
 (defn min-coverage-cascalog [config]
-  "Cacalog function to generate"
+  "Cacalog function that calculates minimum coverage to detect a variant"
   (defbufferop min-coverage [info]
     (let [exp-base (ffirst info)
           read-bases (map second info)]
-      (println
-       ;(repeatedly (:random-coverage-sample config))
-       (random-min-coverage exp-base read-bases config)))))
+       (repeatedly (:random-coverage-sample config)
+                   #(random-min-coverage exp-base read-bases config)))))
