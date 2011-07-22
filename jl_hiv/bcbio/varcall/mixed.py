@@ -7,9 +7,9 @@ def compare_files(call_file, expected_file, offset=0, ignore_space=False):
     """Perform comparison between a mixed call file and expected percents.
     """
     call_info = {}
-    for k, v in _read_call_file(call_file, ignore_space):
+    for k, v in read_call_file(call_file, ignore_space):
         call_info[k] = v
-    return compare_calls(call_info, _read_call_file(expected_file, ignore_space),
+    return compare_calls(call_info, read_call_file(expected_file, ignore_space),
                          offset)
 
 def call_expected_iter(call_file, expected_file, offset=0, ignore_space=True):
@@ -18,9 +18,9 @@ def call_expected_iter(call_file, expected_file, offset=0, ignore_space=True):
     Call = collections.namedtuple('Call', ['space', 'pos', 'expected', 'called'])
     offset_pos = _pos_with_offset(offset)
     calls = {}
-    for k, v in _read_call_file(call_file, ignore_space):
+    for k, v in read_call_file(call_file, ignore_space):
         calls[k] = v
-    for (space, pos), ebases in _read_call_file(expected_file, ignore_space):
+    for (space, pos), ebases in read_call_file(expected_file, ignore_space):
         opos = offset_pos(pos)
         cbases = calls.get((space, opos),
                            collections.defaultdict(lambda: None))
@@ -183,7 +183,7 @@ def _read_call_line(parts, ignore_space):
     bases = dict(zip(base_order, [_parse_base(v, parts[2:]) for v in parts[2:]]))
     return (parts[0], int(parts[1])), bases
 
-def _read_call_file(in_file, ignore_space=False):
+def read_call_file(in_file, ignore_space=False):
     with open(in_file) as in_handle:
         reader = csv.reader(in_handle, dialect="excel-tab")
         reader.next() # header
