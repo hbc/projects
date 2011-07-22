@@ -53,9 +53,9 @@
                      :legend true :title "Off-target"
                      :x-label "Frequency" :y-label "")
         (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
-        (save "off-target-frequencies.png")))
-    (println (histogram-bins freq num-bins))
-    (println (histogram-bins filter-freq num-bins))))
+        (save "off-target-frequencies.png"))
+      (println (histogram-bins freq num-bins))
+      (println (histogram-bins filter-freq num-bins)))))
 
 (defn -main [data-dir pos-dir]
   (off-target-plots data-dir pos-dir))
