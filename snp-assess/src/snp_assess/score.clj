@@ -43,7 +43,7 @@
 (defn has-variant? [base read-bases config]
   "Determine if the read bases correspond to the expected variant."
   (let [minor-freqs (minor-target-freq read-bases config)]
-    (and (>= (count minor-freqs) 1)
+    (and (== (count minor-freqs) 1)
          (= base (str (ffirst minor-freqs))))))
 
 (defn random-min-coverage [base read-bases config]

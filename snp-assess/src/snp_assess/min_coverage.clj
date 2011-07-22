@@ -19,7 +19,7 @@
   (??<- [?chr ?pos ?var-base ?var-freq ?coverage]
         (snpdata ?chr ?pos ?base ?qual ?kmer-pct ?map-score)
         (var-positions ?chr ?pos ?var-base ?var-freq)
-        ;(filter-fn ?kmer-pct ?qual ?map-score)
+        (filter-fn ?kmer-pct ?qual ?map-score)
         (min-coverage-fn ?var-base ?base :> ?coverage)))
 
 (defn min-coverage-plots [data-dir pos-dir]
@@ -31,17 +31,19 @@
                               (assoc cov-map freq (cons cov (get cov-map freq))))
                             {} (map #(drop 3 %) freq-cov))]
     (let [num-bins 100.0
+          min-freq 5.0
+          cov-by-freq-filter (filter #(< (first %) min-freq) cov-by-freq)
           hist-info (sort-by first
                              (map (fn [[ x cs]] (cons x (histogram-bins cs num-bins)))
-                                  cov-by-freq))
+                                  cov-by-freq-filter))
           [freq x y] (first hist-info)
           plot (xy-plot x y :series-label freq
                         :legend true :title "Minimum detection coverage"
                         :x-label "Passing reads" :y-label "")]
-        (doseq [[freq x y] (rest hist-info)]
-          (add-lines plot x y :series-label freq))
-        (doto plot
-          (save "min-coverage-frequencies.png"))
+      (doseq [[freq x y] (rest hist-info)]
+        (add-lines plot x y :series-label freq))
+      (doto plot
+        (save "min-coverage-frequencies.png"))
       (println hist-info))))
 
 (defn -main [data-dir pos-dir]
