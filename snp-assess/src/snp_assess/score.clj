@@ -40,18 +40,26 @@
        frequencies
        (#(minority-variants % config))))
 
-(defn has-variant? [base read-bases config]
+(defn roughly-freq? [test want config]
+  "Determine if two frequencies are roughly equal."
+  (let [diff (* want (:allowed-freq-diff config))]
+    (and (>= test (- want diff))
+         (<= test (+ want diff)))))
+
+(defn has-variant? [base freq read-bases config]
   "Determine if the read bases correspond to the expected variant."
   (let [minor-freqs (minor-target-freq read-bases config)]
     (and (== (count minor-freqs) 1)
-         (= base (str (ffirst minor-freqs))))))
+         (= base (str (ffirst minor-freqs)))
+         (or (nil? freq)
+             (roughly-freq? (first (nfirst minor-freqs)) freq config)))))
 
-(defn random-min-coverage [base read-bases config]
+(defn random-min-coverage [base freq read-bases config]
   "Randomly remove reads to determine minimum coverage to detect a variant base."
   (letfn [(remove-random [bases step]
             (drop step (shuffle bases)))]
     (loop [cur-bases read-bases, cur-count nil]
-      (if (has-variant? base cur-bases config)
+      (if (has-variant? base freq cur-bases config)
         (recur (remove-random cur-bases (:random-coverage-step config))
                (count cur-bases))
         cur-count))))
@@ -101,4 +109,4 @@
           exp-freq (nfirst info)
           read-bases (map last info)]
       (distinct (repeatedly (:random-coverage-sample config)
-                            #(random-min-coverage exp-base read-bases config))))))
+                            #(random-min-coverage exp-base exp-freq read-bases config))))))

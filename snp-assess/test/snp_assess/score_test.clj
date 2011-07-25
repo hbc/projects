@@ -17,11 +17,17 @@
                      default-config) => [["G" 1/12] ["C" 1/12]])
 
 (facts "Test for presence of a variant"
-  (has-variant? "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+  (has-variant? "G" nil (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
                 default-config) => true
-  (has-variant? "G" [["G"] ["G"] ["C"]] default-config) => false)
+  (has-variant? "G" 5/470 (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                default-config) => true
+  (has-variant? "G" 5/530 (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                default-config) => true
+  (has-variant? "G" 5/200 (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                default-config) => false
+  (has-variant? "G" nil [["G"] ["G"] ["C"]] default-config) => false)
 
 (facts "Sample for minimum coverage by random removal."
-  (random-min-coverage "G" [["G"] ["G"] ["C"]] default-config) => nil
-  (random-min-coverage "G" (concat (repeat 50 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
-                       default-config) => (roughly 31 25))
+  (random-min-coverage "G" nil [["G"] ["G"] ["C"]] default-config) => nil
+  (random-min-coverage "G" 5/500 (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
+                       default-config) => (roughly 400 125))

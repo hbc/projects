@@ -8,4 +8,5 @@
    :random-coverage-step 25
    :random-coverage-sample 10
    :min-score 1.2
-   :min-freq 0.0035})
+   :min-freq 0.0035
+   :allowed-freq-diff 0.3})
