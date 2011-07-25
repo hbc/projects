@@ -6,7 +6,7 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [incanter.core :only [save]]
-        [incanter.charts :only [xy-plot add-lines]]
+        [incanter.charts :only [xy-plot add-lines box-plot add-box-plot]]
         [snp-assess.config :only [default-config]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
@@ -33,21 +33,19 @@
                                (read-filter-cascalog default-config))
         cov-by-freq (reduce (fn [cov-map [freq cov]]
                               (assoc cov-map freq (cons cov (get cov-map freq))))
-                            {} (map #(drop 3 %) freq-cov))]
-    (let [num-bins 100.0
-          min-freq 5.0
-          cov-by-freq-filter (filter #(< (first %) min-freq) cov-by-freq)
-          hist-info (sort-by first
-                             (map (fn [[ x cs]] (cons x (histogram-bins cs num-bins)))
-                                  cov-by-freq-filter))
-          [freq x y] (first hist-info)
-          plot (xy-plot x y :series-label freq
-                        :legend true :title "Minimum detection coverage"
-                        :x-label "Passing reads" :y-label "")]
-      (doseq [[freq x y] (rest hist-info)]
-        (add-lines plot x y :series-label freq))
-      (save plot "min-coverage-frequencies.png")
-      (println hist-info))))
+                            {} (map #(drop 3 %) freq-cov))
+        want-freqs (set (map str [40.0 33.5 6.5 5.0 1.5 1.0 0.5]))
+        plot-info (->> cov-by-freq
+                       (filter #(contains? want-freqs (str (first %))))
+                       (sort-by first))
+        [freq x] (first plot-info)
+        plot (box-plot x :series-label freq
+                       :legend true :title "Minimum coverage for variant detection"
+                       :x-label "" :y-label "Passing reads")]
+    (doseq [[freq x] (rest plot-info)]
+      (add-box-plot plot x :series-label freq))
+    (save plot "min-coverage-frequencies.png")
+    (println plot-info)))
 
 ;; Overall coverage for an experiment
 
@@ -82,5 +80,5 @@
         (save "coverage-distribution.png")))))
 
 (defn -main [data-dir pos-dir]
-  (coverage-dist-plot data-dir)
+  ;(coverage-dist-plot data-dir)
   (min-coverage-plot data-dir pos-dir))
