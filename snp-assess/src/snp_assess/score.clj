@@ -22,7 +22,7 @@
 
 (defn minority-variants [base-counts config]
   "List of minority variant bases and frequencies.
-  The highest frequency base, the majority variant, is removed,
+  The highest frequency base, the majority variant, gets removed,
   along with any that are below the minimum configured frequency."
   (let [total (apply + (vals base-counts))]
     (->> (interleave (keys base-counts)
@@ -70,8 +70,9 @@
   (letfn [(intervals [n max] (partition 2 1 (range 0.0 max (/ max n))))
           (between [xs a b] (/ (count (filter #(and (>= % a) (< % b)) xs))
                                (count xs)))]
-    (let [sort-vals (sort (flatten vals))
-          max (if (nil? max-val) (ceil-places (last sort-vals) 1) max-val)]
+    (let [xs (sort (flatten vals))
+          max (if (nil? max-val) (ceil-places (last xs) 1) max-val)
+          sort-vals (filter #(<= % max) xs)]
       [(map first (intervals bins max))
        (map (fn [[a b]] (between sort-vals a b)) (intervals bins max))])))
 
@@ -97,6 +98,7 @@
   "Cacalog function that calculates minimum coverage to detect a variant"
   (defbufferop min-coverage [info]
     (let [exp-base (ffirst info)
-          read-bases (map second info)]
-       (repeatedly (:random-coverage-sample config)
-                   #(random-min-coverage exp-base read-bases config)))))
+          exp-freq (nfirst info)
+          read-bases (map last info)]
+      (distinct (repeatedly (:random-coverage-sample config)
+                            #(random-min-coverage exp-base read-bases config))))))

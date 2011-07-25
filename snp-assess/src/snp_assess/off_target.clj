@@ -38,25 +38,23 @@
         (source ?line)
         (parse-pos-line ?line :> ?chr ?pos ?base ?freq))))
 
-(defn freqs-only [from-cascalog]
-  (map last from-cascalog))
-
 (defn off-target-plots [data-dir pos-dir]
-  (let [config (assoc default-config :min-freq 0.0)
-        freq (freqs-only (off-target-freqs (snpdata-from-hfs data-dir)
-                                           (pos-from-hfs pos-dir)
-                                           (minor-target-cascalog config)))
-        filter-freq (freqs-only (off-target-freqs-filter (snpdata-from-hfs data-dir)
-                                                         (pos-from-hfs pos-dir)
-                                                         (minor-target-cascalog config)
-                                                         (read-filter-cascalog config)))]
-    (let [num-bins 100.0
-          max-val 0.07
+  (letfn [(freqs-ready [from-cascalog] (map #(* 100.0 (last %)) from-cascalog))]
+    (let [config (assoc default-config :min-freq 0.0)
+          freq (freqs-ready (off-target-freqs (snpdata-from-hfs data-dir)
+                                              (pos-from-hfs pos-dir)
+                                              (minor-target-cascalog config)))
+          filter-freq (freqs-ready (off-target-freqs-filter (snpdata-from-hfs data-dir)
+                                                            (pos-from-hfs pos-dir)
+                                                            (minor-target-cascalog config)
+                                                            (read-filter-cascalog config)))
+          num-bins 100.0
+          max-val 2.0
           [freq-x freq-hist] (histogram-bins freq num-bins max-val)
           [freq-filter-x freq-filter-hist] (histogram-bins filter-freq num-bins max-val)]
       (doto (xy-plot freq-x freq-hist :series-label "raw"
-                     :legend true :title "Off-target"
-                     :x-label "Frequency" :y-label "")
+                     :legend true :title "Off-target variations"
+                     :x-label "Variation percent" :y-label "")
         (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
         (save "off-target-frequencies.png"))
       (println freq-x freq-hist)
