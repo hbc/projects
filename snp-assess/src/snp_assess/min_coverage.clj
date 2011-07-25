@@ -80,5 +80,5 @@
         (save "coverage-distribution.png")))))
 
 (defn -main [data-dir pos-dir]
-  ;(coverage-dist-plot data-dir)
+  (coverage-dist-plot data-dir)
   (min-coverage-plot data-dir pos-dir))
