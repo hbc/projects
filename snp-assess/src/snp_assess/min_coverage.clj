@@ -6,7 +6,8 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [incanter.core :only [save]]
-        [incanter.charts :only [xy-plot add-lines box-plot add-box-plot]]
+        [incanter.charts :only [xy-plot add-lines box-plot add-box-plot
+                                scatter-plot add-points]]
         [snp-assess.config :only [default-config]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
@@ -64,20 +65,23 @@
 
 (defn coverage-dist-plot [data-dir]
   (letfn [(counts-only [xs] (map last xs))]
-    (let [cov (counts-only
-               (coverage-dist (snpdata-from-hfs data-dir)))
-          cov-filter (counts-only
-                      (filtered-coverage-dist (snpdata-from-hfs data-dir)
-                                              (read-filter-cascalog default-config)))
-          total-reads (/ (apply + cov) 1e6)
+    (let [cov (coverage-dist (snpdata-from-hfs data-dir))
+          cov-filter (filtered-coverage-dist (snpdata-from-hfs data-dir)
+                                             (read-filter-cascalog default-config))
+          total-reads (/ (apply + (counts-only cov)) 1e6)
           num-bins 100.0
-          [cov-x cov-y] (histogram-bins cov num-bins)
-          [f-cov-x f-cov-y] (histogram-bins cov-filter num-bins)]
+          [cov-x cov-y] (histogram-bins (counts-only cov) num-bins)
+          [f-cov-x f-cov-y] (histogram-bins (counts-only cov-filter) num-bins)]
       (doto (xy-plot cov-x cov-y :series-label "raw" :legend true
                      :title (format "Coverage: %.1f million reads" total-reads)
                      :x-label "Coverage" :y-label "")
         (add-lines f-cov-x f-cov-y :series-label "filter")
-        (save "coverage-distribution.png")))))
+        (save "coverage-distribution.png"))
+      (doto (scatter-plot (map second cov) (counts-only cov) :series-label "raw" :legend true
+                          :title "Coverage by position"
+                          :x-label "Position" :y-label "Coverage")
+        (add-points (map second cov-filter) (counts-only cov-filter) :series-label "filter")
+        (save "coverage-by-pos.png")))))
 
 (defn -main [data-dir pos-dir]
   (coverage-dist-plot data-dir)
