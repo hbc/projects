@@ -13,7 +13,8 @@
                                  histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs]]
         [snp-assess.off-target :only [pos-from-hfs]])
-  (:require [cascalog [ops :as ops]])
+  (:require [cascalog [ops :as ops]]
+            [fs])
   (:gen-class))
 
 ;; Coverage for minority variant detection
@@ -26,7 +27,7 @@
         (filter-fn ?kmer-pct ?qual ?map-score)
         (min-coverage-fn ?var-base ?var-freq ?base :> ?coverage)))
 
-(defn min-coverage-plot [data-dir pos-dir]
+(defn min-coverage-plot [data-dir pos-dir image-dir]
   "Plot minimum coverage for detecting minority variants."
   (let [freq-cov (min-coverage (snpdata-from-hfs data-dir)
                                (pos-from-hfs pos-dir)
@@ -45,7 +46,7 @@
                        :x-label "" :y-label "Passing reads")]
     (doseq [[freq x] (rest plot-info)]
       (add-box-plot plot x :series-label freq))
-    (save plot "min-coverage-frequencies.png")
+    (save plot (fs/join image-dir "min-coverage-frequencies.png"))
     (println plot-info)))
 
 ;; Overall coverage for an experiment
@@ -63,7 +64,7 @@
         (filter-fn ?kmer-pct ?qual ?map-score)
         (ops/count ?count)))
 
-(defn coverage-dist-plot [data-dir]
+(defn coverage-dist-plot [data-dir image-dir]
   (letfn [(counts-only [xs] (map last xs))]
     (let [cov (coverage-dist (snpdata-from-hfs data-dir))
           cov-filter (filtered-coverage-dist (snpdata-from-hfs data-dir)
@@ -76,13 +77,16 @@
                      :title (format "Coverage: %.1f million reads" total-reads)
                      :x-label "Coverage" :y-label "")
         (add-lines f-cov-x f-cov-y :series-label "filter")
-        (save "coverage-distribution.png"))
+        (save (fs/join image-dir "coverage-distribution.png")))
       (doto (scatter-plot (map second cov) (counts-only cov) :series-label "raw" :legend true
                           :title "Coverage by position"
                           :x-label "Position" :y-label "Coverage")
         (add-points (map second cov-filter) (counts-only cov-filter) :series-label "filter")
-        (save "coverage-by-pos.png")))))
+        (save (fs/join image-dir "coverage-by-pos.png"))))))
 
-(defn -main [data-dir pos-dir]
-  (coverage-dist-plot data-dir)
-  (min-coverage-plot data-dir pos-dir))
+(defn -main [data-dir pos-dir work-dir]
+  (let [image-dir (fs/join work-dir "images")]
+    (if-not (fs/exists? image-dir)
+      (fs/mkdirs image-dir))
+    (coverage-dist-plot data-dir image-dir)
+    (min-coverage-plot data-dir pos-dir image-dir)))

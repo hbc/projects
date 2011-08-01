@@ -11,7 +11,8 @@
         [snp-assess.score :only [minor-target-cascalog read-filter-cascalog
                                  histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs]])
-  (:require [cascalog [ops :as ops]])
+  (:require [cascalog [ops :as ops]]
+            [fs])
   (:gen-class))
 
 (defn off-target-freqs [snpdata no-var-positions minority-freq-fn]
@@ -38,7 +39,7 @@
         (source ?line)
         (parse-pos-line ?line :> ?chr ?pos ?base ?freq))))
 
-(defn off-target-plots [data-dir pos-dir]
+(defn off-target-plots [data-dir pos-dir image-dir]
   (letfn [(freqs-ready [from-cascalog] (map #(* 100.0 (last %)) from-cascalog))]
     (let [config (assoc default-config :min-freq 0.0)
           freq (freqs-ready (off-target-freqs (snpdata-from-hfs data-dir)
@@ -56,9 +57,12 @@
                      :legend true :title "Off-target variations"
                      :x-label "Variation percent" :y-label "")
         (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
-        (save "off-target-frequencies.png"))
+        (save (fs/join image-dir "off-target-frequencies.png")))
       (println freq-x freq-hist)
       (println freq-filter-hist))))
 
-(defn -main [data-dir pos-dir]
-  (off-target-plots data-dir pos-dir))
+(defn -main [data-dir pos-dir work-dir]
+  (let [image-dir (fs/join work-dir "images")]
+    (if-not (fs/exists? image-dir)
+      (fs/mkdirs image-dir))
+    (off-target-plots data-dir pos-dir image-dir)))

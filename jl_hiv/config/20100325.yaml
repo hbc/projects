@@ -56,7 +56,7 @@ roc_plot:
   region: rt
   qual: 20
   small_thresh: 5.0
-  file: plot/roc_bc2.pdf
+  file: images/roc_bc2.pdf
   curves:
     - name: Base
       file: variation_stats/6_bc2_itermed_1.yaml
@@ -78,4 +78,4 @@ dir:
   vrn: variation
   stats: variation_stats
   calls: variation_calls
-  plot: plot
+  plot: images 
