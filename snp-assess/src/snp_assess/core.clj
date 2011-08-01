@@ -24,7 +24,7 @@
 
 ;; Parsing variation data files
 
-(defmapop parse-snpdata-line [line]
+(defn parse-snpdata-line [line]
   (let [[space pos base qual kmer-pct map-score] (split line #"\t")]
     [space (Integer/parseInt pos) base (Integer/parseInt qual)
      (Float/parseFloat kmer-pct) (Integer/parseInt map-score)]))
@@ -38,7 +38,7 @@
 
 ;; Parsing target files of positions to query
 
-(defmapop parse-pos-line [line]
+(defn parse-pos-line [line]
   (let [[space pos base type] (take 4 (split line #"\t"))]
     [space (Integer/parseInt pos) base type]))
 

@@ -28,7 +28,7 @@
         (filter-fn ?kmer-pct ?qual ?map-score)
         (minority-freq-fn ?base :> ?freq)))
 
-(defmapop parse-pos-line [line]
+(defn parse-pos-line [line]
   (let [[space pos base freq] (take 4 (split line #"\t"))]
     [space (Integer/parseInt pos) base (Float/parseFloat freq)]))
 
