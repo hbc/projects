@@ -16,6 +16,10 @@
      (min-max-norm qual (:qual-range config))
      (min-max-norm map-score (:map-score-range config))))
 
+(defn naive-read-passes? [kmer-pct qual map-score config]
+  (>= (score-calc kmer-pct qual map-score config)
+      (:naive-min-score config)))
+
 (defn read-passes? [kmer-pct qual map-score config]
   (>= (score-calc kmer-pct qual map-score config)
       (:min-score config)))

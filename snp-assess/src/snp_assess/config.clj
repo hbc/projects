@@ -8,5 +8,7 @@
    :random-coverage-step 100
    :random-coverage-sample 50
    :min-score 1.2
+   :naive-min-score 1.1
    :min-freq 0.0035
-   :allowed-freq-diff 2.0})
+   :allowed-freq-diff 2.0
+   :classification {:max-pct 5.0}})
