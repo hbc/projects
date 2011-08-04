@@ -7,7 +7,8 @@
   (:use [clojure.java.io]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
         [snp-assess.core :only [parse-snpdata-line]]
-        [snp-assess.score :only [minority-variants naive-read-passes?]]
+        [snp-assess.score :only [minority-variants naive-read-passes?
+                                 normalize-params]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]])
   (:require [fs]))
@@ -22,13 +23,14 @@
          (map #(take 3 %))
          set)))
 
-(defn get-vrn-class [vrn-data positives]
-  "Determine variation data class based on position and base.")
+(defn vrn-data-plus-config [read-data config]
+  "Retrieve parameter data for classification with config appended"
+  (conj (vec (take-last 3 read-data)) config))
 
 (defn- minority-vrns-from-raw [pos-data config]
   "Retrieve minority variants at a position given raw data."
   (letfn [(count-bases [[id xs]] [(last id) (count xs)])
-          (good-read? [read] (apply naive-read-passes? (conj (vec (take-last 3 read)) config)))
+          (good-read? [read] (apply naive-read-passes? (vrn-data-plus-config read config)))
           (filter-reads [[id xs]] [id (filter good-read? xs)])
           (below-thresh? [[_ freq]] (<= (* freq 100.0)
                                         (-> config :classification :max-pct)))]
@@ -42,14 +44,21 @@
          (map first)
          set)))
 
+(defn finalize-raw-data [raw-data class config]
+  "Prepare normalized raw data for input into classifiers."
+  (let [normal-data (apply normalize-params (vrn-data-plus-config raw-data config))]
+    (conj normal-data class)))
+
 (defn data-from-pos [pos-data positives config]
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
-        want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
-    (doseq [cur-id want-keys]
-      (let [class (if (contains? positives cur-id) :pos :neg)]
-        (println cur-id (first (get pos-data cur-id)) class)))
-    ))
+        want-keys (filter #(contains? want-bases (last %)) (keys pos-data))
+        num-vals (count (vrn-data-plus-config (first (vals pos-data)) config))]
+    (->> (for [cur-id want-keys]
+           (let [class (if (contains? positives cur-id) :pos :neg)]
+             (map #(finalize-raw-data % class config) (get pos-data cur-id))))
+         flatten
+         (partition num-vals))))
 
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"

@@ -12,4 +12,15 @@
     (read-vrn-pos vrn-file 3.0) => #{["HXB2_IUPAC_93-5" 951 "A"]})
 
   (facts "Classification data from file"
-    (prep-classifier-data data-file vrn-file default-config)))
+    (let [data (prep-classifier-data data-file vrn-file default-config)]
+      (count data) => 3 ; 3 positions of interest in file
+      (map last (first data)) => [:neg :neg :neg :neg :pos] ; classifications
+      (count (second data)) => 2 ; minority variants at second position
+      (ffirst data) => (contains [0.228 :neg])
+      )))
+
+(facts "Remap raw data for classification"
+  (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>
+    (contains [(roughly 0.516) (roughly 9.0E-4) 0.4 :test])
+  (finalize-raw-data ["notused" 30 1.0E-2 50] :test2 default-config) =>
+    (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))
