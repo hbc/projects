@@ -6,12 +6,19 @@
 (ns snp-assess.classify
   (:use [clojure.java.io]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
+        [clj-ml.data :only [make-dataset dataset-set-class]]
+        [clj-ml.classifiers :only [make-classifier classifier-train
+                                   classifier-evaluate]]
         [snp-assess.core :only [parse-snpdata-line]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  normalize-params]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]])
   (:require [fs]))
+
+;; Prepare clasifier data: list of normalized parameters (quality,
+;; kmer and mapping scores) and naive classifier based on simple
+;; linear combination
 
 (defn read-vrn-pos [pos-file max-pct]
   "Prepare set of chromosome, position base for expected variations."
@@ -54,11 +61,9 @@
   (let [want-bases (minority-vrns-from-raw pos-data config)
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))
         num-vals (count (vrn-data-plus-config (first (vals pos-data)) config))]
-    (->> (for [cur-id want-keys]
-           (let [class (if (contains? positives cur-id) :pos :neg)]
-             (map #(finalize-raw-data % class config) (get pos-data cur-id))))
-         flatten
-         (partition num-vals))))
+    (for [cur-id want-keys]
+      (let [class (if (contains? positives cur-id) :pos :neg)]
+        (map #(finalize-raw-data % class config) (get pos-data cur-id))))))
 
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"
@@ -70,10 +75,21 @@
            (partition-by #(take 2 %))
            (map (fn [xs] (group-by #(take 3 %) xs)))
            (map #(data-from-pos % positives config))
+           flatten
+           (partition 4)
            vec))))
 
+;; Do the work of classification, with a prepared set of data inputs
+
 (defn build-classifier [data-file pos-file config]
-  (let [class-data (prep-classifier-data data-file pos-file config)]))
+  (let [header [:qual :kmer :map-score {:c [:pos :neg]}]
+        class-data (prep-classifier-data data-file pos-file config)
+        ds (make-dataset "train" header class-data {:class :c})
+        c (make-classifier :bayes :naive)
+        _ (classifier-train c ds)
+        res (classifier-evaluate c :cross-validation ds 4)
+        ]
+    (println res)))
 
 (defn prepare-classifier [data-file pos-file work-dir config]
   "High level work to get classifier, included serialization to a file."
