@@ -9,8 +9,8 @@ from bcbio.deploy.shared import (_fetch_and_unpack, _run_in_screen)
 
 # ## Install targets
 
-def install_scde():
-    config = _read_config()
+def install_scde(configfile=None):
+    config = _read_config(configfile)
     _setup_environment(config)
     config = _install_prereqs(config)
     _configure_system(config)
@@ -317,9 +317,10 @@ def _setup_environment(config):
         comment(shell_config, "^export PATH$")
     config["shell_config"] = shell_config
 
-def _read_config():
+def _read_config(configfile=None):
+    configfile = "scde.yaml" if configfile is None else configfile
     config_dir = os.path.join(os.path.dirname(__file__), "config")
-    config_file = os.path.join(config_dir, "scde.yaml")
+    config_file = os.path.join(config_dir, configfile)
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
     config["fab_base_dir"] = os.path.dirname(config_dir)
