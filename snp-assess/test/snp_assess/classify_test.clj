@@ -16,12 +16,12 @@
       (count data) => 8 ; Total minority variants
       (count (first data)) => 4 ; items at each position
       (map last data) => [:neg :neg :neg :neg :pos :neg :neg :neg] ; classifications
-      (first data) => (contains [0.228 :neg])
-      ))
+      (first data) => (contains [0.228 :neg])))
 
-  (future-fact "Build a full classifier from file data"
-    (build-classifier data-file vrn-file default-config) => []))
-
+  (facts "Build a full classifier from file data"
+    (let [res (build-classifier data-file vrn-file default-config)]
+      (:percentage-unclassified res) => 0.0
+      (:correct res) => 7.0)))
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>

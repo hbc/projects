@@ -87,9 +87,8 @@
         ds (make-dataset "train" header class-data {:class :c})
         c (make-classifier :bayes :naive)
         _ (classifier-train c ds)
-        res (classifier-evaluate c :cross-validation ds 4)
-        ]
-    (println res)))
+        res (classifier-evaluate c :cross-validation ds 4)]
+    res))
 
 (defn prepare-classifier [data-file pos-file work-dir config]
   "High level work to get classifier, included serialization to a file."
