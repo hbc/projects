@@ -93,7 +93,7 @@
 (defn prepare-classifier [data-file pos-file work-dir config]
   "High level work to get classifier, included serialization to a file."
   (let [out-dir (fs/join work-dir "classifier")
-        classifier-file (fs/join out-dir "")]
+        classifier-file (fs/join out-dir "build.bin")]
     (if-not (fs/exists? out-dir)
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)
