@@ -9,5 +9,6 @@
                      [midje "1.1.1"]]
   :run-aliases {:snp-data snp-assess.core
                 :off-target snp-assess.off-target
-                :min-coverage snp-assess.min-coverage}
+                :min-coverage snp-assess.min-coverage
+                :classify snp-assess.classify}
   :aot [snp-assess.core])

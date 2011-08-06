@@ -21,7 +21,7 @@
 
 (defn naive-read-passes? [kmer-pct qual map-score config]
   (>= (score-calc kmer-pct qual map-score config)
-      (:naive-min-score config)))
+      (-> config :classification :naive-min-score)))
 
 (defn read-passes? [kmer-pct qual map-score config]
   (>= (score-calc kmer-pct qual map-score config)

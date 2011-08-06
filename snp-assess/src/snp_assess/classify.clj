@@ -88,7 +88,7 @@
         c (make-classifier :bayes :naive)
         _ (classifier-train c ds)
         res (classifier-evaluate c :cross-validation ds 4)]
-    res))
+    c))
 
 (defn prepare-classifier [data-file pos-file work-dir config]
   "High level work to get classifier, included serialization to a file."
