@@ -62,7 +62,7 @@
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))
         num-vals (count (vrn-data-plus-config (first (vals pos-data)) config))]
     (for [cur-id want-keys]
-      (let [class (if (contains? positives cur-id) :pos :neg)]
+      (let [class (if (contains? positives cur-id) 1 0)]
         (map #(finalize-raw-data % class config) (get pos-data cur-id))))))
 
 (defn prep-classifier-data [data-file pos-file config]
@@ -82,12 +82,10 @@
 ;; Do the work of classification, with a prepared set of data inputs
 
 (defn build-classifier [data-file pos-file config]
-  (let [header [:qual :kmer :map-score {:c [:pos :neg]}]
+  (let [header [:qual :kmer :map-score :c]
         class-data (prep-classifier-data data-file pos-file config)
         ds (make-dataset "train" header class-data {:class :c})
-        c (make-classifier :bayes :naive)
-        _ (classifier-train c ds)
-        res (classifier-evaluate c :cross-validation ds 4)]
+        c (-> (make-classifier :regression :linear) (classifier-train ds))]
     c))
 
 (defn prepare-classifier [data-file pos-file work-dir config]
@@ -98,7 +96,7 @@
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)
       (deserialize-from-file classifier-file)
-      (let [classifier (build-classifier data-file pos-file config)]
+      (let [[classifier _] (build-classifier data-file pos-file config)]
         (serialize-to-file classifier classifier-file)
         classifier))))
 
