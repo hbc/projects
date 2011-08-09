@@ -7,16 +7,16 @@ bii_data_dirname: bii_data
 bii_data_url: biidata
 bii_layout_template: harvard-template
 isatab_data_dirname: isatab_prepared_data
-isatab_config: isaconfig-201154-hsci
-#isatab_config: isaconfig-default_v2011-02-18
+isatab_config: isaconfig-default_v2011-02-18
 isatab_s3_bucket: hsph_perdera
 galaxy_dirname: galaxy
 galaxy_repo: https://bitbucket.org/hbc/galaxy-central-hbc
-galaxy_dbname: scde_galaxy
+galaxy_dbname: discovery_galaxy
 galaxy_adminusers: youradmin@email.com,anotheradmin@email.com
 galaxy_datalib: datalibrary
 galaxy_url: http://discovery.hsci.harvard.edu/galaxy
 galaxy_apikey: APIKEY
 nginx_user: 'galaxy biotools'
 db_user: galaxy
-db_pass: galaxym3
+db_pass: PASSWD
+overwrite_cur_bii: false

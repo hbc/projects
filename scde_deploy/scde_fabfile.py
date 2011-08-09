@@ -16,11 +16,10 @@ def install_scde(configfile=None):
     _configure_system(config)
     galaxy_servers = _install_galaxy(config)
     bii_servers = _install_bii(config)
-    _start_servers(config, bii_servers + galaxy_servers)
 
 # ## Deployed servers
 
-def _start_servers(config, server_info):
+def start_servers(config, server_info):
     for name, cmd, dname, check_cmd, use_sudo in server_info:
         _run_in_screen(name, cmd, dname, check_cmd, use_sudo)
 
@@ -47,7 +46,7 @@ def _deploy_bii(dirs, config):
             result = run("ls %s" % ear_reg).strip().split()[0].replace("ls:", "").strip()
         return result
     with cd(dirs["bii"]):
-        if not get_ear_file():
+        if not get_ear_file() or config["overwrite_cur_bii"]:
             run("mvn clean package install -Pdeploy,postgresql,index_local " \
                 "-Dmaven.test.skip=true")
         jboss_dir = os.path.join(config["jboss"], "server", "default", "deploy")
@@ -129,11 +128,12 @@ def _configure_manager(dirs, config):
     _configure_manager_datalocation(dirs, config)
 
 def _configure_manager_jdbc(dirs, config):
-    run_file = os.path.join(dirs["mgr"], "run.sh")
-    old_str = "JDBCPATH=/path/to/jdbc_driver.jar"
-    jdbc_str = "JDBCPATH=%s" % config["jdbc_driver"]
-    if contains(run_file, old_str):
-        sed(run_file, old_str, jdbc_str)
+    for fname in ["run.sh", "reindex.sh"]:
+        cur_file = os.path.join(dirs["mgr"], fname)
+        old_str = "JDBCPATH=/path/to/jdbc_driver.jar"
+        jdbc_str = "JDBCPATH=%s" % config["jdbc_driver"]
+        if contains(cur_file, old_str):
+            sed(cur_file, old_str, jdbc_str)
 
 def _configure_manager_hibernate(dirs, config):
     hib_file = os.path.join(dirs["mgr"], "config", "hibernate.properties")
