@@ -6,9 +6,9 @@
 (ns snp-assess.classify
   (:use [clojure.java.io]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
-        [clj-ml.data :only [make-dataset dataset-set-class]]
+        [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
-                                   classifier-evaluate]]
+                                   classifier-evaluate classifier-classify]]
         [snp-assess.core :only [parse-snpdata-line]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  normalize-params]]
@@ -81,10 +81,15 @@
 
 ;; Do the work of classification, with a prepared set of data inputs
 
-(defn build-classifier [data-file pos-file config]
-  (let [header [:qual :kmer :map-score :c]
-        class-data (prep-classifier-data data-file pos-file config)
-        ds (make-dataset "train" header class-data {:class :c})
+(defn- get-dataset [data]
+  "Weka dataset ready for classification or training."
+  (let [header [:qual :kmer :map-score :c]]
+    (make-dataset "ds" header data {:class :c})))
+
+(defn train-classifier [data-file pos-file config]
+  "Manage retrieving data and training the classifier."
+  (let [class-data (prep-classifier-data data-file pos-file config)
+        ds (get-dataset class-data)
         c (-> (make-classifier :regression :linear) (classifier-train ds))]
     c))
 
@@ -96,9 +101,19 @@
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)
       (deserialize-from-file classifier-file)
-      (let [[classifier _] (build-classifier data-file pos-file config)]
+      (let [classifier  (train-classifier data-file pos-file config)]
         (serialize-to-file classifier classifier-file)
         classifier))))
+
+(defn classifier-checker [c config]
+  "Check if read pass using pre-build classifier"
+  (let [ds (get-dataset [])
+        pass-thresh 0.5]
+    (defn passes? [kmer-pct qual map-score]
+      (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
+        (>= (classifier-classify c (make-instance ds {:qual nq :kmer nk
+                                                      :map-score nm :c -1}))
+            pass-thresh)))))
 
 (defn -main [data-file pos-file work-dir]
   (prepare-classifier data-file pos-file work-dir default-config))

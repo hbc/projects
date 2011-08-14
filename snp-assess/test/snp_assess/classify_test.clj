@@ -21,7 +21,9 @@
 
   (facts "Build a full classifier from file data"
     (let [c (build-classifier data-file vrn-file config)]
-      (.toString c) => (contains "Linear Regression Model"))))
+      (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.125]
+      (.toString c) => (contains "Linear Regression Model")
+      ((classifier-checker c config) 20 1.0E-3 200) => false)))
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>
