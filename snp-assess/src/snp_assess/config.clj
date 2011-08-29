@@ -1,4 +1,4 @@
-;; Adjustable filtering and analysis paramters
+;; Adjustable filtering and analysis parameters
 (ns snp-assess.config)
 
 (def default-config
@@ -11,4 +11,5 @@
    :min-freq 0.0035
    :allowed-freq-diff 2.0
    :classification {:max-pct 5.0
-                    :naive-min-score 1.6}})
+                    :naive-min-score 1.6
+                    :pass-thresh 0.5}})

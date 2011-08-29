@@ -11,7 +11,7 @@
                                    classifier-evaluate classifier-classify]]
         [snp-assess.core :only [parse-snpdata-line]]
         [snp-assess.score :only [minority-variants naive-read-passes?
-                                 normalize-params]]
+                                 normalize-params roughly-freq?]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]])
   (:require [fs]))
@@ -22,13 +22,14 @@
 
 (defn read-vrn-pos [pos-file max-pct]
   "Prepare set of chromosome, position base for expected variations."
-  (with-open [rdr (reader pos-file)]
-    (->> rdr
-         line-seq
-         (map parse-pos-line)
-         (filter #(<= (last %) max-pct))
-         (map #(take 3 %))
-         set)))
+  (letfn [(pos-map [xs]
+            (reduce #(assoc %1 (take 3 %2) (last %2)) {} xs))]
+    (with-open [rdr (reader pos-file)]
+      (->> rdr
+           line-seq
+           (map parse-pos-line)
+           (filter #(<= (last %) max-pct))
+           pos-map))))
 
 (defn vrn-data-plus-config [read-data config]
   "Retrieve parameter data for classification with config appended"
@@ -64,6 +65,13 @@
     (for [cur-id want-keys]
       (let [class (if (contains? positives cur-id) 1 0)]
         (map #(finalize-raw-data % class config) (get pos-data cur-id))))))
+
+(defn raw-reads-by-pos [rdr config]
+  "Lazy generator of read statistics at each position in data file."
+  (->> rdr
+       line-seq
+       (map parse-snpdata-line)
+       (partition-by #(take 2 %))))
 
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"
@@ -111,25 +119,73 @@
 ;;    - Retrieve percentage of called at a position + classification
 ;;    - Check known variants and determine if correct,
 
-(defn call-vrns-at-pos [reads classifier config]
-  "With read parameters at a position, get map of bases and percent present.")
+(defn call-vrns-at-pos [reads passes?]
+  "With read parameters at a position, get map of bases and percent present."
+  (letfn [(percents [xs]
+            (let [total (apply + (vals xs))]
+              (reduce (fn [m [k v]] (assoc m k (/ v total))) {} xs)))]
+      (let [position (take 2 (first reads))
+            base-calls (->> reads
+                            (filter (fn [xs] (apply passes? (drop 3 xs))))
+                            (map #(drop 2 %))
+                            (map #(take 1 %))
+                            flatten
+                            frequencies
+                            percents)]
+        [position base-calls])))
 
 (defn classifier-checker [classifier config]
   "Check if a read passes using a pre-built classifier."
-  (let [ds (get-dataset [])
-        pass-thresh 0.5]
-    (fn [kmer-pct qual map-score]
+  (let [ds (get-dataset [])]
+    (fn [qual kmer-pct map-score]
       (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
         (>= (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
                                                                :map-score nm :c -1}))
-            pass-thresh)))))
+            (-> config :classification :pass-thresh))))))
 
-(defn assign-position-type [pos-bases known-vrns]
-  "Given read calls, determine if true/false and positive/negative, type.")
+(defn assign-position-type [pos base-counts known-vrns config]
+  "Given read calls, determine if true/false and positive/negative, type."
+  (letfn [(annotate-base [pos base freq known-vrns]
+            {:pos pos :base base :freq freq
+             :exp-freq (get known-vrns [(first pos) (second pos) base])})
+          (minority-base [bases]
+            {:pre (== 1 (count (filter #(not (nil? (:exp-freq %))) bases)))}
+            (first (filter #(not (nil? (:exp-freq %))) bases)))
+          (minority-matches? [bases config]
+            (let [base (minority-base bases)]
+              (roughly-freq? (:freq base) (:exp-freq base) config)))
+          (finalize [bases e-base-count call]
+            (let [freq (if (== 0 e-base-count) 100.0
+                           (:exp-freq (minority-base bases)))]
+              {:class call :freq freq}))]
+    (let [all-bases ["A" "C" "G" "T"]
+          ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
+                           all-bases)
+          e-bases (map :base (filter #(not (nil? (:exp-freq %))) ready-bases))
+          c-bases (map :base (filter #(not (nil? (:freq %))) ready-bases))]
+      (finalize ready-bases (count e-bases)
+                (case (count e-bases)
+                      0 (cond
+                         (== (count c-bases) 1) :true-positive
+                         (> (count c-bases) 1) :false-positive
+                         (== (count c-bases) 0) :false-negative)
+                      1 (cond
+                         (== (count c-bases) 1) :false-negative
+                         (> (count c-bases) 2) :false-negative
+                         (minority-matches? ready-bases config) :true-positive
+                         :else :false-negative))))))
 
 (defn assess-classifier [data-file pos-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"
-  (let [passes-classifier? (classifier-checker classifier config)]))
+  (let [passes-classifier? (classifier-checker classifier config)
+        known-vrns (read-vrn-pos pos-file 101.0)]
+    (with-open [rdr (reader data-file)]
+      (->> (raw-reads-by-pos rdr config)
+           (map (fn [xs] (call-vrns-at-pos xs passes-classifier?)))
+           (map (fn [[pos bases]] (assign-position-type pos bases known-vrns config)))
+           vec))))
 
 (defn -main [data-file pos-file work-dir]
-  (prepare-classifier data-file pos-file work-dir default-config))
+  (let [config default-config
+        c (prepare-classifier data-file pos-file work-dir config)]
+    (assess-classifier data-file pos-file c config)))
