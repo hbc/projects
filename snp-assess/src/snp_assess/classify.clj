@@ -105,15 +105,31 @@
         (serialize-to-file classifier classifier-file)
         classifier))))
 
-(defn classifier-checker [c config]
-  "Check if read pass using pre-build classifier"
+;; Call variants given a trained read classifier:
+;; - Walk through each position in the input file.
+;;    - Filter reads based on the pre-built linear classifier
+;;    - Retrieve percentage of called at a position + classification
+;;    - Check known variants and determine if correct,
+
+(defn call-vrns-at-pos [reads classifier config]
+  "With read parameters at a position, get map of bases and percent present.")
+
+(defn classifier-checker [classifier config]
+  "Check if a read passes using a pre-built classifier."
   (let [ds (get-dataset [])
         pass-thresh 0.5]
-    (defn passes? [kmer-pct qual map-score]
+    (fn [kmer-pct qual map-score]
       (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
-        (>= (classifier-classify c (make-instance ds {:qual nq :kmer nk
-                                                      :map-score nm :c -1}))
+        (>= (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
+                                                               :map-score nm :c -1}))
             pass-thresh)))))
+
+(defn assign-position-type [pos-bases known-vrns]
+  "Given read calls, determine if true/false and positive/negative, type.")
+
+(defn assess-classifier [data-file pos-file classifier config]
+  "Determine rates of true/false positive/negatives with trained classifier"
+  (let [passes-classifier? (classifier-checker classifier config)]))
 
 (defn -main [data-file pos-file work-dir]
   (prepare-classifier data-file pos-file work-dir default-config))

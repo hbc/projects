@@ -20,7 +20,7 @@
       (first data) => (contains [0.228 0])))
 
   (facts "Build a full classifier from file data"
-    (let [c (build-classifier data-file vrn-file config)]
+    (let [c (train-classifier data-file vrn-file config)]
       (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.125]
       (.toString c) => (contains "Linear Regression Model")
       ((classifier-checker c config) 20 1.0E-3 200) => false)))
