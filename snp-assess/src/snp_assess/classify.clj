@@ -128,11 +128,17 @@
 ;;    - Retrieve percentage of called at a position + classification
 ;;    - Check known variants and determine if correct,
 
-(defn call-vrns-at-pos [reads passes?]
+(defn call-vrns-at-pos [reads passes? config]
   "With read parameters at a position, get map of bases and percent present."
   (letfn [(percents [xs]
             (let [total (apply + (vals xs))]
-              (reduce (fn [m [k v]] (assoc m k (/ v total))) {} xs)))]
+              (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)))
+          (remove-low [min-freq orig]
+            (let [min-freq-percent (* 100.0 min-freq)
+                  want (->> orig
+                            (filter #(> (second %) min-freq-percent))
+                            (map first))]
+              (select-keys orig want)))]
       (let [position (take 2 (first reads))
             base-calls (->> reads
                             (filter (fn [xs] (apply passes? (drop 3 xs))))
@@ -140,7 +146,8 @@
                             (map #(take 1 %))
                             flatten
                             frequencies
-                            percents)]
+                            percents
+                            (remove-low (:min-freq config)))]
         [position base-calls])))
 
 (defn classifier-checker [classifier config]
@@ -166,7 +173,7 @@
           (finalize [bases e-base-count call]
             (let [freq (if (== 0 e-base-count) 100.0
                            (:exp-freq (minority-base bases)))]
-              {:class call :freq freq}))]
+              {:class call :freq freq :calls base-counts}))]
     (let [all-bases ["A" "C" "G" "T"]
           ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
                            all-bases)
@@ -190,8 +197,9 @@
         known-vrns (read-vrn-pos pos-file 101.0)]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
-           (map (fn [xs] (call-vrns-at-pos xs passes-classifier?)))
+           (map (fn [xs] (call-vrns-at-pos xs passes-classifier? config)))
            (map (fn [[pos bases]] (assign-position-type pos bases known-vrns config)))
+           (map println)
            vec))))
 
 (defn -main [data-file pos-file work-dir]

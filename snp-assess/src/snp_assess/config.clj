@@ -12,4 +12,4 @@
    :allowed-freq-diff 2.0
    :classification {:max-pct 5.0
                     :naive-min-score 1.6
-                    :pass-thresh 0.5}})
+                    :pass-thresh 0.8}})
