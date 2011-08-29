@@ -73,6 +73,14 @@
        (map parse-snpdata-line)
        (partition-by #(take 2 %))))
 
+(defn- random-sample-negatives [data]
+  "Randomly sample negative examples to make total positives. Since there are
+   a larger number of negative examples, this prevents learning to just call all
+   negatives in the classifier."
+  (let [positives (filter #(== 1 (last %)) data)
+        negatives (take (count positives) (shuffle (filter #(== 0 (last %)) data)))]
+    (concat positives negatives)))
+
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"
   (let [positives (read-vrn-pos pos-file (-> config :classification :max-pct))]
@@ -85,6 +93,7 @@
            (map #(data-from-pos % positives config))
            flatten
            (partition 4)
+           random-sample-negatives
            vec))))
 
 ;; Do the work of classification, with a prepared set of data inputs

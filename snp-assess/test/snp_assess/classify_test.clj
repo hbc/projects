@@ -16,14 +16,14 @@
 
   (facts "Classification data from file"
     (let [data (prep-classifier-data data-file vrn-file config)]
-      (count data) => 8 ; Total minority variants
+      (count data) => 2 ; Total minority variants
       (count (first data)) => 4 ; items at each position
-      (map last data) => [0 0 0 0 1 0 0 0] ; classifications
-      (first data) => (contains [0.228 0])))
+      (map last data) => [1 0] ; classifications
+      (first data) => (contains [0.264 1])))
 
   (facts "Build a full classifier from file data"
     (let [c (train-classifier data-file vrn-file config)]
-      (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.125]
+      (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.5]
       (.toString c) => (contains "Linear Regression Model")
       ((classifier-checker c config) 20 1.0E-3 200) => true))
 
