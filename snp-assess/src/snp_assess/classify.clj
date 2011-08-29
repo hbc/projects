@@ -188,4 +188,6 @@
 (defn -main [data-file pos-file work-dir]
   (let [config default-config
         c (prepare-classifier data-file pos-file work-dir config)]
-    (assess-classifier data-file pos-file c config)))
+    (println c)
+    (println
+     (assess-classifier data-file pos-file c config))))

@@ -50,7 +50,8 @@
 (defn roughly-freq? [test want config]
   "Determine if two frequencies are roughly equal."
   (let [diff (* want (:allowed-freq-diff config))]
-    (and (>= test (- want diff))
+    (and (not (nil? test))
+         (>= test (- want diff))
          (<= test (+ want diff)))))
 
 (defn has-variant? [base freq read-bases config]
