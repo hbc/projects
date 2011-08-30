@@ -7,8 +7,7 @@
 (let [data-dir (fs/join (fs/cwd) "test" "data")
       vrn-file (fs/join data-dir "coverage_pos" "pos.tsv")
       data-file (fs/join data-dir "raw" "raw_variations.tsv")
-      config (assoc default-config :classification {:max-pct 5.0 :naive-min-score 1.0
-                                                    :pass-thresh 0.1})]
+      config (assoc default-config :classification {:max-pct 5.0 :naive-min-score 1.0})]
   (facts "Read variant positions from file"
     (read-vrn-pos vrn-file 5.0) => {["HXB2_IUPAC_93-5" 951 "A"] 1.0,
                                     ["HXB2_IUPAC_93-5" 953 "T"] 5.0}
@@ -25,7 +24,7 @@
     (let [c (train-classifier data-file vrn-file config)]
       (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.5]
       (.toString c) => (contains "Linear Regression Model")
-      ((classifier-checker c config) 20 1.0E-3 200) => true))
+      ((classifier-checker c config) 20 1.0E-3 200) => 0.5))
 
   (facts "Assess a classifier based on variant calling ability"
     (let [c (train-classifier data-file vrn-file config)
@@ -36,9 +35,8 @@
       (get-class ["chr" 10] {"G" 83.0 "A" 17.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 90.0 "A" 5.0 "C" 3.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 99.0} {["chr" 10 "A"] 5.0}) => :false-negative
-      (assess-classifier data-file vrn-file c config) => [{:class :false-negative, :freq 1.0}
-                                                          {:class :false-positive, :freq 100.0}
-                                                          {:class :false-negative, :freq 5.0}])))
+      (map :class (assess-classifier data-file vrn-file c config)) =>
+              [:false-negative :false-positive :false-negative])))
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>

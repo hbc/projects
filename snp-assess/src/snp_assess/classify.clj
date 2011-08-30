@@ -128,9 +128,11 @@
 ;;    - Retrieve percentage of called at a position + classification
 ;;    - Check known variants and determine if correct,
 
-(defn call-vrns-at-pos [reads passes? config]
+(defn call-vrns-at-pos [reads score-calc config]
   "With read parameters at a position, get map of bases and percent present."
-  (letfn [(percents [xs]
+  (letfn [(sum-by-base [xs]
+            (reduce (fn [m [b s]] (assoc m b (+ s (get m b 0.0)))) {} xs))
+          (percents [xs]
             (let [total (apply + (vals xs))]
               (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)))
           (remove-low [min-freq orig]
@@ -141,23 +143,20 @@
               (select-keys orig want)))]
       (let [position (take 2 (first reads))
             base-calls (->> reads
-                            (filter (fn [xs] (apply passes? (drop 3 xs))))
-                            (map #(drop 2 %))
-                            (map #(take 1 %))
-                            flatten
-                            frequencies
+                            (map #(conj % (apply score-calc (drop 3 %))))
+                            (map #(list (nth % 2) (last %)))
+                            sum-by-base
                             percents
                             (remove-low (:min-freq config)))]
         [position base-calls])))
 
 (defn classifier-checker [classifier config]
-  "Check if a read passes using a pre-built classifier."
+  "Calculate probability of read inclusion using pre-built classifier."
   (let [ds (get-dataset [])]
     (fn [qual kmer-pct map-score]
       (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
-        (>= (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
-                                                               :map-score nm :c -1}))
-            (-> config :classification :pass-thresh))))))
+        (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
+                                                           :map-score nm :c -1}))))))
 
 (defn assign-position-type [pos base-counts known-vrns config]
   "Given read calls, determine if true/false and positive/negative, type."
@@ -193,11 +192,11 @@
 
 (defn assess-classifier [data-file pos-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"
-  (let [passes-classifier? (classifier-checker classifier config)
+  (let [classifier-score (classifier-checker classifier config)
         known-vrns (read-vrn-pos pos-file 101.0)]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
-           (map (fn [xs] (call-vrns-at-pos xs passes-classifier? config)))
+           (map (fn [xs] (call-vrns-at-pos xs classifier-score config)))
            (map (fn [[pos bases]] (assign-position-type pos bases known-vrns config)))
            (map println)
            vec))))
