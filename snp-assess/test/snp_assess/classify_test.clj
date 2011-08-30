@@ -7,7 +7,7 @@
 (let [data-dir (fs/join (fs/cwd) "test" "data")
       vrn-file (fs/join data-dir "coverage_pos" "pos.tsv")
       data-file (fs/join data-dir "raw" "raw_variations.tsv")
-      config (assoc default-config :classification {:max-pct 5.0 :naive-min-score 1.0})]
+      config (assoc-in default-config [:classification :naive-min-score] 1.0)]
   (facts "Read variant positions from file"
     (read-vrn-pos vrn-file 5.0) => {["HXB2_IUPAC_93-5" 951 "A"] 1.0,
                                     ["HXB2_IUPAC_93-5" 953 "T"] 5.0}

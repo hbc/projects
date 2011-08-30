@@ -10,5 +10,6 @@
    :min-score 1.2
    :min-freq 0.0035
    :allowed-freq-diff 2.0
-   :classification {:max-pct 5.0
+   :classification {:max-pos-pct 5.0
+                    :max-neg-pct 1.0
                     :naive-min-score 1.6}})

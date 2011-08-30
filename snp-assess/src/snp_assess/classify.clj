@@ -39,32 +39,35 @@
   "Retrieve minority variants at a position given raw data."
   (letfn [(count-bases [[id xs]] [(last id) (count xs)])
           (good-read? [read] (apply naive-read-passes? (vrn-data-plus-config read config)))
-          (filter-reads [[id xs]] [id (filter good-read? xs)])
-          (below-thresh? [[_ freq]] (<= (* freq 100.0)
-                                        (-> config :classification :max-pct)))]
+          (filter-reads [[id xs]] [id (filter good-read? xs)])]
     (->> pos-data
          (map filter-reads)
          (map count-bases)
          flatten
          (apply hash-map)
          (#(minority-variants % config))
-         (filter below-thresh?)
-         (map first)
-         set)))
+         (#(apply hash-map (flatten %))))))
 
 (defn finalize-raw-data [raw-data class config]
   "Prepare normalized raw data for input into classifiers."
   (let [normal-data (apply normalize-params (vrn-data-plus-config raw-data config))]
     (conj normal-data class)))
 
+(defn is-low-minority-vrn? [cur-id class base-freqs config]
+  (let [freq (* 100.0 (get base-freqs (last cur-id)))]
+    (case class
+          0 (<= freq (-> config :classification :max-neg-pct))
+          1 (<= freq (-> config :classification :max-pos-pct)))))
+
 (defn data-from-pos [pos-data positives config]
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
-        want-keys (filter #(contains? want-bases (last %)) (keys pos-data))
-        num-vals (count (vrn-data-plus-config (first (vals pos-data)) config))]
+        want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
     (for [cur-id want-keys]
       (let [class (if (contains? positives cur-id) 1 0)]
-        (map #(finalize-raw-data % class config) (get pos-data cur-id))))))
+        (if (is-low-minority-vrn? cur-id class want-bases config)
+          (map #(finalize-raw-data % class config) (get pos-data cur-id))
+          [])))))
 
 (defn raw-reads-by-pos [rdr config]
   "Lazy generator of read statistics at each position in data file."
@@ -73,17 +76,18 @@
        (map parse-snpdata-line)
        (partition-by #(take 2 %))))
 
-(defn- random-sample-negatives [data]
+(defn- random-sample-negatives [config data]
   "Randomly sample negative examples to make total positives. Since there are
    a larger number of negative examples, this prevents learning to just call all
    negatives in the classifier."
   (let [positives (filter #(== 1 (last %)) data)
         negatives (take (count positives) (shuffle (filter #(== 0 (last %)) data)))]
+    (println "pos/neg" (count positives) (count (filter #(== 0 (last %)) data)))
     (concat positives negatives)))
 
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"
-  (let [positives (read-vrn-pos pos-file (-> config :classification :max-pct))]
+  (let [positives (read-vrn-pos pos-file (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
       (->> rdr
            line-seq
@@ -93,7 +97,7 @@
            (map #(data-from-pos % positives config))
            flatten
            (partition 4)
-           random-sample-negatives
+           (random-sample-negatives config)
            vec))))
 
 ;; Do the work of classification, with a prepared set of data inputs
