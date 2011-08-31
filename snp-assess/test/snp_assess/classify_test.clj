@@ -27,7 +27,7 @@
     (let [c (train-classifier data-file vrn-file config)]
       (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.5]
       (.toString c) => (contains "Linear Regression Model")
-      ((classifier-checker c config) 20 1.0E-3 200) => 1.0))
+      ((classifier-checker c config) 20 1.0E-3 200) => true))
 
   (facts "Assess a classifier based on variant calling ability"
     (let [c (train-classifier data-file vrn-file config)
@@ -40,10 +40,11 @@
       (get-class ["chr" 10] {"G" 90.0 "A" 5.0 "C" 3.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 99.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (map :class assess-data) => [:false-negative :false-positive :false-negative]
-      (first (summarize-assessment assess-data)) => [1.0 {:false-negative 1}])))
+      (first (summarize-assessment assess-data)) => [1.0 {:false-negative 1}
+                                                     {:false-negative 100.0}])))
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>
-    (contains [(roughly 0.516) (roughly 0.0909) 0.4 :test])
+    (contains [(roughly 0.516) (roughly 0.0) 0.4 :test])
   (finalize-raw-data ["notused" 30 1.0E-2 50] :test2 default-config) =>
-    (contains [(roughly 0.8387) (roughly 1.0) 0.2 :test2]))
+    (contains [(roughly 0.8387) (roughly 0.0909) 0.2 :test2]))
