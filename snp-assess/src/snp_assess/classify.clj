@@ -6,7 +6,6 @@
 (ns snp-assess.classify
   (:use [clojure.java.io]
         [clojure.string :only [split]]
-        [clojure.contrib.duck-streams :only [spit]]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
@@ -240,9 +239,9 @@
   "Write assessment information to YAML output file"
   (let [dump-file (fs/join work-dir "classifier" (-> data-file
                                                      fs/basename
-                                                     split #"\."
+                                                     (split #"\.")
                                                      first
-                                                     (fn [x] (format "%s.%s" x "yaml"))))]
+                                                     (#(format "%s.%s" % "yaml"))))]
     (spit dump-file (yaml/generate-string data))))
 
 (defn -main [data-file pos-file work-dir]
@@ -251,5 +250,6 @@
         c (prepare-classifier data-file pos-file work-dir config)
         _ (println c)
         a (assess-classifier data-file pos-file c config)]
+    (write-assessment a data-file work-dir)
     (doseq [[freq count ratio] (summarize-assessment a)]
            (println freq count ratio))))

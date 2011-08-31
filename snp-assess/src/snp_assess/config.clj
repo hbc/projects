@@ -2,7 +2,7 @@
 (ns snp-assess.config)
 
 (def default-config
-  {:kmer-range [1e-3 1e-1]
+  {:kmer-range [1e-4 1e-1]
    :qual-range [4.0 35.0]
    :map-score-range [0.0 250.0]
    :random-coverage-step 100
