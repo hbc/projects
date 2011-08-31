@@ -54,10 +54,13 @@
     (conj normal-data class)))
 
 (defn is-low-minority-vrn? [cur-id class base-freqs config]
-  (let [freq (* 100.0 (get base-freqs (last cur-id)))]
+  (let [freq (* 100.0 (get base-freqs (last cur-id)))
+        min-freq (* 100.0 (:min-freq config))]
     (case class
-          0 (<= freq (-> config :classification :max-neg-pct))
-          1 (<= freq (-> config :classification :max-pos-pct)))))
+          0 (and (<= freq (-> config :classification :max-neg-pct))
+                 (>= min-freq))
+          1 (and (<= freq (-> config :classification :max-pos-pct))
+                 (>= min-freq)))))
 
 (defn data-from-pos [pos-data positives config]
   "Retrieve classification data at a particular read position."
@@ -138,31 +141,38 @@
             (reduce (fn [m [b s]] (assoc m b (+ s (get m b 0.0)))) {} xs))
           (percents [xs]
             (let [total (apply + (vals xs))]
-              (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)))
-          (remove-low [min-freq orig]
+              (list 
+               (if (> total 0)
+                 (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
+                 {})
+               total)))
+          (remove-low [min-freq [orig total]]
             (let [min-freq-percent (* 100.0 min-freq)
                   want (->> orig
                             (filter #(> (second %) min-freq-percent))
                             (map first))]
-              (select-keys orig want)))]
+              (list (select-keys orig want) total)))]
       (let [position (take 2 (first reads))
-            base-calls (->> reads
-                            (map #(conj % (apply score-calc (drop 3 %))))
-                            (map #(list (nth % 2) (last %)))
-                            sum-by-base
-                            percents
-                            (remove-low (:min-freq config)))]
-        [position base-calls])))
+            [base-calls total ] (->> reads
+                                     (map #(conj % (apply score-calc (drop 3 %))))
+                                     (map #(list (nth % 2) (last %)))
+                                     sum-by-base
+                                     percents
+                                     (remove-low (:min-freq config)))]
+        [position base-calls total])))
 
 (defn classifier-checker [classifier config]
   "Calculate probability of read inclusion using pre-built classifier."
   (let [ds (get-dataset [])]
     (fn [qual kmer-pct map-score]
-      (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
-        (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
-                                                           :map-score nm :c -1}))))))
+      (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)
+            score (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
+                                                                     :map-score nm :c -1}))]
+        (if (< score (-> config :classification :pass-thresh))
+          0.0
+          1.0)))))
 
-(defn assign-position-type [pos base-counts known-vrns config]
+(defn assign-position-type [pos base-counts total known-vrns config]
   "Given read calls, determine if true/false and positive/negative, type."
   (letfn [(annotate-base [pos base freq known-vrns]
             {:pos pos :base base :freq freq
@@ -176,7 +186,7 @@
           (finalize [bases e-base-count call]
             (let [freq (if (== 0 e-base-count) 100.0
                            (:exp-freq (minority-base bases)))]
-              {:class call :freq freq :calls base-counts}))]
+              {:class call :freq freq :calls base-counts :total-reads total}))]
     (let [all-bases ["A" "C" "G" "T"]
           ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
                            all-bases)
@@ -201,7 +211,7 @@
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-score config)))
-           (map (fn [[pos bases]] (assign-position-type pos bases known-vrns config)))
+           (map (fn [[pos bases total]] (assign-position-type pos bases total known-vrns config)))
            (map println)
            vec))))
 
