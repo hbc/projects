@@ -74,10 +74,15 @@
 
 (defn raw-reads-by-pos [rdr config]
   "Lazy generator of read statistics at each position in data file."
-  (->> rdr
-       line-seq
-       (map parse-snpdata-line)
-       (partition-by #(take 2 %))))
+  (let [assess-range (-> config :classification :assess-bases)
+        raw-out (->> rdr
+                     line-seq
+                     (map parse-snpdata-line)
+                     (partition-by #(take 2 %)))]
+    (if (nil? assess-range) raw-out
+        (->> raw-out
+             (drop-while #(< (-> % first second) (first assess-range)))
+             (take-while #(< (-> % first second) (second assess-range)))))))
 
 (defn- random-sample-negatives [config data]
   "Randomly sample negative examples to make total positives. Since there are
@@ -140,7 +145,7 @@
             (reduce (fn [m [b s]] (assoc m b (+ s (get m b 0.0)))) {} xs))
           (percents [xs]
             (let [total (apply + (vals xs))]
-              (list 
+              (list
                (if (> total 0)
                  (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
                  {})
@@ -185,7 +190,7 @@
           (finalize [bases e-base-count call]
             (let [freq (if (== 0 e-base-count) 100.0
                            (:exp-freq (minority-base bases)))]
-              {:class call :freq freq :calls base-counts :total-reads total}))]
+              {:class call :freq freq :calls base-counts :total-reads total :pos pos}))]
     (let [all-bases ["A" "C" "G" "T"]
           ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
                            all-bases)
@@ -219,15 +224,23 @@
   (letfn [(summarize-calls [info]
             (reduce (fn [m x]
                       (assoc m (:class x) (inc (get m (:class x) 0))))
-                    {} info))]
+                    {} info))
+          (ratios [xs]
+            (let [total (apply + (vals xs))]
+              (if (> total 0)
+                (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
+                {})))]
       (->> data
         (group-by :freq)
-        (map (fn [[freq info]] [freq (summarize-calls info)])))))
+        (map (fn [[freq xs]] [freq (summarize-calls xs)]))
+        (map (fn [[freq xs]] [freq xs (ratios xs)]))
+        )))
 
 (defn -main [data-file pos-file work-dir]
   (let [config (-> default-config
                    (assoc :verbose true))
         c (prepare-classifier data-file pos-file work-dir config)
+        _ (println c)
         a (assess-classifier data-file pos-file c config)]
-    (doseq [[freq x] (summarize-assessment a)]
-           (println freq x))))
+    (doseq [[freq count ratio] (summarize-assessment a)]
+           (println freq count ratio))))
