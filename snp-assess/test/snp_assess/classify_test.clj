@@ -7,7 +7,10 @@
 (let [data-dir (fs/join (fs/cwd) "test" "data")
       vrn-file (fs/join data-dir "coverage_pos" "pos.tsv")
       data-file (fs/join data-dir "raw" "raw_variations.tsv")
-      config (assoc-in default-config [:classification :naive-min-score] 1.0)]
+      config (-> default-config
+                 (assoc-in [:classification :naive-min-score] 1.2)
+                 (assoc-in [:classification :max-neg-pct] 5.0)
+                 (assoc-in [:classification :pass-thresh] 0.0))]
   (facts "Read variant positions from file"
     (read-vrn-pos vrn-file 5.0) => {["HXB2_IUPAC_93-5" 951 "A"] 1.0,
                                     ["HXB2_IUPAC_93-5" 953 "T"] 5.0}
@@ -24,19 +27,20 @@
     (let [c (train-classifier data-file vrn-file config)]
       (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.5]
       (.toString c) => (contains "Linear Regression Model")
-      ((classifier-checker c config) 20 1.0E-3 200) => 0.5))
+      ((classifier-checker c config) 20 1.0E-3 200) => 1.0))
 
   (facts "Assess a classifier based on variant calling ability"
     (let [c (train-classifier data-file vrn-file config)
-          get-class (fn [p r e] (:class (assign-position-type p r e config)))]
+          get-class (fn [p r e] (:class (assign-position-type p r 0 e config)))
+          assess-data (assess-classifier data-file vrn-file c config)]
       (get-class ["chr" 10] {"G" 99.0} {}) => :true-positive
       (get-class ["chr" 10] {"G" 95.0 "A" 5.0} {}) => :false-positive
       (get-class ["chr" 10] {"G" 95.0 "A" 5.0} {["chr" 10 "A"] 5.0}) => :true-positive
       (get-class ["chr" 10] {"G" 83.0 "A" 17.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 90.0 "A" 5.0 "C" 3.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 99.0} {["chr" 10 "A"] 5.0}) => :false-negative
-      (map :class (assess-classifier data-file vrn-file c config)) =>
-              [:false-negative :false-positive :false-negative])))
+      (map :class assess-data) => [:false-negative :false-positive :false-negative]
+      (first (summarize-assessment assess-data)) => [1.0 {:false-negative 1}])))
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>

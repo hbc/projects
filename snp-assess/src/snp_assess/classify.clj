@@ -85,7 +85,6 @@
    negatives in the classifier."
   (let [positives (filter #(== 1 (last %)) data)
         negatives (take (count positives) (shuffle (filter #(== 0 (last %)) data)))]
-    (println "pos/neg" (count positives) (count (filter #(== 0 (last %)) data)))
     (concat positives negatives)))
 
 (defn prep-classifier-data [data-file pos-file config]
@@ -212,12 +211,23 @@
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-score config)))
            (map (fn [[pos bases total]] (assign-position-type pos bases total known-vrns config)))
-           (map println)
+           (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
+(defn summarize-assessment [data]
+  "Summarize assessment data to provide reflection of true/false positives"
+  (letfn [(summarize-calls [info]
+            (reduce (fn [m x]
+                      (assoc m (:class x) (inc (get m (:class x) 0))))
+                    {} info))]
+      (->> data
+        (group-by :freq)
+        (map (fn [[freq info]] [freq (summarize-calls info)])))))
+
 (defn -main [data-file pos-file work-dir]
-  (let [config default-config
-        c (prepare-classifier data-file pos-file work-dir config)]
-    (println c)
-    (println
-     (assess-classifier data-file pos-file c config))))
+  (let [config (-> default-config
+                   (assoc :verbose true))
+        c (prepare-classifier data-file pos-file work-dir config)
+        a (assess-classifier data-file pos-file c config)]
+    (doseq [[freq x] (summarize-assessment a)]
+           (println freq x))))
