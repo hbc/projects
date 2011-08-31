@@ -5,6 +5,8 @@
 
 (ns snp-assess.classify
   (:use [clojure.java.io]
+        [clojure.string :only [split]]
+        [clojure.contrib.duck-streams :only [spit]]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
@@ -14,7 +16,8 @@
                                  normalize-params roughly-freq?]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]])
-  (:require [fs]))
+  (:require [fs]
+            [clj-yaml.core :as yaml]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
 ;; kmer and mapping scores) and naive classifier based on simple
@@ -231,8 +234,16 @@
       (->> data
         (group-by :freq)
         (map (fn [[freq xs]] [freq (summarize-calls xs)]))
-        (map (fn [[freq xs]] [freq xs (ratios xs)]))
-        )))
+        (map (fn [[freq xs]] [freq xs (ratios xs)])))))
+
+(defn write-assessment [data data-file work-dir]
+  "Write assessment information to YAML output file"
+  (let [dump-file (fs/join work-dir "classifier" (-> data-file
+                                                     fs/basename
+                                                     split #"\."
+                                                     first
+                                                     (fn [x] (format "%s.%s" x "yaml"))))]
+    (spit dump-file (yaml/generate-string data))))
 
 (defn -main [data-file pos-file work-dir]
   (let [config (-> default-config
