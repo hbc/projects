@@ -3,9 +3,10 @@
 ;; selection via linear regression classification. Human readable
 ;; summaries allow comparison of classification strategies.
 
-(ns snp-assess.classifier-eval
-  (:use [clojure.string :only [split]])
-  (:reqires [fs]
+(ns snp-assess.classify-eval
+  (:use [clojure.string :only [split]]
+        [incanter.stats :only [median]])
+  (:require [fs]
             [clj-yaml.core :as yaml]))
 
 (defn summarize-assessment [data]
@@ -14,23 +15,34 @@
             (reduce (fn [m x]
                       (assoc m (:class x) (inc (get m (:class x) 0))))
                     {} info))
-          (ratios [xs]
-            (let [total (apply + (vals xs))]
-              (if (> total 0)
-                (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
-                {})))]
+          (collect-freqs [info]
+            (->> info
+                 (filter #(= (:class %) :true-positive))
+                 (map #(-> % :calls vals sort first))))]
       (->> data
         (group-by :freq)
-        (map (fn [[freq xs]] [freq (summarize-calls xs)]))
-        (map (fn [[freq xs]] [freq xs (ratios xs)])))))
+        (map (fn [[freq xs]] [freq (summarize-calls xs) (collect-freqs xs)])))))
 
 (defn print-vrn-summary [data]
-  "Print high level summary of correct and wrong by frequency"
-  (letfn [(sum-counts [counts want] (+ (vals (select-keys counts want))))]
-    (doseq [[freq counts _] (sort-by first > (summarize-assessment data))]
-      (println (format "| %s | %s | %s | " freq
+  "Print high level summary of correct and incorrect expected bases by frequency"
+  (letfn [(sum-counts [counts want] (apply + (vals (select-keys counts want))))
+          (all-counts [xs want] (apply + (map #(sum-counts % want) xs)))]
+    (println "| percent | correct | wrong | median |")
+    (doseq [[freq counts exp-freqs] (sort-by first > (summarize-assessment data))]
+      (println (format "| %s | %s | %s | %.1f |" freq
                        (sum-counts counts [:true-positive])
-                       (sum-counts counts [:false-positive :false-negative]))))))
+                       (sum-counts counts [:false-positive :false-negative])
+                       (median exp-freqs))))
+    (println "|     | correct | wrong |")
+    (doseq [[name s e] [["100%" 100.0 100.0] ["5+%" 5.1 99.9] ["0-5%" 0 5.0]]]
+      (let [c (->> (summarize-assessment data)
+                   (filter (fn [[x _ _]] (and (>= x s) (<= x e))))
+                   (map second))
+            y (all-counts c [:true-positive])
+            n (all-counts c [:false-positive :false-negative])] 
+        (println (format "| %s | %s (%.1f%%) | %s (%.1f%%) |" name
+                         y (* 100.0 (/ y (+ y n)))
+                         n (* 100.0 (/ n (+ y n)))))))))
 
 (defn- dump-fname [data-file work-dir]
   "Retrieve location of a dump YAML File from the data file and work directory."
@@ -47,13 +59,12 @@
     dump-file))
 
 (defn read-assessment
-  [data-file work-dir] (read-assessment (dump-fname data-file work-dir))
   "Read assessment details using standard dump file name from data file."
-  [dump-file]
-  "Read assessment details from YAML dump file."
-  (-> dump-file
-      slurp
-      yaml/parse-string))
+  ([dump-file] (->> dump-file
+                    slurp
+                    yaml/parse-string
+                    (map (fn [x] (assoc x :class (keyword (:class x)))))))
+  ([data-file work-dir] (read-assessment (dump-fname data-file work-dir))))
 
 (defn -main [data-file work-dir]
   (let [a (read-assessment data-file work-dir)]

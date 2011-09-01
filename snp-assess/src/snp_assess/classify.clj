@@ -225,4 +225,4 @@
         _ (println c)
         a (assess-classifier data-file pos-file c config)]
     (write-assessment a data-file work-dir)
-    (print-vrn-summary a)
+    (print-vrn-summary a)))
