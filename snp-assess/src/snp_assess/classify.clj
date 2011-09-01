@@ -5,7 +5,6 @@
 
 (ns snp-assess.classify
   (:use [clojure.java.io]
-        [clojure.string :only [split]]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
@@ -14,9 +13,9 @@
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  normalize-params roughly-freq?]]
         [snp-assess.off-target :only [parse-pos-line]]
-        [snp-assess.config :only [default-config]])
-  (:require [fs]
-            [clj-yaml.core :as yaml]))
+        [snp-assess.config :only [default-config]]
+        [snp-assess.classify-eval :only [write-assessment print-vrn-summary]])
+  (:require [fs]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
 ;; kmer and mapping scores) and naive classifier based on simple
@@ -219,31 +218,6 @@
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
-(defn summarize-assessment [data]
-  "Summarize assessment data to provide reflection of true/false positives"
-  (letfn [(summarize-calls [info]
-            (reduce (fn [m x]
-                      (assoc m (:class x) (inc (get m (:class x) 0))))
-                    {} info))
-          (ratios [xs]
-            (let [total (apply + (vals xs))]
-              (if (> total 0)
-                (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
-                {})))]
-      (->> data
-        (group-by :freq)
-        (map (fn [[freq xs]] [freq (summarize-calls xs)]))
-        (map (fn [[freq xs]] [freq xs (ratios xs)])))))
-
-(defn write-assessment [data data-file work-dir]
-  "Write assessment information to YAML output file"
-  (let [dump-file (fs/join work-dir "classifier" (-> data-file
-                                                     fs/basename
-                                                     (split #"\.")
-                                                     first
-                                                     (#(format "%s.%s" % "yaml"))))]
-    (spit dump-file (yaml/generate-string data))))
-
 (defn -main [data-file pos-file work-dir]
   (let [config (-> default-config
                    (assoc :verbose true))
@@ -251,5 +225,4 @@
         _ (println c)
         a (assess-classifier data-file pos-file c config)]
     (write-assessment a data-file work-dir)
-    (doseq [[freq count ratio] (summarize-assessment a)]
-           (println freq count ratio))))
+    (print-vrn-summary a)

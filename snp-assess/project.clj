@@ -11,5 +11,6 @@
   :run-aliases {:snp-data snp-assess.core
                 :off-target snp-assess.off-target
                 :min-coverage snp-assess.min-coverage
-                :classify snp-assess.classify}
+                :classify snp-assess.classify
+                :classify-eval snp-assess.classify-eval}
   :aot [snp-assess.core])
