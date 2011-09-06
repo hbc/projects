@@ -3,14 +3,37 @@ Automated deployment for [Galaxy][1] and the
 
 ## Galaxy and BII Installation
 
-- Install [VirtualBox][5], [Vagrant][4] and Python
+### Preparation
 
-- Build libraries
+- Install Python (version 2.6 or better, not Python 3)
+
+- Build libraries and install Python library pre-requisites
 
         cd ~/hsph/projects/scde_deploy
         python setup.py build && sudo python setup.py install
 
 - Edit `config/scde.yaml` to specify system directories and passwords
+
+### Deployment
+
+- Run Fabric script for deployment:
+
+    fab -f ~/hsph/projects/scde_deploy/scde_fabfile.py -H your_remote_host install_scde
+
+  You can also install only BII:
+
+     fab -f ~/hsph/projects/scde_deploy/scde_fabfile.py -H your_remote_host install_bii
+
+  Or use the script to start servers:
+
+     fab -f ~/hsph/projects/scde_deploy/scde_fabfile.py -H your_remote_host install_bii
+
+### Vagrant testing
+
+Pre-deployment testing uses a local virtual machine managed with
+[Vagrant][4]:
+
+- Install [VirtualBox][5] and [Vagrant][4]
 
 - Install CloudBioLinux box with Vagrant. Creates a `Vagrantfile` for
   configuring and running the virtual machine

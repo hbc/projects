@@ -1,5 +1,7 @@
 ---
 distribution: ubuntu
+dist_name: natty
+# distribution: centos
 base_install: /usr/local
 bii_dirname: bioinvindex
 bii_lucene_index: index
