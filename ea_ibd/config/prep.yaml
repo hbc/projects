@@ -1,0 +1,10 @@
+---
+data_url: http://www.ebi.ac.uk/ena/data/view/reports/sra/fastq_files/ERP000591
+replicates: ['1']
+
+genome_build: mm9
+analysis: RNA-seq
+
+dir:
+  config: config
+  fastq: fastq
