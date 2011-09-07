@@ -26,7 +26,8 @@ def main(config_file):
                         "description": exp_name,
                         "files": final_files,
                         "analysis": config["analysis"],
-                        "genome_build": config["genome_build"]})
+                        "genome_build": config["genome_build"],
+                        "algorithm": {"quality_format": "Standard"}})
     write_output_file(details, config)
 
 def write_output_file(details, config):
