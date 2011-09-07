@@ -4,8 +4,12 @@ from fabric.api import *
 from fabric.contrib.files import *
 import yaml
 
-from bcbio.deploy import environ, java
-from bcbio.deploy.shared import (_fetch_and_unpack, _run_in_screen)
+from cloudbio import distribution
+from cloudbio.utils import _setup_logging
+from cloudbio.custom.shared import _fetch_and_unpack
+
+from bcbio.deploy import java
+from bcbio.deploy.shared import _run_in_screen
 
 # ## Install targets
 
@@ -15,7 +19,7 @@ def install_scde(configfile=None):
     config = _install_prereqs(config)
     _configure_system(config)
     galaxy_servers = _install_galaxy(config)
-    bii_servers = _install_bii(config)
+    bii_servers = _compile_install_bii(config)
 
 # ## Deployed servers
 
@@ -25,8 +29,17 @@ def start_servers(config, server_info):
 
 # ## BII installation
 
-def _install_bii(config):
-    """Main target for installing the bioinvestigator index.
+def install_bii(configfile=None):
+    """Install BII along with prerequisites, copying EAR file to jboss.
+    """
+    config = _read_config(configfile)
+    _setup_environment(config)
+    config = _install_prereqs(config)
+    _configure_system(config)
+    bii_servers = _compile_install_bii(config)
+
+def _compile_install_bii(config):
+    """Internal target for installing the bioinvestigator index.
     """
     dirs = _install_bii_tools(config)
     _configure_bii(dirs, config)
@@ -295,14 +308,11 @@ def _install_prereqs(config):
     return config
 
 def _setup_environment(config):
-    if config["distribution"] == "centos":
-        environ.setup_centos()
-    elif config["distribution"] == "ubuntu":
-        environ.setup_ubuntu()
-    else:
-        raise NotImplementedError
-    if env.hosts == ["vagrant"]:
-        environ.setup_vagrant_environment()
+    env.distribution = config["distribution"]
+    env.dist_name = config.get("dist_name", None)
+    env.system_install = config["base_install"]
+    _setup_logging(env)
+    distribution._setup_distribution_environment()
     result = run("echo $HOSTNAME")
     config["host"] = result.strip()
     run("chmod a+rx $HOME")

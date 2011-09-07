@@ -5,7 +5,7 @@ import os
 from fabric.api import *
 from fabric.contrib.files import *
 
-from bcbio.deploy.shared import (_if_not_installed, _fetch_and_unpack)
+from cloudbio.custom.shared import (_if_not_installed, _fetch_and_unpack)
 
 def _java_dir(base_dir):
     java_dir = os.path.join(base_dir, "java")
