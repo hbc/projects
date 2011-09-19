@@ -5,6 +5,12 @@ replicates: ['1']
 genome_build: mm9
 analysis: RNA-seq
 
+regions:
+  - space: chr3
+    start: 119600000
+    end: 129400000
+
 dir:
   config: config
   fastq: fastq
+  tx: tx_info
