@@ -1,6 +1,5 @@
 ---
-linkers:
-  - [CTGCAGCAGT, GGATCCGTGGTCTCATACA]
+linkers: [CTGCAGCAGT, GGATCCGTGGTCTCATACA]
   
 algorithm:
   anchor_sizes: [5, 7]

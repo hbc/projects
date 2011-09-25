@@ -5,14 +5,77 @@ Usage:
   trim_twoside_linker.py <YAML config>
 """
 import os, sys, unittest
+from contextlib import nested
 
 import yaml
+from Bio import pairwise2
+from Bio.Seq import Seq
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
-from Bio import Seq, pairwise2
+from bcbio.utils import safe_makedir
 
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
+    out_dir = safe_makedir(config["dir"]["trim"])
+    for f in config["files"]:
+        trim_file(os.path.join(config["dir"]["fastq"], f), out_dir, config)
+
+def trim_file(fname, out_dir, config):
+    """Trim a fastq file, writing trimmed sequences to returned output file.
+    """
+    out_file = os.path.join(out_dir,
+                            "{0}-trim{1}".format(
+                                *os.path.splitext(os.path.basename(fname))))
+    if not os.path.exists(out_file):
+        with nested(open(fname), open(out_file, "w")) as \
+             (in_handle, out_handle):
+            for name, seq, qual in trim_file_handle(in_handle, config):
+                out_handle.write("@{name}\n{seq}\n+\n{qual}\n".format(
+                    name=name, seq=seq, qual=qual))
+    return out_file
+
+def trim_file_handle(in_handle, config):
+    """Retrieve trimmed sequences from opened input handle.
+    """
+    link1, link2 = get_linker_regions(config["linkers"],
+                                      config["algorithm"]["anchor_sizes"])
+    for name, seq, qual in FastqGeneralIterator(in_handle):
+        trim_seq = internal_seq(seq, link1, link2,
+                                config["algorithm"]["anchor_mismatches"],
+                                config["algorithm"]["min_size"])
+        if trim_seq:
+            yield name, trim_seq, trim_qual(qual, seq, trim_seq)
+
+def get_linker_regions(linkers, anchor_sizes):
+    """Retrieve anchor regions of interest from configured linkers.
+    """
+    assert len(linkers) == len(anchor_sizes)
+    assert len(linkers) == 2
+    link1, link2 = linkers
+    trim1, trim2 = anchor_sizes
+    return link1[len(link1) - trim1:], link2[:trim2]
+
+def trim_qual(qual, seq, trim_seq):
+    """Trim quality sequence based on trimming of sequence
+    """
+    s = seq.find(trim_seq)
+    assert s >= 0
+    return qual[s:s+len(trim_seq)]
+
+def internal_seq(seq, linker1, linker2, n_mismatch, min_size):
+    """Retrieve the internal sequence region between two linkers.
+    """
+    s, e = linker_pair_pos(seq, linker1, linker2, n_mismatch)
+    # Try reverse complement of linkers if forward fails
+    if s is None or (e-s < min_size):
+        s, e = linker_pair_pos(seq,
+                               str(Seq(linker1).reverse_complement()),
+                               str(Seq(linker2).reverse_complement()),
+                               n_mismatch)
+        if s is None or (e-s < min_size):
+            return None
+    return seq[s:e]
 
 def linker_pair_pos(seq, linker1, linker2, n_mismatch):
     """Find start and end of internal sequence flanked by a linker pair.
@@ -94,6 +157,18 @@ class TwoSideLinkerTest(unittest.TestCase):
                          (5, 9))
         self.assertEqual(linker_pair_pos("TCGATCGATTTTGATCTTTT", "GATC", "CGATCGA", 0),
                          (8, 12))
+        self.assertEqual(linker_pair_pos("CGATCGATTTTGATC", "GATC", "CGATCGA", 0),
+                         (7, 11))
+
+    def test_3_internal_seq(self):
+        """Retrieve internal sequence between pair of linkers.
+        """
+        self.assertEqual(internal_seq("TGATCTTTTCGATCGATTTT", "GATC", "CGATCGA", 0, 4),
+                         "TTTT")
+        self.assertEqual(internal_seq("TGATCTTTTCGATCGATTTT", "GATC", "CGATCGA", 0, 5),
+                         None)
+        self.assertEqual(internal_seq("TGATCTTTTTCGATCGTTTT", "GATC", "CGATCGA", 0, 4),
+                         "TTTT")
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
