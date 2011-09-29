@@ -8,6 +8,9 @@ algorithm:
 
 files: [ATF4_H5, ATF4_L5, ATF6_H5, ATF6_L5, AU_H5, AU_L5, REF2]
 
+program:
+  uniquify: fastq-unique-bloom.py
+
 dir:
   fastq: fastq
   trim: trim

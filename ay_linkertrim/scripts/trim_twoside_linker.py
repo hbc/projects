@@ -6,6 +6,7 @@ Usage:
 """
 import os, sys, unittest
 from contextlib import nested
+import subprocess
 
 import yaml
 from Bio import pairwise2
@@ -18,8 +19,20 @@ def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
     out_dir = safe_makedir(config["dir"]["trim"])
-    for f in config["files"]:
-        trim_file(os.path.join(config["dir"]["fastq"], f), out_dir, config)
+    for f in [os.path.join(config["dir"]["fastq"], x) for x in config["files"]]:
+        trim_f = uniquify_reads(f, config)
+        trim_file(trim_f, out_dir, config)
+
+def uniquify_reads(fname, config):
+    """Subset reads to unique set of distinct reads.
+    """
+    out_file = "{base}-unique.txt".format(base=os.path.splitext(fname)[0])
+    if not os.path.exists(out_file):
+        subprocess.check_call("{prog} < {inf} > {outf}".format(prog=config["program"]["uniquify"],
+                                                               inf=fname,
+                                                               outf=out_file),
+                              shell=True)
+    return out_file
 
 def trim_file(fname, out_dir, config):
     """Trim a fastq file, writing trimmed sequences to returned output file.
