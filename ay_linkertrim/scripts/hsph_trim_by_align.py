@@ -14,7 +14,7 @@ import sys
 import yaml
 
 from bcbio import utils
-from bcbio.distributed.messaging import run_parallel
+from bcbio.distributed.messaging import parallel_runner
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
@@ -26,18 +26,30 @@ def main(system_config_file, cur_config_file):
             "work" : os.getcwd()}
     config["dir"]["trim"] = utils.add_full_path(config["dir"]["trim"])
     config["dir"]["fastq"] = fastq_dir
+    run_parallel = parallel_runner(run_module, dirs, config, system_config_file)
     aligned = []
     while len(trim_vals) > 0:
         print cur_files
         five_trim, three_trim = trim_vals.pop(0)
         in_args = [(f, five_trim, three_trim, config) for f in cur_files]
-        align_trimmed_files = run_parallel(run_module, "trim_with_aligner",
-                                           in_args, dirs,
-                                           config, system_config_file)
-        print align_trimmed_files
+        align_trimmed_files = run_parallel("trim_with_aligner", in_args)
         cur_files = [x["unaligned"] for x in align_trimmed_files]
         aligned.append([x["aligned"] for x in align_trimmed_files])
-    print aligned
+    combine_aligned(aligned, config)
+
+def combine_aligned(aligned, config):
+    """Combine aligned sequences into final output files.
+    """
+    out_dir = utils.safe_makedir(utils.add_full_path(config["dir"]["final"]))
+    for i, fname in enumerate(config["files"]):
+        # write to output file
+        out_fname = os.path.join(out_dir, "{0}-trim.fastq".format(
+            os.path.splitext(os.path.basename(fname))[0]))
+        if not utils.file_exists(out_fname):
+            with open(out_fname, "w") as out_handle:
+                for in_fname in [xs[i] for xs in aligned]:
+                    with open(in_fname) as in_handle:
+                        out_handle.writelines(in_handle)
 
 if __name__ == "__main__":
     main(*sys.argv[1:])

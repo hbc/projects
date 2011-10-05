@@ -9,6 +9,7 @@ algorithm:
   simple_trims: [[5, 20], [15, 10], [20, 5]]
   align_mismatches: 2
   genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg18/bowtie/hg18
+  #num_cores: 1
 
 files: [ATF4_H5, ATF4_L5, ATF6_H5, ATF6_L5, AU_H5, AU_L5, REF2]
 
@@ -24,3 +25,4 @@ analysis:
 dir:
   fastq: fastq
   trim: trim
+  final: final

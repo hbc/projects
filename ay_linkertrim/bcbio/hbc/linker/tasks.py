@@ -18,7 +18,6 @@ def trim_with_aligner(fname, five_trim, three_trim, config):
                                                                         trim=five_trim))
     if not os.path.exists(out_sam) and not os.path.exists(out_unaligned):
         cl = [config["program"]["bowtie"], "-v", str(config["algorithm"]["align_mismatches"]),
-              "-u", "1000",
               "-5", str(five_trim), "-3", str(three_trim),
               "--un", out_unaligned, config["algorithm"]["genome"], fname, out_sam]
         print " ".join(cl)
