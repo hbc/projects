@@ -81,3 +81,25 @@ different amounts of coverage:
 Another useful graph is a histogram of coverage at each position,
 to assess the coverage distribution for a given number of total
 reads.
+
+## Linear classifier for evaluating multi-variant positions
+
+Expected variable positions and raw data feed a linear classifier, implemented
+in [Weka][4] and wrapped for Clojure by [clj-ml][5]:
+
+    lein run :classify raw-data-file position-file work-directory
+
+`raw-data-file` is a tab-delimited file of calls plus associated quality
+metrics; `test/data/raw/raw_variations.tsv`. `position-file` contains known
+expected variations and their frequencies: `test/data/coverage_pos/pos.tsv`.
+`work-directory` is the directory to write output information to. The
+`classifier` subdirectory contains the build classifier and raw details about
+detected variations as a YAML dump. Configuring the classifier by adjusting
+`config.clj`; this could take a YAML input at the commandline as well.
+
+To summarize read calls in a region:
+
+    lein run :classify-eval raw-data-file work-directory
+
+[4]: http://www.cs.waikato.ac.nz/~ml/weka/
+[5]: https://github.com/leadtune/clj-ml

@@ -1,4 +1,17 @@
 ;; Adjustable filtering and analysis parameters
+;;
+;; * kmer-range -> Range of values for kmers to normalize around. Lower
+;;   kmer values are indicative of rare regions that are likely due to
+;;   mutation.
+;; * qual-range -> Range of read quality scores for normalization.
+;; * map-score-range -> Range of aligner mapping scores.
+;; * min-freq -> Bases below this frequency at a position are not
+;;   called.
+;; * allowed-freq-diff -> Difference allowed between expected and
+     actual frequency to count as correct call.
+;; * max-pos-pct, min-pos-pct -> Range of frequencies to include
+;; * assess-bases -> Bases to perform assessment with a
+;;   classifier. Set to nil to include all bases.
 (ns snp-assess.config)
 
 (def default-config
