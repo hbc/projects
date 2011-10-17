@@ -4,10 +4,13 @@
 ;; summaries allow comparison of classification strategies.
 
 (ns snp-assess.classify-eval
-  (:use [clojure.string :only [split]]
+  (:use [clojure.java.io]
+        [clojure.string :only [split join]]
         [incanter.stats :only [median]])
   (:require [fs]
             [clj-yaml.core :as yaml]))
+
+;; Provide summary details about read calls based on frequency
 
 (defn summarize-assessment [data]
   "Summarize assessment data to provide reflection of true/false positives"
@@ -39,22 +42,38 @@
                    (filter (fn [[x _ _]] (and (>= x s) (<= x e))))
                    (map second))
             y (all-counts c [:true-positive])
-            n (all-counts c [:false-positive :false-negative])] 
+            n (all-counts c [:false-positive :false-negative])]
         (println (format "| %s | %s (%.1f%%) | %s (%.1f%%) |" name
                          y (* 100.0 (/ y (+ y n)))
                          n (* 100.0 (/ n (+ y n)))))))))
 
-(defn- dump-fname [data-file work-dir]
-  "Retrieve location of a dump YAML File from the data file and work directory."
+;; Write calls to output file for querying and adjusting parameters:
+;; incorrect false-positives and low frequency true-positives
+
+(defn in-depth-calls [data]
+  "Retrieve calls of interest for in-depth analysis")
+
+(defn write-indepth-calls [data data-file work-dir]
+  "Write details on correct/wrong regions of interest for by-hand evaluation."
+  (let [in-depth-fname (classifier-check-fname data-file work-dir "-indepth.tsv")]
+    (if-not (fs/file? in-depth-fname)
+      (with-open [wrtr (writer in-depth-fname)]
+        (doseq [cur-indepth (in-depth-calls data)]
+          (.write wrtr (format "%s\n" (join "\t" cur-indepth))))))))
+
+;; Manage reading and writing details about each position to YAML files
+
+(defn- classifier-check-fname [data-file work-dir ext]
+  "Retrieve location of a classifier related file; ext is the unique file extension."
   (fs/join work-dir "classifier" (-> data-file
                                      fs/basename
                                      (split #"\.")
                                      first
-                                     (#(format "%s.%s" % "yaml")))))
+                                     (#(format "%s%s" % ext)))))
 
 (defn write-assessment [data data-file work-dir]
   "Write assessment information to YAML output file"
-  (let [dump-file (dump-fname data-file work-dir)]
+  (let [dump-file (classifier-check-fname data-file work-dir ".yaml")]
     (spit dump-file (yaml/generate-string data))
     dump-file))
 
