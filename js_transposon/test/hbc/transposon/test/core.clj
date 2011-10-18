@@ -5,12 +5,23 @@
             [clojure.string :as string])
   (:import [java.io StringReader]))
 
+(fact "Combine multiple locations based on nearby positions."
+  (let [data [{:space "chr1" :pos 10} {:space "chr1" :pos 19} {:space "chr1" :pos 29}
+              {:space "chr1" :pos 40} {:space "chr2" :pos 10}]
+        config {:algorithm {:distance 10}}
+        groups (combine-by-position data config)]
+    (count groups) => 3
+    (count (first groups)) => 3
+    (count (second groups)) => 1
+    (last groups) => [{:space "chr2" :pos 10}]))
+
 (fact "Read locations from custom tab-delimited file."
   (let [data (read-custom-positions "")]
-    (first data) => {:strand "+" :space "chr1" :start 98328731 :count 32
+    (first data) => {:strand "+" :space "chr1" :pos 98328731 :count 32
                      :seq "TAGGTCTAGAGAAGTAGCTGAGTGTTCTATATCCAGATCATCAG"}
+    (-> data second :pos) => 95178391
     (count data) => 2)
   (against-background
     (io/reader anything) => (StringReader. (string/join "\n"
     ["HWI-ST782:118:C07NCACXX:7:2308:6744:99171 1:N:0:TAGCTT\t+\tchr1\t98328731\tTAGGTCTAGAGAAGTAGCTGAGTGTTCTATATCCAGATCATCAG\tEAH4.77?ECC>@C?;;@((66.5;B@CCA>>3;,55:?5>@A5\t0\t32\t98328731\tTAGGTCTAGAGAAGTAGCTGAGTGTTCTATATCCAGATCATCAG"
-     "HWI-ST782:118:C07NCACXX:7:1208:5008:100804 1:N:0:TAGCTT\t+\tchr1\t95519114\tAGGGTACCATTACCGTCCCTGGACATGCACGTCAGCAACACCTC\tFHGGHHIJJJJJJJHHHFFFEDEEEDDDDDDDDDDDDDDDDDDD\t0\t71\t95519114\tAGGGTACCATTACCGTCCCTGGACATGCACGTCAGCAACACCTC"]))))
+     "HWI-ST782:118:C07NCACXX:7:1305:13969:197330 1:N:0:TAGCTT\t-\tchr1\t95178347\tATGTCCCTGAGGGCCTTCCTTGGCCGTCTGGTCTCCTTGGTACC\tDDDDDDDDDDDDDDDDDDDDDDDDDFHHHHJJIJJJJJJIGFIJ\t0\t368\t95178391\tGGTACCAAGGAGACCAGACGGCCAAGGAAGGCCCTCAGGGACAT"]))))
