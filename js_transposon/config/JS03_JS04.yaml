@@ -2,11 +2,23 @@ experiments:
   - name: JS03-6
     lineage: Gr
     timepoint: 15wk
+  - name: JS04-1
+    lineage: B
+    timepoint: 15wk
+  - name: JS04-2
+    lineage: T
+    timepoint: 15wk
   - name: JS03-7
     lineage: Gr
     timepoint: 21wk
   - name: JS03-8
     lineage: Gr
+    timepoint: 23wk
+  - name: JS04-3
+    lineage: B
+    timepoint: 23wk
+  - name: JS04-4
+    lineage: T
     timepoint: 23wk
   - name: JS04-12
     lineage: Gr
@@ -17,27 +29,15 @@ experiments:
   - name: JS03-10
     lineage: Gr
     timepoint: 36wk
-  - name: JS03-11
-    lineage: Gr
-    timepoint: 41wk
-  - name: JS04-1
-    lineage: B
-    timepoint: 15wk
-  - name: JS04-2
-    lineage: T
-    timepoint: 15wk
-  - name: JS04-3
-    lineage: B
-    timepoint: 23wk
-  - name: JS04-4
-    lineage: T
-    timepoint: 23wk
   - name: JS04-5
     lineage: B
     timepoint: 36wk
   - name: JS04-6
     lineage: T
     timepoint: 36wk
+  - name: JS03-11
+    lineage: Gr
+    timepoint: 41wk
   - name: JS04-7
     lineage: B
     timepoint: 41wk
@@ -45,11 +45,14 @@ experiments:
     lineage: T
     timepoint: 41wk
   - name: JS04-9
-    lineage: Tn
+    lineage: Tn-1
     timepoint:
   - name: JS03-12
-    lineage: Tn
+    lineage: Tn-2
     timepoint:
+
+algorithm:
+  distance: 25 # bp to consider two reads as same transposon position
 
 dir:
   orig: origdata

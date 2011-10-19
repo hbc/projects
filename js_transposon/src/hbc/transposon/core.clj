@@ -4,7 +4,8 @@
 (ns hbc.transposon.core
   (:require [clojure.java.io :as io]
             [clojure.data.csv :as csv]
-            [clojure.string :as string]))
+            [clojure.string :as string]
+            [clj-yaml.core :as yaml]))
 
 ;; Collapse read locations into related groups by position
 
@@ -69,3 +70,9 @@
                         (+ (Integer/parseInt start) (count seq)))
                :seq seq :count (Integer/parseInt n)})
             (csv/read-csv rdr :separator \tab)))))
+
+;; Read configuration details from input YAML file
+
+(defn -main [config-file]
+  (let [config (-> config-file slurp yaml/parse-string)]
+    (println config)))
