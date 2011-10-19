@@ -2,6 +2,18 @@
   (:require [clojure.java.io :as io]
             [clojure.data.csv :as csv]))
 
+;; Collapse read locations into related groups by position
+
+(defn combine-locations [data]
+  "Combine multiple positions into a single representation for each experiment."
+  (letfn [(collapse-an-exp [[k v]]
+            [k {:space (-> v first :space)
+                :count (apply + (map :count v))
+                :pos (set (map :pos v))
+                :seq (set (map :seq v))}])]
+    (apply hash-map (flatten
+                     (map #(collapse-an-exp %) (group-by :exp data))))))
+
 (defn- close-to-last [config]
   "Predicate checking if a value is within range of the last, used to partition."
   (let [range (-> config :algorithm :distance)
@@ -16,8 +28,7 @@
   (let [close-to-last? (close-to-last config)]
     (->> data
          (sort-by :start)
-         (partition-by close-to-last?)
-         )))
+         (partition-by close-to-last?))))
 
 (defn combine-by-position [data config]
   "Combine read by position, grouping nearby locations together."

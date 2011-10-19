@@ -5,6 +5,14 @@
             [clojure.string :as string])
   (:import [java.io StringReader]))
 
+(fact "Collapse scores from multiple positions into single representation."
+  (let [data [{:space "chr1" :pos 10 :count 2 :seq "GATC" :exp "one"}
+              {:space "chr1" :pos 19 :count 1 :seq "ATCG" :exp "one"}
+              {:space "chr1" :pos 17 :count 2 :seq "GATC" :exp "two"}]
+        combo (combine-locations data)]
+    (count combo) => 2
+    (get combo "one") => {:space "chr1" :pos #{10 19} :count 3 :seq #{"GATC" "ATCG"}}))
+
 (fact "Combine multiple locations based on nearby positions."
   (let [data [{:space "chr1" :pos 10} {:space "chr1" :pos 19} {:space "chr1" :pos 29}
               {:space "chr1" :pos 40} {:space "chr2" :pos 10}]
