@@ -1,17 +1,26 @@
+;; Tests for organizing transposon insertion sites
+
 (ns hbc.transposon.test.core
   (:use [hbc.transposon.core]
         [midje.sweet])
   (:require [clojure.java.io :as io]
             [clojure.string :as string])
-  (:import [java.io StringReader]))
+  (:import [java.io StringReader StringWriter]))
 
 (fact "Collapse scores from multiple positions into single representation."
-  (let [data [{:space "chr1" :pos 10 :count 2 :seq "GATC" :exp "one"}
-              {:space "chr1" :pos 19 :count 1 :seq "ATCG" :exp "one"}
-              {:space "chr1" :pos 17 :count 2 :seq "GATC" :exp "two"}]
-        combo (combine-locations data)]
+  (let [data [[{:space "chr1" :pos 10 :count 2 :seq "GATC" :exp "one"}
+               {:space "chr1" :pos 19 :count 1 :seq "ATCG" :exp "one"}
+               {:space "chr1" :pos 17 :count 2 :seq "GATC" :exp "two"}]
+              [{:space "chr1" :pos 40 :count 1 :seq "CCCC" :exp "one"}]]
+        combo (combine-locations data)
+        out (output-combined "" ["one" "two"] combo)]
     (count combo) => 2
-    (get combo "one") => {:space "chr1" :pos #{10 19} :count 3 :seq #{"GATC" "ATCG"}}))
+    (count (first combo)) => 2
+    (count (second combo)) => 1
+    (get (first combo) "one") => {:space "chr1" :pos #{10 17 19} :count 3 :seq #{"GATC" "ATCG"}}
+    (.toString out) => "chr,pos,one,two,seq\nchr1,10;17;19,3,2,GATC;ATCG\nchr1,40,1,0,CCCC\n")
+  (against-background
+    (io/writer anything) => (StringWriter.)))
 
 (fact "Combine multiple locations based on nearby positions."
   (let [data [{:space "chr1" :pos 10} {:space "chr1" :pos 19} {:space "chr1" :pos 29}
