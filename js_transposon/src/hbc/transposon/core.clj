@@ -5,7 +5,8 @@
   (:require [clojure.java.io :as io]
             [clojure.data.csv :as csv]
             [clojure.string :as string]
-            [clj-yaml.core :as yaml]))
+            [clj-yaml.core :as yaml]
+            [fs]))
 
 ;; Collapse read locations into related groups by position
 
@@ -73,6 +74,32 @@
 
 ;; Read configuration details from input YAML file
 
+(defn prepare-experiments [config]
+  "Read details on experiment names and files from YAML config"
+  (letfn [(name-and-file [item]
+            {:name (string/trim (format "%s %s" (:lineage item) (or (:timepoint item) "")))
+             :file (fs/join (-> config :dir :orig) (:name item))})
+          (add-positions [item]
+            (assoc item :positions
+                   (map #(assoc % :exp (:name item))
+                        (read-custom-positions (:file item)))))]
+    (map #(-> %
+              name-and-file
+              add-positions)
+         (:experiments config))))
+
+(defn write-merged-file [config-file]
+  "Output merged CSV file of counts at each position."
+  (let [config (-> config-file slurp yaml/parse-string)
+        exps (prepare-experiments config)
+        out-file (fs/join (-> config :dir :out)
+                          (format "%s-merge.csv"
+                                  (-> config-file fs/basename (string/split #".") first)))]
+    (output-combined out-file
+                     (map :name exps)
+                     (combine-locations (combine-by-position (apply concat (map :positions exps))
+                                                             config)))
+    out-file))
+
 (defn -main [config-file]
-  (let [config (-> config-file slurp yaml/parse-string)]
-    (println config)))
+  (write-merged-file config-file))

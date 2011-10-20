@@ -1,53 +1,53 @@
 experiments:
-  - name: JS03-6
+  - name: JS03-6.final.txt
     lineage: Gr
     timepoint: 15wk
-  - name: JS04-1
+  - name: JS04-1.final.txt
     lineage: B
     timepoint: 15wk
-  - name: JS04-2
+  - name: JS04-2.final.txt
     lineage: T
     timepoint: 15wk
-  - name: JS03-7
+  - name: JS03-7.final.txt
     lineage: Gr
     timepoint: 21wk
-  - name: JS03-8
+  - name: JS03-8.final.txt
     lineage: Gr
     timepoint: 23wk
-  - name: JS04-3
+  - name: JS04-3.final.txt
     lineage: B
     timepoint: 23wk
-  - name: JS04-4
+  - name: JS04-4.final.txt
     lineage: T
     timepoint: 23wk
-  - name: JS04-12
+  - name: JS04-12.final.txt
     lineage: Gr
     timepoint: 28wk
-  - name: JS03-9
+  - name: JS03-9.final.txt
     lineage: Gr
     timepoint: 32wk
-  - name: JS03-10
+  - name: JS03-10.final.txt
     lineage: Gr
     timepoint: 36wk
-  - name: JS04-5
+  - name: JS04-5.final.txt
     lineage: B
     timepoint: 36wk
-  - name: JS04-6
+  - name: JS04-6.final.txt
     lineage: T
     timepoint: 36wk
-  - name: JS03-11
+  - name: JS03-11.final.txt
     lineage: Gr
     timepoint: 41wk
-  - name: JS04-7
+  - name: JS04-7.final.txt
     lineage: B
     timepoint: 41wk
-  - name: JS04-8
+  - name: JS04-8.final.txt
     lineage: T
     timepoint: 41wk
-  - name: JS04-9
+  - name: JS04-9.final.txt
     lineage: Tn-1
     timepoint:
-  - name: JS03-12
+  - name: JS03-12.final.txt
     lineage: Tn-2
     timepoint:
 
@@ -56,3 +56,4 @@ algorithm:
 
 dir:
   orig: origdata
+  out: merge
