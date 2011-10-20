@@ -5,4 +5,4 @@
                  [clj-yaml "0.3.1"]
                  [fs "0.10.1"]]
   :dev-dependencies [[midje "1.3-alpha4"]]
-  :run-aliases {:merge hbc.transposon.core})
+  :run-aliases {:merge hbc.transposon.merge})

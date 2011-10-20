@@ -1,7 +1,7 @@
 ;; Tests for organizing transposon insertion sites
 
-(ns hbc.transposon.test.core
-  (:use [hbc.transposon.core]
+(ns hbc.transposon.test.merge
+  (:use [hbc.transposon.merge]
         [midje.sweet])
   (:require [clojure.java.io :as io]
             [clojure.string :as string])

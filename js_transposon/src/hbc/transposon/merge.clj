@@ -1,7 +1,7 @@
 ;; Organize sequence identified transposon insertion sites across
 ;; multiple experiments.
 
-(ns hbc.transposon.core
+(ns hbc.transposon.merge
   (:require [clojure.java.io :as io]
             [clojure.data.csv :as csv]
             [clojure.string :as string]
