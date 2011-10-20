@@ -43,14 +43,14 @@
         last (atom 0)]
     (fn [x]
       (let [check (+ @last range)]
-        (reset! last (:start x))
-        (>= check (:start x))))))
+        (reset! last (:pos x))
+        (>= check (:pos x))))))
 
 (defn- combine-by-position-space [data config]
   "Combine set of groups pre-configured to be on the same chromosome/contig space."
   (let [close-to-last? (close-to-last config)]
     (->> data
-         (sort-by :start)
+         (sort-by :pos)
          (partition-by close-to-last?))))
 
 (defn combine-by-position [data config]
@@ -92,10 +92,10 @@
   "Output merged CSV file of counts at each position."
   (let [config (-> config-file slurp yaml/parse-string)
         exps (prepare-experiments work-dir config)
-        out-file (fs/join work-dir
-                          (-> config :dir :out)
+        out-dir (fs/mkdir (fs/join work-dir (-> config :dir :out)))
+        out-file (fs/join out-dir
                           (format "%s-merge.csv"
-                                  (-> config-file fs/basename (string/split #".") first)))]
+                                  (-> config-file fs/basename (string/split #"\.") first)))]
     (output-combined out-file
                      (map :name exps)
                      (combine-locations (combine-by-position (apply concat (map :positions exps))
