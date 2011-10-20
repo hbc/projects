@@ -74,11 +74,11 @@
 
 ;; Read configuration details from input YAML file
 
-(defn prepare-experiments [config]
+(defn prepare-experiments [work-dir config]
   "Read details on experiment names and files from YAML config"
   (letfn [(name-and-file [item]
             {:name (string/trim (format "%s %s" (:lineage item) (or (:timepoint item) "")))
-             :file (fs/join (-> config :dir :orig) (:name item))})
+             :file (fs/join work-dir (-> config :dir :orig) (:name item))})
           (add-positions [item]
             (assoc item :positions
                    (map #(assoc % :exp (:name item))
@@ -88,11 +88,12 @@
               add-positions)
          (:experiments config))))
 
-(defn write-merged-file [config-file]
+(defn write-merged-file [work-dir config-file]
   "Output merged CSV file of counts at each position."
   (let [config (-> config-file slurp yaml/parse-string)
-        exps (prepare-experiments config)
-        out-file (fs/join (-> config :dir :out)
+        exps (prepare-experiments work-dir config)
+        out-file (fs/join work-dir
+                          (-> config :dir :out)
                           (format "%s-merge.csv"
                                   (-> config-file fs/basename (string/split #".") first)))]
     (output-combined out-file
@@ -101,5 +102,5 @@
                                                              config)))
     out-file))
 
-(defn -main [config-file]
-  (write-merged-file config-file))
+(defn -main [work-dir config-file]
+  (write-merged-file work-dir config-file))
