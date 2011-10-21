@@ -22,9 +22,9 @@
 
 (defn print-count-stats [ds]
   "Print out count statistics for the given dataset"
-  (println ("exp | mean | median | std-dev"))
+  (println "| exp | mean | median | std-dev |")
   (doseq [[x m md sd] (summarize-count-statistics ds)]
-    (println (format "%s | %.1f | %.1f | %.2f" x m md sd)))
+    (println (format "| %s | %.3f | %.3f | %.3f |" (name x) m md sd)))
   ds)
 
 ;; ## Dataset normalization
@@ -79,7 +79,7 @@
       normalize-counts
       normalize-pos-ratios
       print-count-stats
-      icore/save (format "%s-normal.csv" (-> merge-file (string/split #"\.") first))))
+      (icore/save (format "%s-normal.csv" (-> merge-file (string/split #"\.") first)))))
 
 (defn -main [merge-file]
   (normalize-merge merge-file))

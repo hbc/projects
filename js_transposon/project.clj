@@ -6,4 +6,5 @@
                  [fs "0.10.1"]
                  [incanter "1.3.0-SNAPSHOT"]]
   :dev-dependencies [[midje "1.3-alpha4"]]
-  :run-aliases {:merge hbc.transposon.merge})
+  :run-aliases {:merge hbc.transposon.merge
+                :score hbc.transposon.score})
