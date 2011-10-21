@@ -71,15 +71,32 @@
                    (map #(process-row ds % normalize-row ignore)
                         (range (icore/nrow ds))))))
 
+; ## Dataset filtration
+
+(defn filter-by-multiple [ds]
+  "Require a count to be present in multiple experiments to pass filtering."
+  (letfn [(is-single-exp? [data]
+            (let [cols (remove #(contains? *ignore-cols* %) (icore/col-names ds))]
+              (> (apply + (map #(% data) cols)) 1.0)))]
+    (icore/dataset (icore/col-names ds)
+                   (filter is-single-exp?
+                           (map #(process-row ds % identity #{})
+                                (range (icore/nrow ds)))))))
+
 ; ## Top level functionality
 
 (defn normalize-merge [merge-file]
   "Normalize and prepare statistics on a merged file."
-  (-> (read-dataset merge-file :header true)
-      normalize-counts
-      normalize-pos-ratios
-      print-count-stats
-      (icore/save (format "%s-normal.csv" (-> merge-file (string/split #"\.") first)))))
+  (letfn [(mod-file-name [ext]
+            (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
+    (-> (read-dataset merge-file :header true)
+        normalize-counts
+        normalize-pos-ratios
+        print-count-stats
+        (icore/save (mod-file-name "-normal.csv"))
+        filter-by-multiple
+        print-count-stats
+        (icore/save (mod-file-name "-normal-filter.csv")))))
 
 (defn -main [merge-file]
   (normalize-merge merge-file))
