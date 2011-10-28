@@ -1,0 +1,10 @@
+Package: HBCshRNA
+Version: 0.1
+Title: shRNA analysis
+Author: Brad Chapman <bchapman@hsph.harvard.edu>
+Maintainer: Brad Chapman <bchapman@hsph.harvard.edu>
+Depends: R (>= 2.13), plyr, reshape2, DESeq
+Description: Analysis of short RNA from high throughput sequencing
+    experiments.
+License: Expat
+URL: http://compbio.sph.harvard.edu/chb/
