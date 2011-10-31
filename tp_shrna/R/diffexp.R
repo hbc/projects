@@ -1,7 +1,9 @@
 library(DESeq)
 
-# Plot the variance diagnostic plot for a condition, checking that
-# the variance function models the actual variation in the data.
+#' Plot the variance diagnostic plot for a condition, checking that
+#' the variance function models the actual variation in the data.
+#' @export
+#' @imports DESeq
 plotVarianceDiagnostic <- function(cds, condition, out.base) {
   diag <- varianceFitDiagnostics(cds, condition)
   diag.file <- paste(paste(out.base, "vardiagnostic", condition, sep="-"),
@@ -12,8 +14,10 @@ plotVarianceDiagnostic <- function(cds, condition, out.base) {
   dev.off()
 }
 
-# Estimate variance and assess reliability of DESeq assumptions
-# This will need to be updated with next Bioconductor release
+#' Estimate variance and assess reliability of DESeq assumptions
+#' This will need to be updated with next Bioconductor release
+#' @export
+#' @imports DESeq
 estimateVariance <- function(in.data, out.base) {
   cds <- newCountDataSet(in.data$counts, factor(in.data$conditions))
   cds <- estimateSizeFactors(cds)
@@ -30,8 +34,10 @@ estimateVariance <- function(in.data, out.base) {
   cds
 }
 
-# Calculate differential expression with DEseq, producing diagnostic plots and
-# CSV output file with fold change and p-values
+#' Calculate differential expression with DEseq, producing diagnostic plots and
+#' CSV output file with fold change and p-values
+#' @export
+#' @imports DESeq
 callDifferentialExpression <- function(cds, in.data, out.base) {
   fdr.thresh <- 0.1
   res <- nbinomTest(cds, in.data$conditions[[1]], in.data$conditions[[ncol(in.data$counts)]])

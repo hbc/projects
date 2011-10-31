@@ -1,0 +1,6 @@
+export(callDifferentialExpression)
+export(estimateVariance)
+export(loadByTarget)
+export(plotSpreadDistribution)
+export(plotVarianceDiagnostic)
+export(prepareInputs)
