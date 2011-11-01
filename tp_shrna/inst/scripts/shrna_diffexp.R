@@ -10,6 +10,8 @@ args <- commandArgs(trailingOnly=TRUE)
 infile <- args[1]
 out.base <- args[2]
 
-in.data <- prepareInputs(infile)
+config <- c(min_count = 500)
+in_data <- read.csv(infile, header=TRUE)
+in.data <- prepareInputs(in.data, config$min_count)
 cds <- estimateVariance(in.data, out.base)
 res <- callDifferentialExpression(cds, in.data, out.base)

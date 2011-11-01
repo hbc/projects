@@ -10,7 +10,8 @@ args <- commandArgs(trailingOnly=TRUE)
 infile <- args[1]
 out_base <- args[2]
 
+config <- list(min_count = 500)
 in_data <- read.csv(infile, header=TRUE)
-reorg_data <- loadByTarget(in_data)
+reorg_data <- loadByTarget(in_data, config$min_count)
 out_file <- paste(out_base, "spread.pdf", sep="-")
 plotSpreadDistribution(reorg_data, out_file)
