@@ -38,23 +38,20 @@ estimateVariance <- function(in.data, out.base) {
 #' CSV output file with fold change and p-values
 #' @export
 #' @imports DESeq
-callDifferentialExpression <- function(cds, in.data, out.base) {
-  fdr.thresh <- 0.1
+callDifferentialExpression <- function(cds, in.data, out.base, config) {
   res <- nbinomTest(cds, in.data$conditions[[1]], in.data$conditions[[ncol(in.data$counts)]])
-  res.sig <- res[res$padj < fdr.thresh,]
+  res.sig <- res[res$padj < config$fdr_thresh,]
   res.sig <- res.sig[order(res.sig$padj),]
   print(head(res.sig[order(res.sig$pval),]))
   res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", "padj")]
-  names(res.sig) <- c("accession", in.data$conditions[[1]],
+  names(res.sig) <- c(config$id_name, in.data$conditions[[1]],
                       in.data$conditions[[ncol(in.data$counts)]],
                       "foldChange", "pval")
-  out.file <- paste(out.base, "diffexp.tsv", sep="-")
-  write.table(res.sig, file=out.file, row.names=FALSE, sep="\t")
 
   mva.file <- paste(out.base, "mvaplot.png", sep="-")
   png(file=mva.file)
   plot(res$baseMean, res$log2FoldChange, log="x", pch=20, cex=0.1,
-       col = ifelse(res$padj < fdr.thresh, "red", "black"))
+       col = ifelse(res$padj < config$fdr_thresh, "red", "black"))
   dev.off()
-  res
+  res.sig
 }

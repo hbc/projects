@@ -50,10 +50,22 @@ experiments:
   - name: JS03-12.final.txt
     lineage: Tn-2
     timepoint:
+  - name: JS04-10.final.txt
+    lineage: No-template
+    timepoint:
+  - name: JS03-1.final.txt
+    lineage: 12-clone-control-1
+    timepoint: 
+  - name: JS03-2.final.txt
+    lineage: 12-clone-control-2
+    timepoint: 
+  - name: JS03-3.final.txt
+    lineage: 12-clone-control-3
+    timepoint: 
 
 algorithm:
   distance: 25 # bp to consider two reads as same transposon position
 
 dir:
-  orig: origdata
-  out: merge
+  orig: origdata_110111
+  out: merge_110111

@@ -38,16 +38,15 @@ cleanData <- function(in_data, min_count) {
 #' other inputs.
 #' @export
 #' @imports plyr, reshape2
-prepareInputs <- function(in.data, min_count = NULL) {
-  in.data <- cleanData(in.data, min_count)
-  #in.data <- head(in.data, 90)
+prepareByAccession <- function(in.data, config = NULL) {
+  in.data <- cleanData(in.data, config$min_count)
+  in.data$gene.symbol <- NULL
+  in_data$log2..3w.3d. <- NULL
   #print(head(in.data))
   collapsed.data <- ddply(in.data, .(accession, replicate), function (df)
                           data.frame(sum.d.3 = sum(df$d.3),
-                                     sum.w.3 = sum(df$w.3),
-                                     gene.symbol=df$gene.symbol[1]))
+                                     sum.w.3 = sum(df$w.3)))
   #print(head(collapsed.data))
-  collapsed.data$gene.symbol <- NULL
   melt.data <- melt(collapsed.data, id=c("accession", "replicate"),
                     measured=c("sum.d.3", "sum.w.3"))
   reshape.data <- dcast(melt.data, accession ~ variable + replicate)
@@ -58,6 +57,37 @@ prepareInputs <- function(in.data, min_count = NULL) {
   list(counts = reshape.data,
        conditions = c(rep("d.3", ncol(reshape.data) / 2),
                       rep("w.3", ncol(reshape.data ) / 2)))
+}
+
+#' Prepare input data organized by target instead of accession
+#' @export
+#' @imports plyr, reshape2
+prepareByTarget <- function(in_data, config = NULL) {
+  in_data <- cleanData(in_data, config$min_count)
+  in_data$gene.symbol <- NULL
+  in_data$log2..3w.3d. <- NULL
+  in_data$accession <- NULL
+  melt.data <- melt(in_data, id=c("shrna.id", "replicate"),
+                    measured=c("d.3", "w.3"))
+  reshape.data <- dcast(melt.data, shrna.id ~ variable + replicate)
+  row.names(reshape.data) <- reshape.data$shrna.id
+  reshape.data$shrna.id <- NULL
+  reshape.data <- na.exclude(reshape.data)
+  list(counts = reshape.data,
+       conditions = c(rep("d.3", ncol(reshape.data) / 2),
+                      rep("w.3", ncol(reshape.data ) / 2)))
+}
+
+#' Prepare data table mapping shRNA ids to accession and gene symbols
+#' @export
+mergeGenes <- function(orig_data, remap_data, config = NULL) {
+  orig_data <- cleanData(orig_data, config$min_count)
+  scols <- c("accession", "gene.symbol")
+  if (config$id_name == "shrna.id") {
+    scols <- c("shrna.id", scols)
+  }
+  genemap <- unique(subset(orig_data, select = scols))
+  merge(remap_data, genemap)
 }
 
 #' Organize input data table to examine individual shRNAs by accession
