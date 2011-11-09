@@ -8,7 +8,8 @@ Depends:
     plyr,
     reshape2,
     DESeq,
-    ggplot2
+    ggplot2,
+    yaml
 Description: Analysis of short RNA from high throughput
     sequencing experiments.
 License: Expat

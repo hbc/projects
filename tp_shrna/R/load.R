@@ -87,7 +87,8 @@ mergeGenes <- function(orig_data, remap_data, config = NULL) {
     scols <- c("shrna.id", scols)
   }
   genemap <- unique(subset(orig_data, select = scols))
-  merge(remap_data, genemap)
+  list(merged=merge(remap_data, genemap),
+       background=genemap)
 }
 
 #' Organize input data table to examine individual shRNAs by accession

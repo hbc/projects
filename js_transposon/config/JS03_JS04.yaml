@@ -38,6 +38,9 @@ experiments:
   - name: JS03-11.final.txt
     lineage: Gr
     timepoint: 41wk
+  - name: JS04-11.final.txt
+    lineage: Gr-2
+    timepoint: 41wk
   - name: JS04-7.final.txt
     lineage: B
     timepoint: 41wk
@@ -61,6 +64,12 @@ experiments:
     timepoint: 
   - name: JS03-3.final.txt
     lineage: 12-clone-control-3
+    timepoint: 
+  - name: JS03-4.final.txt
+    lineage: Test-Pool-repeat-1
+    timepoint: 
+  - name: JS03-5.final.txt
+    lineage: Test-Pool-repeat-2
     timepoint: 
 
 algorithm:
