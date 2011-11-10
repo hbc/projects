@@ -1,0 +1,5 @@
+infile: origdata/Pertel_shRNA_raw_counts.csv
+out_base: deseq-gene/Pertel_shRNA_gene
+id_name: accession
+min_count: 500
+fdr_thresh: 0.1

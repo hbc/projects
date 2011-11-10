@@ -1,0 +1,21 @@
+infile: origdata/Pertel_shRNA_raw_counts.csv
+out_base: deseq-target/Pertel_shRNA_target
+id_name: shrna.id
+min_count: 500
+fdr_thresh: 0.1
+multifactor: true
+model:
+  conditions:
+    - d.3
+    - d.3
+    - d.3
+    - w.3
+    - w.3
+    - w.3
+  type:
+    - standard
+    - suspect
+    - standard
+    - standard
+    - suspect
+    - standard
