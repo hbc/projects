@@ -32,48 +32,75 @@ plotDispEsts <- function(cds, out_base) {
 #' @export
 #' @imports DESeq
 estimateVariance <- function(in.data, config) {
-  if (config$multifactor) {
-    cds <- newCountDataSet(in.data$counts, in.data$model)
-  } else {
-    cds <- newCountDataSet(in.data$counts, factor(in.data$model$conditions))
-  }
+  cds <- newCountDataSet(in.data$counts, factor(in.data$model$condition))
   cds <- estimateSizeFactors(cds)
   cds <- estimateDispersions(cds)
+  if (config$multifactor) {
+    in.data$model$condition <- factor(in.data$model$condition)
+    cds_multi <- newCountDataSet(in.data$counts, in.data$model)
+    cds_multi <- estimateSizeFactors(cds_multi)
+    cds_multi <- estimateDispersions(cds_multi)
+  } else {
+    cds_multi <- NULL
+  }
 
   if (!is.null(config$out_base)) {
     plotDispEsts(cds, config$out_base)
+    if (!is.null(cds_multi)) {
+      plotDispEsts(cds_multi, paste(config$out_base, "multi", sep="-"))
+    }
   }
-  cds
+  list(cds=cds, cds_multi=cds_multi)
+}
+
+#' Prepare DESeq result by filtering on p-value and assigning columns
+prepareDEResult <- function(res, in.data, config) {
+  res.sig <- res[res$padj < config$fdr_thresh,]
+  res.sig <- res.sig[order(res.sig$padj),]
+  print(head(res.sig[order(res.sig$pval),]))
+  res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", "padj")]
+  names(res.sig) <- c(config$id_name, in.data$model$condition[[1]],
+                      in.data$model$condition[[ncol(in.data$counts)]],
+                      "foldChange", "pval")
+  res.sig
+}
+
+#' MvA plot of differential expression result
+mvaPlot <- function(res, out_base, config) {
+  mva.file <- paste(out_base, "mvaplot.png", sep="-")
+  png(file=mva.file)
+  plot(res$baseMean, res$log2FoldChange, log="x", pch=20, cex=0.1,
+       col = ifelse(res$padj < config$fdr_thresh, "red", "black"))
+  dev.off()
 }
 
 #' Calculate differential expression with DEseq, producing diagnostic plots and
 #' CSV output file with fold change and p-values
 #' @export
 #' @imports DESeq
-callDifferentialExpression <- function(cds, in.data, config) {
-  if (config$multifactor) {
-    fit1 <- fitNbinomGLMs(cds, count ~ type + condition)
-    fit0 <- fitNbinomGLMs(cds, count ~ type)
+callDifferentialExpression <- function(cds, cds_multi, in.data, config) {
+  res <- nbinomTest(cds, in.data$model$condition[[1]],
+                    in.data$model$condition[[ncol(in.data$counts)]])
+  res_sig <- prepareDEResult(res, in.data, config)
+  if (!is.null(cds_multi)) {
+    fit1 <- fitNbinomGLMs(cds_multi, count ~ type + condition)
+    fit0 <- fitNbinomGLMs(cds_multi, count ~ type)
     pvalsGLM <- nbinomGLMTest(fit1, fit0)
-    res <- p.adjust(pvalsGLM, metho="BH")
+    padjGLM <- p.adjust(pvalsGLM, method="BH")
+    res_multi <- res
+    res_multi$pval <- pvalsGLM
+    res_multi$padj <- padjGLM
+    res_multi_sig <- prepareDEResult(res_multi, in.data, config)
   } else {
-    res <- nbinomTest(cds, in.data$model$conditions[[1]],
-                      in.data$model$conditions[[ncol(in.data$counts)]])
+    res_multi <- NULL
+    res_multi_sig <- NULL
   }
-  res.sig <- res[res$padj < config$fdr_thresh,]
-  res.sig <- res.sig[order(res.sig$padj),]
-  print(head(res.sig[order(res.sig$pval),]))
-  res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", "padj")]
-  names(res.sig) <- c(config$id_name, in.data$model$conditions[[1]],
-                      in.data$model$conditions[[ncol(in.data$counts)]],
-                      "foldChange", "pval")
 
   if (!is.null(config$out_base)) {
-    mva.file <- paste(config$out_base, "mvaplot.png", sep="-")
-    png(file=mva.file)
-    plot(res$baseMean, res$log2FoldChange, log="x", pch=20, cex=0.1,
-         col = ifelse(res$padj < config$fdr_thresh, "red", "black"))
-    dev.off()
+    mvaPlot(res, config$out_base, config)
+    if (!is.null(res_multi)) {
+      mvaPlot(res_multi, paste(config$out_base, "multi", sep="-"), config)
+    }
   }
-  res.sig
+  list(res=res_sig, res_multi=res_multi_sig)
 }

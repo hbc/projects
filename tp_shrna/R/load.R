@@ -40,13 +40,13 @@ cleanData <- function(in_data, min_count) {
 prepareByAccession <- function(in_data, config) {
   in_data <- cleanData(in_data, config$min_count)
   config$model <- data.frame(config$model)
-  config$model$conditions <- as.character(config$model$conditions)
+  config$model$condition <- as.character(config$model$condition)
   in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL
   #print(head(in_data))
   collapsed.data <- ddply(in_data, .(accession, replicate), function (df)
-                          data.frame(sum.1 = sum(df[[config$model$conditions[1]]]),
-                                     sum.2 = sum(df[[tail(config$model$conditions, 1)[1]]])))
+                          data.frame(sum.1 = sum(df[[config$model$condition[1]]]),
+                                     sum.2 = sum(df[[tail(config$model$condition, 1)[1]]])))
   #print(head(collapsed.data))
   melt.data <- melt(collapsed.data, id=c("accession", "replicate"),
                     measured=c("sum.1", "sum.2"))
@@ -66,13 +66,13 @@ prepareByAccession <- function(in_data, config) {
 prepareByTarget <- function(in_data, config) {
   in_data <- cleanData(in_data, config$min_count)
   config$model <- data.frame(config$model)
-  config$model$conditions <- as.character(config$model$conditions)
+  config$model$condition <- as.character(config$model$condition)
   in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL
   in_data$accession <- NULL
   melt.data <- melt(in_data, id=c("shrna.id", "replicate"),
-                    measured=c(config$model$conditions[1],
-                               tail(config$model$conditions, 1)[1]))
+                    measured=c(config$model$condition[1],
+                               tail(config$model$condition, 1)[1]))
   reshape.data <- dcast(melt.data, shrna.id ~ variable + replicate)
   row.names(reshape.data) <- reshape.data$shrna.id
   reshape.data$shrna.id <- NULL
