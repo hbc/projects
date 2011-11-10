@@ -39,6 +39,7 @@ cleanData <- function(in_data, min_count) {
 #' @imports plyr, reshape2
 prepareByAccession <- function(in_data, config) {
   in_data <- cleanData(in_data, config$min_count)
+  config$model <- data.frame(config$model)
   config$model$conditions <- as.character(config$model$conditions)
   in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL
@@ -64,6 +65,7 @@ prepareByAccession <- function(in_data, config) {
 #' @imports plyr, reshape2
 prepareByTarget <- function(in_data, config) {
   in_data <- cleanData(in_data, config$min_count)
+  config$model <- data.frame(config$model)
   config$model$conditions <- as.character(config$model$conditions)
   in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL

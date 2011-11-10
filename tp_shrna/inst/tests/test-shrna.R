@@ -27,11 +27,6 @@ test_that("Prepare input data for DESeq, by target", {
   expect_equal(data$counts[1,2], 100)
 })
 
-interactiveDevel <- function() {
-  load_all("tp_shrna")
-  test("tp_shrna")
-}
-
 test_that("Filter input data by counts", {
   f_data <- filterDfByCounts(in_data, 500)
   expect_equal(nrow(f_data), 3)
@@ -46,3 +41,8 @@ test_that("Loading multiple shRNAs targetting a single accession", {
   expect_equal(as.character(reorg.data[1,1]), "A")
   expect_equal(reorg.data[1,2], 0.9866666667)
 })
+
+interactiveDevel <- function() {
+  load_all("tp_shrna")
+  test("tp_shrna")
+}

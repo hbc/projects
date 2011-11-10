@@ -19,8 +19,8 @@ if (config$id_name == "accession") {
   work_info <- prepareByTarget(in_data, config)
 }
   
-cds <- estimateVariance(work_info, config$out_base)
-res_sig <- callDifferentialExpression(cds, work_info, config$out_base, config)
+cds <- estimateVariance(work_info, config)
+res_sig <- callDifferentialExpression(cds, work_info, config)
 res_sig_merge <- mergeGenes(in_data, res_sig, config)
 
 out_file <- paste(config$out_base, "diffexp.tsv", sep="-")
