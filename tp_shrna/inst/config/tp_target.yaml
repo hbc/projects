@@ -3,7 +3,8 @@ out_base: deseq-target/Pertel_shRNA_target
 id_name: shrna.id
 min_count: 500
 fdr_thresh: 0.1
-multifactor: true
+multifactor: false
+drop_replicates: [2]
 model:
   condition:
     - d.3
