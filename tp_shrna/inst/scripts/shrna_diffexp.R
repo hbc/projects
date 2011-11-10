@@ -12,7 +12,7 @@ config_file <- args[1]
 config <- yaml.load_file(config_file)
 
 in_data <- read.csv(config$infile, header=TRUE)
-#in_data <- head(in_data, 90)
+in_data <- head(in_data, 90)
 if (config$id_name == "accession") {
   work_info <- prepareByAccession(in_data, config)
 } else {

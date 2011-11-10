@@ -5,7 +5,6 @@
 library(plyr)
 library(reshape2)
 
-
 #' Filter input data requiring minimum read counts
 #' @imports plyr
 filterDfByCounts <- function(in_df, min_count){
@@ -38,44 +37,47 @@ cleanData <- function(in_data, min_count) {
 #' other inputs.
 #' @export
 #' @imports plyr, reshape2
-prepareByAccession <- function(in.data, config = NULL) {
-  in.data <- cleanData(in.data, config$min_count)
-  in.data$gene.symbol <- NULL
+prepareByAccession <- function(in_data, config) {
+  in_data <- cleanData(in_data, config$min_count)
+  config$model$conditions <- as.character(config$model$conditions)
+  in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL
-  #print(head(in.data))
-  collapsed.data <- ddply(in.data, .(accession, replicate), function (df)
-                          data.frame(sum.d.3 = sum(df$d.3),
-                                     sum.w.3 = sum(df$w.3)))
+  #print(head(in_data))
+  collapsed.data <- ddply(in_data, .(accession, replicate), function (df)
+                          data.frame(sum.1 = sum(df[[config$model$conditions[1]]]),
+                                     sum.2 = sum(df[[tail(config$model$conditions, 1)[1]]])))
   #print(head(collapsed.data))
   melt.data <- melt(collapsed.data, id=c("accession", "replicate"),
-                    measured=c("sum.d.3", "sum.w.3"))
+                    measured=c("sum.1", "sum.2"))
   reshape.data <- dcast(melt.data, accession ~ variable + replicate)
   row.names(reshape.data) <- reshape.data$accession
   reshape.data$accession <- NULL
+  row.names(config$model) <- names(reshape.data)
   reshape.data <- na.exclude(reshape.data)
   #print(head(reshape.data))
   list(counts = reshape.data,
-       conditions = c(rep("d.3", ncol(reshape.data) / 2),
-                      rep("w.3", ncol(reshape.data ) / 2)))
+       model = config$model)
 }
 
 #' Prepare input data organized by target instead of accession
 #' @export
 #' @imports plyr, reshape2
-prepareByTarget <- function(in_data, config = NULL) {
+prepareByTarget <- function(in_data, config) {
   in_data <- cleanData(in_data, config$min_count)
+  config$model$conditions <- as.character(config$model$conditions)
   in_data$gene.symbol <- NULL
   in_data$log2..3w.3d. <- NULL
   in_data$accession <- NULL
   melt.data <- melt(in_data, id=c("shrna.id", "replicate"),
-                    measured=c("d.3", "w.3"))
+                    measured=c(config$model$conditions[1],
+                               tail(config$model$conditions, 1)[1]))
   reshape.data <- dcast(melt.data, shrna.id ~ variable + replicate)
   row.names(reshape.data) <- reshape.data$shrna.id
   reshape.data$shrna.id <- NULL
+  row.names(config$model) <- names(reshape.data)
   reshape.data <- na.exclude(reshape.data)
   list(counts = reshape.data,
-       conditions = c(rep("d.3", ncol(reshape.data) / 2),
-                      rep("w.3", ncol(reshape.data ) / 2)))
+       model = config$model)
 }
 
 #' Prepare data table mapping shRNA ids to accession and gene symbols
@@ -87,7 +89,9 @@ mergeGenes <- function(orig_data, remap_data, config = NULL) {
     scols <- c("shrna.id", scols)
   }
   genemap <- unique(subset(orig_data, select = scols))
-  list(merged=merge(remap_data, genemap),
+  merged_data <- merge(remap_data, genemap)
+  sorted_data <- merged_data[order(merged_data$pval), ]
+  list(merged=sorted_data,
        background=genemap)
 }
 

@@ -19,7 +19,7 @@ plotVarianceDiagnostic <- function(cds, condition, out.base) {
 #' @export
 #' @imports DESeq
 estimateVariance <- function(in.data, out.base) {
-  cds <- newCountDataSet(in.data$counts, factor(in.data$conditions))
+  cds <- newCountDataSet(in.data$counts, factor(in.data$model$conditions))
   cds <- estimateSizeFactors(cds)
   # switch to this with next release
   # cds <- estimateDispersions(cds)
@@ -29,8 +29,8 @@ estimateVariance <- function(in.data, out.base) {
   png(file=scv.file)
   scvPlot(cds, ylim=c(0,2))
   dev.off()
-  plotVarianceDiagnostic(cds, in.data$conditions[[1]], out.base)
-  plotVarianceDiagnostic(cds, in.data$conditions[[ncol(in.data$counts)]], out.base)
+  plotVarianceDiagnostic(cds, in.data$model$conditions[[1]], out.base)
+  plotVarianceDiagnostic(cds, in.data$model$conditions[[ncol(in.data$counts)]], out.base)
   cds
 }
 
@@ -39,13 +39,13 @@ estimateVariance <- function(in.data, out.base) {
 #' @export
 #' @imports DESeq
 callDifferentialExpression <- function(cds, in.data, out.base, config) {
-  res <- nbinomTest(cds, in.data$conditions[[1]], in.data$conditions[[ncol(in.data$counts)]])
+  res <- nbinomTest(cds, in.data$model$conditions[[1]], in.data$model$conditions[[ncol(in.data$counts)]])
   res.sig <- res[res$padj < config$fdr_thresh,]
   res.sig <- res.sig[order(res.sig$padj),]
   print(head(res.sig[order(res.sig$pval),]))
   res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", "padj")]
-  names(res.sig) <- c(config$id_name, in.data$conditions[[1]],
-                      in.data$conditions[[ncol(in.data$counts)]],
+  names(res.sig) <- c(config$id_name, in.data$model$conditions[[1]],
+                      in.data$model$conditions[[ncol(in.data$counts)]],
                       "foldChange", "pval")
 
   mva.file <- paste(out.base, "mvaplot.png", sep="-")
