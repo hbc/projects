@@ -1,5 +1,5 @@
 infile: origdata/Pertel_shRNA_raw_counts.csv
-out_base: deseq-gene/Pertel_shRNA_gene
+out_base: deseq-gene/Pertel_shRNA_gene-no2
 id_name: accession
 min_count: 500
 fdr_thresh: 0.1
@@ -9,14 +9,20 @@ model:
   condition:
     - d.3
     - d.3
-    - d.3
     - w.3
     - w.3
-    - w.3
-  type:
-    - standard
-    - suspect
-    - standard
-    - standard
-    - suspect
-    - standard
+# model:
+#   condition:
+#     - d.3
+#     - d.3
+#     - d.3
+#     - w.3
+#     - w.3
+#     - w.3
+#   type:
+#     - standard
+#     - suspect
+#     - standard
+#     - standard
+#     - suspect
+#     - standard
