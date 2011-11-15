@@ -44,7 +44,8 @@
     (fn [x]
       (let [check (+ @last range)]
         (reset! last (:pos x))
-        (>= check (:pos x))))))
+        (or (== check range)
+            (>= check (:pos x)))))))
 
 (defn- combine-by-position-space [data config]
   "Combine set of groups pre-configured to be on the same chromosome/contig space."

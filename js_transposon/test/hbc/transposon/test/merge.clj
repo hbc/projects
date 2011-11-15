@@ -24,13 +24,15 @@
 
 (fact "Combine multiple locations based on nearby positions."
   (let [data [{:space "chr1" :pos 10} {:space "chr1" :pos 19} {:space "chr1" :pos 29}
-              {:space "chr1" :pos 40} {:space "chr2" :pos 10}]
+              {:space "chr1" :pos 40} {:space "chr2" :pos 10} {:space "chr3" :pos 50}
+              {:space "chr3" :pos 30} {:space "chr3" :pos 55}]
         config {:algorithm {:distance 10}}
         groups (combine-by-position data config)]
-    (count groups) => 3
+    (count groups) => 5
     (count (first groups)) => 3
     (count (second groups)) => 1
-    (last groups) => [{:space "chr2" :pos 10}]))
+    (nth groups 2) => [{:space "chr2" :pos 10}]
+    (last groups) => [{:space "chr3" :pos 50} {:space "chr3" :pos 55}]))
 
 (fact "Read locations from custom tab-delimited file."
   (let [data (read-custom-positions "")]
