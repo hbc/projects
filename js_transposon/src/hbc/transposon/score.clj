@@ -6,6 +6,7 @@
   (:require [incanter.core :as icore]
             [incanter.stats :as stats]
             [clojure.string :as string]
+            [clj-yaml.core :as yaml]
             [fs]))
 
 ;; Columns that are not experimental data
@@ -35,9 +36,9 @@
 (defn normalize-counts
   "Normalize counts to standard metric based on totals in each experiment.
    By default normalizes to total count in a column scaled to 1 million reads."
-  [dataset & {:keys [base ignore]
-              :or {base 1e6
-                   ignore *ignore-cols*}}]
+  [config dataset & {:keys [base ignore]
+                     :or {base 1e6
+                          ignore *ignore-cols*}}]
   (letfn [(normalize [x total]
             (* (/ x total) base))
           (maybe-normalize [ds col]
@@ -87,18 +88,19 @@
 
 ; ## Top level functionality
 
-(defn normalize-merge [merge-file]
+(defn normalize-merge [merge-file config-file]
   "Normalize and prepare statistics on a merged file."
-  (letfn [(mod-file-name [ext]
-            (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
-    (-> (read-dataset merge-file :header true)
-        normalize-counts
-        normalize-pos-ratios
-        print-count-stats
-        (#(do (icore/save % (mod-file-name "normal.csv")) %))
-        filter-by-multiple
-        print-count-stats
-        (icore/save (mod-file-name "normal-filter.csv")))))
+  (let [config (-> config-file slurp yaml/parse-string)]
+    (letfn [(mod-file-name [ext]
+              (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
+      (-> (read-dataset merge-file :header true)
+          (partial normalize-counts config)
+          normalize-pos-ratios
+          print-count-stats
+          (#(do (icore/save % (mod-file-name "normal.csv")) %))
+          filter-by-multiple
+          print-count-stats
+          (icore/save (mod-file-name "normal-filter.csv"))))))
 
-(defn -main [merge-file]
-  (normalize-merge merge-file))
+(defn -main [merge-file config-file]
+  (normalize-merge merge-file config-file))

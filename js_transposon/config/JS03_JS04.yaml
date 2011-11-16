@@ -2,9 +2,12 @@ experiments:
   - name: JS03-6.final.txt
     lineage: Gr
     timepoint: 15wk
-  - name: JS04-1.final.txt
     lineage: B
     timepoint: 15wk
+    reads: auto
+    controls: [JS04-9.final.txt, JS03-12.final.txt, JS03-1.final.txt,
+               JS03-2.final.txt, JS03-3.final.txt, JS04-1.final.txt,
+               JS03-4.final.txt, JS03-5.final.txt]
   - name: JS04-2.final.txt
     lineage: T
     timepoint: 15wk
