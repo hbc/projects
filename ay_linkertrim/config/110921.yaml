@@ -6,12 +6,28 @@ algorithm:
   anchor_sizes: [5, 7]
   anchor_mismatches: 1
   min_size: 15
-  simple_trims: [[5, 20], [15, 10], [20, 5]]
+  simple_trims: {50: [[5, 20], [15, 10], [20, 5]],
+                 40: [[5, 10], [15, 5], [20, 0]],
+                 32: [[5, 2], [10, 0], [15, 0]]}
   align_mismatches: 2
   genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg18/bowtie/hg18
   #num_cores: 1
 
-files: [ATF4_H5, ATF4_L5, ATF6_H5, ATF6_L5, AU_H5, AU_L5, REF2]
+files:
+  - ATF4_H5
+  - ATF4_L5
+  - ATF6_H5
+  - ATF6_L5
+  - AU_H5
+  - AU_L5
+  - REF2
+  - '1_REF1_sequence.txt'
+  - '2_ERSE High_sequence.txt'
+  - '3_ERSE Low_sequence.txt'
+  - '5_X4 High_sequence.txt'
+  - '6_X4 Low_sequence.txt'
+  - '7_UPRE High_sequence.txt'
+  - '8_UPRE Low_sequence.txt'
 
 program:
   uniquify: fastq-unique-bloom.py
@@ -24,5 +40,6 @@ analysis:
 
 dir:
   fastq: fastq
-  trim: trim
-  final: final
+  final: trim
+  work_trim: work_trim
+  work_fastq: work_fastq

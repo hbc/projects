@@ -1,4 +1,4 @@
-#!/usr/bin/env
+#!/usr/bin/env python
 """Trim linker sequences using alignments, prioritizing trimmings that map.
 
 This is useful for cases where the linker sizes are variable. Without
@@ -24,16 +24,16 @@ def main(system_config_file, cur_config_file):
     cur_files = [os.path.join(fastq_dir, f) for f in config["files"]]
     dirs = {"config": utils.add_full_path(os.path.dirname(system_config_file)),
             "work" : os.getcwd()}
-    config["dir"]["trim"] = utils.add_full_path(config["dir"]["trim"])
+    config["dir"]["trim"] = utils.add_full_path(config["dir"]["work_trim"])
     config["dir"]["fastq"] = fastq_dir
+    config["dir"]["work_fastq"] = utils.add_full_path(config["dir"]["work_fastq"])
     run_parallel = parallel_runner(run_module, dirs, config, system_config_file)
     aligned = []
-    while len(trim_vals) > 0:
+    for i in range(len(trim_vals.values()[0])):
         print cur_files
-        five_trim, three_trim = trim_vals.pop(0)
-        in_args = [(f, five_trim, three_trim, config) for f in cur_files]
+        in_args = [(f, i, trim_vals, config) for f in cur_files]
         align_trimmed_files = run_parallel("trim_with_aligner", in_args)
-        cur_files = [x["unaligned"] for x in align_trimmed_files]
+        cur_files = [x["unaligned"] for x in align_trimmed_files if x["unaligned"]]
         aligned.append([x["aligned"] for x in align_trimmed_files])
     combine_aligned(aligned, config)
 
