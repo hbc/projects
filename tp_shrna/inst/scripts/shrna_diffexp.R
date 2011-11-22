@@ -5,7 +5,7 @@
 #   shrna_diffexp.R <yaml config file>
 
 library(yaml)
-library(HBCshRNA)
+library(hbc.shrna)
 
 args <- commandArgs(trailingOnly=TRUE)
 config_file <- args[1]

@@ -4,7 +4,7 @@
 # Usage:
 #   plot_target_spread.r <in_file> <out_base>
 
-library(HBCshRNA)
+library(hbc.shrna)
 
 args <- commandArgs(trailingOnly=TRUE)
 infile <- args[1]
