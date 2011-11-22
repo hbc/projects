@@ -2,16 +2,19 @@
 linkers: [CTGCAGCAGT, GGATCCGTGGTCTCATACA]
   
 algorithm:
-  aligner: bowtie
-  anchor_sizes: [5, 7]
-  anchor_mismatches: 1
-  min_size: 15
+  trim_aligner: bowtie
+  trim_genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg18/bowtie/hg18
+  align_mismatches: 2
   simple_trims: {50: [[5, 20], [15, 10], [20, 5]],
                  40: [[5, 10], [15, 5], [20, 0]],
                  32: [[5, 2], [10, 0], [15, 0]]}
-  align_mismatches: 2
-  genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg18/bowtie/hg18
-  #num_cores: 1
+  anchor_sizes: [5, 7]
+  anchor_mismatches: 1
+  min_size: 15
+  aligner: bowtie2
+  genome_build: hg19
+  quality_format: Illumina
+  num_cores: 1
 
 files:
   - ATF4_H5
@@ -33,7 +36,7 @@ program:
   uniquify: fastq-unique-bloom.py
 
 distributed:
-  platform_args: "-q normal_parallel"
+  platform_args: "-q short_serial"
 
 analysis:
   process_program: hsph_trim_by_align.py
@@ -43,3 +46,4 @@ dir:
   final: trim
   work_trim: work_trim
   work_fastq: work_fastq
+  align: align

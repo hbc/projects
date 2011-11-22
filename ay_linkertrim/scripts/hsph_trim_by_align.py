@@ -23,7 +23,9 @@ def main(system_config_file, cur_config_file):
     fastq_dir = utils.add_full_path(config["dir"]["fastq"])
     cur_files = [os.path.join(fastq_dir, f) for f in config["files"]]
     dirs = {"config": utils.add_full_path(os.path.dirname(system_config_file)),
-            "work" : os.getcwd()}
+            "work" : os.getcwd(),
+            "align": utils.add_full_path(config["dir"]["align"])}
+    dirs["galaxy"] = os.path.dirname(utils.add_full_path(config["galaxy_config"], dirs["config"]))
     config["dir"]["trim"] = utils.add_full_path(config["dir"]["work_trim"])
     config["dir"]["fastq"] = fastq_dir
     config["dir"]["work_fastq"] = utils.add_full_path(config["dir"]["work_fastq"])
@@ -35,11 +37,22 @@ def main(system_config_file, cur_config_file):
         align_trimmed_files = run_parallel("trim_with_aligner", in_args)
         cur_files = [x["unaligned"] for x in align_trimmed_files if x["unaligned"]]
         aligned.append([x["aligned"] for x in align_trimmed_files])
-    combine_aligned(aligned, config)
+    trimmed_fastq = combine_aligned(aligned, config)
+    do_alignment(trimmed_fastq, config, dirs, run_parallel)
+
+def do_alignment(trimmed_fastq, config, dirs, run_parallel):
+    def _strip_fname(x):
+        return os.path.splitext(os.path.basename(x))[0]
+    print trimmed_fastq
+    info = {"genome_build": config["algorithm"]["genome_build"]}
+    run_parallel("hbc_process_alignment",
+                 ((f, None, info, _strip_fname(f), "", dirs, config)
+                  for f in trimmed_fastq))
 
 def combine_aligned(aligned, config):
     """Combine aligned sequences into final output files.
     """
+    trimmed = []
     out_dir = utils.safe_makedir(utils.add_full_path(config["dir"]["final"]))
     for i, fname in enumerate(config["files"]):
         # write to output file
@@ -50,6 +63,8 @@ def combine_aligned(aligned, config):
                 for in_fname in [xs[i] for xs in aligned]:
                     with open(in_fname) as in_handle:
                         out_handle.writelines(in_handle)
+        trimmed.append(out_fname)
+    return trimmed
 
 if __name__ == "__main__":
     main(*sys.argv[1:])

@@ -7,6 +7,11 @@ from Bio import SeqIO
 
 from celery.task import task
 from bcbio.distributed.transaction import file_transaction
+from bcbio.pipeline import lane
+
+@task(queue="hbc.trim")
+def hbc_process_alignment(*args):
+    return lane.process_alignment(*args)
 
 @task(queue="hbc.trim")
 def trim_with_aligner(fname, idx, trim_vals, config):
@@ -18,7 +23,7 @@ def trim_with_aligner(fname, idx, trim_vals, config):
         swap[str(k)] = v
     trim_vals = swap
     five_trim, three_trim = trim_vals[str(_read_size(fname))][idx]
-    assert config["algorithm"]["aligner"] == "bowtie"
+    assert config["algorithm"]["trim_aligner"] == "bowtie"
     base = os.path.splitext(os.path.basename(fname))[0]
     out_sam = os.path.join(config["dir"]["trim"], "{base}-{trim}.bowtie".format(
         base=base, trim=five_trim))
@@ -29,7 +34,7 @@ def trim_with_aligner(fname, idx, trim_vals, config):
         with file_transaction(out_unaligned, out_sam) as (tx_unaligned, tx_sam):
             cl = [config["program"]["bowtie"], "-v", str(config["algorithm"]["align_mismatches"]),
                   "-5", str(five_trim), "-3", str(three_trim),
-                  "--un", tx_unaligned, config["algorithm"]["genome"], fname, tx_sam]
+                  "--un", tx_unaligned, config["algorithm"]["trim_genome"], fname, tx_sam]
             print " ".join(cl)
             subprocess.check_call(cl)
     return [{"aligned": covert_bowtieout_to_fastq(out_sam),
