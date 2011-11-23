@@ -78,7 +78,7 @@ def _write_combined_features(in_handle, out_handle):
         if len(ids) == 0:
             ids.append(".")
         out_handle.write("{0}\t{1}\n".format("\t".join(pos),
-                                             ",".join(ids)))
+                                             ";".join(ids)))
     last = None
     ids = []
     for parts in (l.split("\t") for l in in_handle):

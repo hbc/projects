@@ -1,6 +1,7 @@
 infile: origdata/Pertel_shRNA_raw_counts.csv
 out_base: deseq-gene/Pertel_shRNA_gene-no2
 id_name: accession
+custom_clean: "pertel"
 min_count: 500
 fdr_thresh: 0.1
 multifactor: false

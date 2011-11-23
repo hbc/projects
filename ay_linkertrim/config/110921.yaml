@@ -51,9 +51,16 @@ experiments:
     name: UPRE_H
   - file: '8_UPRE Low_sequence.txt'
     name: UPRE_L
+comparisons:
+  - background: REF2
+    conditions: [ATF4_H, ATF4_L, ATF6_H, ATF6_L, AU_H, AU_L]
+  - background: REF1
+    conditions: [ERSE_H, ERSE_L, X4_H, X4_L, UPRE_H, UPRE_L]
+    
 
 program:
   uniquify: fastq-unique-bloom.py
+  diffexp: /n/home05/bchapman/hsph/projects/tp_shrna/inst/scripts/shrna_diffexp.R
 
 distributed:
   platform_args: "-q normal_parallel"
@@ -69,3 +76,5 @@ dir:
   work_fastq: work_fastq
   align: align
   counts: counts
+  expression: diffexp
+  tmp: tmp
