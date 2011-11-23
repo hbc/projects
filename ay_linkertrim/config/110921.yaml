@@ -13,27 +13,44 @@ algorithm:
   biomart_dataset: hsapiens_gene_ensembl
   quality_format: Illumina
   merge_distance: 10
+  count_min_experiments: 2
+  count_min_required: 10
   
   num_cores: 1
   #anchor_sizes: [5, 7]
   #anchor_mismatches: 1
   #min_size: 15
 
-files:
-  - ATF4_H5
-  - ATF4_L5
-  - ATF6_H5
-  - ATF6_L5
-  - AU_H5
-  - AU_L5
-  - REF2
-  - '1_REF1_sequence.txt'
-  - '2_ERSE High_sequence.txt'
-  - '3_ERSE Low_sequence.txt'
-  - '5_X4 High_sequence.txt'
-  - '6_X4 Low_sequence.txt'
-  - '7_UPRE High_sequence.txt'
-  - '8_UPRE Low_sequence.txt'
+experiment_name: Abdullah_shRNA
+experiments:
+  - file: ATF4_H5
+    name: ATF4_H
+  - file: ATF4_L5
+    name: ATF4_L
+  - file: ATF6_H5
+    name: ATF6_H
+  - file: ATF6_L5
+    name: ATF6_L
+  - file: AU_H5
+    name: AU_H
+  - file: AU_L5
+    name: AU_L
+  - file: REF2
+    name: REF2
+  - file: '1_REF1_sequence.txt'
+    name: REF1
+  - file: '2_ERSE High_sequence.txt'
+    name: ERSE_H
+  - file: '3_ERSE Low_sequence.txt'
+    name: ERSE_L
+  - file: '5_X4 High_sequence.txt'
+    name: X4_H
+  - file: '6_X4 Low_sequence.txt'
+    name: X4_L
+  - file: '7_UPRE High_sequence.txt'
+    name: UPRE_H
+  - file: '8_UPRE Low_sequence.txt'
+    name: UPRE_L
 
 program:
   uniquify: fastq-unique-bloom.py
@@ -51,3 +68,4 @@ dir:
   work_trim: work_trim
   work_fastq: work_fastq
   align: align
+  counts: counts

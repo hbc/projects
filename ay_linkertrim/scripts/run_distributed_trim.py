@@ -11,7 +11,7 @@ from bcbio.distributed.manage import run_and_monitor
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
-    workers_needed = len(config["files"])
+    workers_needed = len(config["experiments"])
     task_module = "bcbio.hbc.linker.tasks"
     queue = "hbc.trim"
     args = [system_config_file, cur_config_file]

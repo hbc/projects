@@ -75,6 +75,8 @@ def _write_combined_features(in_handle, out_handle):
     """Prepare BED file with intersecting feature identifiers combined.
     """
     def _write_combined(pos, ids):
+        if len(ids) == 0:
+            ids.append(".")
         out_handle.write("{0}\t{1}\n".format("\t".join(pos),
                                              ",".join(ids)))
     last = None

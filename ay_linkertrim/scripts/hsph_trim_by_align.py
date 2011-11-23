@@ -16,13 +16,14 @@ import yaml
 from bcbio import utils
 from bcbio.distributed.messaging import parallel_runner
 from bcbio.hbc.shrna.target import annotated_target_file
+from bcbio.hbc.shrna.count import overlap_target_counts, combine_counts_by_position, filter_counts
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
     run_module = "bcbio.hbc.linker"
     trim_vals = config["algorithm"]["simple_trims"]
     fastq_dir = utils.add_full_path(config["dir"]["fastq"])
-    cur_files = [os.path.join(fastq_dir, f) for f in config["files"]]
+    cur_files = [os.path.join(fastq_dir, x["file"]) for x in config["experiments"]]
     dirs = {"config": utils.add_full_path(os.path.dirname(system_config_file)),
             "work" : os.getcwd(),
             "align": utils.add_full_path(config["dir"]["align"])}
@@ -46,7 +47,9 @@ def count_targets(align_bams, config):
     """Generate count files associated with shRNA targets.
     """
     target_file = annotated_target_file(align_bams, config)
-    print target_file
+    count_files = [overlap_target_counts(x, target_file, config) for x in align_bams]
+    combined_count_file = combine_counts_by_position(count_files, config)
+    final_count_file = filter_counts(combined_count_file, config)
 
 def do_alignment(trimmed_fastq, config, dirs, run_parallel):
     def _base_fname(x):
@@ -60,14 +63,26 @@ def do_alignment(trimmed_fastq, config, dirs, run_parallel):
     xs = run_parallel("hbc_process_alignment",
                       ((_safe_fname(f), None, info, _base_fname(f), "", dirs, config)
                        for f in trimmed_fastq))
-    return [x["out_bam"] for x in xs]
+    return _get_ordered_out_files(xs, config)
+
+def _get_ordered_out_files(xs, config):
+    """Order output file information by original experimental details
+    """
+    out = {}
+    for bam_file, fastq_file in ((x["out_bam"], os.path.basename(x["fastq"][0])) for x in xs):
+        for i, exp in enumerate(config["experiments"]):
+            if fastq_file.startswith(os.path.splitext(exp["file"].replace(" ", "_"))[0]):
+                assert not out.has_key(i)
+                out[i] = bam_file
+    assert len(out) == len(xs)
+    return [x[1] for x in sorted(out.items())]
 
 def combine_aligned(aligned, config):
     """Combine aligned sequences into final output files.
     """
     trimmed = []
     out_dir = utils.safe_makedir(utils.add_full_path(config["dir"]["final"]))
-    for i, fname in enumerate(config["files"]):
+    for i, fname in enumerate([x["file"] for x in config["experiments"]]):
         # write to output file
         out_fname = os.path.join(out_dir, "{0}-trim.fastq".format(
             os.path.splitext(os.path.basename(fname))[0]))
