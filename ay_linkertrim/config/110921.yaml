@@ -8,13 +8,15 @@ algorithm:
   simple_trims: {50: [[5, 20], [15, 10], [20, 5]],
                  40: [[5, 10], [15, 5], [20, 0]],
                  32: [[5, 2], [10, 0], [15, 0]]}
-  anchor_sizes: [5, 7]
-  anchor_mismatches: 1
-  min_size: 15
   aligner: bowtie2
   genome_build: hg19
   quality_format: Illumina
+  merge_distance: 10
+  
   num_cores: 1
+  #anchor_sizes: [5, 7]
+  #anchor_mismatches: 1
+  #min_size: 15
 
 files:
   - ATF4_H5
@@ -36,12 +38,13 @@ program:
   uniquify: fastq-unique-bloom.py
 
 distributed:
-  platform_args: "-q short_serial"
+  platform_args: "-q normal_parallel"
 
 analysis:
   process_program: hsph_trim_by_align.py
 
 dir:
+  annotation: annotation
   fastq: fastq
   final: trim
   work_trim: work_trim

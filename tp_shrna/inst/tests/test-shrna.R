@@ -42,7 +42,13 @@ test_that("Loading multiple shRNAs targetting a single accession", {
   expect_equal(reorg.data[1,2], 0.9866666667)
 })
 
+test_that("Retrieving annotation data for Human using Ensembl.", {
+  data <- downloadMartData("lincRNA", "hsapiens_gene_ensembl")
+  name_map <- convertChrNamesToUcsc(NULL)
+})
+
 interactiveDevel <- function() {
   load_all("tp_shrna")
   test("tp_shrna")
+  document("tp_shrna")
 }

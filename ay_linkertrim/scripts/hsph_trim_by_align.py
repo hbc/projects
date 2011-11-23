@@ -15,6 +15,7 @@ import yaml
 
 from bcbio import utils
 from bcbio.distributed.messaging import parallel_runner
+from bcbio.hbc.shrna.target import identify_targets
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
@@ -38,16 +39,27 @@ def main(system_config_file, cur_config_file):
         cur_files = [x["unaligned"] for x in align_trimmed_files if x["unaligned"]]
         aligned.append([x["aligned"] for x in align_trimmed_files])
     trimmed_fastq = combine_aligned(aligned, config)
-    do_alignment(trimmed_fastq, config, dirs, run_parallel)
+    align_bams = do_alignment(trimmed_fastq, config, dirs, run_parallel)
+    count_files = count_targets(align_bams, config)
+
+def count_targets(align_bams, config):
+    """Generate count files associated with shRNA targets.
+    """
+    bed_targets = identify_targets(align_bams, config)
 
 def do_alignment(trimmed_fastq, config, dirs, run_parallel):
-    def _strip_fname(x):
-        return os.path.splitext(os.path.basename(x))[0]
-    print trimmed_fastq
+    def _base_fname(x):
+        return os.path.splitext(os.path.basename(x.replace(" ", "_")))[0]
+    def _safe_fname(x):
+        safe_x = x.replace(" ", "_")
+        if x != safe_x and not os.path.exists(safe_x):
+            os.symlink(x, safe_x)
+        return safe_x
     info = {"genome_build": config["algorithm"]["genome_build"]}
-    run_parallel("hbc_process_alignment",
-                 ((f, None, info, _strip_fname(f), "", dirs, config)
-                  for f in trimmed_fastq))
+    xs = run_parallel("hbc_process_alignment",
+                      ((_safe_fname(f), None, info, _base_fname(f), "", dirs, config)
+                       for f in trimmed_fastq))
+    return [x["out_bam"] for x in xs]
 
 def combine_aligned(aligned, config):
     """Combine aligned sequences into final output files.

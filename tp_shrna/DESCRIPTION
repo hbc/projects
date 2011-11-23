@@ -4,12 +4,16 @@ Title: shRNA analysis
 Author: Brad Chapman <bchapman@hsph.harvard.edu>
 Maintainer: Brad Chapman <bchapman@hsph.harvard.edu>
 Depends:
-    R (>= 2.13),
+    R (>= 2.14),
     plyr,
     reshape2,
     DESeq,
     ggplot2,
-    yaml
+    yaml,
+    IRanges,
+    ChIPpeakAnno,
+    biomaRt,
+    RMySQL
 Description: Analysis of short RNA from high throughput
     sequencing experiments.
 License: Expat
@@ -18,3 +22,4 @@ Collate:
     'diffexp.R'
     'load.R'
     'plot.R'
+    'annotation.R'

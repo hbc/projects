@@ -14,4 +14,5 @@ setup(name = "bcbio-hbc-linker",
       scripts = ['scripts/hsph_trim_by_align.py'],
       install_requires = [
           "bcbio-nextgen >= 0.3a",
+          "pybedtools >= 0.5.5"
       ])
