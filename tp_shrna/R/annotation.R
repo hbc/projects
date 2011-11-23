@@ -2,7 +2,7 @@
 
 library(IRanges)
 library(ChIPpeakAnno)
-#library(rtracklayer)
+library(rtracklayer)
 library(biomaRt)
 library(RMySQL)
 
@@ -27,23 +27,36 @@ downloadMartData <- function(ftype, dataset, out_dir=NULL) {
     } else {
       mart.data <- getAnnotation(mart, ftype)
     }
-    export(mart.data, save.file)
+    mart.data <- convertChrNamesToUcsc(mart.data, dataset)
+    if (!is.null(save.file)) {
+      export(mart.data, save.file)
+    }
   }
-  list(data=mart.data, file=save.file)
+  list(gr=mart.data, file=save.file)
 }
 
 #' Convert Ensembl GRCh37 chromosome names (1, 2) to
 #' UCSC chromosome names (chr1, chr2) using the mapping
-#' table provided by UCSC.
+#' table provided by UCSC. hg19 specific right now.
 #' in_rd is a ranged data object.
-convertChrNamesToUcsc <- function(in_rd) {
-  ucsc_dbhost = "genome-mysql.cse.ucsc.edu"
-  ucsc_dbuser = "genome"
-  ucsc_dbname = "hg19"
-  con = dbConnect(MySQL(), user=ucsc_dbuser, host=ucsc_dbhost,
-                  dbname=ucsc_dbname)
-  data = dbGetQuery(con, "select * from ucscToEnsembl")
-  print(data)
+convertChrNamesToUcsc <- function(in_rd, dataset) {
+  stopifnot(dataset == "hsapiens_gene_ensembl")
+  ucsc_dbhost <- "genome-mysql.cse.ucsc.edu"
+  ucsc_dbuser <- "genome"
+  ucsc_dbname <- "hg19"
+  con <- dbConnect(MySQL(), user=ucsc_dbuser, host=ucsc_dbhost,
+                   dbname=ucsc_dbname)
+  data <- dbGetQuery(con, "select ucsc, ensembl from ucscToEnsembl")
+  lookup <- as.list(as.character(data$ucsc))
+  names(lookup) <- data$ensembl
+  gr <- as(in_rd, "GRanges")
+  convertToUcsc <- function(x) {
+    # Lookup table does not have versions, so remove those
+    safe_x <- unlist(strsplit(x, ".", fixed=TRUE))[1]
+    as.character(lookup[safe_x])
+  }
+  seqlevels(gr) <- unlist(lapply(seqlevels(gr), convertToUcsc))
+  gr
 }
 
 #' Retrieve non-coding annotations not covered by ChIPpeakAnno

@@ -43,8 +43,8 @@ test_that("Loading multiple shRNAs targetting a single accession", {
 })
 
 test_that("Retrieving annotation data for Human using Ensembl.", {
-  data <- downloadMartData("lincRNA", "hsapiens_gene_ensembl")
-  name_map <- convertChrNamesToUcsc(NULL)
+  data <- downloadMartData("miRNA", "hsapiens_gene_ensembl")
+  expect_equal(seqlevels(data$gr)[1], c("chr1"))
 })
 
 interactiveDevel <- function() {

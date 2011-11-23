@@ -13,7 +13,8 @@ Depends:
     IRanges,
     ChIPpeakAnno,
     biomaRt,
-    RMySQL
+    RMySQL,
+    rtracklayer
 Description: Analysis of short RNA from high throughput
     sequencing experiments.
 License: Expat
