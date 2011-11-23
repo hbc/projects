@@ -10,6 +10,7 @@ algorithm:
                  32: [[5, 2], [10, 0], [15, 0]]}
   aligner: bowtie2
   genome_build: hg19
+  biomart_dataset: hsapiens_gene_ensembl
   quality_format: Illumina
   merge_distance: 10
   

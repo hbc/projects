@@ -15,7 +15,7 @@ import yaml
 
 from bcbio import utils
 from bcbio.distributed.messaging import parallel_runner
-from bcbio.hbc.shrna.target import identify_targets
+from bcbio.hbc.shrna.target import annotated_target_file
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
@@ -45,7 +45,8 @@ def main(system_config_file, cur_config_file):
 def count_targets(align_bams, config):
     """Generate count files associated with shRNA targets.
     """
-    bed_targets = identify_targets(align_bams, config)
+    target_file = annotated_target_file(align_bams, config)
+    print target_file
 
 def do_alignment(trimmed_fastq, config, dirs, run_parallel):
     def _base_fname(x):
