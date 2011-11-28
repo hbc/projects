@@ -99,7 +99,10 @@ prepareByTarget <- function(in_data, config) {
 #' @export
 mergeGenes <- function(orig_data, remap_data, config = NULL) {
   orig_data <- cleanData(orig_data, config)
-  scols <- c("accession", "gene.symbol")
+  scols <- c("accession")
+  if (!is.null(orig_data$gene.symbol)) {
+    scols <- c(scols, "gene.symbol")
+  }
   if (config$id_name == "shrna.id") {
     scols <- c("shrna.id", scols)
   }

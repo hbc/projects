@@ -12,7 +12,9 @@ config_file <- args[1]
 config <- yaml.load_file(config_file)
 
 in_data <- read.csv(config$infile, header=TRUE)
-in_data <- subset(in_data, (!in_data$Replicate %in% config$drop_replicates))
+if (!is.null(in_data$Replicate)) {
+  in_data <- subset(in_data, (!in_data$Replicate %in% config$drop_replicates))
+}
 if (config$id_name == "accession") {
   work_info <- prepareByAccession(in_data, config)
 } else {

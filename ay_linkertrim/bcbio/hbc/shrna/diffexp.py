@@ -34,7 +34,8 @@ def _prepare_count_file(orig_count, new_count, condition, background):
             writer.writerow(["shrna.id", condition, background, "accession"])
             for parts in reader:
                 target_id = apply("{0}:{1}-{2}".format, parts[:3])
-                writer.writerow([target_id, parts[cond_i], parts[back_i], parts[3]])
+                if (int(parts[cond_i]) + int(parts[back_i])) > 0:
+                    writer.writerow([target_id, parts[cond_i], parts[back_i], parts[3]])
 
 def _prepare_yaml_config(condition, background, config):
     """Prepare YAML configuration file for input to differential expression.
@@ -45,8 +46,12 @@ def _prepare_yaml_config(condition, background, config):
     cur_config = {
         "infile": os.path.join(tmp_dir, "{0}-counts.csv".format(base)),
         "out_base": os.path.join(out_dir, base),
+        "pval_thresh": float(config["algorithm"]["pval_thresh"]),
         "id_name": "shrna.id",
         "model": {"condition": [condition, background]}}
+    top_targets = config["algorithm"].get("top_targets", None)
+    if top_targets:
+        cur_config["top_targets"] = int(top_targets)
     config_file = os.path.join(tmp_dir, "{0}-config.yaml".format(base))
     with open(config_file, "w") as out_handle:
         yaml.dump(cur_config, out_handle)

@@ -34,8 +34,16 @@ plotDispEsts <- function(cds, out_base) {
 estimateVariance <- function(in.data, config) {
   cds <- newCountDataSet(in.data$counts, factor(in.data$model$condition))
   cds <- estimateSizeFactors(cds)
-  cds <- estimateDispersions(cds)
-  if (config$multifactor) {
+  # Check for replicated conditions
+  if (length(unique(in.data$model$condition)) == length(in.data$model$condition)) {
+    # No replicates, treat all samples together for variance estimation
+    cds <- estimateDispersions(cds, method="blind", sharingMode="fit-only",
+                               fitType="local")
+  } else {
+    # Replicates, standard variance estimation
+    cds <- estimateDispersions(cds)
+  }
+  if (!is.null(config$multifactor) && config$multifactor) {
     in.data$model$condition <- factor(in.data$model$condition)
     cds_multi <- newCountDataSet(in.data$counts, in.data$model)
     cds_multi <- estimateSizeFactors(cds_multi)
@@ -53,12 +61,28 @@ estimateVariance <- function(in.data, config) {
   list(cds=cds, cds_multi=cds_multi)
 }
 
+#' Get pvalue to select by and threshold based on configuration
+#' Can use either adjusted p-value (FDR) or standard p-value
+#' Standard p-value is more useful in non-replicate experiments
+getPvalThresh <- function(config) {
+  if (!is.null(config$pval_thresh)) {
+    list(attr="pval", thresh=config$pval_thresh, head=config$top_targets)
+  } else {
+    list(attr="padj", thresh=config$fdr_thresh, head=config$top_targets)
+  }
+}
+
 #' Prepare DESeq result by filtering on p-value and assigning columns
 prepareDEResult <- function(res, in.data, config) {
-  res.sig <- res[res$padj < config$fdr_thresh,]
-  res.sig <- res.sig[order(res.sig$padj),]
-  print(head(res.sig[order(res.sig$pval),]))
-  res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", "padj")]
+  pselect <- getPvalThresh(config)
+  print(head(res[order(res[pselect$attr]), ]))
+  if (!is.null(pselect$head)) {
+    res.sig <- head(res[order(res[pselect$attr]), ], n=pselect$head)
+  } else {
+    res.sig <- res[res[pselect$attr] < pselect$thresh, ]
+  }
+  res.sig <- res.sig[order(res.sig[pselect$attr]), ]
+  res.sig <- res.sig[,c("id", "baseMeanA", "baseMeanB", "foldChange", pselect$attr)]
   names(res.sig) <- c(config$id_name, in.data$model$condition[[1]],
                       in.data$model$condition[[ncol(in.data$counts)]],
                       "foldChange", "pval")
@@ -67,10 +91,11 @@ prepareDEResult <- function(res, in.data, config) {
 
 #' MvA plot of differential expression result
 mvaPlot <- function(res, out_base, config) {
+  pselect <- getPvalThresh(config)
   mva.file <- paste(out_base, "mvaplot.png", sep="-")
   png(file=mva.file)
   plot(res$baseMean, res$log2FoldChange, log="x", pch=20, cex=0.1,
-       col = ifelse(res$padj < config$fdr_thresh, "red", "black"))
+       col = ifelse(res[pselect$attr] < pselect$thresh, "red", "black"))
   dev.off()
 }
 
