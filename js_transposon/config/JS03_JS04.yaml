@@ -5,7 +5,6 @@ experiments:
     lineage: B
     timepoint: 15wk
     expnorm: auto
-    targetnorm: auto
   - name: JS04-2.final.txt
     lineage: T
     timepoint: 15wk
@@ -85,6 +84,7 @@ controls: [JS04-9.final.txt, JS03-12.final.txt, JS03-1.final.txt,
            JS03-4.final.txt, JS03-5.final.txt]
 
 algorithm:
+  targetnorm: auto
   distance: 25 # bp to consider two reads as same transposon position
 
 dir:

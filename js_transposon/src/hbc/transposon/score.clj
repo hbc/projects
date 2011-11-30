@@ -40,12 +40,23 @@
                      :or {base 1e6
                           ignore *ignore-cols*}}]
   (letfn [(normalize [x total]
-            (* (/ x total) base))
+            (if-not (nil? total)
+              (* (/ x total) base)
+              x))
+          (get-col-norm [col config]
+            (get
+             (reduce #(assoc %1 (keyword (:name %2)) (get %2 :expnorm ""))
+                     {} (:experiments config))
+             col))
           (maybe-normalize [ds col]
-            (if-not (contains? ignore col)
-              (icore/transform-col ds col normalize
-                                   (float (apply + (icore/sel ds :cols col))))
-              ds))]
+              (if-not (contains? ignore col)
+                (let [col-norm (get-col-norm col config)
+                      total (case col-norm
+                                  "auto" (float (apply + (icore/sel ds :cols col)))
+                                  "" nil
+                                  (Integer/parseInt col-norm))]
+                  (icore/transform-col ds col normalize total))
+                ds))]
     (loop [ds dataset
            cols (icore/col-names ds)]
       (if-let [col (first cols)]
@@ -63,7 +74,7 @@
   "Normalize counts as the percentage of the max at a position.
    This normalizes by row, in contrast to normalize-counts
    which handles columns."
-  [ds & {:keys [ignore]
+  [config ds & {:keys [ignore]
               :or {ignore *ignore-cols*}}]
   (letfn [(normalize-row [row]
             (let [cur-max (apply max row)]
@@ -95,7 +106,7 @@
               (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
       (-> (read-dataset merge-file :header true)
           (partial normalize-counts config)
-          normalize-pos-ratios
+          (partial normalize-pos-ratios config)
           print-count-stats
           (#(do (icore/save % (mod-file-name "normal.csv")) %))
           filter-by-multiple
