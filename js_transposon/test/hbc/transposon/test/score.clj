@@ -10,9 +10,10 @@
 (let [ds (icore/dataset [:chr :pos :one :two :three :seq]
                         [["chr1" 10  0  50 10 "GG"]
                          ["chr1" 20 10 200 10 "CC"]])
-      config {:experiments [{:name "one" :reads "auto" :controls ["three"]}
-                            {:name "two" :reads 1000 :controls ["three"]}
-                            {:name "three" :reads ""}]}]
+      config {:experiments [{:name "one" :expnorm "auto" :targetnorm "auto"}
+                            {:name "two" :expnorm 1000 :targetnorm ""}
+                            {:name "three" :expnorm "" :targetnorm "" :controls []}]
+              :controls ["three"]}]
   (fact "Normalize a CSV file by reads and experiment counts."
     (let [ncounts (normalize-counts config ds :base 100)
           n2counts (normalize-pos-ratios ncounts)]
