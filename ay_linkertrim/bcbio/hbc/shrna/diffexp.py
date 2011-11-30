@@ -5,21 +5,58 @@ import csv
 import subprocess
 
 import yaml
+import rpy2.robjects as rpy2
 
 from bcbio.utils import file_exists, safe_makedir
 
 def do_comparisons(count_file, config):
     for cmp_info in config["comparisons"]:
         for condition in cmp_info["conditions"]:
-            noreplicate_comparison(count_file, condition,
-                                   cmp_info["background"], config)
+            out_file = noreplicate_comparison(count_file, condition,
+                                              cmp_info["background"], config)
+            _add_gene_descriptions(out_file, config)
 
 def noreplicate_comparison(count_file, condition, background, config):
     """Prepare a differential expression comparison without replicates.
     """
     cur_config, cur_config_file = _prepare_yaml_config(condition, background, config)
     _prepare_count_file(count_file, cur_config["infile"], condition, background)
-    subprocess.check_call(["Rscript", config["program"]["diffexp"], cur_config_file])
+    diffexp_file = "{0}-diffexp.tsv".format(cur_config["out_base"])
+    if not file_exists(diffexp_file):
+        subprocess.check_call(["Rscript", config["program"]["diffexp"], cur_config_file])
+    return diffexp_file
+
+def _add_gene_descriptions(in_file, config):
+    """Add gene descriptions to differential expression output file.
+    """
+    out_file = apply("{0}-annotated{1}".format, os.path.splitext(in_file))
+    if not file_exists(out_file):
+        with open(in_file) as in_handle:
+            with open(out_file, "w") as out_handle:
+                reader = csv.reader(in_handle, dialect="excel-tab")
+                writer = csv.writer(out_handle, dialect="excel-tab")
+                header = reader.next()
+                writer.writerow(header + ["description"])
+                for parts in reader:
+                    descr = (_get_gene_descr(parts[-1].split(";"), config)
+                             if parts[-1] != "." else ".")
+                    writer.writerow(parts + [descr])
+        print out_file
+    return out_file
+
+def _get_gene_descr(ens_gene_ids, config):
+    """Retrieve gene descriptions from a list of ensembl gene IDs.
+    """
+    rpy2.r.assign("ids", rpy2.StrVector(ens_gene_ids))
+    rpy2.r.assign("dataset", config["algorithm"]["biomart_dataset"])
+    rpy2.r('''
+    library(biomaRt)
+    mart <- useMart("ensembl", dataset=dataset)
+    result <- getBM(attributes=c("description"), filters=c("ensembl_gene_id"),
+                    values=ids, mart=mart)
+    desc <- result$description
+    ''')
+    return ";".join(list(set(rpy2.r["desc"])))
 
 def _prepare_count_file(orig_count, new_count, condition, background):
     """Prepare subset count with condition and background of interest.

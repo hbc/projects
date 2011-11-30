@@ -77,6 +77,8 @@ def _write_combined_features(in_handle, out_handle):
     def _write_combined(pos, ids):
         if len(ids) == 0:
             ids.append(".")
+        else:
+            ids = sorted(list(set(ids)))
         out_handle.write("{0}\t{1}\n".format("\t".join(pos),
                                              ";".join(ids)))
     last = None
@@ -91,7 +93,7 @@ def _write_combined_features(in_handle, out_handle):
             ids = []
         if cur_attr != ".":
             attrs = parse_attributes(cur_attr)
-            ids.append(attrs["ID"])
+            ids.append(attrs.get("ensembl_gene_id", attrs["ID"]))
     if last:
         _write_combined(last, ids)
 
