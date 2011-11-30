@@ -36,11 +36,11 @@ def _add_gene_descriptions(in_file, config):
                 reader = csv.reader(in_handle, dialect="excel-tab")
                 writer = csv.writer(out_handle, dialect="excel-tab")
                 header = reader.next()
-                writer.writerow(header + ["description"])
+                writer.writerow(header + ["genesymbol", "description"])
                 for parts in reader:
-                    descr = (_get_gene_descr(parts[-1].split(";"), config)
-                             if parts[-1] != "." else ".")
-                    writer.writerow(parts + [descr])
+                    symbol, descr = (_get_gene_descr(parts[-1].split(";"), config)
+                                     if parts[-1] != "." else (".", "."))
+                    writer.writerow(parts + [symbol, descr])
         print out_file
     return out_file
 
@@ -52,11 +52,15 @@ def _get_gene_descr(ens_gene_ids, config):
     rpy2.r('''
     library(biomaRt)
     mart <- useMart("ensembl", dataset=dataset)
-    result <- getBM(attributes=c("description"), filters=c("ensembl_gene_id"),
+    result <- getBM(attributes=c("description", "hgnc_symbol"), filters=c("ensembl_gene_id"),
                     values=ids, mart=mart)
     desc <- result$description
+    genesym <- result$hgnc_symbol
     ''')
-    return ";".join(list(set(rpy2.r["desc"])))
+    def _cleanup(name):
+        return list(set(x for x in rpy2.r[name] if x))
+    return (";".join(_cleanup("genesym")),
+            ";".join(_cleanup("desc")))
 
 def _prepare_count_file(orig_count, new_count, condition, background):
     """Prepare subset count with condition and background of interest.
