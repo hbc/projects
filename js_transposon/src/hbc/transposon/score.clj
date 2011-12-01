@@ -75,13 +75,16 @@
    This normalizes by row, in contrast to normalize-counts
    which handles columns."
   [config ds & {:keys [ignore]
-              :or {ignore *ignore-cols*}}]
-  (letfn [(normalize-row [row]
-            (let [cur-max (apply max row)]
-              (map #(/ % cur-max) row)))]
-    (icore/dataset (icore/col-names ds)
-                   (map #(process-row ds % normalize-row ignore)
-                        (range (icore/nrow ds))))))
+                :or {ignore *ignore-cols*}}]
+  (let [conf-ignore (if (= "auto" (get-in config [:algorithm :rownorm] ""))
+                      ignore
+                      (set (icore/col-names ds)))]
+    (letfn [(normalize-row [row]
+              (let [cur-max (if-not (empty? row) (apply max row))]
+                (map #(/ % cur-max) row)))]
+      (icore/dataset (icore/col-names ds)
+                     (map #(process-row ds % normalize-row conf-ignore)
+                          (range (icore/nrow ds)))))))
 
 ; ## Dataset filtration
 

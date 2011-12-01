@@ -7,7 +7,6 @@
             [incanter.core :as icore])
   (:import [java.io StringReader]))
 
-
 (let [ds (icore/dataset [:chr :pos :one :two :three :seq]
                         [["chr1" 10  0  50 10 "GG"]
                          ["chr1" 20 10 200 10 "CC"]])
@@ -15,16 +14,25 @@
                             {:name "two" :expnorm "auto"}
                             {:name "three" :expnorm "auto" :controls []}]
               :controls ["three"]
-              :algorithm {:targetnorm ""}}]
+              :algorithm {:rownorm "auto"}}
+      config2 {:experiments [{:name "one"}
+                            {:name "two"}
+                            {:name "three" :controls []}]
+               :controls ["three"]
+               :algorithm {:rownorm ""}}]
   (fact "Normalize a CSV file by reads and experiment counts."
     (let [ncounts (normalize-counts config ds :base 100)
-          n2counts (normalize-pos-ratios config ncounts)]
+          ncounts-raw (normalize-counts config2 ds)
+          n2counts (normalize-pos-ratios config ncounts)
+          n2counts-raw (normalize-pos-ratios config2 ncounts-raw)]
       (icore/sel ncounts :cols :one) => [0.0 100.0]
       (icore/sel ncounts :cols :two) => [20.0 80.0]
       (icore/col-names ncounts) => [:chr :pos :one :two :three :seq]
       (icore/sel n2counts :cols :one) => [0.0 1.0]
       (icore/sel n2counts :cols :two) => [0.4 0.8]
       (icore/col-names n2counts) => [:chr :pos :one :two :three :seq]
+      (icore/sel ncounts-raw :cols :one) => [0 10]
+      (icore/sel n2counts-raw :cols :one) => [0 10]
       (fact "Calculate dataset statistics"
         (let [stats (summarize-count-statistics n2counts)]
           (count stats) => 3
