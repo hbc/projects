@@ -33,6 +33,12 @@
 ;; Normalize columns by total reads and rows by percentage of maximum
 ;; to allow experiment and position comparisons.
 
+(defn- get-col-name [col ds ignore config]
+  "Retrieve the configured name of a column based on index."
+  (let [col-names (remove #(contains? ignore %) (icore/col-names ds))
+        exp-names (map :name (:experiments config))]
+    (get (zipmap col-names exp-names) col)))
+
 (defn normalize-counts
   "Normalize counts to standard metric based on totals in each experiment.
    By default normalizes to total count in a column scaled to 1 million reads."
@@ -43,14 +49,14 @@
             (if-not (nil? total)
               (* (/ x total) base)
               x))
-          (get-col-norm [col config]
+          (get-col-norm [col ds ignore config]
             (get
              (reduce #(assoc %1 (:name %2) (get %2 :expnorm ""))
                      {} (:experiments config))
-             col))
+             (get-col-name col ds ignore config)))
           (maybe-normalize [ds col]
               (if-not (contains? ignore col)
-                (let [col-norm (get-col-norm col config)
+                (let [col-norm (get-col-norm col ds ignore config)
                       total (case col-norm
                                   "auto" (float (apply + (icore/sel ds :cols col)))
                                   "" nil
@@ -106,16 +112,20 @@
 
 (def filter-by-controls
   "Filter experiments that have the highest count values in controls."
-  (letfn [(controls-by-exp [config]
-            (reduce #(assoc %1 (:name %2) (get %2 :controls (get config :controls [])))
-                    {} (:experiments config)))
+  (letfn [(get-controls [exp config names-to-cols]
+            (let [ctrls (get exp :controls (get config :controls []))]
+              (map #(get names-to-cols %) ctrls)))
+          (controls-by-exp [cols config]
+            (let [names-to-cols (zipmap (map :name (:experiments config)) cols)]
+              (zipmap cols (map #(get-controls % config names-to-cols)
+                                (:experiments config)))))
           (good-col? [col data exp-controls]
             (let [max-control (if-not (empty? (get exp-controls col []))
                                 (apply max (map #(get data %) (get exp-controls col)))
                                 -1)]
               (> (get data col) max-control)))
           (is-control-dominated? [config cols data]
-            (let [exp-controls (controls-by-exp config)]
+            (let [exp-controls (controls-by-exp cols config)]
               (every? #(good-col? % data exp-controls) cols)))]
     (filter-by-fn is-control-dominated?)))
 
