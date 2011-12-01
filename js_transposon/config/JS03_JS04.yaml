@@ -4,7 +4,6 @@ experiments:
     timepoint: 15wk
     lineage: B
     timepoint: 15wk
-    expnorm: auto
   - name: JS04-2.final.txt
     lineage: T
     timepoint: 15wk
@@ -79,8 +78,8 @@ experiments:
     lineage: Test-Pool-repeat-2
     timepoint: 
     controls: []
-controls: [JS04-9.final.txt, JS03-12.final.txt, JS03-1.final.txt,
-           JS03-2.final.txt, JS03-3.final.txt, JS04-1.final.txt,
+controls: [JS04-9.final.txt, JS03-12.final.txt, JS04-10.final.txt,
+           JS03-1.final.txt, JS03-2.final.txt, JS03-3.final.txt,
            JS03-4.final.txt, JS03-5.final.txt]
 
 algorithm:

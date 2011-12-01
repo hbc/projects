@@ -107,11 +107,13 @@
 (def filter-by-multiple
   "Require a count to be present in multiple experiments to pass filtering."
   (letfn [(is-single-exp? [_ cols data]
-            (> (apply + (map #(% data) cols)) 1.0))]
+            (> (count (filter #(> (% data) 0) cols)) 1))]
     (filter-by-fn is-single-exp?)))
 
 (def filter-by-controls
-  "Filter experiments that have the highest count values in controls."
+  "Filter experiments that have the highest count values in controls.
+   Requires one experiment to have a higher count value than control
+   to pass."
   (letfn [(get-controls [exp config names-to-cols]
             (let [ctrls (get exp :controls (get config :controls []))]
               (map #(get names-to-cols %) ctrls)))
@@ -120,13 +122,14 @@
               (zipmap cols (map #(get-controls % config names-to-cols)
                                 (:experiments config)))))
           (good-col? [col data exp-controls]
-            (let [max-control (if-not (empty? (get exp-controls col []))
-                                (apply max (map #(get data %) (get exp-controls col)))
-                                -1)]
-              (> (get data col) max-control)))
+            (if-not (empty? (get exp-controls col []))
+              (>= (get data col)
+                  (apply max (map #(get data %) (get exp-controls col))))))
           (is-control-dominated? [config cols data]
             (let [exp-controls (controls-by-exp cols config)]
-              (every? #(good-col? % data exp-controls) cols)))]
+              (->> (map #(good-col? % data exp-controls) cols)
+                   (remove nil?)
+                   (not-every? false?))))]
     (filter-by-fn is-control-dominated?)))
 
 ; ## Top level functionality
