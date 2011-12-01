@@ -45,7 +45,7 @@
               x))
           (get-col-norm [col config]
             (get
-             (reduce #(assoc %1 (keyword (:name %2)) (get %2 :expnorm ""))
+             (reduce #(assoc %1 (:name %2) (get %2 :expnorm ""))
                      {} (:experiments config))
              col))
           (maybe-normalize [ds col]
@@ -88,17 +88,36 @@
 
 ; ## Dataset filtration
 
-(defn filter-by-multiple
-  "Require a count to be present in multiple experiments to pass filtering."
-  [ds & {:keys [ignore]
-              :or {ignore *ignore-cols*}}]
-  (let [cols (remove #(contains? ignore %) (icore/col-names ds))]
-    (letfn [(is-single-exp? [data]
-              (> (apply + (map #(% data) cols)) 1.0))]
+(defn- filter-by-fn [filter-fn?]
+  "General by-row filter utility based on a evaluator function."
+  (fn [config ds & {:keys [ignore]
+                    :or {ignore *ignore-cols*}}]
+    (let [cols (remove #(contains? ignore %) (icore/col-names ds))]
       (icore/dataset (icore/col-names ds)
-                     (filter is-single-exp?
+                     (filter (partial filter-fn? config cols)
                              (map #(process-row ds % identity ignore)
                                   (range (icore/nrow ds))))))))
+
+(def filter-by-multiple
+  "Require a count to be present in multiple experiments to pass filtering."
+  (letfn [(is-single-exp? [_ cols data]
+            (> (apply + (map #(% data) cols)) 1.0))]
+    (filter-by-fn is-single-exp?)))
+
+(def filter-by-controls
+  "Filter experiments that have the highest count values in controls."
+  (letfn [(controls-by-exp [config]
+            (reduce #(assoc %1 (:name %2) (get %2 :controls (get config :controls [])))
+                    {} (:experiments config)))
+          (good-col? [col data exp-controls]
+            (let [max-control (if-not (empty? (get exp-controls col []))
+                                (apply max (map #(get data %) (get exp-controls col)))
+                                -1)]
+              (> (get data col) max-control)))
+          (is-control-dominated? [config cols data]
+            (let [exp-controls (controls-by-exp config)]
+              (every? #(good-col? % data exp-controls) cols)))]
+    (filter-by-fn is-control-dominated?)))
 
 ; ## Top level functionality
 
@@ -112,7 +131,8 @@
           (partial normalize-pos-ratios config)
           print-count-stats
           (#(do (icore/save % (mod-file-name "normal.csv")) %))
-          filter-by-multiple
+          (partial filter-by-multiple config)
+          (partial filter-by-controls config)
           print-count-stats
           (icore/save (mod-file-name "normal-filter.csv"))))))
 
