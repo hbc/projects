@@ -6,6 +6,6 @@ To run:
 
     $ lein deps
     $ lein run :merge <work_directory> <YAML config file>
-    $ lein run :score <merged CSV file>
+    $ lein run :score <merged CSV file> <YAML config file>
 
 [1]: https://github.com/technomancy/leiningen

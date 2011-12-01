@@ -127,12 +127,12 @@
     (letfn [(mod-file-name [ext]
               (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
       (-> (read-dataset merge-file :header true)
-          (partial normalize-counts config)
-          (partial normalize-pos-ratios config)
+          ((partial normalize-counts config))
+          ((partial normalize-pos-ratios config))
           print-count-stats
           (#(do (icore/save % (mod-file-name "normal.csv")) %))
-          (partial filter-by-multiple config)
-          (partial filter-by-controls config)
+          ((partial filter-by-multiple config))
+          ((partial filter-by-controls config))
           print-count-stats
           (icore/save (mod-file-name "normal-filter.csv"))))))
 
