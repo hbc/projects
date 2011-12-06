@@ -105,9 +105,18 @@
                                   (range (icore/nrow ds))))))))
 
 (def filter-by-multiple
-  "Require a count to be present in multiple experiments to pass filtering."
-  (letfn [(is-single-exp? [_ cols data]
-            (> (count (filter #(> (% data) 0) cols)) 1))]
+  "Require a count to be present in multiple experiments to pass filtering.
+   Looks for multiple counts in experimental, not control, samples."
+  (letfn [(get-control-cols [config cols]
+            (let [names-to-cols (zipmap (map :name (:experiments config)) cols)
+                  ctrls (flatten [(get config :controls [])
+                                  (map #(get % :controls []) (:experiments config))])]
+              (set (map #(get names-to-cols %) ctrls))))
+          (is-single-exp? [config cols data]
+            (let [ctrl-cols (get-control-cols config cols)
+                  remain-cols (remove ctrl-cols cols)]
+              (> (count (filter #(> (% data) 0) remain-cols))
+                 1)))]
     (filter-by-fn is-single-exp?)))
 
 (def filter-by-controls

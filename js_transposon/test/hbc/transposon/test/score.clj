@@ -36,13 +36,16 @@
           (count stats) => 3
           (first stats) => (contains [:one 0.5 0.5]))))))
 
-(let [ds (icore/dataset [:chr :pos :one :two :seq]
-                        [["chr1" 10 1.0 0 0 "GG"]
-                         ["chr1" 20 1.0 0.5 "GG"]])]
+(let [ds (icore/dataset [:chr :pos :one :two :three :seq]
+                        [["chr1" 10 1.0 0.0 1.0 "GG"]
+                         ["chr1" 20 1.0 0.5 1.0 "GG"]])
+      config {:experiments [{:name "one" :controls ["three"]}
+                            {:name "two"}
+                            {:name "three"}]}]
   (fact "Filter dataset to remove single experiment only rows."
-    (let [fds (filter-by-multiple {} ds)]
+    (let [fds (filter-by-multiple config ds)]
       (icore/nrow fds) => 1
-      (icore/sel fds :rows 0) => ["chr1" 20 1.0 0.5 "GG"])))
+      (icore/sel fds :rows 0) => ["chr1" 20 1.0 0.5 1.0 "GG"])))
 
 (let [ds (icore/dataset [:chr :pos :one :two :seq]
                         [["chr1" 10 0.5 1.0 "GG"]
