@@ -2,6 +2,7 @@ experiments:
   - name: JS03-6.final.txt
     lineage: Gr
     timepoint: 15wk
+  - name: JS04-1.final.txt
     lineage: B
     timepoint: 15wk
   - name: JS04-2.final.txt
