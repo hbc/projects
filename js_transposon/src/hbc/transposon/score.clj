@@ -147,14 +147,20 @@
   "Normalize and prepare statistics on a merged file."
   (let [config (-> config-file slurp yaml/parse-string)]
     (letfn [(mod-file-name [ext]
-              (format "%s-%s" (-> merge-file (string/split #"\.") first) ext))]
+              (format "%s-%s" (-> merge-file (string/split #"\.")
+                                  reverse
+                                  rest
+                                  reverse
+                                  (#(string/join "." %)))
+                               ext))]
       (-> (read-dataset merge-file :header true)
           ((partial normalize-counts config))
           ((partial normalize-pos-ratios config))
           print-count-stats
           (#(do (icore/save % (mod-file-name "normal.csv")) %))
-          ((partial filter-by-multiple config))
           ((partial filter-by-controls config))
+          (#(do (icore/save % (mod-file-name "normal-nomultifilter.csv")) %))
+          ((partial filter-by-multiple config))
           print-count-stats
           (icore/save (mod-file-name "normal-filter.csv"))))))
 
