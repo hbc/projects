@@ -14,7 +14,7 @@ def do_comparisons(count_file, config):
         for condition in cmp_info["conditions"]:
             out_file = noreplicate_comparison(count_file, condition,
                                               cmp_info["background"], config)
-            _add_gene_descriptions(out_file, config)
+            #_add_gene_descriptions(out_file, config)
 
 def noreplicate_comparison(count_file, condition, background, config):
     """Prepare a differential expression comparison without replicates.

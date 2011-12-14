@@ -16,7 +16,7 @@ algorithm:
   count_min_experiments: 2
   count_min_required: 10
   pval_thresh: 0.1
-  top_targets: 100
+  top_targets: 250
   
   num_cores: 1
   #anchor_sizes: [5, 7]
