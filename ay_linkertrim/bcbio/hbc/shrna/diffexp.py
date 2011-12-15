@@ -11,11 +11,14 @@ import rpy2.robjects as rpy2
 from bcbio.utils import file_exists, safe_makedir
 
 def do_comparisons(count_file, config):
+    out = []
     for cmp_info in config["comparisons"]:
         for condition in cmp_info["conditions"]:
             out_file = noreplicate_comparison(count_file, condition,
                                               cmp_info["background"], config)
-            _add_gene_descriptions(out_file, config)
+            ann_file = _add_gene_descriptions(out_file, config)
+            out.append((condition, ann_file))
+    return out
 
 def noreplicate_comparison(count_file, condition, background, config):
     """Prepare a differential expression comparison without replicates.

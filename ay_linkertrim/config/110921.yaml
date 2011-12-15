@@ -17,6 +17,7 @@ algorithm:
   count_min_required: 10
   pval_thresh: 0.1
   top_targets: 250
+  final_targets: 1000
   
   num_cores: 1
   #anchor_sizes: [5, 7]

@@ -17,7 +17,7 @@ from bcbio import utils
 from bcbio.distributed.messaging import parallel_runner
 from bcbio.hbc.shrna.target import annotated_target_file
 from bcbio.hbc.shrna.count import overlap_target_counts, combine_counts_by_position, filter_counts
-from bcbio.hbc.shrna import diffexp
+from bcbio.hbc.shrna import diffexp, combine
 
 def main(system_config_file, cur_config_file):
     config = utils.merge_config_files([system_config_file, cur_config_file])
@@ -43,6 +43,7 @@ def main(system_config_file, cur_config_file):
     trimmed_fastq = combine_aligned(aligned, config)
     align_bams = do_alignment(trimmed_fastq, config, dirs, run_parallel)
     count_files = count_targets(align_bams, config)
+    combine.identify_top_ranked(count_files, config)
 
 def count_targets(align_bams, config):
     """Generate count files associated with shRNA targets.
@@ -51,7 +52,7 @@ def count_targets(align_bams, config):
     count_files = [overlap_target_counts(x, target_file, config) for x in align_bams]
     combined_count_file = combine_counts_by_position(count_files, config)
     final_count_file = filter_counts(combined_count_file, config)
-    diffexp.do_comparisons(final_count_file, config)
+    return diffexp.do_comparisons(final_count_file, config)
 
 def do_alignment(trimmed_fastq, config, dirs, run_parallel):
     def _base_fname(x):
