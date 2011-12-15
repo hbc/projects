@@ -3,6 +3,7 @@
 import os
 import csv
 import subprocess
+import collections
 
 import yaml
 import rpy2.robjects as rpy2
@@ -14,7 +15,7 @@ def do_comparisons(count_file, config):
         for condition in cmp_info["conditions"]:
             out_file = noreplicate_comparison(count_file, condition,
                                               cmp_info["background"], config)
-            #_add_gene_descriptions(out_file, config)
+            _add_gene_descriptions(out_file, config)
 
 def noreplicate_comparison(count_file, condition, background, config):
     """Prepare a differential expression comparison without replicates.
@@ -36,31 +37,63 @@ def _add_gene_descriptions(in_file, config):
                 reader = csv.reader(in_handle, dialect="excel-tab")
                 writer = csv.writer(out_handle, dialect="excel-tab")
                 header = reader.next()
-                writer.writerow(header + ["genesymbol", "description"])
+                writer.writerow(header + ["biotype", "genesymbol", "description"])
+                info = []
+                ids = []
                 for parts in reader:
-                    symbol, descr = (_get_gene_descr(parts[-1].split(";"), config)
-                                     if parts[-1] != "." else (".", "."))
-                    writer.writerow(parts + [symbol, descr])
+                    cur_ids = parts[-1].split(";")
+                    info.append((parts, cur_ids))
+                    ids.extend(cur_ids)
+                gene_info = _get_gene_info(list(set(ids)), config)
+                for parts, cur_ids in info:
+                    if len(cur_ids) == 1 and cur_ids[0] == ".":
+                        cur_info = {}
+                    else:
+                        cur_info = _info_for_ids(cur_ids, gene_info)
+                    writer.writerow(parts + [cur_info.get(x, ".") for x in
+                                             ["gene_biotype", "hgnc_symbol", "description"]])
         print out_file
     return out_file
 
-def _get_gene_descr(ens_gene_ids, config):
+def _info_for_ids(ids, info):
+    """Retrieve collapsed dictionary of gene information for the given ids.
+    """
+    orig = collections.defaultdict(list)
+    for x in ids:
+        for key, val in info[x].iteritems():
+            if val:
+                orig[key].append(val)
+    out = {}
+    for key, vals in orig.iteritems():
+        out[key] = ";".join(list(set(vals)))
+    return out
+
+def _get_gene_info(ens_gene_ids, config):
     """Retrieve gene descriptions from a list of ensembl gene IDs.
     """
     rpy2.r.assign("ids", rpy2.StrVector(ens_gene_ids))
     rpy2.r.assign("dataset", config["algorithm"]["biomart_dataset"])
     rpy2.r('''
     library(biomaRt)
+    options(stringsAsFactors=FALSE)
     mart <- useMart("ensembl", dataset=dataset)
-    result <- getBM(attributes=c("description", "hgnc_symbol"), filters=c("ensembl_gene_id"),
+    result <- getBM(attributes=c("ensembl_gene_id", "description",
+                                 "hgnc_symbol", "gene_biotype"),
+                    filters=c("ensembl_gene_id"),
                     values=ids, mart=mart)
-    desc <- result$description
-    genesym <- result$hgnc_symbol
+    print(head(result))
     ''')
-    def _cleanup(name):
-        return list(set(x for x in rpy2.r[name] if x))
-    return (";".join(_cleanup("genesym")),
-            ";".join(_cleanup("desc")))
+    out = {}
+    col_names = list(rpy2.r['result'].colnames)
+    for row in rpy2.r['result'].iter_row():
+        cur = {}
+        for i, name in enumerate(col_names):
+            data = row.rx2(i+1)[0]
+            if data == rpy2.NA_Logical:
+                data = "."
+            cur[name] = data
+        out[cur["ensembl_gene_id"]] = cur
+    return out
 
 def _prepare_count_file(orig_count, new_count, condition, background):
     """Prepare subset count with condition and background of interest.
