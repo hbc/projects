@@ -53,6 +53,14 @@
 (defn in-depth-calls [data]
   "Retrieve calls of interest for in-depth analysis")
 
+(defn- classifier-check-fname [data-file work-dir ext]
+  "Retrieve location of a classifier related file; ext is the unique file extension."
+  (fs/join work-dir "classifier" (-> data-file
+                                     fs/basename
+                                     (split #"\.")
+                                     first
+                                     (#(format "%s%s" % ext)))))
+
 (defn write-indepth-calls [data data-file work-dir]
   "Write details on correct/wrong regions of interest for by-hand evaluation."
   (let [in-depth-fname (classifier-check-fname data-file work-dir "-indepth.tsv")]
@@ -62,14 +70,6 @@
           (.write wrtr (format "%s\n" (join "\t" cur-indepth))))))))
 
 ;; Manage reading and writing details about each position to YAML files
-
-(defn- classifier-check-fname [data-file work-dir ext]
-  "Retrieve location of a classifier related file; ext is the unique file extension."
-  (fs/join work-dir "classifier" (-> data-file
-                                     fs/basename
-                                     (split #"\.")
-                                     first
-                                     (#(format "%s%s" % ext)))))
 
 (defn write-assessment [data data-file work-dir]
   "Write assessment information to YAML output file"
@@ -83,7 +83,7 @@
                     slurp
                     yaml/parse-string
                     (map (fn [x] (assoc x :class (keyword (:class x)))))))
-  ([data-file work-dir] (read-assessment (dump-fname data-file work-dir))))
+  ([data-file work-dir] (read-assessment (data-file work-dir))))
 
 (defn -main [data-file work-dir]
   (let [a (read-assessment data-file work-dir)]

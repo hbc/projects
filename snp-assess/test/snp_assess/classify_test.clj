@@ -1,6 +1,7 @@
 (ns snp-assess.classify-test
   (:use [midje.sweet]
         [snp-assess.classify]
+        [snp-assess.classify-eval :only [summarize-assessment]]
         [snp-assess.config])
   (:require [fs]))
 
@@ -45,6 +46,6 @@
 
 (facts "Remap raw data for classification"
   (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>
-    (contains [(roughly 0.516) (roughly 0.0) 0.4 :test])
+    (contains [(roughly 0.516) (roughly 9.0E-4) 0.4 :test])
   (finalize-raw-data ["notused" 30 1.0E-2 50] :test2 default-config) =>
-    (contains [(roughly 0.8387) (roughly 0.0909) 0.2 :test2]))
+    (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))

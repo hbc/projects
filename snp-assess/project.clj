@@ -1,13 +1,14 @@
 (defproject snp-assess "0.0.1-SNAPSHOT"
   :description "Deep sequence variation assessment with Hadoop."
-  :dependencies [[org.clojure/clojure "1.2.1"]
-                 [cascalog "1.8.0"]
-                 [incanter "1.2.3" :exclusions [swank-clojure]]
-                 [com.leadtune/clj-ml "0.1.2"]
-                 [fs "0.8.1"]
-                 [clj-yaml "0.3.0-SNAPSHOT"]]
+  :dependencies [[org.clojure/clojure "1.3.0"]
+                 [cascalog "1.8.5"]
+                 [incanter/incanter-core "1.3.0-SNAPSHOT"]
+                 [incanter/incanter-charts "1.3.0-SNAPSHOT"]
+                 [com.leadtune/clj-ml "0.1.4"]
+                 [fs "0.11.1"]
+                 [clj-yaml "0.3.1"]]
   :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
-                     [midje "1.1.1"]]
+                     [midje "1.3.0" :exclusions [org.clojure/clojure]]]
   :run-aliases {:snp-data snp-assess.core
                 :off-target snp-assess.off-target
                 :min-coverage snp-assess.min-coverage
