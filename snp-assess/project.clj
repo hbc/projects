@@ -6,9 +6,11 @@
                  [incanter/incanter-charts "1.3.0-SNAPSHOT"]
                  [com.leadtune/clj-ml "0.1.4"]
                  [fs "0.11.1"]
-                 [clj-yaml "0.3.1"]]
+                 [clj-yaml "0.3.1"]
+                 [org.biojava/biojava3-core "3.0.2"]]
   :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
                      [midje "1.3.0" :exclusions [org.clojure/clojure]]]
+  :repositories {"biojava" "http://www.biojava.org/download/maven/"}
   :run-aliases {:snp-data snp-assess.core
                 :off-target snp-assess.off-target
                 :min-coverage snp-assess.min-coverage
