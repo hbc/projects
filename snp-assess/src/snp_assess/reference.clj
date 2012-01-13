@@ -38,5 +38,6 @@
 
 (defn -main [ref-fasta ref-config]
   (let [seqs (get-fasta-seq-map ref-fasta)
-        config (-> ref-config slurp yaml/parse-string :reference)]
-    (gen-ref seqs config)))
+        config (-> ref-config slurp yaml/parse-string)
+        percents (into {} (for [[k v] (:reference config)] [(name k) v]))]
+    (gen-ref seqs percents)))
