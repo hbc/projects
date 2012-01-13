@@ -1,6 +1,7 @@
 (defproject snp-assess "0.0.1-SNAPSHOT"
   :description "Deep sequence variation assessment with Hadoop."
   :dependencies [[org.clojure/clojure "1.3.0"]
+                 [org.clojure/algo.generic "0.1.0"]
                  [cascalog "1.8.5"]
                  [incanter/incanter-core "1.3.0-SNAPSHOT"]
                  [incanter/incanter-charts "1.3.0-SNAPSHOT"]
