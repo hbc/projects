@@ -13,5 +13,6 @@
                 :off-target snp-assess.off-target
                 :min-coverage snp-assess.min-coverage
                 :classify snp-assess.classify
-                :classify-eval snp-assess.classify-eval}
+                :classify-eval snp-assess.classify-eval
+                :reference snp-assess.reference}
   :aot [snp-assess.core])
