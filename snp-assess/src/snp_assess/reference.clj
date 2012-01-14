@@ -2,15 +2,40 @@
 ;; mixed populations
 
 (ns snp-assess.reference
-  (:import [org.biojava3.core.sequence.io FastaReaderHelper])
+  (:import [org.biojava3.core.sequence.io FastaReaderHelper]
+           [org.broadinstitute.sting.utils.variantcontext
+            VariantContextBuilder Allele])
   (:use [clojure.java.io]
+        [clojure.string :only [join]]
         [clojure.algo.generic.functor :only [fmap]])
   (:require [clj-yaml.core :as yaml]))
+
+;; External file interaction
 
 (defn get-fasta-seq-map [in-file]
   "Parse FASTA input file to in-memory map of ids to sequences."
   (let [seq-map (FastaReaderHelper/readFastaDNASequence (file in-file) true)]
     (reduce #(assoc %1 %2 (->> %2 (.get seq-map) (.toString))) {} (.keySet seq-map))))
+
+;; Generate VCF output file components using GATK API
+
+(defn convert-to-vc [contig pos base-freqs]
+  "Convert base frequency information into a VCF VariantContext."
+  (letfn [(to-alleles [bases]
+            (for [[i [base _]] (map-indexed vector bases)]
+              (Allele/create base (= i 0))))
+          (to-freqs [bases]
+            (join "," (rest (map second bases))))]
+    (let [ordered-bases (sort-by second > (vec base-freqs))]
+      (-> (VariantContextBuilder. contig contig pos (+ 1 pos) (to-alleles ordered-bases))
+          (.attributes (-> {}
+                           (#(if (> (count ordered-bases) 1)
+                               (assoc % "AF" (to-freqs ordered-bases))
+                               %))))
+          (.make)))))
+
+;; Organize input FASTA and YAML frequency description into frequency
+;; of bases at each position.
 
 (defn gen-ref-at-pos [ref-bases percents]
   "Generate reference bases and frequencies at a position."

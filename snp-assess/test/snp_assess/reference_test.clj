@@ -16,3 +16,14 @@
     (count seq-map) => 4
     (first seq-map) => {:a "G" :b "A" :c "T"}
     (second seq-map) => {:a "A" :b "A" :c "T"}))
+
+(fact "Generate VCF output from reference information."
+  (let [alt-vc (convert-to-vc "test" 0 {"G" 0.9 "A" 0.1})
+        ref-vc (convert-to-vc "test" 0 {"G" 1.0})]
+    (.getChr alt-vc) => "test"
+    (.getStart ref-vc) => 0
+    (-> alt-vc (.getAttributes) (.get "AF")) => "0.1"
+    (.getAttributes ref-vc) => {}
+    (-> alt-vc (.getReference) (.getBaseString)) => "G"
+    (.isBiallelic alt-vc) => true
+    (.isBiallelic ref-vc) => false))

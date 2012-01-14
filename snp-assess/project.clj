@@ -8,7 +8,8 @@
                  [com.leadtune/clj-ml "0.1.4"]
                  [fs "0.11.1"]
                  [clj-yaml "0.3.1"]
-                 [org.biojava/biojava3-core "3.0.2"]]
+                 [org.biojava/biojava3-core "3.0.2"]
+                 [org.clojars.chapmanb/gatk "1.4.8"]]
   :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
                      [midje "1.3.0" :exclusions [org.clojure/clojure]]]
   :repositories {"biojava" "http://www.biojava.org/download/maven/"}
