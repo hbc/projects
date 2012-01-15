@@ -3,8 +3,11 @@
 
 (ns snp-assess.reference
   (:import [org.biojava3.core.sequence.io FastaReaderHelper]
-           [org.broadinstitute.sting.utils.variantcontext
-            VariantContextBuilder Allele])
+           [org.broadinstitute.sting.utils.variantcontext Allele
+            VariantContextBuilder]
+           [org.broadinstitute.sting.utils.codecs.vcf StandardVCFWriter
+            VCFHeader VCFInfoHeaderLine VCFHeaderLineCount VCFHeaderLineType]
+           [net.sf.picard.reference ReferenceSequenceFileFactory])
   (:use [clojure.java.io]
         [clojure.string :only [join]]
         [clojure.algo.generic.functor :only [fmap]])
@@ -16,23 +19,6 @@
   "Parse FASTA input file to in-memory map of ids to sequences."
   (let [seq-map (FastaReaderHelper/readFastaDNASequence (file in-file) true)]
     (reduce #(assoc %1 %2 (->> %2 (.get seq-map) (.toString))) {} (.keySet seq-map))))
-
-;; Generate VCF output file components using GATK API
-
-(defn convert-to-vc [contig pos base-freqs]
-  "Convert base frequency information into a VCF VariantContext."
-  (letfn [(to-alleles [bases]
-            (for [[i [base _]] (map-indexed vector bases)]
-              (Allele/create base (= i 0))))
-          (to-freqs [bases]
-            (join "," (rest (map second bases))))]
-    (let [ordered-bases (sort-by second > (vec base-freqs))]
-      (-> (VariantContextBuilder. contig contig pos (+ 1 pos) (to-alleles ordered-bases))
-          (.attributes (-> {}
-                           (#(if (> (count ordered-bases) 1)
-                               (assoc % "AF" (to-freqs ordered-bases))
-                               %))))
-          (.make)))))
 
 ;; Organize input FASTA and YAML frequency description into frequency
 ;; of bases at each position.
@@ -61,7 +47,44 @@
   (map-indexed vector
                (map #(gen-ref-at-pos % percents) (per-pos-seqs seqs))))
 
-(defn -main [ref-fasta ref-config]
+;; Generate VCF output file components using GATK API
+
+(defn convert-to-vc [contig pos base-freqs]
+  "Convert base frequency information into a VCF VariantContext."
+  (letfn [(to-alleles [bases]
+            (for [[i [base _]] (map-indexed vector bases)]
+              (Allele/create base (= i 0))))
+          (to-freqs [bases]
+            (join "," (rest (map second bases))))]
+    (let [ordered-bases (sort-by second > (vec base-freqs))]
+      (-> (VariantContextBuilder. contig contig pos (+ 1 pos) (to-alleles ordered-bases))
+          (.attributes (-> {}
+                           (#(if (> (count ordered-bases) 1)
+                               (assoc % "AF" (to-freqs ordered-bases))
+                               %))))
+          (.make)))))
+
+(defn- to-seq-dict [in-fasta]
+  (.getSequenceDictionary
+   (ReferenceSequenceFileFactory/getReferenceSequenceFile (file in-fasta))))
+
+(defn- get-header-with-af []
+  "Retrieve VCFHeader with allele frequency (AF) info line"
+  (VCFHeader. #{(VCFInfoHeaderLine. "AF"
+                                    VCFHeaderLineCount/A
+                                    VCFHeaderLineType/Float
+                                    "Allele Frequency")}))
+
+(defn write-vcf-ref [seqs percents ref-fasta out-file]
+  "Write output reference file in VCF format"
+  (let [ref-name (ffirst (sort-by second > (vec percents)))]
+    (with-open [writer (StandardVCFWriter. (file out-file) (to-seq-dict ref-fasta))]
+      (.writeHeader writer (get-header-with-af))
+      (doseq [vc (map (fn [[i x]] (convert-to-vc ref-name i x))
+                      (gen-ref seqs percents))]
+        (.add writer vc)))))
+
+(defn -main [ref-fasta ref-config out-file]
   (let [seqs (get-fasta-seq-map ref-fasta)
         config (-> ref-config slurp yaml/parse-string)
         percents (into {} (for [[k v] (:reference config)] [(name k) v]))]
