@@ -7,11 +7,13 @@
             VariantContextBuilder]
            [org.broadinstitute.sting.utils.codecs.vcf StandardVCFWriter
             VCFHeader VCFInfoHeaderLine VCFHeaderLineCount VCFHeaderLineType]
-           [net.sf.picard.reference ReferenceSequenceFileFactory])
+           [net.sf.picard.reference ReferenceSequenceFileFactory]
+           [net.sf.picard.sam CreateSequenceDictionary])
   (:use [clojure.java.io]
         [clojure.string :only [join]]
         [clojure.algo.generic.functor :only [fmap]])
-  (:require [clj-yaml.core :as yaml]))
+  (:require [clj-yaml.core :as yaml]
+            [fs]))
 
 ;; External file interaction
 
@@ -57,7 +59,7 @@
           (to-freqs [bases]
             (join "," (rest (map second bases))))]
     (let [ordered-bases (sort-by second > (vec base-freqs))]
-      (-> (VariantContextBuilder. contig contig pos (+ 1 pos) (to-alleles ordered-bases))
+      (-> (VariantContextBuilder. contig contig (+ 1 pos) (+ 1 pos) (to-alleles ordered-bases))
           (.attributes (-> {}
                            (#(if (> (count ordered-bases) 1)
                                (assoc % "AF" (to-freqs ordered-bases))
@@ -65,8 +67,13 @@
           (.make)))))
 
 (defn- to-seq-dict [in-fasta]
-  (.getSequenceDictionary
-   (ReferenceSequenceFileFactory/getReferenceSequenceFile (file in-fasta))))
+  (let [idx-file (str in-fasta ".dict")]
+    (if-not (fs/exists? idx-file)
+      (.instanceMain (CreateSequenceDictionary.)
+                     (into-array [(str "R=" in-fasta)
+                                  (str "O=" idx-file)])))
+    (.getSequenceDictionary
+     (ReferenceSequenceFileFactory/getReferenceSequenceFile (file in-fasta)))))
 
 (defn- get-header-with-af []
   "Retrieve VCFHeader with allele frequency (AF) info line"
@@ -88,4 +95,4 @@
   (let [seqs (get-fasta-seq-map ref-fasta)
         config (-> ref-config slurp yaml/parse-string)
         percents (into {} (for [[k v] (:reference config)] [(name k) v]))]
-    (gen-ref seqs percents)))
+    (write-vcf-ref seqs percents ref-fasta out-file)))
