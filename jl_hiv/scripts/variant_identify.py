@@ -87,10 +87,10 @@ def process_fastq(curinfo, ref_index, config, config_file):
                                 os.path.splitext(os.path.basename(in_file))[0],
                                 config["dir"]["align"],
                                 curinfo)
+    name = curinfo.get("description", curinfo.get("name", ""))
     align_bam = sam_to_sort_bam(align_sam,
                                 curinfo.get("ref", config.get("ref", None)),
-                                unique_file, None,
-                                "", curinfo.get("description", curinfo.get("name", "")),
+                                unique_file, None, name, name, name,
                                 config)
     if do_realignment == "gatk":
         align_bam = gatk_realigner(align_bam, config["ref"], config, deep_coverage=True)

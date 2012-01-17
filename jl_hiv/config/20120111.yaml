@@ -28,9 +28,10 @@ experiments:
 algorithm:
   # current algorithm parameters
   allowed_ns: 0
+  min_unique_counts: 5
   realignment: gatk
   kmer_size: 13
-  cores: 1
+  cores: 6
   platform: illumina
   java_memory: 12g
 
