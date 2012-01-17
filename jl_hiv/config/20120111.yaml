@@ -1,0 +1,48 @@
+---
+experiments:
+  - files: [Sequences/Sample_S1/filtered/S1_ATCACG_L003_R1.fastq.gz,
+            Sequences/Sample_S1/filtered/S1_ATCACG_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: '253579'
+  - files: [Sequences/Sample_S2/filtered/S2_CGATGT_L003_R1.fastq.gz,
+            Sequences/Sample_S2/filtered/S2_CGATGT_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: '246201'
+  - files: [Sequences/Sample_S3/filtered/S3_TTAGGC_L003_R1.fastq.gz,
+            Sequences/Sample_S3/filtered/S3_TTAGGC_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: '214371'
+  - files: [Sequences/Sample_S4/filtered/S4_TGACCA_L003_R1.fastq.gz,
+            Sequences/Sample_S4/filtered/S4_TGACCA_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: '161534'
+  - files: [Sequences/Sample_S5/filtered/S5_ACAGTG_L003_R1.fastq.gz,
+            Sequences/Sample_S5/filtered/S5_ACAGTG_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: '363070'
+  - files: [Sequences/Sample_S6/filtered/S6_GCCAAT_L003_R1.fastq.gz,
+            Sequences/Sample_S6/filtered/S6_GCCAAT_L003_R2.fastq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'Control'
+
+algorithm:
+  # current algorithm parameters
+  allowed_ns: 0
+  realignment: gatk
+  kmer_size: 13
+  cores: 1
+  platform: illumina
+  java_memory: 12g
+
+program:
+  barcode: barcode_sort_trim.py
+  uniquify: fastq-unique-bloom.py
+  picard: /n/home05/bchapman/mylocal/share/java/picard
+  gatk: /n/home05/bchapman/mylocal/share/java/gatk
+
+dir:
+  tmp: tmp
+  align: align
+  #vrn: variation
+  #stats: variation_stats
+  #calls: variation_calls

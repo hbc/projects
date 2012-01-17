@@ -23,10 +23,10 @@ from Bio.SeqIO.QualityIO import (FastqGeneralIterator,
                                  _phred_to_sanger_quality_str)
 from Bio.Seq import Seq
 
-from bcbio.utils import create_dirs, map_wrap, cpmap
+from bcbio.utils import create_dirs, map_wrap, cpmap, file_exists
 from bcbio import broad
 from bcbio.fastq.barcode import demultiplex, convert_illumina_oldstyle
-from bcbio.fastq.unique import uniquify_bioplayground
+from bcbio.fastq.unique import uniquify_reads
 from bcbio.fastq.trim import trim_fastq
 from bcbio.fastq.filter import kmer_filter, remove_ns
 from bcbio.ngsalign import novoalign
@@ -38,11 +38,10 @@ from bcbio.varcall.summarize import print_summary_counts
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
-    ref_index = novoalign.refindex(config["ref"], kmer_size=13, step_size=1)
     create_dirs(config)
     with cpmap(config["algorithm"]["cores"]) as cur_map:
         for _ in cur_map(process_fastq, ((fastq, ref_index, config, config_file)
-                                         for fastq in fastq_to_process(config))):
+                                         for fastq, ref_index in fastq_to_process(config))):
             pass
 
 # ## Processing and analysis pipeline
@@ -50,8 +49,9 @@ def main(config_file):
 def fastq_to_process(config):
     """Retrieve fastq files to process, handling demultiplexing.
     """
-    for cur in config["input"]:
-        in_fastq = cur["fastq"]
+    for cur in config.get("experiments", config.get("input", [])):
+        ref_index = _index_ref_genome(config, cur)
+        in_fastq = cur.get("fastq", None)
         if cur.get("old_style_barcodes", False):
             in_fastq = convert_illumina_oldstyle(in_fastq)
         if cur.get("barcodes", None):
@@ -59,35 +59,72 @@ def fastq_to_process(config):
                                    config["dir"]["tmp"], config)
             fastqs = _assign_bc_files(cur, bc_files)
         else:
-            cur["file"] = in_fastq
+            cur["program"] = config["program"]
+            if not cur.has_key("algorithm"):
+                cur["algorithm"] = config["algorithm"]
             fastqs = [cur]
         for fq in fastqs:
-            yield fq
+            yield fq, ref_index
+
+def _index_ref_genome(config, cur):
+    ref = config.get("ref", cur.get("ref", None))
+    return novoalign.refindex(ref, kmer_size=13, step_size=1)
 
 @map_wrap
-def process_fastq(bc, ref_index, config, config_file):
+def process_fastq(curinfo, ref_index, config, config_file):
     do_realignment = config["algorithm"].get("realignment", "")
     do_kmercorrect = config["algorithm"].get("kmer_correct", "")
     trim_three = config["algorithm"].get("trim_three", "")
     picard = broad.runner_from_config(config)
-    in_file = bc["file"]
+    in_file = _prepare_fastq(curinfo, config)
     if trim_three:
         in_file = trim_fastq(in_file, three=int(trim_three))
     if do_kmercorrect:
         in_file = remove_ns(in_file)
         in_file = kmer_filter(in_file, do_kmercorrect, config)
-    unique_file = uniquify_bioplayground(in_file, config)
-    align_sam = novoalign.align(config["dir"]["align"], ref_index, unique_file,
-                                qual_format=bc["format"])
-    align_bam = sam_to_sort_bam(align_sam, config["ref"], unique_file, None,
-                                "", bc["name"], config)
+    unique_file = uniquify_reads(in_file, config)
+    align_sam = novoalign.align(unique_file, None, ref_index,
+                                os.path.splitext(os.path.basename(in_file))[0],
+                                config["dir"]["align"],
+                                curinfo)
+    align_bam = sam_to_sort_bam(align_sam,
+                                curinfo.get("ref", config.get("ref", None)),
+                                unique_file, None,
+                                "", curinfo.get("description", curinfo.get("name", "")),
+                                config)
     if do_realignment == "gatk":
         align_bam = gatk_realigner(align_bam, config["ref"], config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
+    # XXX Finish remainder of processing
+    return
     if config["algorithm"].get("range_params", None):
         call_analyze_multiple(align_bam, bc, in_file, config)
     else:
         call_bases_and_analyze(align_bam, bc, in_file, config)
+
+def _prepare_fastq(curinfo, config):
+    """Gunzip fastq files if necessary and combine paired ends.
+    """
+    if len(curinfo["files"]) == 1:
+        fname = curinfo["files"][0]
+        if fname.endswith(".gz"):
+            subprocess.check_call("gunzip {}".format(fname))
+            fname = os.path.splitext(fname)[0]
+        return fname
+    else:
+        combined = os.path.join(config["dir"]["align"],
+                                os.path.basename(curinfo["files"][0]))
+        if combined.endswith(".gz"):
+            combined = os.path.splitext(combined)[0]
+        if not file_exists(combined):
+            with open(combined, "w") as stdout:
+                for infile in curinfo["files"]:
+                    if infile.endswith(".gz"):
+                        cmd = ["gunzip", "-c"]
+                    else:
+                        cmd = ["cat"]
+                    subprocess.check_call(cmd + [infile], stdout=stdout)
+        return combined
 
 def call_analyze_multiple(align_bam, bc, in_file, config):
     """Write output from multiple parameter settings in YAML format.
@@ -348,7 +385,7 @@ def _assign_bc_files(cur, files):
                 assert cur_file is None
                 cur_file = fname
         assert cur_file is not None
-        bc["file"] = cur_file
+        bc["files"] = [cur_file]
         bc["format"] = cur["format"]
         final_bcs.append(bc)
     return final_bcs
