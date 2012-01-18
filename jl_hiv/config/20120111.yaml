@@ -31,9 +31,10 @@ algorithm:
   min_unique_counts: 5
   realignment: gatk
   kmer_size: 13
-  cores: 6
+  cores: 1
   platform: illumina
   java_memory: 12g
+  quality_format: Standard
 
 program:
   barcode: barcode_sort_trim.py

@@ -22,8 +22,9 @@ import numpy
 from Bio.SeqIO.QualityIO import (FastqGeneralIterator,
                                  _phred_to_sanger_quality_str)
 from Bio.Seq import Seq
+import rpy2.robjects as rpy
 
-from bcbio.utils import create_dirs, map_wrap, cpmap, file_exists
+from bcbio.utils import create_dirs, map_wrap, cpmap, file_exists, memoize_outfile
 from bcbio import broad
 from bcbio.fastq.barcode import demultiplex, convert_illumina_oldstyle
 from bcbio.fastq.unique import uniquify_reads
@@ -82,20 +83,20 @@ def process_fastq(curinfo, ref_index, config, config_file):
     if do_kmercorrect:
         in_file = remove_ns(in_file)
         in_file = kmer_filter(in_file, do_kmercorrect, config)
-    unique_file = uniquify_reads(in_file, config)
+    unique_file, count_file = uniquify_reads(in_file, config)
     align_sam = novoalign.align(unique_file, None, ref_index,
                                 os.path.splitext(os.path.basename(in_file))[0],
                                 config["dir"]["align"],
                                 curinfo)
     name = curinfo.get("description", curinfo.get("name", ""))
-    align_bam = sam_to_sort_bam(align_sam,
-                                curinfo.get("ref", config.get("ref", None)),
-                                unique_file, None, name, name, name,
-                                config)
+    ref =  curinfo.get("ref", config.get("ref", None))
+    align_bam = sam_to_sort_bam(align_sam, ref, unique_file, None,
+                                name, name, name, config)
     if do_realignment == "gatk":
-        align_bam = gatk_realigner(align_bam, config["ref"], config, deep_coverage=True)
+        align_bam = gatk_realigner(align_bam, ref, config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     # XXX Finish remainder of processing
+    summarize_at_each_pos(align_bam, count_file, config)
     return
     if config["algorithm"].get("range_params", None):
         call_analyze_multiple(align_bam, bc, in_file, config)
@@ -125,6 +126,31 @@ def _prepare_fastq(curinfo, config):
                         cmd = ["cat"]
                     subprocess.check_call(cmd + [infile], stdout=stdout)
         return combined
+
+def summarize_at_each_pos(align_bam, count_file, config):
+    """Provide detailed output on bases aligned at each position for variant calling.
+    """
+    plot_coverage(align_bam)
+
+@memoize_outfile("-coverage.png")
+def plot_coverage(align_bam, out_file):
+    data = {"pos": [],
+            "count": []}
+    with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
+        for col in work_bam.pileup():
+            space = work_bam.getrname(col.tid)
+            data["pos"].append(col.pos)
+            data["count"].append(col.n)
+    df = {"pos": rpy.FloatVector(data["pos"]),
+          "count": rpy.FloatVector(data["count"])}
+    rpy.r.assign("data", rpy.r["data.frame"](**df))
+    rpy.r.assign("out.file", out_file)
+    rpy.r('''
+    library(ggplot2)
+    p <- ggplot(data, aes(x=pos, y=count))
+    p <- p + geom_line()
+    ggsave(out.file, p, width=5, height=5)
+    ''')
 
 def call_analyze_multiple(align_bam, bc, in_file, config):
     """Write output from multiple parameter settings in YAML format.

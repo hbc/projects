@@ -23,8 +23,8 @@ def uniquify_reads(in_fastq, config):
     min_counts = int(config["algorithm"].get("min_unique_counts", 1))
     if min_counts > 1:
         unique_file = filter_by_mincounts(unique_file, in_fastq, min_counts)
-    generate_unique_counts(in_fastq, unique_file)
-    return unique_file
+    count_file = generate_unique_counts(in_fastq, unique_file)
+    return unique_file, count_file
 
 @memoize_outfile("-unique.txt")
 def uniquify_bioplayground(in_fastq, config, out_file):
@@ -61,9 +61,11 @@ def filter_by_mincounts(unique, orig, min_counts, out_file):
             counts[seq] += 1
     with open(unique) as in_handle:
         with open(out_file, "w") as out_handle:
-            for name, seq, qual in FastqGeneralIterator(in_handle):
+            i = 0
+            for _, seq, qual in FastqGeneralIterator(in_handle):
                 if counts[seq] >= min_counts:
-                    out_handle.write("@%s\n%s\n+\n%s\n" % (name, seq, qual))
+                    out_handle.write("@%s\n%s\n+\n%s\n" % (i, seq, qual))
+                    i += 1
     return out_file
 
 # Statistics for generated unique reads
