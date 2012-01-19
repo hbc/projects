@@ -45,6 +45,6 @@ program:
 dir:
   tmp: tmp
   align: align
-  #vrn: variation
+  vrn: variation
   #stats: variation_stats
   #calls: variation_calls

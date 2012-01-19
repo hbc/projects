@@ -96,7 +96,7 @@ def process_fastq(curinfo, ref_index, config, config_file):
         align_bam = gatk_realigner(align_bam, ref, config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     # XXX Finish remainder of processing
-    summarize_at_each_pos(align_bam, count_file, config)
+    summarize_at_each_pos(align_bam, in_file, count_file, config)
     return
     if config["algorithm"].get("range_params", None):
         call_analyze_multiple(align_bam, bc, in_file, config)
@@ -127,16 +127,11 @@ def _prepare_fastq(curinfo, config):
                     subprocess.check_call(cmd + [infile], stdout=stdout)
         return combined
 
-def summarize_at_each_pos(align_bam, count_file, config):
-    """Provide detailed output on bases aligned at each position for variant calling.
-    """
-    plot_coverage(align_bam)
-
 @memoize_outfile("-coverage.png")
 def plot_coverage(align_bam, out_file):
     data = {"pos": [],
             "count": []}
-    with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
+    with closing(pysam.samfile(align_bam, 'rb')) as work_bam:
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
             data["pos"].append(col.pos)
@@ -151,6 +146,37 @@ def plot_coverage(align_bam, out_file):
     p <- p + geom_line()
     ggsave(out.file, p, width=5, height=5)
     ''')
+
+def _load_count_file(count_file):
+    out = {}
+    with open(count_file) as in_handle:
+        for x in yaml.load(in_handle):
+            out[x["seq"]] = int(x["count"])
+    return out
+
+def summarize_at_each_pos(align_bam, read_file, count_file, config):
+    """Provide detailed output on bases aligned at each position for variant calling.
+    """
+    plot_coverage(align_bam)
+    params = config["algorithm"]
+    out_file = os.path.join(config["dir"]["vrn"],
+                            "raw_{}.tsv".format(os.path.splitext(os.path.basename(align_bam))[0]))
+    if not file_exists(out_file):
+        counts = _load_count_file(count_file)
+        with open(out_file, "w") as out_handle:
+            writer = csv.writer(out_handle, dialect="excel-tab")
+            ktable, read_counts = count_kmers_and_reads(read_file, params["kmer_size"])
+            for chrom, pos, kmers in positional_kmers(align_bam, params):
+                kmer_counts = dict((k, ktable.get(k))
+                                   for k in list(set(x.kmer for x in kmers)))
+                total = float(sum(kmer_counts.values()))
+                kmers_w_percents = [k._replace(kmer_percent=kmer_counts[k.kmer] / total
+                                               if total > 0 else 0)
+                                    for k in kmers]
+                for kmer in kmers_w_percents:
+                    writer.writerow([chrom, pos, kmer.call, counts[kmer.seq],
+                                     kmer.qual, kmer.kmer_percent, kmer.align_score])
+
 
 def call_analyze_multiple(align_bam, bc, in_file, config):
     """Write output from multiple parameter settings in YAML format.
