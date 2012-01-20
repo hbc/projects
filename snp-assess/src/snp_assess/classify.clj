@@ -155,17 +155,17 @@
                             (filter #(> (second %) min-freq-percent))
                             (map first))]
               (list (select-keys orig want) total)))]
-      (let [position ((juxt :space :pos) (first reads))
-            [base-calls total ] (->> reads
-                                     (filter (fn [xs]
-                                               (apply passes?
-                                                      ((juxt :qual :kmer-pct :map-score) xs))))
-                                     (map :base)
-                                     flatten
-                                     frequencies
-                                     percents
-                                     (remove-low (:min-freq config)))]
-        [position base-calls total])))
+    (let [position ((juxt :space :pos) (first reads))
+          [base-calls total] (->> reads
+                                  (filter (fn [xs]
+                                            (apply passes?
+                                                   ((juxt :qual :kmer-pct :map-score) xs))))
+                                  (map #(repeat (get % :num 1) (:base %)))
+                                  flatten
+                                  frequencies
+                                  percents
+                                  (remove-low (:min-freq config)))]
+      [position base-calls total])))
 
 (defn classifier-checker [classifier config]
   "Calculate probability of read inclusion using pre-built classifier."
@@ -207,6 +207,13 @@
                          (> (count c-bases) 2) :false-negative
                          (minority-matches? ready-bases config) :true-positive
                          :else :false-negative))))))
+
+(defn raw-data-frequencies [data-file config]
+  "Retrieve base frequencies based on raw input data, without filtering."
+  (with-open [rdr (reader data-file)]
+    (->> (raw-reads-by-pos rdr config)
+         (map (fn [xs] (call-vrns-at-pos xs (fn [_ _ _] true) config)))
+         vec)))
 
 (defn assess-classifier [data-file pos-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"

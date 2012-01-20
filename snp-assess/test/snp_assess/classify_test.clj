@@ -48,3 +48,16 @@
     (contains [(roughly 0.516) (roughly 9.0E-4) 0.4 :test])
     (finalize-raw-data {:qual 30 :kmer-pct 1.0E-2 :map-score 50} :test2 default-config) =>
     (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))
+
+(let [data-dir (fs/join (fs/cwd) "test" "data")
+      data-file (fs/join data-dir "raw" "raw_variations_count.tsv")
+      config (-> default-config
+                 (assoc-in [:classification :assess-bases] nil)
+                 (assoc :min-freq 0.0))]
+  (facts "Read raw data collapsed by counts per unique read."
+    (let [raw-freqs (raw-data-frequencies data-file config)]
+      (count raw-freqs) => 3
+      (ffirst raw-freqs) => ["HXB2" 5] ; read position
+      (-> raw-freqs first last) => 71174 ; number of total reads
+      (-> raw-freqs first second (get "G")) => (roughly 99.9747)
+      (-> raw-freqs first second (get "T")) => (roughly 0.009835))))
