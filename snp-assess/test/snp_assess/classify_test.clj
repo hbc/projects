@@ -3,11 +3,11 @@
         [snp-assess.classify]
         [snp-assess.classify-eval :only [summarize-assessment]]
         [snp-assess.config])
-  (:require [fs]))
+  (:require [fs.core :as fs]))
 
-(let [data-dir (fs/join (fs/cwd) "test" "data")
-      vrn-file (fs/join data-dir "coverage_pos" "pos.tsv")
-      data-file (fs/join data-dir "raw" "raw_variations.tsv")
+(let [data-dir (str (fs/file "test" "data"))
+      vrn-file (str (fs/file data-dir "coverage_pos" "pos.tsv"))
+      data-file (str (fs/file data-dir "raw" "raw_variations.tsv"))
       config (-> default-config
                  (assoc-in [:classification :naive-min-score] 1.2)
                  (assoc-in [:classification :max-neg-pct] 5.0)
@@ -49,8 +49,8 @@
     (finalize-raw-data {:qual 30 :kmer-pct 1.0E-2 :map-score 50} :test2 default-config) =>
     (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))
 
-(let [data-dir (fs/join (fs/cwd) "test" "data")
-      data-file (fs/join data-dir "raw" "raw_variations_count.tsv")
+(let [data-dir (str (fs/file "test" "data"))
+      data-file (str (fs/file data-dir "raw" "raw_variations_count.tsv"))
       config (-> default-config
                  (assoc-in [:classification :assess-bases] nil)
                  (assoc :min-freq 0.0))]

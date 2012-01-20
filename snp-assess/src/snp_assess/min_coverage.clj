@@ -12,9 +12,10 @@
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs]]
-        [snp-assess.off-target :only [pos-from-hfs]])
+        [snp-assess.off-target :only [pos-from-hfs]]
+        [snp-assess.classify :only [raw-data-frequencies]])
   (:require [cascalog [ops :as ops]]
-            [fs])
+            [fs.core :as fs])
   (:gen-class))
 
 ;; Coverage for minority variant detection
@@ -46,7 +47,7 @@
                        :x-label "" :y-label "Passing reads")]
     (doseq [[freq x] (rest plot-info)]
       (add-box-plot plot x :series-label freq))
-    (save plot (fs/join image-dir "min-coverage-frequencies.png"))
+    (save plot (str (fs/file image-dir "min-coverage-frequencies.png")))
     (println plot-info)))
 
 ;; Overall coverage for an experiment
@@ -77,16 +78,30 @@
                      :title (format "Coverage: %.1f million reads" total-reads)
                      :x-label "Coverage" :y-label "")
         (add-lines f-cov-x f-cov-y :series-label "filter")
-        (save (fs/join image-dir "coverage-distribution.png")))
+        (save (str (fs/file image-dir "coverage-distribution.png"))))
       (doto (scatter-plot (map second cov) (counts-only cov) :series-label "raw" :legend true
                           :title "Coverage by position"
                           :x-label "Position" :y-label "Coverage")
         (add-points (map second cov-filter) (counts-only cov-filter) :series-label "filter")
-        (save (fs/join image-dir "coverage-by-pos.png"))))))
+        (save (str(fs/file image-dir "coverage-by-pos.png")))))))
+
+(defn coverage-by-pos-plot [data-file image-dir]
+  "Plot of read coverage by position."
+  (let [config (-> default-config
+                   (assoc :min-freq 0.0))
+        raw-freqs (raw-data-frequencies data-file config)
+        cov-x (map #(-> % first second) raw-freqs)
+        cov-y (map #(/ (last %) 1e6) raw-freqs)]
+    (doto (xy-plot cov-x cov-y :series-label "raw" :legend true
+                   :title ""
+                   :x-label "Position" :y-label "Coverage (million reads)")
+      (save (str (fs/file image-dir (format "%s-coverage.png" (fs/base-name data-file true))))))))
 
 (defn -main [data-dir pos-dir work-dir]
-  (let [image-dir (fs/join work-dir "images")]
+  (let [image-dir (str (fs/file work-dir "images"))]
     (if-not (fs/exists? image-dir)
       (fs/mkdirs image-dir))
-    (coverage-dist-plot data-dir image-dir)
-    (min-coverage-plot data-dir pos-dir image-dir)))
+    (coverage-by-pos-plot data-dir image-dir)
+    ;(coverage-dist-plot data-dir image-dir)
+    ;(min-coverage-plot data-dir pos-dir image-dir)
+    ))

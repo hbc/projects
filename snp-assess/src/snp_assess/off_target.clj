@@ -12,7 +12,7 @@
                                  histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs]])
   (:require [cascalog [ops :as ops]]
-            [fs])
+            [fs.core :as fs])
   (:gen-class))
 
 (defn off-target-freqs [snpdata no-var-positions minority-freq-fn]
@@ -57,12 +57,12 @@
                      :legend true :title "Off-target variations"
                      :x-label "Variation percent" :y-label "")
         (add-lines freq-filter-x freq-filter-hist :series-label "filtered")
-        (save (fs/join image-dir "off-target-frequencies.png")))
+        (save (str (fs/file image-dir "off-target-frequencies.png"))))
       (println freq-x freq-hist)
       (println freq-filter-hist))))
 
 (defn -main [data-dir pos-dir work-dir]
-  (let [image-dir (fs/join work-dir "images")]
+  (let [image-dir (str (fs/file work-dir "images"))]
     (if-not (fs/exists? image-dir)
       (fs/mkdirs image-dir))
     (off-target-plots data-dir pos-dir image-dir)))

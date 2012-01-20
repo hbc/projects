@@ -7,7 +7,7 @@
   (:use [clojure.java.io]
         [clojure.string :only [split join]]
         [incanter.stats :only [median]])
-  (:require [fs]
+  (:require [fs.core :as fs]
             [clj-yaml.core :as yaml]))
 
 ;; Provide summary details about read calls based on frequency
@@ -55,11 +55,11 @@
 
 (defn- classifier-check-fname [data-file work-dir ext]
   "Retrieve location of a classifier related file; ext is the unique file extension."
-  (fs/join work-dir "classifier" (-> data-file
-                                     fs/basename
-                                     (split #"\.")
-                                     first
-                                     (#(format "%s%s" % ext)))))
+  (str (fs/file work-dir "classifier" (-> data-file
+                                          fs/base-name
+                                          (split #"\.")
+                                          first
+                                          (#(format "%s%s" % ext))))))
 
 (defn write-indepth-calls [data data-file work-dir]
   "Write details on correct/wrong regions of interest for by-hand evaluation."

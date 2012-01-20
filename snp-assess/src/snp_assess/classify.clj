@@ -15,7 +15,7 @@
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]]
         [snp-assess.classify-eval :only [write-assessment print-vrn-summary]])
-  (:require [fs]))
+  (:require [fs.core :as fs]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
 ;; kmer and mapping scores) and naive classifier based on simple
@@ -124,8 +124,8 @@
 
 (defn prepare-classifier [data-file pos-file work-dir config]
   "High level work to get classifier, included serialization to a file."
-  (let [out-dir (fs/join work-dir "classifier")
-        classifier-file (fs/join out-dir "build.bin")]
+  (let [out-dir (str (fs/file work-dir "classifier"))
+        classifier-file (str (fs/file out-dir "build.bin"))]
     (if-not (fs/exists? out-dir)
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)

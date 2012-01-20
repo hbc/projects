@@ -13,7 +13,7 @@
         [clojure.string :only [join]]
         [clojure.algo.generic.functor :only [fmap]])
   (:require [clj-yaml.core :as yaml]
-            [fs]))
+            [fs.core :as fs]))
 
 ;; External file interaction
 

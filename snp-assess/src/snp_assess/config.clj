@@ -30,5 +30,5 @@
    :classification {:max-pos-pct 10.0
                     :max-neg-pct 0.75
                     :naive-min-score 0.7
-                    :assess-bases [790 3758]
+                    :assess-bases nil ; [790 3758]
                     :pass-thresh 0.5}})
