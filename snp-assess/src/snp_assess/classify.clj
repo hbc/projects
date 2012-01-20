@@ -34,7 +34,7 @@
 
 (defn vrn-data-plus-config [read-data config]
   "Retrieve parameter data for classification with config appended"
-  (conj (vec (take-last 3 read-data)) config))
+  (conj (vec ((juxt :qual :kmer-pct :map-score) read-data)) config))
 
 (defn- minority-vrns-from-raw [pos-data config]
   "Retrieve minority variants at a position given raw data."
@@ -79,11 +79,11 @@
         raw-out (->> rdr
                      line-seq
                      (map parse-snpdata-line)
-                     (partition-by #(take 2 %)))]
+                     (partition-by (juxt :space :pos)))]
     (if (nil? assess-range) raw-out
         (->> raw-out
-             (drop-while #(< (-> % first second) (first assess-range)))
-             (take-while #(< (-> % first second) (second assess-range)))))))
+             (drop-while #(< (-> % first :pos) (first assess-range)))
+             (take-while #(< (-> % first :pos) (second assess-range)))))))
 
 (defn- random-sample-negatives [config data]
   "Randomly sample negative examples to make total positives. Since there are
@@ -100,8 +100,8 @@
       (->> rdr
            line-seq
            (map parse-snpdata-line)
-           (partition-by #(take 2 %))
-           (map (fn [xs] (group-by #(take 3 %) xs)))
+           (partition-by (juxt :space :pos))
+           (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
            flatten
            (partition 4)
@@ -155,11 +155,12 @@
                             (filter #(> (second %) min-freq-percent))
                             (map first))]
               (list (select-keys orig want) total)))]
-      (let [position (take 2 (first reads))
+      (let [position ((juxt :space :pos) (first reads))
             [base-calls total ] (->> reads
-                                     (filter (fn [xs] (apply passes? (drop 3 xs))))
-                                     (map (partial drop 2))
-                                     (map (partial take 1))
+                                     (filter (fn [xs]
+                                               (apply passes?
+                                                      ((juxt :qual :kmer-pct :map-score) xs))))
+                                     (map :base)
                                      flatten
                                      frequencies
                                      percents

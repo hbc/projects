@@ -24,17 +24,25 @@
 
 ;; Parsing variation data files
 
-(defn parse-snpdata-line [line]
-  (let [[space pos base qual kmer-pct map-score] (split line #"\t")]
-    [space (Integer/parseInt pos) base (Integer/parseInt qual)
+(defn parse-snpdata-line-tuple [line]
+  (let [parts (split line #"\t")
+        [space pos base num qual kmer-pct map-score]
+        (condp = (count parts)
+          6 (concat (take 3 parts) ["1"] (drop 3 parts))
+          7 parts)]
+    [space (Integer/parseInt pos) base (Integer/parseInt num) (Integer/parseInt qual)
      (Float/parseFloat kmer-pct) (Integer/parseInt map-score)]))
+
+(defn parse-snpdata-line [line]
+  (zipmap [:space :pos :base :num :qual :kmer-pct :map-score]
+          (parse-snpdata-line-tuple line)))
 
 (defn snpdata-from-hfs [dir]
   "Parse a directory of variation data files from HDFS"
   (let [source (hfs-textline dir)]
     (<- [?chr ?pos ?base ?qual ?kmer-pct ?map-score]
         (source ?line)
-        (parse-snpdata-line ?line :> ?chr ?pos ?base ?qual ?kmer-pct ?map-score))))
+        (parse-snpdata-line-tuple ?line :> ?chr ?pos ?base ?num ?qual ?kmer-pct ?map-score))))
 
 ;; Parsing target files of positions to query
 

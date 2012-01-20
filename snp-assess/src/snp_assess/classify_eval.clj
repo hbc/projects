@@ -22,9 +22,9 @@
             (->> info
                  (filter #(= (:class %) :true-positive))
                  (map #(-> % :calls vals sort first))))]
-      (->> data
-        (group-by :freq)
-        (map (fn [[freq xs]] [freq (summarize-calls xs) (collect-freqs xs)])))))
+    (->> data
+         (group-by :freq)
+         (map (fn [[freq xs]] [freq (summarize-calls xs) (collect-freqs xs)])))))
 
 (defn print-vrn-summary [data]
   "Print high level summary of correct and incorrect expected bases by frequency"

@@ -30,4 +30,4 @@
 (facts "Sample for minimum coverage by random removal."
   (random-min-coverage "G" nil [["G"] ["G"] ["C"]] default-config) => nil
   (random-min-coverage "G" 5/500 (concat (repeat 500 ["A"]) (repeat 5 ["G"]) (repeat 1 ["C"]))
-                       default-config) => (roughly 400 200))
+                       default-config) => (roughly 400 300))

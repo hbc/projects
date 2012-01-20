@@ -41,11 +41,10 @@
       (get-class ["chr" 10] {"G" 90.0 "A" 5.0 "C" 3.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (get-class ["chr" 10] {"G" 99.0} {["chr" 10 "A"] 5.0}) => :false-negative
       (map :class assess-data) => [:false-negative :false-positive :false-negative]
-      (first (summarize-assessment assess-data)) => [1.0 {:false-negative 1}
-                                                     {:false-negative 100.0}])))
+      (first (summarize-assessment assess-data)) => [1.0 {:false-negative 1} []])))
 
 (facts "Remap raw data for classification"
-  (finalize-raw-data ["notused" 20 1.0E-4 100] :test default-config) =>
+  (finalize-raw-data {:qual 20 :kmer-pct 1.0E-4 :map-score 100} :test default-config) =>
     (contains [(roughly 0.516) (roughly 9.0E-4) 0.4 :test])
-  (finalize-raw-data ["notused" 30 1.0E-2 50] :test2 default-config) =>
+    (finalize-raw-data {:qual 30 :kmer-pct 1.0E-2 :map-score 50} :test2 default-config) =>
     (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))
