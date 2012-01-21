@@ -7,7 +7,7 @@
         [cascalog.api]
         [incanter.core :only [save]]
         [incanter.charts :only [xy-plot add-lines box-plot add-box-plot
-                                scatter-plot add-points]]
+                                scatter-plot add-points xy-plot*]]
         [snp-assess.config :only [default-config]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
@@ -92,9 +92,9 @@
         raw-freqs (raw-data-frequencies data-file config)
         cov-x (map #(-> % first second) raw-freqs)
         cov-y (map #(/ (last %) 1e6) raw-freqs)]
-    (doto (xy-plot cov-x cov-y :series-label "raw" :legend true
-                   :title ""
-                   :x-label "Position" :y-label "Coverage (million reads)")
+    (doto (xy-plot* cov-x cov-y
+                    :title (fs/base-name data-file true)
+                    :x-label "Position" :y-label "Coverage (million reads)")
       (save (str (fs/file image-dir (format "%s-coverage.png" (fs/base-name data-file true))))))))
 
 (defn -main [data-dir pos-dir work-dir]
