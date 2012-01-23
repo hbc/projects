@@ -50,7 +50,7 @@
     (contains [(roughly 0.8387) (roughly 0.0999) 0.2 :test2]))
 
 (let [data-dir (str (fs/file "test" "data"))
-      data-file (str (fs/file data-dir "raw" "raw_variations_count.tsv"))
+      data-file (str (fs/file data-dir "count_data" "raw_variations_count.tsv"))
       config (-> default-config
                  (assoc-in [:classification :assess-bases] nil)
                  (assoc :min-freq 0.0))]

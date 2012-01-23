@@ -1,6 +1,7 @@
 (ns snp-assess.reference-test
   (:use [midje.sweet]
-        [snp-assess.reference]))
+        [snp-assess.reference])
+  (:require [fs.core :as fs]))
 
 (tabular
  (fact "Correctly generate reference bases at a position."
@@ -27,3 +28,13 @@
     (-> alt-vc (.getReference) (.getBaseString)) => "G"
     (.isBiallelic alt-vc) => true
     (.isBiallelic ref-vc) => false))
+
+(fact "Parse known frequency information from reference VCF"
+  (let [ref-file (str (fs/file "test" "data" "count_data" "known_freqs.vcf"))
+        freqs (read-vcf-ref ref-file)
+        filter-freqs (read-vcf-ref ref-file 0.051)]
+    (first freqs) => (contains [["HXB2" 226 "G"] (roughly 0.611)])
+    (count freqs) => 6
+    (last freqs) => [["HXB2" 228 "T"] 1.0]
+    (count filter-freqs) => 2
+    (first filter-freqs) => (contains [["HXB2" 227 "A"] (roughly 0.05)])))

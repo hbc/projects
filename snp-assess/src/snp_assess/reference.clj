@@ -11,7 +11,9 @@
            [net.sf.picard.sam CreateSequenceDictionary])
   (:use [clojure.java.io]
         [clojure.string :only [join]]
-        [clojure.algo.generic.functor :only [fmap]])
+        [clojure.algo.generic.functor :only [fmap]]
+        [ordered.map :only [ordered-map]]
+        [bcbio.variation.variantcontext :only [parse-vcf]])
   (:require [clj-yaml.core :as yaml]
             [fs.core :as fs]))
 
@@ -90,6 +92,36 @@
       (doseq [vc (map (fn [[i x]] (convert-to-vc ref-name i x))
                       (gen-ref seqs percents))]
         (.add writer vc)))))
+
+;; Retrieve reference data information from VCF input
+
+(defn- frequency-attributes [vc]
+  "Retrieve frequency values from VCF attributes."
+  (let [raw (-> vc :attributes (get "AF"))
+        raw-list (map #(Float/parseFloat %) (into [] (cond
+                                                      (string? raw) [raw]
+                                                      (nil? raw) []
+                                                      :else raw)))]
+    (cons (- 1.0 (apply + raw-list)) raw-list)))
+
+(defn- vc-to-freqs [vc]
+  "Convert a variant context into list of bases and associated frequencies."
+  (let [alleles (map #(.getBaseString %) (into [] (.getAlleles (:vc vc))))
+        freqs (frequency-attributes vc)]
+    (map vector alleles freqs)))
+
+(defn read-vcf-ref
+  "Read reference information into ordered map of positions + base and frequency.
+   Optionally filter by a maximum frequency to include."
+  ([in-file]
+     (reduce #(assoc %1 [(:chr %2) (:start %2) (:base %2)] (:freq %2)) (ordered-map)
+              (flatten
+               (for [vc (parse-vcf in-file)]
+                 (for [[allele freq] (vc-to-freqs vc)]
+                   {:chr (:chr vc) :start (:start vc) :base allele :freq freq})))))
+  ([in-file max-freq]
+     (into (ordered-map) (filter #(-> % val (<= max-freq))
+                                 (read-vcf-ref in-file)))))
 
 (defn -main [ref-fasta ref-config out-file]
   (let [seqs (get-fasta-seq-map ref-fasta)

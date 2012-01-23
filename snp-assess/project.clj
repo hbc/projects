@@ -9,6 +9,7 @@
                  [fs "1.1.2"]
                  [clj-yaml "0.3.1"]
                  [ordered "1.0.0"]
+                 [bcbio.variation "0.0.1-SNAPSHOT"]
                  [org.biojava/biojava3-core "3.0.2"]
                  [org.clojars.chapmanb/gatk "1.4.8"]
                  [org.clojars.chapmanb/picard "1.58"]]
