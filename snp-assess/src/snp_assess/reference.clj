@@ -108,7 +108,8 @@
   "Convert a variant context into list of bases and associated frequencies."
   (let [alleles (map #(.getBaseString %) (into [] (.getAlleles (:vc vc))))
         freqs (frequency-attributes vc)]
-    (map vector alleles freqs)))
+    (map vector alleles
+         (map (partial * 100.0) freqs))))
 
 (defn read-vcf-ref
   "Read reference information into ordered map of positions + base and frequency.

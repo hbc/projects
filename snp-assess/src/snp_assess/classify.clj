@@ -14,7 +14,8 @@
                                  normalize-params roughly-freq?]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.config :only [default-config]]
-        [snp-assess.classify-eval :only [write-assessment print-vrn-summary]])
+        [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
+        [snp-assess.reference :only [read-vcf-ref]])
   (:require [fs.core :as fs]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
@@ -31,6 +32,14 @@
            (map parse-pos-line)
            (filter #(<= (last %) max-pct))
            pos-map))))
+
+(defn read-ref [pos-file max-pct]
+  "Read reference file of variations; handling flat and VCF formats."
+  (let [first-line (with-open [rdr (reader pos-file)]
+                     (first (line-seq rdr)))]
+    (cond
+     (= (.indexOf first-line "##fileformat=VCF") 0) (read-vcf-ref pos-file max-pct)
+     :else (read-vrn-pos pos-file max-pct))))
 
 (defn vrn-data-plus-config [read-data config]
   "Retrieve parameter data for classification with config appended"
@@ -95,7 +104,7 @@
 
 (defn prep-classifier-data [data-file pos-file config]
   "Retrieve classification data based on variant/non-variant positions"
-  (let [positives (read-vrn-pos pos-file (-> config :classification :max-pos-pct))]
+  (let [positives (read-ref pos-file (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
       (->> rdr
            line-seq
@@ -218,7 +227,7 @@
 (defn assess-classifier [data-file pos-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"
   (let [classifier-passes? (classifier-checker classifier config)
-        known-vrns (read-vrn-pos pos-file 101.0)]
+        known-vrns (read-ref pos-file 101.0)]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
