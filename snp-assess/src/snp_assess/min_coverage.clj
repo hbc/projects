@@ -6,8 +6,9 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [incanter.core :only [save dataset]]
+        [incanter.io]
         [incanter.charts :only [xy-plot add-lines box-plot add-box-plot
-                                scatter-plot add-points xy-plot*]]
+                                scatter-plot add-points]]
         [snp-assess.config :only [default-config]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
@@ -92,19 +93,19 @@
         raw-freqs (raw-data-frequencies data-file config)
         cov-x (map #(-> % first second) raw-freqs)
         cov-y (map #(/ (last %) 1e6) raw-freqs)]
-    (doto (xy-plot* cov-x cov-y
-                    :title (fs/base-name data-file true)
-                    :x-label "Position" :y-label "Coverage (million reads)")
-      (save (str (fs/file image-dir (format "%s-coverage.png" (fs/base-name data-file true)))))
-      {:x cov-x :y cov-y})))
+    (doto (xy-plot cov-x cov-y
+                   :title (fs/base-name data-file true)
+                   :x-label "Position" :y-label "Coverage (million reads)")
+      (save (str (fs/file image-dir (format "%s-coverage.png" (fs/base-name data-file true))))))
+    {:x cov-x :y cov-y}))
 
 (defn write-raw-coverage [cov out-dir data-files]
   (let [out-file (str (fs/file out-dir (format "%s-coverage.csv"
                                                (fs/base-name (first data-files) true))))
-        ds (apply dataset (concat [(cons "pos" (map #(fs/base-name % true) data-files))
-                                   (-> cov first :x)]
-                                  (map :y cov)))]
-
+        ds (dataset (cons "pos" (map #(fs/base-name % true) data-files))
+                    (map (fn [i] (cons (-> cov first :x (nth i))
+                                       (map #(-> % :y (nth i)) cov)))
+                         (range (-> cov first :x count))))]
     (save ds out-file)))
 
 (defn -main [data-dir pos-dir work-dir & data-files]
