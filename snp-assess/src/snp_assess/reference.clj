@@ -119,7 +119,7 @@
               (flatten
                (for [vc (parse-vcf in-file)]
                  (for [[allele freq] (vc-to-freqs vc)]
-                   {:chr (:chr vc) :start (:start vc) :base allele :freq freq})))))
+                   {:chr (:chr vc) :start (- (:start vc) 1) :base allele :freq freq})))))
   ([in-file max-freq]
      (into (ordered-map) (filter #(-> % val (<= max-freq))
                                  (read-vcf-ref in-file)))))

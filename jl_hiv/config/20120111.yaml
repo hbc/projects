@@ -12,8 +12,10 @@ experiments:
             Sequences/Sample_S3/filtered/S3_TTAGGC_L003_R2.fastq.gz]
     ref: refinfo/hxb2-ref.fa
     description: '214371'
-  - files: [Sequences/Sample_S4/filtered/S4_TGACCA_L003_R1.fastq.gz,
-            Sequences/Sample_S4/filtered/S4_TGACCA_L003_R2.fastq.gz]
+  - files: [Sequences/Sample_S4/filtered/Jon_Li_4_NoIndex_L008_R1.fastq.gz,
+            Sequences/Sample_S4/filtered/Jon_Li_4_NoIndex_L008_R2.fastq.gz]
+           #[Sequences/Sample_S4/filtered/S4_TGACCA_L003_R1.fastq.gz,
+           # Sequences/Sample_S4/filtered/S4_TGACCA_L003_R2.fastq.gz]
     ref: refinfo/hxb2-ref.fa
     description: '161534'
   - files: [Sequences/Sample_S5/filtered/S5_ACAGTG_L003_R1.fastq.gz,

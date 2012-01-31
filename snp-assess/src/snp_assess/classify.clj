@@ -190,32 +190,30 @@
   (letfn [(annotate-base [pos base freq known-vrns]
             {:pos pos :base base :freq freq
              :exp-freq (get known-vrns [(first pos) (second pos) base])})
-          (minority-base [bases]
-            {:pre (== 1 (count (filter #(not (nil? (:exp-freq %))) bases)))}
-            (first (filter #(not (nil? (:exp-freq %))) bases)))
-          (minority-matches? [bases config]
-            (let [base (minority-base bases)]
-              (roughly-freq? (:freq base) (:exp-freq base) config)))
+          (is-match? [config base]
+            (or (and (nil? (:freq base)) (nil? (:exp-freq base)))
+                (roughly-freq? (:freq base) (:exp-freq base) config)))
+          (called-match? [bases config]
+            (every? (partial is-match? config) bases))
           (finalize [bases e-base-count call]
-            (let [freq (if (== 0 e-base-count) 100.0
-                           (:exp-freq (minority-base bases)))]
+            (let [freq (apply min (remove nil? (map :exp-freq bases)))]
               {:class call :freq freq :calls base-counts :total-reads total :pos pos}))]
     (let [all-bases ["A" "C" "G" "T"]
           ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
                            all-bases)
           e-bases (map :base (filter #(not (nil? (:exp-freq %))) ready-bases))
           c-bases (map :base (filter #(not (nil? (:freq %))) ready-bases))]
+      ;(println e-bases c-bases ready-bases)
       (finalize ready-bases (count e-bases)
                 (case (count e-bases)
-                      0 (cond
-                         (== (count c-bases) 1) :true-positive
+                      0 (throw (Exception. "Bare expected percentages no longer supported"))
+                      1 (cond
+                         (called-match? ready-bases config) :true-negative
                          (> (count c-bases) 1) :false-positive
                          (== (count c-bases) 0) :false-negative)
-                      1 (cond
-                         (== (count c-bases) 1) :false-negative
-                         (> (count c-bases) 2) :false-negative
-                         (minority-matches? ready-bases config) :true-positive
-                         :else :false-negative))))))
+                      (cond
+                       (called-match? ready-bases config) :true-positive
+                       :else :false-negative))))))
 
 (defn raw-data-frequencies [data-file config]
   "Retrieve base frequencies based on raw input data, without filtering."

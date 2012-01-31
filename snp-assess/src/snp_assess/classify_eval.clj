@@ -8,7 +8,8 @@
         [clojure.string :only [split join]]
         [incanter.stats :only [median]])
   (:require [fs.core :as fs]
-            [clj-yaml.core :as yaml]))
+            [clj-yaml.core :as yaml]
+            [doric.core :as doric]))
 
 ;; Provide summary details about read calls based on frequency
 
@@ -20,7 +21,7 @@
                     {} info))
           (collect-freqs [info]
             (->> info
-                 (filter #(= (:class %) :true-positive))
+                 (filter #(contains? #{:true-positive :true-negative} (:class %)))
                  (map #(-> % :calls vals sort first))))]
     (->> data
          (group-by :freq)
@@ -29,23 +30,30 @@
 (defn print-vrn-summary [data]
   "Print high level summary of correct and incorrect expected bases by frequency"
   (letfn [(sum-counts [counts want] (apply + (vals (select-keys counts want))))
-          (all-counts [xs want] (apply + (map #(sum-counts % want) xs)))]
-    (println "| percent | correct | wrong | median |")
-    (doseq [[freq counts exp-freqs] (sort-by first > (summarize-assessment data))]
-      (println (format "| %s | %s | %s | %.1f |" freq
-                       (sum-counts counts [:true-positive])
-                       (sum-counts counts [:false-positive :false-negative])
-                       (median exp-freqs))))
-    (println "|     | correct | wrong |")
-    (doseq [[name s e] [["100%" 100.0 100.0] ["5+%" 5.1 99.9] ["0-5%" 0 5.0]]]
-      (let [c (->> (summarize-assessment data)
-                   (filter (fn [[x _ _]] (and (>= x s) (<= x e))))
-                   (map second))
-            y (all-counts c [:true-positive])
-            n (all-counts c [:false-positive :false-negative])]
-        (println (format "| %s | %s (%.1f%%) | %s (%.1f%%) |" name
-                         y (* 100.0 (/ y (+ y n)))
-                         n (* 100.0 (/ n (+ y n)))))))))
+          (all-counts [xs want] (apply + (map #(sum-counts % want) xs)))
+          (str-w-percent [x xs]
+            (if (= 0 (apply + xs))
+              "0.0"
+              (format "%s (%.1f%%)" x (* 100.0 (/ x (apply + xs))))))]
+    (println (doric/table [{:name :percent :format #(format "%.1f" %)}
+                           :correct
+                           :wrong
+                           {:name :median :format #(format "%.1f" %)}]
+                          (for [[f counts efs] (sort-by first > (summarize-assessment data))]
+                            {:percent f
+                             :correct (sum-counts counts [:true-positive :true-negative])
+                             :wrong (sum-counts counts [:false-positive :false-negative])
+                             :median (median efs)})))
+    (println (doric/table [:category :correct :wrong]
+                          (for [[name s e] [["100%" 99.9 100.0] ["5+%" 5.0 99.9] ["0-5%" 0.0 5.0]]]
+                            (let [c (->> (summarize-assessment data)
+                                         (filter (fn [[x _ _]] (and (> x s) (<= x e))))
+                                         (map second))
+                                  y (all-counts c [:true-positive :true-negative])
+                                  n (all-counts c [:false-positive :false-negative])]
+                              {:category name
+                               :correct (str-w-percent y [y n])
+                               :wrong (str-w-percent n [y n])}))))))
 
 ;; Write calls to output file for querying and adjusting parameters:
 ;; incorrect false-positives and low frequency true-positives

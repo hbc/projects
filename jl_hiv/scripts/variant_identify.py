@@ -131,7 +131,7 @@ def _prepare_fastq(curinfo, config):
 def plot_coverage(align_bam, out_file):
     data = {"pos": [],
             "count": []}
-    with closing(pysam.samfile(align_bam, 'rb')) as work_bam:
+    with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
             data["pos"].append(col.pos)

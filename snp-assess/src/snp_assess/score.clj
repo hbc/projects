@@ -49,8 +49,9 @@
 
 (defn roughly-freq? [test want config]
   "Determine if two frequencies are roughly equal."
-  (let [diff (* want (:allowed-freq-diff config))]
+  (let [diff (if-not (nil? want) (* want (:allowed-freq-diff config)))]
     (and (not (nil? test))
+         (not (nil? want))
          (>= test (- want diff))
          (<= test (+ want diff)))))
 

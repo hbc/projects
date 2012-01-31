@@ -24,7 +24,7 @@
    :random-coverage-step 100
    :random-coverage-sample 50
    :min-score 1.2
-   :min-freq 0.0035
+   :min-freq 0.0020
    :allowed-freq-diff 2.0
    :verbose false
    :classification {:max-pos-pct 10.0
