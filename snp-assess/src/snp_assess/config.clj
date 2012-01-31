@@ -19,7 +19,7 @@
 
 (def default-config
   {:kmer-range [1e-5 1e-1]
-   :qual-range [4.0 35.0]
+   :qual-range [2.0 42.0]
    :map-score-range [0.0 250.0]
    :random-coverage-step 100
    :random-coverage-sample 50
