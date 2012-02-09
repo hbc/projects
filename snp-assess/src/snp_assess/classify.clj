@@ -119,7 +119,7 @@
 
 ;; Do the work of classification, with a prepared set of data inputs
 
-(defn- get-dataset [data]
+(defn get-dataset [data]
   "Weka dataset ready for classification or training."
   (let [header [:qual :kmer :map-score :c]]
     (make-dataset "ds" header data {:class :c})))
@@ -195,6 +195,11 @@
                 (roughly-freq? (:freq base) (:exp-freq base) config)))
           (called-match? [bases config]
             (every? (partial is-match? config) bases))
+          (low-freq-match? [bases config]
+            (let [sum-freqs (apply + (remove nil? (map :exp-freq bases)))]
+              (if (< sum-freqs 99.0)
+                (is-match? config (first (remove #(nil? (:exp-freq %)) bases)))
+                false)))
           (finalize [bases e-base-count call]
             (let [freq (apply min (remove nil? (map :exp-freq bases)))]
               {:class call :freq freq :calls base-counts :total-reads total :pos pos}))]
@@ -203,12 +208,12 @@
                            all-bases)
           e-bases (map :base (filter #(not (nil? (:exp-freq %))) ready-bases))
           c-bases (map :base (filter #(not (nil? (:freq %))) ready-bases))]
-      ;(println e-bases c-bases ready-bases)
       (finalize ready-bases (count e-bases)
                 (case (count e-bases)
                       0 (throw (Exception. "Bare expected percentages no longer supported"))
                       1 (cond
                          (called-match? ready-bases config) :true-negative
+                         (low-freq-match? ready-bases config) :true-positive
                          (> (count c-bases) 1) :false-positive
                          (== (count c-bases) 0) :false-negative)
                       (cond

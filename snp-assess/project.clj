@@ -22,5 +22,6 @@
                 :min-coverage snp-assess.min-coverage
                 :classify snp-assess.classify
                 :classify-eval snp-assess.classify-eval
+                :classify-read snp-assess.classify-read
                 :reference snp-assess.reference}
   :aot [snp-assess.core])
