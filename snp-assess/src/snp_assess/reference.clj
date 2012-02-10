@@ -53,8 +53,9 @@
 
 ;; Generate VCF output file components using GATK API
 
-(defn convert-to-vc [contig pos base-freqs]
+(defn convert-to-vc
   "Convert base frequency information into a VCF VariantContext."
+  [contig pos base-freqs & {:keys [depth]}]
   (letfn [(to-alleles [bases]
             (for [[i [base _]] (map-indexed vector bases)]
               (Allele/create base (= i 0))))
@@ -65,6 +66,9 @@
           (.attributes (-> {}
                            (#(if (> (count ordered-bases) 1)
                                (assoc % "AF" (to-freqs ordered-bases))
+                               %))
+                           (#(if-not (nil? depth)
+                               (assoc % "DP" depth)
                                %))))
           (.make)))))
 
@@ -77,21 +81,30 @@
     (.getSequenceDictionary
      (ReferenceSequenceFileFactory/getReferenceSequenceFile (file in-fasta)))))
 
-(defn- get-header-with-af []
-  "Retrieve VCFHeader with allele frequency (AF) info line"
-  (VCFHeader. #{(VCFInfoHeaderLine. "AF"
-                                    VCFHeaderLineCount/A
-                                    VCFHeaderLineType/Float
-                                    "Allele Frequency")}))
+(defn- get-header-with-attrs
+  "Retrieve VCFHeader with allele frequency (AF) and Depth (DP) info line"
+  []
+  (VCFHeader. #{(VCFInfoHeaderLine. "AF" VCFHeaderLineCount/A
+                                    VCFHeaderLineType/Float "Allele Frequency")
+                (VCFInfoHeaderLine. "DP" 1 
+                                    VCFHeaderLineType/Integer "Total Depth")}))
 
 (defn write-vcf-ref [seqs percents ref-fasta out-file]
   "Write output reference file in VCF format"
   (let [ref-name (ffirst (sort-by second > (vec percents)))]
     (with-open [writer (StandardVCFWriter. (file out-file) (to-seq-dict ref-fasta))]
-      (.writeHeader writer (get-header-with-af))
+      (.writeHeader writer (get-header-with-attrs))
       (doseq [vc (map (fn [[i x]] (convert-to-vc ref-name i x))
                       (gen-ref seqs percents))]
         (.add writer vc)))))
+
+(defn write-vcf-calls
+  "Write output calls in VCF format"
+  [vcs out-file ref-file]
+  (with-open [writer (StandardVCFWriter. (file out-file) (to-seq-dict ref-file))]
+    (.writeHeader writer (get-header-with-attrs))
+    (doseq [vc vcs]
+      (.add writer vc))))
 
 ;; Retrieve reference data information from VCF input
 

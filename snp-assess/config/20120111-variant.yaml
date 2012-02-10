@@ -1,0 +1,11 @@
+experiments:
+  - files: variation/raw_S1_ATCACG_L003_R1-sort-realign.tsv
+    ref: refinfo/hxb2-ref.fa
+  - files: variation/raw_S2_CGATGT_L003_R1-sort-realign.tsv
+    ref: refinfo/hxb2-ref.fa
+  - files: variation/raw_S3_TTAGGC_L003_R1-sort-realign.tsv
+    ref: refinfo/hxb2-ref.fa
+  - files: variation/raw_Jon_Li_4_NoIndex_L008_R1-sort-realign.tsv
+    ref: refinfo/hxb2-ref.fa
+  - files: variation/raw_S5_ACAGTG_L003_R1-sort-realign.tsv
+    ref: refinfo/hxb2-ref.fa

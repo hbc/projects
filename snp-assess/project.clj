@@ -23,5 +23,6 @@
                 :classify snp-assess.classify
                 :classify-eval snp-assess.classify-eval
                 :classify-read snp-assess.classify-read
+                :call snp-assess.call
                 :reference snp-assess.reference}
   :aot [snp-assess.core])

@@ -169,6 +169,7 @@
                                   (filter (fn [xs]
                                             (apply passes?
                                                    ((juxt :qual :kmer-pct :map-score) xs))))
+                                  (remove #(= "N" (:base %)))
                                   (map #(repeat (get % :num 1) (:base %)))
                                   flatten
                                   frequencies
