@@ -1,8 +1,31 @@
 (ns snp-assess.protein
   "Assess influence of variations on protein sequence."
+  (:import [org.biojava3.core.sequence.transcription TranscriptionEngine]
+           [org.biojava3.core.sequence DNASequence])
   (:use [clojure.java.io]
-        [clojure.string :only (split)]
+        [clojure.string :only (split join)]
         [snp-assess.reference :only (get-fasta-seq-map)]))
+
+;; ## Calculate amino acid changes caused by variants
+
+(defn- translate-codon
+  "Translate codon to amino acid sequence using BioJava."
+  [codon]
+  (-> (TranscriptionEngine/getDefault)
+      (.translate (DNASequence. (join codon)))
+      str))
+
+(defn calc-aa-change
+  "Calculate amino acid change caused by a variation as a string representation."
+  [prot-map position new-base]
+  {:pre [(contains? prot-map position)]}
+  (let [codon-info (get prot-map position)
+        new-aa (translate-codon (assoc (:codon codon-info) (:offset codon-info) new-base))]
+    (str (translate-codon (:codon codon-info))
+         (:aa-pos codon-info)
+         new-aa
+         (if-let [known-names (get (:known codon-info) new-aa nil)]
+           (str "_" (join "_" known-names))))))
 
 ;; ## Parse sequence information into map of positions to codons
 
@@ -39,10 +62,10 @@
                    (map #(split % #",")))))))
 
 (defn prep-protein-map
-  [ref-info]
   "Create a map of positions in a sequence to protein changes.
    ref-info is a map with the FASTA input file, offsets to use
    and known mutations."
+  [ref-info]
   (let [codons (ref-to-codons (get-fasta-seq-map (:files ref-info))
                               (:frame-offset ref-info))
         known-muts (read-known-mutations (:known ref-info))]
