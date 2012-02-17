@@ -55,12 +55,14 @@
 
 (defn convert-to-vc
   "Convert base frequency information into a VCF VariantContext."
-  [contig pos base-freqs & {:keys [depth]}]
+  [contig pos base-freqs & {:keys [depth aa-finder]}]
   (letfn [(to-alleles [bases]
             (for [[i [base _]] (map-indexed vector bases)]
               (Allele/create base (= i 0))))
           (to-freqs [bases]
-            (join "," (rest (map second bases))))]
+            (join "," (rest (map second bases))))
+          (aa-changes [bases]
+            (join "," (map #(aa-finder pos %) (keys bases))))]
     (let [ordered-bases (sort-by second > (vec base-freqs))]
       (-> (VariantContextBuilder. contig contig (+ 1 pos) (+ 1 pos) (to-alleles ordered-bases))
           (.attributes (-> {}
@@ -69,6 +71,9 @@
                                %))
                            (#(if-not (nil? depth)
                                (assoc % "DP" depth)
+                               %))
+                           (#(if-not (nil? aa-finder)
+                               (assoc % "AA_CHANGE" (aa-changes ordered-bases))
                                %))))
           (.make)))))
 
@@ -87,7 +92,10 @@
   (VCFHeader. #{(VCFInfoHeaderLine. "AF" VCFHeaderLineCount/A
                                     VCFHeaderLineType/Float "Allele Frequency")
                 (VCFInfoHeaderLine. "DP" 1 
-                                    VCFHeaderLineType/Integer "Total Depth")}))
+                                    VCFHeaderLineType/Integer "Total Depth")
+                (VCFInfoHeaderLine. "AA_CHANGE" VCFHeaderLineCount/A
+                                    VCFHeaderLineType/String
+                                    "Amino acid change caused by variants")}))
 
 (defn write-vcf-ref [seqs percents ref-fasta out-file]
   "Write output reference file in VCF format"
