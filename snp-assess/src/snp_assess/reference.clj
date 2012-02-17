@@ -62,7 +62,7 @@
           (to-freqs [bases]
             (join "," (rest (map second bases))))
           (aa-changes [bases]
-            (join "," (map #(aa-finder pos %) (keys bases))))]
+            (join "," (map #(aa-finder pos %) (rest (keys bases)))))]
     (let [ordered-bases (sort-by second > (vec base-freqs))]
       (-> (VariantContextBuilder. contig contig (+ 1 pos) (+ 1 pos) (to-alleles ordered-bases))
           (.attributes (-> {}
@@ -72,7 +72,8 @@
                            (#(if-not (nil? depth)
                                (assoc % "DP" depth)
                                %))
-                           (#(if-not (nil? aa-finder)
+                           (#(if (and (not (nil? aa-finder))
+                                      (> (count ordered-bases) 1))
                                (assoc % "AA_CHANGE" (aa-changes ordered-bases))
                                %))))
           (.make)))))
@@ -95,7 +96,7 @@
                                     VCFHeaderLineType/Integer "Total Depth")
                 (VCFInfoHeaderLine. "AA_CHANGE" VCFHeaderLineCount/A
                                     VCFHeaderLineType/String
-                                    "Amino acid change caused by variants")}))
+                                    "Amino acid change caused by a variant")}))
 
 (defn write-vcf-ref [seqs percents ref-fasta out-file]
   "Write output reference file in VCF format"

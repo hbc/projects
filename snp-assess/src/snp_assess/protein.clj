@@ -34,9 +34,10 @@
   [seq-map frame-offset]
   {:pre [(= 1 (count seq-map))]}
   (let [seq (first (vals seq-map))]
-    (remove empty?
-            (cons (take frame-offset seq)
-                  (partition 3 3 "" (drop frame-offset seq))))))
+    (->> (cons (take frame-offset seq)
+              (partition 3 3 "" (drop frame-offset seq)))
+         (remove empty?)
+         (map vec))))
 
 (defn- add-codon-to-map
   "Add position to codon information for the current codon."

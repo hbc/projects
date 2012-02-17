@@ -48,11 +48,10 @@
 
 (defn -main [run-config-file work-dir]
   (let [run-config (read-run-config run-config-file work-dir)
-        _ (println run-config)
         config (-> default-config
                    (assoc :verbose true))
         c (prepare-classifier nil nil work-dir config)
-        aa-finder (partial calc-aa-change (prep-protein-map (-> config :ref)))]
-    (doseq [x (:experiments config)]
-      (write-calls-as-vcf (:files x) (-> config :ref :files)
+        aa-finder (partial calc-aa-change (prep-protein-map (:ref run-config)))]
+    (doseq [x (:experiments run-config)]
+      (write-calls-as-vcf (:files x) (-> run-config :ref :files)
                           c aa-finder config))))
