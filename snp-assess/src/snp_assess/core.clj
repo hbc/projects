@@ -2,12 +2,12 @@
 ;; coverage, to help in setting parameters for variation calling.
 
 (ns snp-assess.core
-  (:use [clojure.string :only [split]]
+  (:use [clojure.java.io]
+        [clojure.string :only [split]]
         [cascalog.api]
-        [snp-assess.config :only [default-config]]
         [snp-assess.score :only [score-calc-cascalog]])
-  (:require [cascalog [ops :as ops]])
-  (:gen-class))
+  (:require [cascalog [ops :as ops]]
+            [clj-yaml.core :as yaml]))
 
 ;; Summary statistics for positions of interest
 
@@ -57,14 +57,17 @@
         (source ?line)
         (parse-pos-line ?line :> ?chr ?pos ?base ?type))))
 
-(defn target-snpdata-stats [data-dir pos-dir]
+(defn target-snpdata-stats [data-dir pos-dir config]
   "Output individual base call statistics at specified positions."
   (let [out (calc-snpdata-stats (snpdata-from-hfs data-dir)
                                 (target-pos-from-hfs pos-dir)
-                                (score-calc-cascalog default-config))
+                                (score-calc-cascalog config))
         sort-out (sort-by #(vec (map % [0 1 2])) out)]
     (doseq [row sort-out]
       (println (apply format "| %s | %s | %s | %5s | %.1f | %.1e | %.1f | %.1f | %10s |" row)))))
 
-(defn -main [data-dir pos-dir]
-  (target-snpdata-stats data-dir pos-dir))
+(defn load-config [in-file]
+  (-> in-file slurp yaml/parse-string :params))
+
+(defn -main [data-dir pos-dir config-file]
+  (target-snpdata-stats data-dir pos-dir (load-config config-file)))

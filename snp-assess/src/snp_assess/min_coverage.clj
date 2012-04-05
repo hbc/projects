@@ -9,10 +9,9 @@
         [incanter.io]
         [incanter.charts :only [xy-plot add-lines box-plot add-box-plot
                                 scatter-plot add-points]]
-        [snp-assess.config :only [default-config]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
-        [snp-assess.core :only [snpdata-from-hfs]]
+        [snp-assess.core :only [snpdata-from-hfs load-config]]
         [snp-assess.off-target :only [pos-from-hfs]]
         [snp-assess.classify :only [raw-data-frequencies]])
   (:require [cascalog [ops :as ops]]
@@ -29,12 +28,12 @@
         (filter-fn ?kmer-pct ?qual ?map-score)
         (min-coverage-fn ?var-base ?var-freq ?base :> ?coverage)))
 
-(defn min-coverage-plot [data-dir pos-dir image-dir]
+(defn min-coverage-plot [data-dir pos-dir image-dir config]
   "Plot minimum coverage for detecting minority variants."
   (let [freq-cov (min-coverage (snpdata-from-hfs data-dir)
                                (pos-from-hfs pos-dir)
-                               (min-coverage-cascalog default-config)
-                               (read-filter-cascalog default-config))
+                               (min-coverage-cascalog config)
+                               (read-filter-cascalog config))
         cov-by-freq (reduce (fn [cov-map [freq cov]]
                               (assoc cov-map freq (cons cov (get cov-map freq))))
                             {} (map #(drop 3 %) freq-cov))
@@ -66,11 +65,11 @@
         (filter-fn ?kmer-pct ?qual ?map-score)
         (ops/count ?count)))
 
-(defn coverage-dist-plot [data-dir image-dir]
+(defn coverage-dist-plot [data-dir image-dir config]
   (letfn [(counts-only [xs] (map last xs))]
     (let [cov (coverage-dist (snpdata-from-hfs data-dir))
           cov-filter (filtered-coverage-dist (snpdata-from-hfs data-dir)
-                                             (read-filter-cascalog default-config))
+                                             (read-filter-cascalog config))
           total-reads (/ (apply + (counts-only cov)) 1e6)
           num-bins 100.0
           [cov-x cov-y] (histogram-bins (counts-only cov) num-bins)
@@ -86,11 +85,9 @@
         (add-points (map second cov-filter) (counts-only cov-filter) :series-label "filter")
         (save (str(fs/file image-dir "coverage-by-pos.png")))))))
 
-(defn coverage-by-pos-plot [data-file image-dir]
+(defn coverage-by-pos-plot [data-file image-dir config]
   "Plot of read coverage by position."
-  (let [config (-> default-config
-                   (assoc :min-freq 0.0))
-        raw-freqs (raw-data-frequencies data-file config)
+  (let [raw-freqs (raw-data-frequencies data-file (assoc config :min-freq 0.0))
         cov-x (map #(-> % first second) raw-freqs)
         cov-y (map #(/ (last %) 1e6) raw-freqs)]
     (doto (xy-plot cov-x cov-y
@@ -108,13 +105,14 @@
                          (range (-> cov first :x count))))]
     (save ds out-file)))
 
-(defn -main [data-dir pos-dir work-dir & data-files]
-  (let [image-dir (str (fs/file work-dir "images"))]
+(defn -main [data-dir pos-dir work-dir config-file & data-files]
+  (let [image-dir (str (fs/file work-dir "images"))
+        config (load-config config-file)]
     (if-not (fs/exists? image-dir)
       (fs/mkdirs image-dir))
     (let [all-data-files (cons data-dir data-files)
-          cov (map #(coverage-by-pos-plot % image-dir) all-data-files)]
+          cov (map #(coverage-by-pos-plot % image-dir config) all-data-files)]
       (write-raw-coverage cov image-dir all-data-files))
-    ;(coverage-dist-plot data-dir image-dir)
-    ;(min-coverage-plot data-dir pos-dir image-dir)
+    ;(coverage-dist-plot data-dir image-dir config)
+    ;(min-coverage-plot data-dir pos-dir image-dir config)
     ))

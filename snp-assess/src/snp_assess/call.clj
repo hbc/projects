@@ -3,7 +3,7 @@
    Writes output as VCF file with information on allele frequencies, read
    depth and variant effects."
   (:use [clojure.java.io]
-        [snp-assess.config :only [default-config]]
+        [snp-assess.core :only [load-config]]
         [snp-assess.classify :only [prepare-classifier classifier-checker
                                     raw-reads-by-pos call-vrns-at-pos]]
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
@@ -46,9 +46,9 @@
         (#(assoc % :experiments (map (fn [x] (add-full-path x [:files]))
                                      (:experiments %)))))))
 
-(defn -main [run-config-file work-dir]
+(defn -main [run-config-file param-config-file work-dir]
   (let [run-config (read-run-config run-config-file work-dir)
-        config (-> default-config
+        config (-> (load-config param-config-file)
                    (assoc :verbose true))
         c (prepare-classifier nil nil work-dir config)
         aa-finder (partial calc-aa-change (prep-protein-map (:ref run-config)))]

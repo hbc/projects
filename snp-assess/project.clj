@@ -12,8 +12,8 @@
                  [doric "0.7.0-SNAPSHOT"]
                  [bcbio.variation "0.0.1-SNAPSHOT"]
                  [org.biojava/biojava3-core "3.0.2"]
-                 [org.clojars.chapmanb/gatk "1.4.8"]
-                 [org.clojars.chapmanb/picard "1.58"]]
+                 [org.clojars.chapmanb/gatk "1.5.2"]
+                 [org.clojars.chapmanb/picard "1.64"]]
   :dev-dependencies [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
                      [midje "1.3.0" :exclusions [org.clojure/clojure]]]
   :repositories {"biojava" "http://www.biojava.org/download/maven/"}

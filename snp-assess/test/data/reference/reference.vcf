@@ -1,0 +1,8 @@
+##fileformat=VCFv4.1
+##INFO=<ID=AA_CHANGE,Number=A,Type=String,Description="Amino acid change caused by a variant">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	
+HXB2	952	.	G	T	.	.	AF=0.05
+HXB2	953	.	C	.	.	.	.
+HXB2	954	.	G	A	.	.	AF=0.01

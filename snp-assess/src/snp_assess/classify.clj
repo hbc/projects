@@ -9,11 +9,10 @@
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
                                    classifier-evaluate classifier-classify]]
-        [snp-assess.core :only [parse-snpdata-line]]
+        [snp-assess.core :only [parse-snpdata-line load-config]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  normalize-params roughly-freq?]]
         [snp-assess.off-target :only [parse-pos-line]]
-        [snp-assess.config :only [default-config]]
         [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
         [snp-assess.reference :only [read-vcf-ref]])
   (:require [fs.core :as fs]))
@@ -33,12 +32,12 @@
            (filter #(<= (last %) max-pct))
            pos-map))))
 
-(defn read-ref [pos-file max-pct]
+(defn read-ref [pos-file ref-file max-pct]
   "Read reference file of variations; handling flat and VCF formats."
   (let [first-line (with-open [rdr (reader pos-file)]
                      (first (line-seq rdr)))]
     (cond
-     (= (.indexOf first-line "##fileformat=VCF") 0) (read-vcf-ref pos-file max-pct)
+     (= (.indexOf first-line "##fileformat=VCF") 0) (read-vcf-ref pos-file ref-file max-pct)
      :else (read-vrn-pos pos-file max-pct))))
 
 (defn vrn-data-plus-config [read-data config]
@@ -102,9 +101,10 @@
         negatives (take (count positives) (shuffle (filter #(== 0 (last %)) data)))]
     (concat positives negatives)))
 
-(defn prep-classifier-data [data-file pos-file config]
+(defn prep-classifier-data [data-file pos-file ref-file config]
   "Retrieve classification data based on variant/non-variant positions"
-  (let [positives (read-ref pos-file (-> config :classification :max-pos-pct))]
+  (let [positives (read-ref pos-file ref-file
+                            (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
       (->> rdr
            line-seq
@@ -124,14 +124,14 @@
   (let [header [:qual :kmer :map-score :c]]
     (make-dataset "ds" header data {:class :c})))
 
-(defn train-classifier [data-file pos-file config]
+(defn train-classifier [data-file pos-file ref-file config]
   "Manage retrieving data and training the classifier."
-  (let [class-data (prep-classifier-data data-file pos-file config)
+  (let [class-data (prep-classifier-data data-file pos-file ref-file config)
         ds (get-dataset class-data)
         c (-> (make-classifier :regression :linear) (classifier-train ds))]
     c))
 
-(defn prepare-classifier [data-file pos-file work-dir config]
+(defn prepare-classifier [data-file pos-file ref-file work-dir config]
   "High level work to get classifier, included serialization to a file."
   (let [out-dir (str (fs/file work-dir "classifier"))
         classifier-file (str (fs/file out-dir "build.bin"))]
@@ -139,7 +139,7 @@
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)
       (deserialize-from-file classifier-file)
-      (let [classifier  (train-classifier data-file pos-file config)]
+      (let [classifier (train-classifier data-file pos-file ref-file config)]
         (serialize-to-file classifier classifier-file)
         classifier))))
 
@@ -201,7 +201,7 @@
               (if (< sum-freqs 99.0)
                 (is-match? config (first (remove #(nil? (:exp-freq %)) bases)))
                 false)))
-          (finalize [bases e-base-count call]
+          (finalize [bases call]
             (let [freq (apply min (remove nil? (map :exp-freq bases)))]
               {:class call :freq freq :calls base-counts :total-reads total :pos pos}))]
     (let [all-bases ["A" "C" "G" "T"]
@@ -209,7 +209,7 @@
                            all-bases)
           e-bases (map :base (filter #(not (nil? (:exp-freq %))) ready-bases))
           c-bases (map :base (filter #(not (nil? (:freq %))) ready-bases))]
-      (finalize ready-bases (count e-bases)
+      (finalize ready-bases
                 (case (count e-bases)
                       0 (throw (Exception. "Bare expected percentages no longer supported"))
                       1 (cond
@@ -228,10 +228,10 @@
          (map (fn [xs] (call-vrns-at-pos xs (fn [_ _ _] true) config)))
          vec)))
 
-(defn assess-classifier [data-file pos-file classifier config]
+(defn assess-classifier [data-file pos-file ref-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"
   (let [classifier-passes? (classifier-checker classifier config)
-        known-vrns (read-ref pos-file 101.0)]
+        known-vrns (read-ref pos-file ref-file 101.0)]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
@@ -239,11 +239,11 @@
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
-(defn -main [data-file pos-file work-dir]
-  (let [config (-> default-config
+(defn -main [data-file pos-file ref-file config-file work-dir]
+  (let [config (-> (load-config config-file)
                    (assoc :verbose true))
-        c (prepare-classifier data-file pos-file work-dir config)
+        c (prepare-classifier data-file pos-file ref-file work-dir config)
         _ (println c)
-        a (assess-classifier data-file pos-file c config)]
+        a (assess-classifier data-file pos-file ref-file c config)]
     (write-assessment a data-file work-dir)
     (print-vrn-summary a)))

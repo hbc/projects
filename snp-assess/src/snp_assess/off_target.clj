@@ -7,10 +7,9 @@
         [cascalog.api]
         [incanter.core :only [save]]
         [incanter.charts :only [xy-plot add-lines]]
-        [snp-assess.config :only [default-config]]
         [snp-assess.score :only [minor-target-cascalog read-filter-cascalog
                                  histogram-bins]]
-        [snp-assess.core :only [snpdata-from-hfs]])
+        [snp-assess.core :only [snpdata-from-hfs load-config]])
   (:require [cascalog [ops :as ops]]
             [fs.core :as fs])
   (:gen-class))
@@ -39,9 +38,9 @@
         (source ?line)
         (parse-pos-line ?line :> ?chr ?pos ?base ?freq))))
 
-(defn off-target-plots [data-dir pos-dir image-dir]
+(defn off-target-plots [data-dir pos-dir image-dir config-file]
   (letfn [(freqs-ready [from-cascalog] (map #(* 100.0 (last %)) from-cascalog))]
-    (let [config (assoc default-config :min-freq 0.0)
+    (let [config (assoc (load-config config-file) :min-freq 0.0)
           freq (freqs-ready (off-target-freqs (snpdata-from-hfs data-dir)
                                               (pos-from-hfs pos-dir)
                                               (minor-target-cascalog config)))
@@ -61,8 +60,8 @@
       (println freq-x freq-hist)
       (println freq-filter-hist))))
 
-(defn -main [data-dir pos-dir work-dir]
+(defn -main [data-dir pos-dir config-file work-dir]
   (let [image-dir (str (fs/file work-dir "images"))]
     (if-not (fs/exists? image-dir)
       (fs/mkdirs image-dir))
-    (off-target-plots data-dir pos-dir image-dir)))
+    (off-target-plots data-dir pos-dir image-dir config-file)))

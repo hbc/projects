@@ -5,7 +5,7 @@
         [clojure.string :only [split]]
         [clj-ml.data :only [make-instance]]
         [clj-ml.classifiers :only [classifier-classify]]
-        [snp-assess.config :only [default-config]]
+        [snp-assess.core :only [load-config]]
         [snp-assess.score :only [normalize-params]]
         [snp-assess.classify :only [prepare-classifier get-dataset]])
   (:require [fs.core :as fs]))
@@ -47,8 +47,8 @@
            doall))
     out-file))
 
-(defn -main [read-file work-dir]
-  (let [config (-> default-config
+(defn -main [read-file work-dir config-file]
+  (let [config (-> (load-config config-file)
                    (assoc :verbose true))
         c (prepare-classifier nil nil work-dir config)
         scorer (classifier-score c config)]

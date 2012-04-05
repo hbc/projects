@@ -3,3 +3,7 @@ pom.xml
 /lib/
 /classes/
 .lein-deps-sum
+test/data/reference/*.idx
+test/data/reference/*.fai
+test/data/reference/*.dict
+images/
