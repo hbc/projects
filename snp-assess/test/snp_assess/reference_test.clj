@@ -30,11 +30,12 @@
     (.isBiallelic ref-vc) => false))
 
 (fact "Parse known frequency information from reference VCF"
-  (let [ref-file (str (fs/file "test" "data" "count_data" "known_freqs.vcf"))
-        freqs (read-vcf-ref ref-file)
-        filter-freqs (read-vcf-ref ref-file 5.1)]
-    (first freqs) => (contains [["HXB2" 226 "G"] (roughly 61.1)])
+  (let [vcf-file (str (fs/file "test" "data" "count_data" "known_freqs.vcf"))
+        ref-file (str (fs/file "test" "data" "reference" "hxb2.fa"))
+        freqs (read-vcf-ref vcf-file ref-file)
+        filter-freqs (read-vcf-ref vcf-file ref-file 5.1)]
+    (first freqs) => (contains [["HXB2" 225 "G"] (roughly 61.1)])
     (count freqs) => 6
-    (last freqs) => [["HXB2" 228 "T"] 100.0]
+    (last freqs) => [["HXB2" 227 "T"] 100.0]
     (count filter-freqs) => 2
-    (first filter-freqs) => (contains [["HXB2" 227 "A"] (roughly 5.0)])))
+    (first filter-freqs) => (contains [["HXB2" 226 "A"] (roughly 5.0)])))
