@@ -16,6 +16,8 @@
 #   classification group.
 # * assess-bases -> Bases to perform assessment with a
 #   classifier. Set to nil to include all bases.
+# * algorithm -> Approach to use for classification. Choices:
+#   linear-regression (default), random-forest
 
 params:
   kmer-range: [0.00001, 0.1]
@@ -28,6 +30,7 @@ params:
   allowed-freq-diff: 2.0
   verbose: false
   classification:
+    algorithm: linear-regression
     max-pos-pct: 10.0
     max-neg-pct: 0.75
     naive-min-score: 0.7

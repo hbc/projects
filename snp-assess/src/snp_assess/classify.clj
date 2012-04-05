@@ -66,17 +66,21 @@
   (let [freq (* 100.0 (get base-freqs (last cur-id)))
         min-freq (* 100.0 (:min-freq config))]
     (case class
-          0 (and (<= freq (-> config :classification :max-neg-pct))
-                 (>= min-freq))
-          1 (and (<= freq (-> config :classification :max-pos-pct))
-                 (>= min-freq)))))
+      (0 :b) (and (<= freq (-> config :classification :max-neg-pct))
+                  (>= min-freq))
+      (1 :a) (and (<= freq (-> config :classification :max-pos-pct))
+                  (>= min-freq)))))
 
-(defn data-from-pos [pos-data positives config]
+(defn data-from-pos [pos-data positives group-type config]
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
     (for [cur-id want-keys]
-      (let [class (if (contains? positives cur-id) 1 0)]
+      (let [class (case [(contains? positives cur-id) group-type]
+                        [true :category] :a
+                        [false :category] :b
+                        [true :numerical] 1
+                        [false :numerical] 0)]
         (if (is-low-minority-vrn? cur-id class want-bases config)
           (map #(finalize-raw-data % class config) (get pos-data cur-id))
           [])))))
@@ -94,14 +98,14 @@
              (take-while #(< (-> % first :pos) (second assess-range)))))))
 
 (defn- random-sample-negatives [config data]
-  "Randomly sample negative examples to make total positives. Since there are
+  "Randomly sample negative examples to match total positives. Since there are
    a larger number of negative examples, this prevents learning to just call all
    negatives in the classifier."
-  (let [positives (filter #(== 1 (last %)) data)
-        negatives (take (count positives) (shuffle (filter #(== 0 (last %)) data)))]
+  (let [positives (filter #(contains? #{1 :a} (last %)) data)
+        negatives (take (count positives) (shuffle (filter #(contains? #{0 :b} (last %)) data)))]
     (concat positives negatives)))
 
-(defn prep-classifier-data [data-file pos-file ref-file config]
+(defn prep-classifier-data [data-file pos-file ref-file class-info config]
   "Retrieve classification data based on variant/non-variant positions"
   (let [positives (read-ref pos-file ref-file
                             (-> config :classification :max-pos-pct))]
@@ -111,7 +115,7 @@
            (map parse-snpdata-line)
            (partition-by (juxt :space :pos))
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
-           (map #(data-from-pos % positives config))
+           (map #(data-from-pos % positives (:group class-info) config))
            flatten
            (partition 4)
            (random-sample-negatives config)
@@ -119,16 +123,23 @@
 
 ;; Do the work of classification, with a prepared set of data inputs
 
-(defn get-dataset [data]
+(defn get-dataset [data & {:keys [category?] :or {category? false}}]
   "Weka dataset ready for classification or training."
-  (let [header [:qual :kmer :map-score :c]]
+  (let [header [:qual :kmer :map-score (if category? {:c [:a :b]} :c)]]
     (make-dataset "ds" header data {:class :c})))
 
 (defn train-classifier [data-file pos-file ref-file config]
   "Manage retrieving data and training the classifier."
-  (let [class-data (prep-classifier-data data-file pos-file ref-file config)
-        ds (get-dataset class-data)
-        c (-> (make-classifier :regression :linear) (classifier-train ds))]
+  (let [class-info (case (get-in config [:classification :algorithm])
+                     "random-forest" {:classifier [:decision-tree :fast-random-forest]
+                                      :group :category}
+                     {:classifier [:regression :linear]
+                      :group :numerical})
+        class-data (prep-classifier-data data-file pos-file ref-file
+                                         class-info config)
+        ds (get-dataset class-data :category? (= :category (:group class-info)))
+        c (-> (apply make-classifier (:classifier class-info))
+              (classifier-train ds))]
     c))
 
 (defn prepare-classifier [data-file pos-file ref-file work-dir config]
