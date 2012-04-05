@@ -213,7 +213,8 @@
                 (is-match? config (first (remove #(nil? (:exp-freq %)) bases)))
                 false)))
           (finalize [bases call]
-            (let [freq (apply min (remove nil? (map :exp-freq bases)))]
+            (let [freq (when-not (nil? call)
+                         (apply min (remove nil? (map :exp-freq bases))))]
               {:class call :freq freq :calls base-counts :total-reads total :pos pos}))]
     (let [all-bases ["A" "C" "G" "T"]
           ready-bases (map (fn [b] (annotate-base pos b (get base-counts b) known-vrns))
@@ -222,15 +223,15 @@
           c-bases (map :base (filter #(not (nil? (:freq %))) ready-bases))]
       (finalize ready-bases
                 (case (count e-bases)
-                      0 (throw (Exception. "Bare expected percentages no longer supported"))
-                      1 (cond
-                         (called-match? ready-bases config) :true-negative
-                         (low-freq-match? ready-bases config) :true-positive
-                         (> (count c-bases) 1) :false-positive
-                         (== (count c-bases) 0) :false-negative)
-                      (cond
-                       (called-match? ready-bases config) :true-positive
-                       :else :false-negative))))))
+                  0 nil
+                  1 (cond
+                     (called-match? ready-bases config) :true-negative
+                     (low-freq-match? ready-bases config) :true-positive
+                     (> (count c-bases) 1) :false-positive
+                     (== (count c-bases) 0) :false-negative)
+                  (cond
+                   (called-match? ready-bases config) :true-positive
+                   :else :false-negative))))))
 
 (defn raw-data-frequencies [data-file config]
   "Retrieve base frequencies based on raw input data, without filtering."
@@ -247,6 +248,7 @@
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
            (map (fn [[pos bases total]] (assign-position-type pos bases total known-vrns config)))
+           (remove #(nil? (:class %)))
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
