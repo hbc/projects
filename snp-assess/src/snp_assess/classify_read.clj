@@ -1,12 +1,11 @@
-;; Classify file of reads, providing output compatible with Topcoder grading
-
 (ns snp-assess.classify-read
+  "Classify file of reads, providing output compatible with Topcoder grading"
   (:use [clojure.java.io]
         [clojure.string :only [split]]
         [clj-ml.data :only [make-instance]]
         [clj-ml.classifiers :only [classifier-classify]]
         [snp-assess.core :only [load-config]]
-        [snp-assess.score :only [normalize-params]]
+        [snp-assess.features :only [normalize-params]]
         [snp-assess.classify :only [prepare-classifier get-dataset]])
   (:require [fs.core :as fs]))
 

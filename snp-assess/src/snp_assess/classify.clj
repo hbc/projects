@@ -11,7 +11,8 @@
                                    classifier-evaluate classifier-classify]]
         [snp-assess.core :only [parse-snpdata-line load-config]]
         [snp-assess.score :only [minority-variants naive-read-passes?
-                                 normalize-params roughly-freq?]]
+                                 roughly-freq?]]
+        [snp-assess.features :only [normalize-params]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
         [snp-assess.reference :only [read-vcf-ref]])
