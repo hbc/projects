@@ -133,13 +133,15 @@
   "Manage retrieving data and training the classifier."
   (let [class-info (case (get-in config [:classification :algorithm])
                      "random-forest" {:classifier [:decision-tree :fast-random-forest]
+                                      :options {:num-trees-in-forest 120
+                                                :num-features-to-consider 16}
                                       :group :category}
                      {:classifier [:regression :linear]
                       :group :numerical})
         class-data (prep-classifier-data data-file pos-file ref-file
                                          class-info config)
         ds (get-dataset class-data :category? (= :category (:group class-info)))
-        c (-> (apply make-classifier (:classifier class-info))
+        c (-> (apply make-classifier (conj (:classifier class-info) (get class-info :options {})))
               (classifier-train ds))]
     c))
 
