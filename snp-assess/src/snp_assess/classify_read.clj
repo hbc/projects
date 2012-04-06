@@ -5,7 +5,7 @@
         [clj-ml.data :only [make-instance]]
         [clj-ml.classifiers :only [classifier-classify]]
         [snp-assess.core :only [load-config]]
-        [snp-assess.features :only [normalize-params]]
+        [snp-assess.features :only [metrics-to-features]]
         [snp-assess.classify :only [prepare-classifier get-dataset]])
   (:require [fs.core :as fs]))
 
@@ -13,7 +13,9 @@
   "Calculate read score using pre-built classifier."
   (let [ds (get-dataset [])]
     (fn [qual kmer-pct map-score]
-      (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)]
+      (let [[nq nk nm] (metrics-to-features qual kmer-pct map-score
+                                            (assoc-in config [:classication :classifier]
+                                                      [:regression :linear]))]
         (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
                                                            :map-score nm :c -1}))))))
 

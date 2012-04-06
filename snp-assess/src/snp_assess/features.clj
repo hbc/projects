@@ -5,6 +5,12 @@
   (:use [incanter.core :only [log pow exp]]
         [incanter.stats :only [euclidean-distance manhattan-distance]]))
 
+;; ## Top-level functionality
+
+(defmulti metrics-to-features
+  "Convert input metrics into remapped features for classification."
+  (fn [qual kmer-pct map-score config] (get-in config [:classification :classifier])))
+
 ;; ## Linear regression
 
 (defn min-max-norm
@@ -14,9 +20,9 @@
         trunc-score (if (> trunc-score-max minv) trunc-score-max minv)]
     (/ (- trunc-score minv) (- maxv minv))))
 
-(defn normalize-params
-  "Prep quality score, k-mer and map score with min/max normalization."
+(defmethod metrics-to-features [:regression :linear]
   [qual kmer-pct map-score config]
+  "Prep quality score, k-mer and map score with min/max normalization."
   [(min-max-norm qual (:qual-range config))
    (min-max-norm kmer-pct (:kmer-range config))
    (min-max-norm map-score (:map-score-range config))])
@@ -38,14 +44,14 @@
                                      (- (log (manhattan-distance p p_cur)))]))
             [] [p_start p_middle p_end])))
 
-(defn rf-feature-expansion
+(defmethod metrics-to-features [:decision-tree :fast-random-forest]
+  [qual kmer-pct map-score _]
   "Provide feature expansion for random forest classification.
   This is a direct port of the work done by Chun-Sung Ferng on the TopCoder
   competition. Produces 14 feature metrics from input kmers. The first 8 metrics
   are log or square transformations on inputs multiplied together. The remaining
   6 metrics are similarity comparisons between the 3 metrics and start/median/end
   reference points in 3-space."
-  [qual kmer-pct map-score]
   (let [k_bar (log kmer-pct)
         k_hat (+ k_bar 20)
         m_hat (/ map-score 8)]
@@ -59,12 +65,3 @@
       (/ (* qual m_hat) (pow k_bar 2))
       (/ (* qual m_hat) (- k_bar))]
      (rf-distance-features qual k_hat map-score))))
-
-;; ## Top-level functionality
-
-(defn metrics-to-features
-  "Convert input metrics into remapped features for classification."
-  [qual kmer-pct map-score class-info config]
-  (case (:classifier class-info)
-    [:regression :linear] (normalize-params qual kmer-pct map-score config)
-    [:decision-tree :fast-random-forest] (rf-feature-expansion qual kmer-pct map-score)))

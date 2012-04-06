@@ -1,9 +1,8 @@
-;; Create classifier for evaluating reads associated with
-;; low percentage variations. Build a linear classifier that
-;; distinguishes real reads from false positives based on quality
-;; score, map score and k-mer frequency.
-
 (ns snp-assess.classify
+  "Create classifier for evaluating reads associated with
+   low percentage variations. Build a linear classifier that
+   distinguishes real reads from false positives based on quality
+   score, map score and k-mer frequency."
   (:use [clojure.java.io]
         [clj-ml.utils :only [serialize-to-file deserialize-from-file]]
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
@@ -12,7 +11,7 @@
         [snp-assess.core :only [parse-snpdata-line load-config]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  roughly-freq?]]
-        [snp-assess.features :only [normalize-params]]
+        [snp-assess.features :only [metrics-to-features]]
         [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
         [snp-assess.reference :only [read-vcf-ref]])
@@ -41,14 +40,15 @@
      (= (.indexOf first-line "##fileformat=VCF") 0) (read-vcf-ref pos-file ref-file max-pct)
      :else (read-vrn-pos pos-file max-pct))))
 
-(defn vrn-data-plus-config [read-data config]
-  "Retrieve parameter data for classification with config appended"
-  (conj (vec ((juxt :qual :kmer-pct :map-score) read-data)) config))
+(defn get-vrn-data [read-data]
+  "Retrieve parameter data for classification."
+  (vec ((juxt :qual :kmer-pct :map-score) read-data)))
 
 (defn- minority-vrns-from-raw [pos-data config]
   "Retrieve minority variants at a position given raw data."
   (letfn [(count-bases [[id xs]] [(last id) (count xs)])
-          (good-read? [read] (apply naive-read-passes? (vrn-data-plus-config read config)))
+          (good-read? [read] (apply naive-read-passes? (conj (get-vrn-data read)
+                                                             config)))
           (filter-reads [[id xs]] [id (filter good-read? xs)])]
     (->> pos-data
          (map filter-reads)
@@ -60,7 +60,7 @@
 
 (defn finalize-raw-data [raw-data class config]
   "Prepare normalized raw data for input into classifiers."
-  (let [normal-data (apply normalize-params (vrn-data-plus-config raw-data config))]
+  (let [normal-data (apply metrics-to-features (conj (get-vrn-data raw-data) config))]
     (conj normal-data class)))
 
 (defn is-low-minority-vrn? [cur-id class base-freqs config]
@@ -72,12 +72,12 @@
       (1 :a) (and (<= freq (-> config :classification :max-pos-pct))
                   (>= min-freq)))))
 
-(defn data-from-pos [pos-data positives class-info config]
+(defn data-from-pos [pos-data positives config]
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
     (for [cur-id want-keys]
-      (let [class (case [(contains? positives cur-id) (:group class-info)]
+      (let [class (case [(contains? positives cur-id) (get-in config [:classification :group])]
                         [true :category] :a
                         [false :category] :b
                         [true :numerical] 1
@@ -106,7 +106,7 @@
         negatives (take (count positives) (shuffle (filter #(contains? #{0 :b} (last %)) data)))]
     (concat positives negatives)))
 
-(defn prep-classifier-data [data-file pos-file ref-file class-info config]
+(defn prep-classifier-data [data-file pos-file ref-file config]
   "Retrieve classification data based on variant/non-variant positions"
   (let [positives (read-ref pos-file ref-file
                             (-> config :classification :max-pos-pct))]
@@ -116,7 +116,7 @@
            (map parse-snpdata-line)
            (partition-by (juxt :space :pos))
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
-           (map #(data-from-pos % positives class-info config))
+           (map #(data-from-pos % positives config))
            flatten
            (partition 4)
            (random-sample-negatives config)
@@ -131,17 +131,12 @@
 
 (defn train-classifier [data-file pos-file ref-file config]
   "Manage retrieving data and training the classifier."
-  (let [class-info (case (get-in config [:classification :algorithm])
-                     "random-forest" {:classifier [:decision-tree :fast-random-forest]
-                                      :options {:num-trees-in-forest 120
-                                                :num-features-to-consider 16}
-                                      :group :category}
-                     {:classifier [:regression :linear]
-                      :group :numerical})
-        class-data (prep-classifier-data data-file pos-file ref-file
-                                         class-info config)
-        ds (get-dataset class-data :category? (= :category (:group class-info)))
-        c (-> (apply make-classifier (conj (:classifier class-info) (get class-info :options {})))
+  (let [class-data (prep-classifier-data data-file pos-file ref-file
+                                         config)
+        ds (get-dataset class-data
+                        :category? (= :category (get-in config [:classification :group])))
+        c (-> (apply make-classifier (conj (get-in config [:classification :classifier])
+                                           (get-in config [:classification :options] {})))
               (classifier-train ds))]
     c))
 
@@ -195,7 +190,7 @@
   "Calculate probability of read inclusion using pre-built classifier."
   (let [ds (get-dataset [])]
     (fn [qual kmer-pct map-score]
-      (let [[nq nk nm] (normalize-params qual kmer-pct map-score config)
+      (let [[nq nk nm] (metrics-to-features qual kmer-pct map-score config)
             score (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
                                                                      :map-score nm :c -1}))]
         (> score (-> config :classification :pass-thresh))))))
@@ -255,9 +250,23 @@
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
+(defn- get-classification-info
+  "Add detailed classification information to configuration."
+  [config]
+  (reduce (fn [coll [k v]] (assoc-in coll [:classification k] v))
+          config
+          (case (get-in config [:classification :algorithm])
+            "random-forest" {:classifier [:decision-tree :fast-random-forest]
+                             :options {:num-trees-in-forest 120
+                                       :num-features-to-consider 16}
+                             :group :category}
+            {:classifier [:regression :linear]
+             :group :numerical})))
+
 (defn -main [data-file pos-file ref-file config-file work-dir]
   (let [config (-> (load-config config-file)
-                   (assoc :verbose true))
+                   (assoc :verbose true)
+                   get-classification-info)
         c (prepare-classifier data-file pos-file ref-file work-dir config)
         _ (println c)
         a (assess-classifier data-file pos-file ref-file c config)]

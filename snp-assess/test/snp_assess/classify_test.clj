@@ -17,7 +17,9 @@
                config (-> (load-config config-file)
                           (assoc-in [:classification :naive-min-score] 1.2)
                           (assoc-in [:classification :max-neg-pct] 5.0)
-                          (assoc-in [:classification :pass-thresh] 0.0))]
+                          (assoc-in [:classification :pass-thresh] 0.0)
+                          (assoc-in [:classification :classifier] [:regression :linear])
+                          (assoc-in [:classification :group] :numerical))]
 
            ?form)))
 
@@ -28,8 +30,7 @@
                                              (roughly 1.0)}))
 
 (facts "Classification data from file"
-  (let [data (prep-classifier-data data-file vrn-file ref-file
-                                   {:group :numerical} config)]
+  (let [data (prep-classifier-data data-file vrn-file ref-file config)]
     (count data) => 6                   ; Total minority variants
     (count (first data)) => 4           ; items at each position
     (map last data) => [1 1 1 0 0 0]    ; classifications
@@ -65,7 +66,8 @@
                                                          {:false-negative 1} []])))
 
 (facts "Remap raw data for classification"
-  (let [config (load-config config-file)]
+  (let [config (-> (load-config config-file)
+                   (assoc-in [:classification :classifier] [:regression :linear]))]
     (finalize-raw-data {:qual 20 :kmer-pct 1.0E-4 :map-score 100} :test config) =>
       (contains [(roughly 0.45) (roughly 9.0E-4) 0.4 :test])
     (finalize-raw-data {:qual 30 :kmer-pct 1.0E-2 :map-score 50} :test2 config) =>
@@ -73,10 +75,11 @@
 
 (facts "Convert input metrics into classification features."
   (let [metrics [25 0.002 175]]
-    (letfn [(test-get-features [class-info]
-              (apply metrics-to-features (concat metrics [class-info config])))]
-      (test-get-features {:classifier [:regression :linear]}) => (just [0.575 (roughly 0.0199) 0.7])
-      (count (test-get-features {:classifier [:decision-tree :fast-random-forest]})) => 14)))
+    (letfn [(test-get-features [x]
+              (apply metrics-to-features (conj metrics
+                                               (assoc-in config [:classification :classifier] x))))]
+      (test-get-features [:regression :linear]) => (just [0.575 (roughly 0.0199) 0.7])
+      (count (test-get-features [:decision-tree :fast-random-forest])) => 14)))
 
 (facts "Read raw data collapsed by counts per unique read."
   (let [count-file (str (fs/file data-dir "count_data" "raw_variations_count.tsv"))

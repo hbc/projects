@@ -1,12 +1,16 @@
 (ns snp-assess.score
   "Score and assess reads"
-  (:use [snp-assess.features :only [normalize-params]]
+  (:use [snp-assess.features :only [metrics-to-features]]
         [cascalog.api]
         [clojure.contrib.math]))
 
 (defn score-calc [kmer-pct qual map-score config]
   "Calculate read score given kmer, quality and mapping scores."
-  (apply + (normalize-params qual kmer-pct map-score config)))
+  (let [x [:classification :classifier]
+        safe-config (if (nil? (get-in config x))
+                      (assoc config x [:regression :linear])
+                      config)]
+    (apply + (metrics-to-features qual kmer-pct map-score safe-config))))
 
 (defn naive-read-passes? [kmer-pct qual map-score config]
   (>= (score-calc kmer-pct qual map-score config)
