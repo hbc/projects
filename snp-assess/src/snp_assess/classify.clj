@@ -72,12 +72,12 @@
       (1 :a) (and (<= freq (-> config :classification :max-pos-pct))
                   (>= min-freq)))))
 
-(defn data-from-pos [pos-data positives group-type config]
+(defn data-from-pos [pos-data positives class-info config]
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
     (for [cur-id want-keys]
-      (let [class (case [(contains? positives cur-id) group-type]
+      (let [class (case [(contains? positives cur-id) (:group class-info)]
                         [true :category] :a
                         [false :category] :b
                         [true :numerical] 1
@@ -116,7 +116,7 @@
            (map parse-snpdata-line)
            (partition-by (juxt :space :pos))
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
-           (map #(data-from-pos % positives (:group class-info) config))
+           (map #(data-from-pos % positives class-info config))
            flatten
            (partition 4)
            (random-sample-negatives config)

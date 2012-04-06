@@ -2,6 +2,7 @@
   (:use [midje.sweet]
         [snp-assess.core :only [load-config]]
         [snp-assess.classify]
+        [snp-assess.features :only [metrics-to-features]]
         [snp-assess.classify-eval :only [summarize-assessment]])
   (:require [fs.core :as fs]))
 
@@ -70,6 +71,13 @@
     (finalize-raw-data {:qual 30 :kmer-pct 1.0E-2 :map-score 50} :test2 config) =>
       (contains [(roughly 0.7) (roughly 0.0999) 0.2 :test2])))
 
+(facts "Convert input metrics into classification features."
+  (let [metrics [25 0.002 175]]
+    (letfn [(test-get-features [class-info]
+              (apply metrics-to-features (concat metrics [class-info config])))]
+      (test-get-features {:classifier [:regression :linear]}) => (just [0.575 (roughly 0.0199) 0.7])
+      (count (test-get-features {:classifier [:decision-tree :fast-random-forest]})) => 14)))
+
 (facts "Read raw data collapsed by counts per unique read."
   (let [count-file (str (fs/file data-dir "count_data" "raw_variations_count.tsv"))
         config (-> (load-config config-file)
@@ -81,3 +89,4 @@
       (-> raw-freqs first last) => 71169 ; number of total reads
       (-> raw-freqs first second (get "G")) => (roughly 99.9747)
       (-> raw-freqs first second (get "T")) => (roughly 0.009835))))
+
