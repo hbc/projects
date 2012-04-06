@@ -124,9 +124,13 @@
 
 ;; Do the work of classification, with a prepared set of data inputs
 
+(defn- unique-keywords [data]
+  "Retrieve unique numerical keywords to match items in data."
+  (vec (map keyword (map str (range (count data))))))
+
 (defn get-dataset [data & {:keys [category?] :or {category? false}}]
   "Weka dataset ready for classification or training."
-  (let [header [:qual :kmer :map-score (if category? {:c [:a :b]} :c)]]
+  (let [header (conj (unique-keywords (drop-last (first data))) (if category? {:c [:a :b]} :c))]
     (make-dataset "ds" header data {:class :c})))
 
 (defn train-classifier [data-file pos-file ref-file config]
@@ -188,12 +192,13 @@
 
 (defn classifier-checker [classifier config]
   "Calculate probability of read inclusion using pre-built classifier."
-  (let [ds (get-dataset [])]
-    (fn [qual kmer-pct map-score]
-      (let [[nq nk nm] (metrics-to-features qual kmer-pct map-score config)
-            score (classifier-classify classifier (make-instance ds {:qual nq :kmer nk
-                                                                     :map-score nm :c -1}))]
-        (> score (-> config :classification :pass-thresh))))))
+  (fn [qual kmer-pct map-score]
+    (let [data (metrics-to-features qual kmer-pct map-score config)
+          score (classifier-classify classifier
+                                     (make-instance (get-dataset [(conj data -1)])
+                                                    (-> (zipmap (unique-keywords data) data)
+                                                        (assoc :c -1))))]
+      (> score (-> config :classification :pass-thresh)))))
 
 (defn assign-position-type [pos base-counts total known-vrns config]
   "Given read calls, determine if true/false and positive/negative, type."
@@ -250,7 +255,7 @@
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))
 
-(defn- get-classification-info
+(defn add-classification-info
   "Add detailed classification information to configuration."
   [config]
   (reduce (fn [coll [k v]] (assoc-in coll [:classification k] v))
@@ -266,7 +271,7 @@
 (defn -main [data-file pos-file ref-file config-file work-dir]
   (let [config (-> (load-config config-file)
                    (assoc :verbose true)
-                   get-classification-info)
+                   add-classification-info)
         c (prepare-classifier data-file pos-file ref-file work-dir config)
         _ (println c)
         a (assess-classifier data-file pos-file ref-file c config)]
