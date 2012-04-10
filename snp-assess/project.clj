@@ -5,7 +5,7 @@
                  [cascalog "1.8.5"]
                  [incanter/incanter-core "1.3.0-SNAPSHOT"]
                  [incanter/incanter-charts "1.3.0-SNAPSHOT"]
-                 [com.leadtune/clj-ml "0.1.5"]
+                 [com.leadtune/clj-ml "0.2.2"]
                  [fs "1.1.2"]
                  [clj-yaml "0.3.1"]
                  [ordered "1.0.0"]
@@ -25,4 +25,5 @@
                 :classify-read snp-assess.classify-read
                 :call snp-assess.call
                 :reference snp-assess.reference}
+  :jvm-opts ["-Xmx2g"]
   :aot [snp-assess.core])

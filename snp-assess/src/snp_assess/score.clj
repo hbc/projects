@@ -2,7 +2,7 @@
   "Score and assess reads"
   (:use [snp-assess.features :only [metrics-to-features]]
         [cascalog.api]
-        [clojure.contrib.math]))
+        [incanter.core :only [pow]]))
 
 (defn score-calc [kmer-pct qual map-score config]
   "Calculate read score given kmer, quality and mapping scores."
@@ -13,8 +13,9 @@
     (apply + (metrics-to-features qual kmer-pct map-score safe-config))))
 
 (defn naive-read-passes? [kmer-pct qual map-score config]
-  (>= (score-calc kmer-pct qual map-score config)
-      (-> config :classification :naive-min-score)))
+  (if-let [min-score (-> config :classification :naive-min-score)]
+    (>= (score-calc kmer-pct qual map-score config) min-score)
+    true))
 
 (defn read-passes? [kmer-pct qual map-score config]
   (>= (score-calc kmer-pct qual map-score config)
@@ -73,8 +74,8 @@
   "Get the ceiling at the specified decimal place
   http://stackoverflow.com/questions/5072492/
   how-do-i-trim-the-decimal-of-a-number-using-clojure-or-jython"
-  (let [factor (expt 10 decimals)]
-    (bigdec (/ (ceil (* factor number)) factor))))
+  (let [factor (pow 10 decimals)]
+    (bigdec (/ (Math/ceil (* factor number)) factor))))
 
 (defn histogram-bins [vals bins & [max-val]]
   (letfn [(intervals [n max] (partition 2 1 (range 0.0 max (/ max n))))

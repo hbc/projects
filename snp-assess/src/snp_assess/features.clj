@@ -44,7 +44,7 @@
                                      (- (log (manhattan-distance p p_cur)))]))
             [] [p_start p_middle p_end])))
 
-(defmethod metrics-to-features [:decision-tree :fast-random-forest]
+(defn- get-rf-features
   [qual kmer-pct map-score _]
   "Provide feature expansion for random forest classification.
   This is a direct port of the work done by Chun-Sung Ferng on the TopCoder
@@ -65,3 +65,11 @@
       (/ (* qual m_hat) (pow k_bar 2))
       (/ (* qual m_hat) (- k_bar))]
      (rf-distance-features qual k_hat map-score))))
+
+(defmethod metrics-to-features [:decision-tree :fast-random-forest]
+  [& args]
+  (apply get-rf-features args))
+  
+(defmethod metrics-to-features [:decision-tree :random-forest]
+  [& args]
+  (apply get-rf-features args))

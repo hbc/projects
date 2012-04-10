@@ -29,8 +29,9 @@ params:
   verbose: false
   classification:
     algorithm: random-forest
+    #algorithm: linear-regression
+    #naive-min-score: 0.7
     max-pos-pct: 10.0
-    max-neg-pct: 0.75
-    naive-min-score: 0.7
+    max-neg-pct: 1.0
     assess-bases: [789, 3756]
     pass-thresh: 0.5

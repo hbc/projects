@@ -61,7 +61,7 @@
 (defn finalize-raw-data [raw-data class config]
   "Prepare normalized raw data for input into classifiers."
   (let [normal-data (apply metrics-to-features (conj (get-vrn-data raw-data) config))]
-    (conj normal-data class)))
+    (conj (vec normal-data) class)))
 
 (defn is-low-minority-vrn? [cur-id class base-freqs config]
   (let [freq (* 100.0 (get base-freqs (last cur-id)))
@@ -76,15 +76,17 @@
   "Retrieve classification data at a particular read position."
   (let [want-bases (minority-vrns-from-raw pos-data config)
         want-keys (filter #(contains? want-bases (last %)) (keys pos-data))]
-    (for [cur-id want-keys]
-      (let [class (case [(contains? positives cur-id) (get-in config [:classification :group])]
-                        [true :category] :a
-                        [false :category] :b
-                        [true :numerical] 1
-                        [false :numerical] 0)]
-        (if (is-low-minority-vrn? cur-id class want-bases config)
-          (map #(finalize-raw-data % class config) (get pos-data cur-id))
-          [])))))
+    (reduce (fn [coll cur-id]
+              (let [group (case [(contains? positives cur-id)
+                                 (get-in config [:classification :group])]
+                            [true :category] :a
+                            [false :category] :b
+                            [true :numerical] 1
+                            [false :numerical] 0)]
+                (if-not (is-low-minority-vrn? cur-id group want-bases config) coll
+                        (concat coll
+                                (map #(finalize-raw-data % group config) (get pos-data cur-id))))))
+            [] want-keys)))
 
 (defn raw-reads-by-pos [rdr config]
   "Lazy generator of read statistics at each position in data file."
@@ -111,14 +113,10 @@
   (let [positives (read-ref pos-file ref-file
                             (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
-      (->> rdr
-           line-seq
-           (map parse-snpdata-line)
-           (partition-by (juxt :space :pos))
+      (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
-           flatten
-           (partition 4)
+           (apply concat)
            (random-sample-negatives config)
            vec))))
 
@@ -128,17 +126,16 @@
   "Retrieve unique numerical keywords to match items in data."
   (vec (map keyword (map str (range (count data))))))
 
-(defn get-dataset [data & {:keys [category?] :or {category? false}}]
+(defn get-dataset [data config]
   "Weka dataset ready for classification or training."
-  (let [header (conj (unique-keywords (drop-last (first data))) (if category? {:c [:a :b]} :c))]
+  (let [category? (= :category (get-in config [:classification :group]))
+        header (conj (unique-keywords (drop-last (first data))) (if category? {:c [:a :b]} :c))]
     (make-dataset "ds" header data {:class :c})))
 
 (defn train-classifier [data-file pos-file ref-file config]
   "Manage retrieving data and training the classifier."
-  (let [class-data (prep-classifier-data data-file pos-file ref-file
-                                         config)
-        ds (get-dataset class-data
-                        :category? (= :category (get-in config [:classification :group])))
+  (let [class-data (prep-classifier-data data-file pos-file ref-file config)
+        ds (get-dataset class-data config)
         c (-> (apply make-classifier (conj (get-in config [:classification :classifier])
                                            (get-in config [:classification :options] {})))
               (classifier-train ds))]
@@ -147,7 +144,9 @@
 (defn prepare-classifier [data-file pos-file ref-file work-dir config]
   "High level work to get classifier, included serialization to a file."
   (let [out-dir (str (fs/file work-dir "classifier"))
-        classifier-file (str (fs/file out-dir "build.bin"))]
+        classifier-file (str (fs/file out-dir
+                                      (format "%s-classifier.bin"
+                                              (-> config :classification :classifier last name))))]
     (if-not (fs/exists? out-dir)
       (fs/mkdirs out-dir))
     (if (fs/exists? classifier-file)
@@ -194,11 +193,15 @@
   "Calculate probability of read inclusion using pre-built classifier."
   (fn [qual kmer-pct map-score]
     (let [data (metrics-to-features qual kmer-pct map-score config)
-          score (classifier-classify classifier
-                                     (make-instance (get-dataset [(conj data -1)])
+          category? (= :category (get-in config [:classification :group]))
+          default (if category? :b -1)
+          ds-instance (make-instance (get-dataset [(conj (vec data) default)] config)
                                                     (-> (zipmap (unique-keywords data) data)
-                                                        (assoc :c -1))))]
-      (> score (-> config :classification :pass-thresh)))))
+                                                        (assoc :c default)))
+          score (classifier-classify classifier ds-instance)]
+      (if category?
+        (== score 0.0)
+        (> score (-> config :classification :pass-thresh))))))
 
 (defn assign-position-type [pos base-counts total known-vrns config]
   "Given read calls, determine if true/false and positive/negative, type."
@@ -262,8 +265,8 @@
           config
           (case (get-in config [:classification :algorithm])
             "random-forest" {:classifier [:decision-tree :fast-random-forest]
-                             :options {:num-trees-in-forest 120
-                                       :num-features-to-consider 16}
+                             :options {:num-features-to-consider 16
+                                       :num-trees-in-forest 120}
                              :group :category}
             {:classifier [:regression :linear]
              :group :numerical})))
