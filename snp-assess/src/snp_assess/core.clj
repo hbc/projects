@@ -47,6 +47,10 @@
 ;; Parsing target files of positions to query
 
 (defn parse-pos-line [line]
+  (let [[space pos base freq] (take 4 (split line #"\t"))]
+    [space (Integer/parseInt pos) base (Float/parseFloat freq)]))
+
+(defn parse-pos-line-type [line]
   (let [[space pos base type] (take 4 (split line #"\t"))]
     [space (Integer/parseInt pos) base type]))
 
@@ -55,7 +59,7 @@
   (let [source (hfs-textline dir)]
     (<- [?chr ?pos ?base ?type]
         (source ?line)
-        (parse-pos-line ?line :> ?chr ?pos ?base ?type))))
+        (parse-pos-line-type ?line :> ?chr ?pos ?base ?type))))
 
 (defn target-snpdata-stats [data-dir pos-dir config]
   "Output individual base call statistics at specified positions."

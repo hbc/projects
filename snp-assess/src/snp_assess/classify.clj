@@ -8,11 +8,11 @@
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
                                    classifier-evaluate classifier-classify]]
-        [snp-assess.core :only [parse-snpdata-line load-config]]
+        [snp-assess.core :only [parse-snpdata-line load-config
+                                parse-pos-line]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  roughly-freq?]]
         [snp-assess.features :only [metrics-to-features]]
-        [snp-assess.off-target :only [parse-pos-line]]
         [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
         [snp-assess.reference :only [read-vcf-ref]])
   (:require [fs.core :as fs]))
@@ -117,7 +117,7 @@
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
            (apply concat)
-           (random-sample-negatives config)
+           ;(random-sample-negatives config)
            vec))))
 
 ;; Do the work of classification, with a prepared set of data inputs
@@ -264,9 +264,10 @@
   (reduce (fn [coll [k v]] (assoc-in coll [:classification k] v))
           config
           (case (get-in config [:classification :algorithm])
-            "random-forest" {:classifier [:decision-tree :fast-random-forest]
-                             :options {:num-features-to-consider 16
-                                       :num-trees-in-forest 120}
+            "random-forest" {:classifier [:decision-tree :random-forest]
+                             :options {:num-features-to-consider 14
+                                       :num-trees-in-forest 200
+                                       :random-seed 1}
                              :group :category}
             {:classifier [:regression :linear]
              :group :numerical})))

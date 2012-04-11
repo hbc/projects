@@ -9,7 +9,8 @@
         [incanter.charts :only [xy-plot add-lines]]
         [snp-assess.score :only [minor-target-cascalog read-filter-cascalog
                                  histogram-bins]]
-        [snp-assess.core :only [snpdata-from-hfs load-config]])
+        [snp-assess.core :only [snpdata-from-hfs load-config
+                                parse-pos-line]])
   (:require [cascalog [ops :as ops]]
             [fs.core :as fs])
   (:gen-class))
@@ -26,10 +27,6 @@
         (no-var-positions ?chr ?pos _ _)
         (filter-fn ?kmer-pct ?qual ?map-score)
         (minority-freq-fn ?base :> ?freq)))
-
-(defn parse-pos-line [line]
-  (let [[space pos base freq] (take 4 (split line #"\t"))]
-    [space (Integer/parseInt pos) base (Float/parseFloat freq)]))
 
 (defn pos-from-hfs [dir]
   "Retrieve space, pos, expected base and frequency from HDFS files"

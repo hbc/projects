@@ -8,13 +8,14 @@
   "Calculate read score given kmer, quality and mapping scores."
   (let [x [:classification :classifier]
         safe-config (if (nil? (get-in config x))
-                      (assoc config x [:regression :linear])
+                      (assoc-in config x [:regression :linear])
                       config)]
     (apply + (metrics-to-features qual kmer-pct map-score safe-config))))
 
 (defn naive-read-passes? [kmer-pct qual map-score config]
   (if-let [min-score (-> config :classification :naive-min-score)]
-    (>= (score-calc kmer-pct qual map-score config) min-score)
+    (>= (score-calc kmer-pct qual map-score (dissoc config :classification))
+        min-score)
     true))
 
 (defn read-passes? [kmer-pct qual map-score config]

@@ -14,7 +14,7 @@
         [clojure.algo.generic.functor :only [fmap]]
         [ordered.map :only [ordered-map]]
         [bcbio.variation.variantcontext :only [parse-vcf get-vcf-source]]
-        [snp-assess.off-target :only [parse-pos-line]])
+        [snp-assess.core :only [parse-pos-line]])
   (:require [clj-yaml.core :as yaml]
             [fs.core :as fs]))
 

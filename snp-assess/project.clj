@@ -25,5 +25,5 @@
                 :classify-read snp-assess.classify-read
                 :call snp-assess.call
                 :reference snp-assess.reference}
-  :jvm-opts ["-Xmx2g"]
+  :jvm-opts ["-Xmx4g"]
   :aot [snp-assess.core])
