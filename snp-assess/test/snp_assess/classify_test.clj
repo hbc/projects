@@ -49,7 +49,7 @@
         c (train-classifier data-file vrn-file ref-file rf-config)
         assess-data (assess-classifier data-file vrn-file ref-file c rf-config) => nil]
     (.toString c) => (contains "Random forest")
-    (map :class assess-data) => [:false-negative :false-positive :false-negative]))
+    (map :class assess-data) => [:true-positive :false-positive :false-negative]))
 
 (facts "Assess a classifier based on variant calling ability"
   (let [c (train-classifier data-file vrn-file ref-file config)

@@ -117,7 +117,8 @@
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
            (apply concat)
-           ;(random-sample-negatives config)
+           (#(if-not (get-in config [:classification :random-sample] true) %
+                     (random-sample-negatives config %)))
            vec))))
 
 ;; Do the work of classification, with a prepared set of data inputs
@@ -265,11 +266,13 @@
           config
           (case (get-in config [:classification :algorithm])
             "random-forest" {:classifier [:decision-tree :random-forest]
+                             :random-sample false
                              :options {:num-features-to-consider 14
                                        :num-trees-in-forest 200
                                        :random-seed 1}
                              :group :category}
             {:classifier [:regression :linear]
+             :random-sample true
              :group :numerical})))
 
 (defn -main [data-file pos-file ref-file config-file work-dir]
