@@ -88,9 +88,12 @@
                                 (map #(finalize-raw-data % group config) (get pos-data cur-id))))))
             [] want-keys)))
 
-(defn raw-reads-by-pos [rdr config]
+(defn raw-reads-by-pos [rdr config & {:keys [is-training?]}]
   "Lazy generator of read statistics at each position in data file."
-  (let [assess-range (-> config :classification :assess-bases)
+  (let [assess-range (if is-training?
+                       (get-in config [:classification :train-bases]
+                               (get-in config [:classification :assess-bases]))
+                       (get-in config [:classification :assess-bases]))
         raw-out (->> rdr
                      line-seq
                      (map parse-snpdata-line)
@@ -113,7 +116,7 @@
   (let [positives (read-ref pos-file ref-file
                             (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
-      (->> (raw-reads-by-pos rdr config)
+      (->> (raw-reads-by-pos rdr config :is-training? true)
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
            (apply concat)
@@ -171,6 +174,12 @@
                  (reduce (fn [m [k v]] (assoc m k (* 100.0 (/ v total)))) {} xs)
                  {})
                total)))
+          (percents-by-base [reads]
+            (->> reads
+                 (map #(repeat (get % :num 1) (:base %)))
+                 flatten
+                 frequencies
+                 percents))
           (remove-low [min-freq [orig total]]
             (let [min-freq-percent (* 100.0 min-freq)
                   want (->> orig
@@ -178,15 +187,14 @@
                             (map first))]
               (list (select-keys orig want) total)))]
     (let [position ((juxt :space :pos) (first reads))
-          [base-calls total] (->> reads
+          clean-reads (remove #(= "N" (:base %)) reads)
+          majority-base (ffirst (sort-by second > (first (percents-by-base clean-reads))))
+          [base-calls total] (->> clean-reads
                                   (filter (fn [xs]
-                                            (apply passes?
-                                                   ((juxt :qual :kmer-pct :map-score) xs))))
-                                  (remove #(= "N" (:base %)))
-                                  (map #(repeat (get % :num 1) (:base %)))
-                                  flatten
-                                  frequencies
-                                  percents
+                                            (or (= (:base xs) majority-base)
+                                                (apply passes?
+                                                       ((juxt :qual :kmer-pct :map-score) xs)))))
+                                  percents-by-base
                                   (remove-low (:min-freq config)))]
       [position base-calls total])))
 
