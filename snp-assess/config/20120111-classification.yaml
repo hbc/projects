@@ -24,7 +24,7 @@ params:
   qual-range: [2.0, 42.0]
   map-score-range: [0.0, 250.0]
   #min-score: 1.2
-  min-freq: 0.0035
+  min-freq: 0.001
   allowed-freq-diff: 5.0
   verbose: false
   classification:
@@ -34,7 +34,5 @@ params:
     #algorithm: linear-regression
     #naive-min-score: 0.7
     #pass-thresh: 0.5
-    assess-bases: [789, 3756]
-    #train-bases: [789, 2300]
-    train-bases: [789, 1010]
-    #assess-bases: [2900, 3000]
+    assess-bases: [0, 401]
+    train-bases: [0, 100]
