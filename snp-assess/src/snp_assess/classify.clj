@@ -180,23 +180,31 @@
                  flatten
                  frequencies
                  percents))
-          (remove-low [min-freq [orig total]]
+          (organize-filter-calls [min-freq [orig total]]
             (let [min-freq-percent (* 100.0 min-freq)
                   want (->> orig
                             (filter #(> (second %) min-freq-percent))
-                            (map first))]
-              (list (select-keys orig want) total)))]
+                            (map first))
+                  filter-calls (select-keys orig want)
+                  back-filter-freq (->> orig
+                                        (remove (fn [[k v]] (contains? (set want) k)))
+                                        (sort-by second <)
+                                        first
+                                        second)]
+              {:calls filter-calls
+               :total total
+               :back-filter-freq back-filter-freq}))]
     (let [position ((juxt :space :pos) (first reads))
           clean-reads (remove #(= "N" (:base %)) reads)
           majority-base (ffirst (sort-by second > (first (percents-by-base clean-reads))))
-          [base-calls total] (->> clean-reads
-                                  (filter (fn [xs]
-                                            (or (= (:base xs) majority-base)
-                                                (apply passes?
-                                                       ((juxt :qual :kmer-pct :map-score) xs)))))
-                                  percents-by-base
-                                  (remove-low (:min-freq config)))]
-      [position base-calls total])))
+          vrns-at-pos (->> clean-reads
+                           (filter (fn [xs]
+                                     (or (= (:base xs) majority-base)
+                                         (apply passes?
+                                                ((juxt :qual :kmer-pct :map-score) xs)))))
+                           percents-by-base
+                           (organize-filter-calls (:min-freq config)))]
+      (assoc vrns-at-pos :position position))))
 
 (defn classifier-checker [classifier config]
   "Calculate probability of read inclusion using pre-built classifier."
@@ -253,7 +261,7 @@
   (with-open [rdr (reader data-file)]
     (->> (raw-reads-by-pos rdr config)
          (map (fn [xs] (call-vrns-at-pos xs (fn [_ _ _] true) config)))
-         vec)))
+         doall)))
 
 (defn assess-classifier [data-file pos-file ref-file classifier config]
   "Determine rates of true/false positive/negatives with trained classifier"
@@ -262,7 +270,8 @@
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
-           (map (fn [[pos bases total]] (assign-position-type pos bases total known-vrns config)))
+           (map (fn [x] (assign-position-type (:position x) (:calls x)
+                                              (:total x) known-vrns config)))
            (remove #(nil? (:class %)))
            (map (fn [xs] (if (:verbose config) (println xs)) xs))
            vec))))

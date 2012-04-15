@@ -88,8 +88,8 @@
 (defn coverage-by-pos-plot [data-file image-dir config]
   "Plot of read coverage by position."
   (let [raw-freqs (raw-data-frequencies data-file (assoc config :min-freq 0.0))
-        cov-x (map #(-> % first second) raw-freqs)
-        cov-y (map #(/ (last %) 1e6) raw-freqs)]
+        cov-x (map #(-> % :position second) raw-freqs)
+        cov-y (map #(/ (:total %) 1e6) raw-freqs)]
     (doto (xy-plot cov-x cov-y
                    :title (fs/base-name data-file true)
                    :x-label "Position" :y-label "Coverage (million reads)")

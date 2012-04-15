@@ -58,7 +58,7 @@
 
 (defn convert-to-vc
   "Convert base frequency information into a VCF VariantContext."
-  [contig pos base-freqs & {:keys [depth aa-finder]}]
+  [contig pos base-freqs & {:keys [depth aa-finder back-filter-freq]}]
   (letfn [(to-alleles [bases]
             (map-indexed (fn [i [base _]]
                            (Allele/create (str base) (= i 0)))
@@ -73,13 +73,14 @@
                            (#(if (> (count ordered-bases) 1)
                                (assoc % "AF" (to-freqs ordered-bases))
                                %))
-                           (#(if-not (nil? depth)
-                               (assoc % "DP" depth)
-                               %))
+                           (#(if (nil? depth) %
+                               (assoc % "DP" depth)))
                            (#(if (and (not (nil? aa-finder))
                                       (> (count ordered-bases) 1))
                                (assoc % "AA_CHANGE" (aa-changes ordered-bases))
-                               %))))
+                               %))
+                           (#(if (nil? back-filter-freq) %
+                                 (assoc % "AFBACK" back-filter-freq)))))
           (.make)))))
 
 (defn- to-seq-dict [in-fasta]
@@ -100,7 +101,10 @@
                                     VCFHeaderLineType/Integer "Total Depth")
                 (VCFInfoHeaderLine. "AA_CHANGE" VCFHeaderLineCount/A
                                     VCFHeaderLineType/String
-                                    "Amino acid change caused by a variant")}))
+                                    "Amino acid change caused by a variant")
+                (VCFInfoHeaderLine. "AFBACK" 1
+                                    VCFHeaderLineType/Float
+                                    "Filtered background allele frequency")}))
 
 (defn write-vcf-calls
   "Write output calls in VCF format"

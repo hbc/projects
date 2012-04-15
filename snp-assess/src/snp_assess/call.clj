@@ -14,8 +14,10 @@
 (defn vrns-by-pos
   "Lazy sequence of variation calls at each position."
   [rdr classifier aa-finder config]
-  (letfn [(vrns-as-vc [[[contig pos] freqs count]]
-            (convert-to-vc contig pos freqs :depth count :aa-finder aa-finder))]
+  (letfn [(vrns-as-vc [x]
+            (let [[contig pos] (:position x)]
+              (convert-to-vc contig pos (:calls x) :depth (:total x)
+                             :aa-finder aa-finder :back-filter-freq (:back-filter-freq x))))]
     (let [classifier-passes? (classifier-checker classifier config)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))

@@ -90,8 +90,8 @@
                    (assoc :min-freq 0.0))]
     (let [raw-freqs (raw-data-frequencies count-file config)]
       (count raw-freqs) => 3
-      (ffirst raw-freqs) => ["HXB2" 5]   ; read position
-      (-> raw-freqs first last) => 71169 ; number of total reads
-      (-> raw-freqs first second (get "G")) => (roughly 99.9747)
-      (-> raw-freqs first second (get "T")) => (roughly 0.009835))))
+      (-> raw-freqs first :position) => ["HXB2" 5]   ; read position
+      (-> raw-freqs first :total) => 71169 ; number of total reads
+      (-> raw-freqs first :calls (get "G")) => (roughly 99.9747)
+      (-> raw-freqs first :calls (get "T")) => (roughly 0.009835))))
 
