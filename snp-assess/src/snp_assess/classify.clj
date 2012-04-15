@@ -285,7 +285,7 @@
             "random-forest" {:classifier [:decision-tree :random-forest]
                              :random-sample false
                              :options {:num-features-to-consider 14
-                                       :num-trees-in-forest 200
+                                       :num-trees-in-forest 120
                                        :random-seed 1}
                              :group :category}
             {:classifier [:regression :linear]

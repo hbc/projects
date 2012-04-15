@@ -35,7 +35,7 @@
   and then calculates distance metrics of this point compared to the
   start, middle and end of the cube."
   [qual k_hat map-score]
-  (let [p [(/ (- qual 3) 32) (/ (+ k_hat 15) 15) (/ map-score 249)]
+  (let [p [(/ (- qual 1) 32) (/ (+ k_hat 15) 15) (/ map-score 249)]
         p_start [0 0 0]
         p_middle [0.5 0.5 0.5]
         p_end [1 1 1]]
@@ -52,7 +52,7 @@
   are log or square transformations on inputs multiplied together. The remaining
   6 metrics are similarity comparisons between the 3 metrics and start/median/end
   reference points in 3-space."
-  (let [k_bar (log kmer-pct)
+  (let [k_bar (log (max kmer-pct 1e-7))
         k_hat (+ k_bar 20)
         m_hat (/ map-score 8)]
     (concat
