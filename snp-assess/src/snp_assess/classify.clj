@@ -183,7 +183,7 @@
           (organize-filter-calls [min-freq [orig total]]
             (let [min-freq-percent (* 100.0 min-freq)
                   want (->> orig
-                            (filter #(> (second %) min-freq-percent))
+                            (filter #(>= (second %) min-freq-percent))
                             (map first))
                   filter-calls (select-keys orig want)
                   back-filter-freq (->> orig
@@ -191,7 +191,7 @@
                                         (sort-by second <)
                                         first
                                         second)]
-              {:calls filter-calls
+              {:calls (select-keys orig want)
                :total total
                :back-filter-freq back-filter-freq}))]
     (let [position ((juxt :space :pos) (first reads))

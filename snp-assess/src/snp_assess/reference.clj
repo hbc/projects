@@ -80,7 +80,7 @@
                                (assoc % "AA_CHANGE" (aa-changes ordered-bases))
                                %))
                            (#(if (nil? back-filter-freq) %
-                                 (assoc % "AFBACK" back-filter-freq)))))
+                                 (assoc % "AFBACK" (format "%.5f" back-filter-freq))))))
           (.make)))))
 
 (defn- to-seq-dict [in-fasta]

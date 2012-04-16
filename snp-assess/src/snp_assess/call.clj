@@ -5,7 +5,8 @@
   (:use [clojure.java.io]
         [snp-assess.core :only [load-config]]
         [snp-assess.classify :only [prepare-classifier classifier-checker
-                                    raw-reads-by-pos call-vrns-at-pos]]
+                                    raw-reads-by-pos call-vrns-at-pos
+                                    add-classification-info]]
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
         [snp-assess.protein :only [calc-aa-change prep-protein-map]])
   (:require [fs.core :as fs]
@@ -17,7 +18,8 @@
   (letfn [(vrns-as-vc [x]
             (let [[contig pos] (:position x)]
               (convert-to-vc contig pos (:calls x) :depth (:total x)
-                             :aa-finder aa-finder :back-filter-freq (:back-filter-freq x))))]
+                             :aa-finder aa-finder
+                             :back-filter-freq (:back-filter-freq x))))]
     (let [classifier-passes? (classifier-checker classifier config)]
       (->> (raw-reads-by-pos rdr config)
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
@@ -51,8 +53,9 @@
 (defn -main [run-config-file param-config-file work-dir]
   (let [run-config (read-run-config run-config-file work-dir)
         config (-> (load-config param-config-file)
-                   (assoc :verbose true))
-        c (prepare-classifier nil nil work-dir config)
+                   (assoc :verbose true)
+                   add-classification-info)
+        c (prepare-classifier nil nil (get-in run-config [:ref :files]) work-dir config)
         aa-finder (partial calc-aa-change (prep-protein-map (:ref run-config)))]
     (doseq [x (:experiments run-config)]
       (write-calls-as-vcf (:files x) (-> run-config :ref :files)
