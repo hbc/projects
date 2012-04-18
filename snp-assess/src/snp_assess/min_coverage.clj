@@ -6,9 +6,11 @@
   (:use [clojure.string :only [split]]
         [cascalog.api]
         [incanter.core :only [save dataset]]
+        [incanter.pdf :only [save-pdf]]
         [incanter.io]
         [incanter.charts :only [xy-plot add-lines box-plot add-box-plot
-                                scatter-plot add-points]]
+                                scatter-plot add-points set-x-label
+                                set-y-label set-title]]
         [snp-assess.score :only [min-coverage-cascalog read-filter-cascalog
                                  histogram-bins]]
         [snp-assess.core :only [snpdata-from-hfs load-config]]
@@ -85,15 +87,20 @@
         (add-points (map second cov-filter) (counts-only cov-filter) :series-label "filter")
         (save (str(fs/file image-dir "coverage-by-pos.png")))))))
 
-(defn coverage-by-pos-plot [data-file image-dir config]
+(defn coverage-by-pos-plot [title data-file image-dir config]
   "Plot of read coverage by position."
   (let [raw-freqs (raw-data-frequencies data-file (assoc config :min-freq 0.0))
         cov-x (map #(-> % :position second) raw-freqs)
         cov-y (map #(/ (:total %) 1e6) raw-freqs)]
-    (doto (xy-plot cov-x cov-y
-                   :title (fs/base-name data-file true)
-                   :x-label "Position" :y-label "Coverage (million reads)")
-      (save (str (fs/file image-dir (format "%s-coverage.png" (fs/base-name data-file true))))))
+    (println "Ready to plot")
+    (doto (xy-plot cov-x cov-y)
+      (set-x-label "Position")
+      (set-y-label "Coverage (million reads)")
+      (set-title (str (if (get config :unique-only false)
+                                 "Unique reads: "
+                                 "Total coverage: ")
+                               title))
+      (save-pdf (str (fs/file image-dir (format "%s-coverage.pdf" (fs/base-name data-file true))))))
     {:x cov-x :y cov-y}))
 
 (defn write-raw-coverage [cov out-dir data-files]
@@ -105,14 +112,16 @@
                          (range (-> cov first :x count))))]
     (save ds out-file)))
 
-(defn -main [data-dir pos-dir work-dir config-file & data-files]
+(defn -main [work-dir config-file & data-files]
   (let [image-dir (str (fs/file work-dir "images"))
         config (load-config config-file)]
     (if-not (fs/exists? image-dir)
       (fs/mkdirs image-dir))
-    (let [all-data-files (cons data-dir data-files)
-          cov (map #(coverage-by-pos-plot % image-dir config) all-data-files)]
-      (write-raw-coverage cov image-dir all-data-files))
+    (let [data-files (partition 2 data-files)
+          cov (map (fn [[title fname]]
+                     (coverage-by-pos-plot title fname image-dir config))
+                   data-files)]
+      (write-raw-coverage cov image-dir (map second data-files)))
     ;(coverage-dist-plot data-dir image-dir config)
     ;(min-coverage-plot data-dir pos-dir image-dir config)
     ))

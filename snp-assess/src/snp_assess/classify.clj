@@ -176,7 +176,8 @@
                total)))
           (percents-by-base [reads]
             (->> reads
-                 (map #(repeat (get % :num 1) (:base %)))
+                 (map #(repeat (if (get config :unique-only false) 1 (get % :num 1))
+                               (:base %)))
                  flatten
                  frequencies
                  percents))

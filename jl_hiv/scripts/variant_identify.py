@@ -96,7 +96,7 @@ def process_fastq(curinfo, ref_index, config, config_file):
         align_bam = gatk_realigner(align_bam, ref, config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     # XXX Finish remainder of processing
-    summarize_at_each_pos(align_bam, in_file, count_file, config)
+    summarize_at_each_pos(align_bam, in_file, count_file, name, config)
     return
     if config["algorithm"].get("range_params", None):
         call_analyze_multiple(align_bam, bc, in_file, config)
@@ -127,23 +127,25 @@ def _prepare_fastq(curinfo, config):
                     subprocess.check_call(cmd + [infile], stdout=stdout)
         return combined
 
-@memoize_outfile("-coverage.png")
-def plot_coverage(align_bam, out_file):
-    data = {"pos": [],
+@memoize_outfile("-coverage.pdf")
+def plot_coverage(align_bam, name, out_file):
+    data = {"position": [],
             "count": []}
     with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
         for col in work_bam.pileup():
             space = work_bam.getrname(col.tid)
-            data["pos"].append(col.pos)
+            data["position"].append(col.pos)
             data["count"].append(col.n)
-    df = {"pos": rpy.FloatVector(data["pos"]),
+    df = {"position": rpy.FloatVector(data["position"]),
           "count": rpy.FloatVector(data["count"])}
     rpy.r.assign("data", rpy.r["data.frame"](**df))
     rpy.r.assign("out.file", out_file)
+    rpy.r.assign("title", name)
     rpy.r('''
     library(ggplot2)
-    p <- ggplot(data, aes(x=pos, y=count))
-    p <- p + geom_line()
+    p <- ggplot(data, aes(x=position, y=count)) +
+         opts(title=paste("Unique reads: ", title, sep="")) +
+         geom_line()
     ggsave(out.file, p, width=5, height=5)
     ''')
 
@@ -154,10 +156,10 @@ def _load_count_file(count_file):
             out[x["seq"]] = int(x["count"])
     return out
 
-def summarize_at_each_pos(align_bam, read_file, count_file, config):
+def summarize_at_each_pos(align_bam, read_file, count_file, name, config):
     """Provide detailed output on bases aligned at each position for variant calling.
     """
-    plot_coverage(align_bam)
+    plot_coverage(align_bam, name)
     params = config["algorithm"]
     out_file = os.path.join(config["dir"]["vrn"],
                             "raw_{}.tsv".format(os.path.splitext(os.path.basename(align_bam))[0]))
