@@ -1,29 +1,24 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE, highlight=TRUE, figalign="center", warning=FALSE,  error=TRUE, message=FALSE,
-               echo=FALSE, fig.height=11, fig.width=11)
+opts_chunk$set(tidy=TRUE, cache=FALSE, highlight=TRUE, fig.align="center",
+               warning=FALSE, error=TRUE, message=FALSE, echo=FALSE,
+               fig.height=9, fig.width=9, fig.pos="htbp", fig.show="asis")
 ```
 
 ### GWASeq exploratory plots
 
-Summary distribution plots of GWASeq variant results. Some common conventions used:
+Summary distribution plots of GWASeq variant results. Some common conventions 
+used:
 
-- Low count variants are defined as present in less than 10 samples. Conversely, high count variants are in more than 10.
-- bait/offbait specify if regions fall into bait regions or in target regions outside of the baits.
+- Low count variants are defined as present in less than 10 samples. Conversely,
+  high count variants are in more than 10.
+- bait/offbait specify if regions fall into bait regions or in target regions
+  outside of the baits.
+  
+\FloatBarrier
 
+### Distribution of variant counts
 
-```{r sample_variants_plot, fig.cap="For low count samples, number of variants versus number of batches seen. The most common result is low variants in multiple batches."}
-p1 <- ggplot(d.low, aes(total_variants, set)) + geom_point(position="jitter") +
-     opts(title="Variants and batches: low") +
-     xlab("Sample variants") + ylab("Batches")
-p1
-```
-
-```{r sample_mean_plot, fig.cap="The mean coverage depth per sample for low and high count variants. The majority of lower coverage calls are in non-bait regions."}
-p2 <- ggplot(d, aes(x=DP_sample_mean)) + geom_histogram() + facet_grid(is_low ~ is_bait) +
-     opts(title="Depth of coverage: low and high") +
-     xlab("Mean coverage depth per sample")
-p2
-```
+The most common variant calls are low count heterozygous variants.
 
 ```{r total_variants_plot, fig.cap="The overall counts of variants per sample, dominated by low-sample count variants."}
 p3 <- ggplot(d, aes(x=total_variants)) + geom_histogram() +
@@ -31,7 +26,6 @@ p3 <- ggplot(d, aes(x=total_variants)) + geom_histogram() +
      xlab("Total variants")
 p3
 ```
-
 
 ```{r total_variants_low, fig.cap="Overall counts zoomed to low frequency variants, by bait and non-bait regions."}
 p4 <- ggplot(d.low, aes(x=total_variants)) + geom_histogram() +
@@ -41,10 +35,57 @@ p4 <- ggplot(d.low, aes(x=total_variants)) + geom_histogram() +
 p4
 ```
 
-```{r qual_by_bait, fig.cap="Variant quality scores capped at 10000, by bait and variant sample count. Subsetting the data and examining metrics may be a useful way to assign cutoffs for additional variant filtering."}
+```{r het_hom_variants, fig.cap="Low variant count samples are primarily heterozygotes."}
+phh <- ggplot(d, aes(x=pct_hets)) + geom_histogram(aes(y=..density..)) +
+       facet_grid(is_low ~ is_bait) +
+       opts(title="Heterozygous variant distribution") +
+       xlab("Percent heterozygotes")
+phh
+```
+
+\FloatBarrier
+
+### Characteristics of low count variants
+
+Low count variants are primarily found in multiple batches, which is nice
+evidence they are likely to be real. The mean coverage is similar between high
+and low count variants, but differ between bait and nonbait distributions.
+
+```{r sample_variants_plot, fig.cap="For low count samples, number of variants versus number of batches seen. The most common result is low variants in multiple batches."}
+p1 <- ggplot(d.low, aes(total_variants, set)) + geom_point(position="jitter") +
+     opts(title="Variants and batches: low") +
+     xlab("Sample variants") + ylab("Batches")
+p1
+```
+
+```{r sample_mean_plot, fig.cap="The mean coverage depth per sample for low and high count variants. Bait/nonbait distributions differ."}
+p2 <- ggplot(d, aes(x=DP_sample_mean)) + geom_histogram() + facet_grid(is_low ~ is_bait) +
+     opts(title="Depth of coverage") +
+     xlab("Mean coverage depth per sample")
+p2
+```
+
+\FloatBarrier
+
+### Filtering approaches
+
+Some plots of quality metrics for variants, faceted by bait/offbait and variant
+sample counts (low, high). These provide some useful ways we could assign
+cutoffs for additional variant filtering.
+
+Broad filtered reads using: `FS>200.0, QD<2.0, ReadPosRankSum<-20.0, InbreedingCoeff<-0.8`
+
+```{r qual_by_bait, fig.cap="Variant quality scores capped at 10000, by bait and variant sample count."}
 p5 <- ggplot(d, aes(x=qual_trunc)) + geom_histogram() +
       facet_grid(is_low ~ is_bait) +
       opts(title="Quality score distribution") +
       xlab("Quality score")
 p5
+```
+
+```{r qd_distribution, fig.cap="Variant Confidence by Depth."}
+p6 <- ggplot(d, aes(x=QD)) + geom_histogram() +
+      facet_grid(is_low ~ is_bait) +
+      opts(title="QD Distribution") +
+      xlab("Variant Confidence by Depth")
 ```
