@@ -4,14 +4,14 @@ PICARD="~/opt/lib/java"
 KHMER="~/opt/share/khmer/scripts"
 
 quality_check = segment {
-  fastqc.using(optargs="-t 8")
+  fastqc.using(optargs:"-t 8")
 }
 
 oases = segment {
 }
 
 digital_normalization = segment {
-  khmer_digital_normalization.using(khmer=$KHMER, optargs="-N 4 -x 4e9")
+  khmer_digital_normalization.using(khmer:$KHMER, optargs:"-N 4 -x 4e9")
 }
 
 kmer_histogram = segment {
