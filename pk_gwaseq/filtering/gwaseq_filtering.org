@@ -1,0 +1,208 @@
+#+TITLE: GWAseq filtering suggestions
+#+AUTHOR: 
+#+EMAIL: kirchner@hsph.harvard.edu
+#+OPTIONS: toc:nil num:nil
+#+BABEL: :session *R* :cache yes :results output graphics :exports both :tangle yes :noweb yes
+
+* Some high replicate variants have low quality
+#+srcname: import-csv
+#+begin_src R :exports none :cache yes
+  library(ggplot2)
+  library(knitr)
+  library(arm)
+  
+  getProgram <- function(args) {
+    sub("--file=", "", args[grep("--file=", args)])
+  }
+  args <- commandArgs(trailingOnly=TRUE)
+  program <- getProgram(commandArgs(trailingOnly=FALSE))
+  in_file <- args[1]
+  low_variant_cutoff <- 10
+  base_name <- "gwaseq_filtering"
+  few_cutoff = 5
+  pct_het_cutoff = 0.95
+  pct_hom_cutoff = 0.05
+  quality_floor_cutoff = 0
+  quality_cutoff = 1000
+  
+  d = read.csv("/Users/rory/Projects/pk_exomeSeq/data/GWASeq_BrCa_May2012_batch01-fullcombine-popfreq-variantsum.csv", header=TRUE)
+  d$total_variants <- d$HET + d$HOM_VAR
+  d$is_low <- ifelse(d$total_variants < low_variant_cutoff, "low", "high")
+  d$is_bait <- ifelse(d$bait == 1, "bait", "nonbait")
+  d$pct_hets <- d$HET / d$total_variants
+  d.low <- subset(d, d$total_variants < low_variant_cutoff)
+  
+  # filter out the INDELs for now
+  d.snps = subset(d, d$type == "SNP")
+  # add a dbsnp indicator
+  d.snps$dbsnp = ifelse(d.snps$id == "", 0, 1)
+  # add a 1k genomes indicator
+  d.snps$TG = ifelse(d.snps$TG_AF != 0.0, 1, 0)
+  # add a generic 'batches' indicator
+  d.snps$batches = sapply(d.snps$set, (function(x) if (x == 1) "one" else if(x < few_cutoff) "few" else "many"))
+  # if the SNP is in 1k genomes orDB snp call it a 'positive' one
+  d.snps$curated = ifelse(d.snps$dbsnp | d.snps$TG, "curated", "noncurated")
+  # is the variant mostly made up of heterozygotes
+  d.snps$hethom = sapply(d.snps$pct_hets, (function(x) if (x > pct_het_cutoff) "het" else
+    if(x < pct_hom_cutoff) "hom" else "mixed"))
+  
+#+end_src
+
+#+begin_src R :exports results
+make_quality_vs_batches_plot = function(x) {
+  ggplot(x, aes(qual)) + geom_freqpoly(aes(color=batches),
+    binwidth=0.1) + scale_x_log10() + scale_y_log10() + facet_grid(is_bait ~ is_low)
+}
+#+end_src
+
+#+caption: Quality calls by variant count and bait/nonbait status.
+#+label: qual-count-bait
+#+srcname: qual-count-bait
+#+begin_src R :file quality_vs_batches.pdf :results output graphics :exports results
+  make_quality_vs_batches_plot(d.snps)
+#+end_src
+
+In Figure \ref{qual-count-bait} columns "high" and "low" indicate the total
+number of samples where the variant was found and batches describes how many
+different batches they are in. There is a small set of variants which have many variants
+found (the left column), which appear only in a few batches ("few") and have low
+quality. These seem as if they are prime candidates for being erroneous and
+are a good target for filtering. Interestingly, when variants are found 
+rarely in samples (the right, "low" column), they tend to be of high quality,
+regardless of how many samples they are in. These might be candidates for
+real rare variants to investigate and should be kept in. 
+
+* Curated samples have a bimodal quality distribution
+
+#+begin_src R :exports results
+make_quality_vs_curated_plot = function(x) {
+  ggplot(x, aes(qual)) + geom_freqpoly(aes(color=batches),
+    binwidth=0.1) + scale_x_log10() + scale_y_log10() + facet_grid(curated ~ is_low)
+}
+#+end_src
+
+#+caption: Quality calls by variant count and curated/non curated status.
+#+label: qual-count-curated
+#+srcname: qual-count-curated
+#+begin_src R :file quality_vs_curated.pdf :results output graphics :exports results
+  make_quality_vs_curated_plot(d.snps)
+#+end_src
+
+Figure \ref{qual-count-curated} is the same as Figure \ref{qual-count-bait} but
+divided by curation status (in dbSNP or 1k genomes). Curated, lowly expressed
+variants have a bimodal distribution for SNPs with small numbers of batch
+replication. These might represent fringe-called SNPs in dbSNP and 1k genomes.
+Another observation from this figure is that non-curated SNPs with many variations
+represented in a few samples almost all have low quality. This could be due to
+mapping errors and are good candidates for filtering. Finally we see again that
+there is a set of lowly represented non-curated SNPs; these might be real, novel
+variants.
+
+* Rare variants should be heterozygous
+
+#+begin_src R :exports results
+make_quality_vs_het_plot = function(x) {
+   ggplot(x, aes(qual)) + geom_freqpoly(aes(color=batches), binwidth=0.1) +
+    scale_x_log10() + scale_y_log10() + facet_grid(hethom ~ is_low)
+}
+#+end_src
+
+#+caption: Quality calls by variant count and hetero/homozygosity status.
+#+label: qual-count-het
+#+srcname: qual-count-het
+#+begin_src R :file quality_vs_hethom.pdf :results output graphics :exports results
+  make_quality_vs_het_plot(d.snps)
+#+end_src
+
+Rare SNPs and de-novo SNPs are likely to be heterozygotes. Figure
+\ref{qual-count-het} shows that lowly batch-replicated samples with good quality
+tend to be heterozygotes and homozygotes tend to be of poor quality. This
+indicates for rare variants a filtering scheme of removing all homozygotes or
+rare homozygotes below a certain quality is likely to be a good one.
+
+A quality score cutoff of 1000 seems to be a good first shot for removing a lot
+of the noise; however having a one dimensional hard quality cutoff will remove
+many SNPs that probably should not be removed. Based on the above figures, 
+a small set of filters will remove most of the SNPs that are likely to be noise
+while retaining a set of interesting SNPs.
+
+#+caption: Quality calls by variant count and intron/intergenic/transcript status.
+#+label: qual-count-snpeff
+#+srcname: qual-count-snpeff
+#+begin_src R :file quality_vs_snpeff.pdf :results output graphics :exports none
+  ggplot(subset(d.snps, SNPEFF_EFFECT %in% c("INTRON", "INTERGENIC", "TRANSCRIPT")),
+         aes(qual)) + geom_freqpoly(aes(color=batches), binwidth=0.1) +
+  scale_x_log10() + scale_y_log10() + facet_grid(SNPEFF_EFFECT ~ is_low)
+#+end_src
+
+* Proposed filters
+** poor quality common variant in a small set of batches filter
+If a variant is seen more than 10 times but is in 4 or less batches and the
+quality score is below 1000, remove it. This will get rid of the noisy looking
+stuff on the left in red of Figure \ref{qual-count-bait} and Figure 
+\ref{qual-count-curated}.
+
+#+srcname: batch_count_filter
+#+begin_src R :exports both
+  batch_count_filter = function(x) {
+    tv = x$total_variants >= low_variant_cutoff
+    b = x$set < few_cutoff
+    q = x$qual < quality_cutoff
+    return(subset(x, !(tv & b & q)))
+  }
+#+end_src
+
+** poor quality, rare homozygotes filter
+If a variant is seen less than 10 times and is a homozygote or mixed with
+a quality of < 1000, remove it.
+
+#+srcname: rare_homozygote_filter 
+#+begin_src R :exports both
+  rare_homozygote_filter = function(x) {
+    tv = x$total_variant < low_variant_cutoff
+    h = (x$hethom == "hom" | x$hethom == "mixed")
+    q = x$qual < quality_cutoff
+    return(subset(x, !(tv & h & q)))
+  }
+#+end_src
+
+** below quality floor filter
+If a variant has an extremely low quality, remove it.
+#+srcname: quality_floor_filter
+#+begin_src R :exports both
+  quality_floor_filter = function(x) {
+    return(subset(x, qual < quality_floor_cutoff))
+  }
+#+end_src
+
+* Results of applying these filters
+
+#+begin_src R :exports results
+filtered = rare_homozygote_filter(d.snps)
+filtered = batch_count_filter(filtered)
+#+end_src
+
+#+caption: Quality calls by variant count and bait/nonbait status after filtering
+#+label: qual-count-bait-filtered
+#+srcname: qual-count-bait-filtered
+#+begin_src R :file quality_vs_bait_filtered.pdf :results output graphics :exports results
+make_quality_vs_batches_plot(filtered)
+#+end_src
+
+#+caption: Quality calls by variant count and heterozygote status after filtering.
+#+label: qual-count-curated-filtered
+#+begin_src R :file quality_vs_curated_filtered.pdf :results output graphics :exports results
+make_quality_vs_curated_plot(filtered)
+#+end_src
+
+#+caption: Quality calls by variant count and heterozygote status after filtering.
+#+label: qual-count-het-filtered
+#+begin_src R :file quality_vs_het_filtered.pdf :results output graphics :exports results
+make_quality_vs_het_plot(filtered)
+#+end_src
+
+Set to the above levels (no quality floor, general quality cutoff of 1k,
+and 'few' number of groups set to 4) filters out about 3% of the variants,
+but it gets rid of those that are the worst offenders in terms of noise.
+
+
