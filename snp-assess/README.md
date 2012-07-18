@@ -19,7 +19,7 @@ Requires:
 To run standalone:
 
         % lein deps
-        % lein run :snp-data /directory/of/varation/data /directory/of/positions
+        % lein snp-data /directory/of/varation/data /directory/of/positions
 
 To run on Hadoop:
 
@@ -87,7 +87,7 @@ reads.
 Expected variable positions and raw data feed a linear classifier, implemented
 in [Weka][4] and wrapped for Clojure by [clj-ml][5]:
 
-    lein run :classify raw-data-file position-file work-directory
+    lein snp-classify raw-data-file position-file work-directory
 
 `raw-data-file` is a tab-delimited file of calls plus associated quality
 metrics; `test/data/raw/raw_variations.tsv`. `position-file` contains known
@@ -99,7 +99,7 @@ detected variations as a YAML dump. Configuring the classifier by adjusting
 
 To summarize read calls in a region:
 
-    lein run :classify-eval raw-data-file work-directory
+    lein snp-classify-eval raw-data-file work-directory
 
 [4]: http://www.cs.waikato.ac.nz/~ml/weka/
 [5]: https://github.com/leadtune/clj-ml

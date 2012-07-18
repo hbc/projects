@@ -2,6 +2,7 @@ pom.xml
 *jar
 /lib/
 /classes/
+/target/
 .lein-deps-sum
 *.idx
 test/data/reference/*.fai
