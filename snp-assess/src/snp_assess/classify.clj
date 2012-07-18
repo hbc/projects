@@ -197,10 +197,11 @@
                :back-filter-freq back-filter-freq}))]
     (let [position ((juxt :space :pos) (first reads))
           clean-reads (remove #(= "N" (:base %)) reads)
-          majority-base (ffirst (sort-by second > (first (percents-by-base clean-reads))))
+          raw-percents (first (percents-by-base clean-reads))
           vrns-at-pos (->> clean-reads
                            (filter (fn [xs]
-                                     (or (= (:base xs) majority-base)
+                                     (or (> (get raw-percents (:base xs))
+                                            (get-in config [:classification :max-neg-pct]))
                                          (apply passes?
                                                 ((juxt :qual :kmer-pct :map-score) xs)))))
                            percents-by-base
