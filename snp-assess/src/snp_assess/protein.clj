@@ -17,11 +17,14 @@
 
 (defn calc-aa-change
   "Calculate amino acid change caused by a variation as a string representation."
-  [prot-map position new-base]
+  [prot-map position new-base & {:keys [majority-base]}]
   {:pre [(contains? prot-map position)]}
   (let [codon-info (get prot-map position)
+        orig-aa (if majority-base
+                  (translate-codon (assoc (:codon codon-info) (:offset codon-info) majority-base))
+                  (translate-codon (:codon codon-info)))
         new-aa (translate-codon (assoc (:codon codon-info) (:offset codon-info) new-base))]
-    (str (translate-codon (:codon codon-info))
+    (str orig-aa
          (:aa-pos codon-info)
          new-aa
          (if-let [known-names (get (:known codon-info) new-aa nil)]

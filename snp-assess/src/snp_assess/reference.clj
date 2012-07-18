@@ -66,7 +66,8 @@
           (to-freqs [bases]
             (join "," (rest (map second bases))))
           (aa-changes [bases]
-            (join "," (map #(aa-finder pos %) (rest (keys bases)))))]
+            (join "," (map #(aa-finder pos % :majority-base (first (keys bases)))
+                           (rest (keys bases)))))]
     (let [ordered-bases (sort-by second > (vec base-freqs))]
       (-> (VariantContextBuilder. contig contig (+ 1 pos) (+ 1 pos) (to-alleles ordered-bases))
           (.attributes (-> {}
