@@ -8,7 +8,7 @@
                                     raw-reads-by-pos call-vrns-at-pos
                                     add-classification-info]]
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
-        [snp-assess.protein :only [calc-aa-change prep-protein-map]])
+        [snp-assess.protein.calc :only [calc-aa-change prep-protein-map]])
   (:require [fs.core :as fs]
             [clj-yaml.core :as yaml]))
 

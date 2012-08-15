@@ -1,4 +1,4 @@
-(ns snp-assess.protein
+(ns snp-assess.protein.calc
   "Assess influence of variations on protein sequence."
   (:import [org.biojava3.core.sequence.transcription TranscriptionEngine]
            [org.biojava3.core.sequence DNASequence])

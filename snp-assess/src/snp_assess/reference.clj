@@ -5,15 +5,17 @@
            [org.biojava3.core.sequence.compound AmbiguityDNACompoundSet]
            [org.broadinstitute.sting.utils.variantcontext Allele
             VariantContextBuilder]
-           [org.broadinstitute.sting.utils.codecs.vcf StandardVCFWriter
+           [org.broadinstitute.sting.utils.codecs.vcf
             VCFHeader VCFInfoHeaderLine VCFHeaderLineCount VCFHeaderLineType]
+           [org.broadinstitute.sting.utils.variantcontext.writer
+            VariantContextWriterFactory Options]
            [net.sf.picard.reference ReferenceSequenceFileFactory]
            [net.sf.picard.sam CreateSequenceDictionary])
   (:use [clojure.java.io]
         [clojure.string :only [join]]
         [clojure.algo.generic.functor :only [fmap]]
         [ordered.map :only [ordered-map]]
-        [bcbio.variation.variantcontext :only [parse-vcf get-vcf-source]]
+        [bcbio.variation.variantcontext :only [parse-vcf get-vcf-iterator]]
         [snp-assess.core :only [parse-pos-line]])
   (:require [clj-yaml.core :as yaml]
             [fs.core :as fs]))
@@ -110,7 +112,8 @@
 (defn write-vcf-calls
   "Write output calls in VCF format"
   [vcs out-file ref-file]
-  (with-open [writer (StandardVCFWriter. (file out-file) (to-seq-dict ref-file))]
+  (with-open [writer (VariantContextWriterFactory/create
+                      (file out-file) (to-seq-dict ref-file))]
     (.writeHeader writer (get-header-with-attrs))
     (doseq [vc vcs]
       (.add writer vc))))
@@ -181,10 +184,10 @@
   "Read reference information into ordered map of positions + base and frequency.
    Optionally filter by a maximum frequency to include."
   ([in-file ref-file]
-     (with-open [vcf-source (get-vcf-source in-file ref-file)]
+     (with-open [vcf-iter (get-vcf-iterator in-file ref-file)]
        (reduce #(assoc %1 [(:chr %2) (:start %2) (:base %2)] (:freq %2)) (ordered-map)
                (flatten
-                (for [vc (parse-vcf vcf-source)]
+                (for [vc (parse-vcf vcf-iter)]
                   (for [[allele freq] (vc-to-freqs vc)]
                     {:chr (:chr vc) :start (- (:start vc) 1) :base allele :freq freq}))))))
   ([in-file ref-file max-freq]

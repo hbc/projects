@@ -14,13 +14,11 @@
                  [clj-yaml "0.3.1"]
                  [ordered "1.0.0" :exclusions [org.clojure/clojure]]
                  [doric "0.7.0-SNAPSHOT"]
-                 [bcbio.variation "0.0.1-SNAPSHOT"]
-                 [org.biojava/biojava3-core "3.0.2"]
-                 [org.clojars.chapmanb/gatk "1.6.13"]
-                 [org.clojars.chapmanb/picard "1.64"]]
+                 [bcbio.variation "0.0.1-SNAPSHOT"]]
   :profiles {:dev
              {:dependencies
-              [[org.apache.hadoop/hadoop-core "0.20.2-dev"]
+              [[org.apache.hadoop/hadoop-core "0.20.2-dev" :exclusions [commons-logging org.slf4j/slf4j-api
+                                                                        org.slf4j/slf4j-log4j12 log4j]]
                [midje "1.4.0" :exclusions [org.clojure/clojure]]]}}
   :plugins [[lein-midje "2.0.0-SNAPSHOT"]]
   :repositories {"biojava" "http://www.biojava.org/download/maven/"}

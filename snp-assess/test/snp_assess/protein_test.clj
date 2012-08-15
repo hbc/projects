@@ -1,6 +1,6 @@
 (ns snp-assess.reference-test
   (:use [midje.sweet]
-        [snp-assess.protein])
+        [snp-assess.protein.calc])
   (:require [fs.core :as fs]))
 
 (fact "Convert reference sequence into map of codons and known amino acid changes."
