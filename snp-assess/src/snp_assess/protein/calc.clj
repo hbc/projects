@@ -1,6 +1,6 @@
 (ns snp-assess.protein.calc
   "Assess influence of variations on protein sequence."
-  (:import [org.biojava3.core.sequence.transcription TranscriptionEngine]
+  (:import [org.biojava3.core.sequence.transcription TranscriptionEngine$Builder]
            [org.biojava3.core.sequence DNASequence])
   (:use [clojure.java.io]
         [clojure.string :only (split join)]
@@ -11,9 +11,10 @@
 (defn- translate-codon
   "Translate codon to amino acid sequence using BioJava."
   [codon]
-  (-> (TranscriptionEngine/getDefault)
-      (.translate (DNASequence. (join codon)))
-      str))
+  (let [tx-engine (-> (TranscriptionEngine$Builder.)
+                      (.trimStop false)
+                      .build)]
+    (str (.translate tx-engine (DNASequence. (join codon))))))
 
 (defn calc-aa-change
   "Calculate amino acid change caused by a variation as a string representation."

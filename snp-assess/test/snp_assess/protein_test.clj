@@ -17,6 +17,7 @@
 (fact "Calculate amino acid changes caused by variations."
   (calc-aa-change {0 {:offset 0 :codon [\G \C \C] :aa-pos 1 :known {}}} 0 "C") => "A1P"
   (calc-aa-change {2 {:offset 2 :codon [\G \C \C] :aa-pos 1 :known {}}} 2 "C") => "A1A"
+  (calc-aa-change {2 {:offset 2 :codon [\T \G \G] :aa-pos 1 :known {}}} 2 "A") => "W1*"
   (calc-aa-change {0 {:offset 0 :codon [\G \C \C]
                       :aa-pos 1 :known {"P" ["EVG15"]}}} 0 "C") => "A1P_EVG15"
   (calc-aa-change {0 {:offset 0 :codon [\G \C \C]
