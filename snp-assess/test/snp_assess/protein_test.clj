@@ -24,13 +24,19 @@
   (-> prot-map (get 313) :known) => {"Y" ["EVG15"]})
 
 (fact "Calculate amino acid changes caused by variations."
-  (calc-aa-change {0 {:offset 0 :codon [\G \C \C] :aa-pos 1 :known {}}} 0 "C") => "A1P"
-  (calc-aa-change {2 {:offset 2 :codon [\G \C \C] :aa-pos 1 :known {}}} 2 "C") => "A1A"
-  (calc-aa-change {2 {:offset 2 :codon [\T \G \G] :aa-pos 1 :known {}}} 2 "A") => "W1*"
+  (calc-aa-change {0 {:offset 0 :codon [\G \C \C] :aa-pos 1 :known {}}}
+                  {:position 0 :new "C"}) => "A1P"
+  (calc-aa-change {2 {:offset 2 :codon [\G \C \C] :aa-pos 1 :known {}}}
+                  {:position 2 :new "C"}) => "A1A"
+  (calc-aa-change {0 {:offset 0 :codon [\G \G \G] :aa-pos 1 :known {}}
+                   2 {:offset 2 :codon [\G \G \G] :aa-pos 1 :known {}}}
+                  {:position 0 :new "T"} {:position 2 :new "A"}) => "G1*"
   (calc-aa-change {0 {:offset 0 :codon [\G \C \C]
-                      :aa-pos 1 :known {"P" ["EVG15"]}}} 0 "C") => "A1P_EVG15"
+                      :aa-pos 1 :known {"P" ["EVG15"]}}}
+                  {:position 0 :new "C"}) => "A1P_EVG15"
   (calc-aa-change {0 {:offset 0 :codon [\G \C \C]
-                      :aa-pos 1 :known {"P" ["EVG30" "RAL15"]}}} 0 "C") => "A1P_EVG30_RAL15")
+                      :aa-pos 1 :known {"P" ["EVG30" "RAL15"]}}}
+                  {:position 0 :new "C"}) => "A1P_EVG30_RAL15")
 
 (fact "Generate amino acid changes based on input reads."
   (calc-aa-from-reads bam-file call-file ref-file prot-map :count-file count-file) => nil)

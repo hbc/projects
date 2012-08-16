@@ -16,15 +16,26 @@
                       .build)]
     (str (.translate tx-engine (DNASequence. (join codon))))))
 
+(defn- update-codon-w-changes
+  [kw codon-info changes prot-map]
+  (reduce (fn [coll x]
+            (if-let [new (get x kw)]
+              (assoc coll :codon
+                     (assoc (:codon coll) (:offset (get prot-map (:position x)))
+                            new))
+              coll))
+          codon-info changes))
+
 (defn calc-aa-change
   "Calculate amino acid change caused by a variation as a string representation."
-  [prot-map position new-base & {:keys [majority-base]}]
-  {:pre [(contains? prot-map position)]}
-  (let [codon-info (get prot-map position)
-        orig-aa (if majority-base
-                  (translate-codon (assoc (:codon codon-info) (:offset codon-info) majority-base))
-                  (translate-codon (:codon codon-info)))
-        new-aa (translate-codon (assoc (:codon codon-info) (:offset codon-info) new-base))]
+  [prot-map & changes]
+  {:pre [(every? #(contains? prot-map (:position %)) changes)]}
+  (let [codon-info (update-codon-w-changes :majority
+                                           (get prot-map (:position (first changes)))
+                                           changes prot-map)
+        orig-aa (translate-codon (:codon codon-info))
+        new-aa (translate-codon (:codon (update-codon-w-changes :new codon-info changes
+                                                                prot-map)))]
     (str orig-aa
          (:aa-pos codon-info)
          new-aa
