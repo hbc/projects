@@ -7,4 +7,6 @@ pom.xml
 *.idx
 test/data/reference/*.fai
 test/data/reference/*.dict
+test/data/align/*.bai
+test/data/align/*.idx
 images/

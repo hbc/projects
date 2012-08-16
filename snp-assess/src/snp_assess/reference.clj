@@ -194,6 +194,16 @@
      (into (ordered-map) (filter #(-> % val (<= max-freq))
                                  (read-vcf-ref in-file ref-file)))))
 
+(defn get-variants-by-pos
+  "Retrieve a map of position information to reference and alternative allele calls."
+  [in-file ref-file]
+  (with-open [vcf-iter (get-vcf-iterator in-file ref-file)]
+    (reduce (fn [coll vc]
+              (assoc coll [(:chr vc) (dec (:start vc))]
+                     {:ref (.getBaseString (:ref-allele vc))
+                      :alt-alleles (map #(.getBaseString %) (:alt-alleles vc))}))
+            {} (parse-vcf vcf-iter))))
+
 (defn -main [ref-fasta ref-config out-file]
   (let [seqs (get-fasta-seq-map ref-fasta)
         config (-> ref-config slurp yaml/parse-string)]

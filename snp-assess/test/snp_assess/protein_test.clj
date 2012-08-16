@@ -12,7 +12,8 @@
                prot-map (prep-protein-map {:files ref-file :known mut-file
                                            :frame-offset 0 :aa-offset 49})
                bam-file (str (fs/file data-dir "align" "S6-test.bam"))
-               count-file (str (fs/file data-dir "align" "S6-test-counts.yaml"))]
+               count-file (str (fs/file data-dir "align" "S6-test-counts.yaml"))
+               call-file (str (fs/file data-dir "align" "S6-calls.vcf"))]
            ?form)))
 
 (fact "Convert reference sequence into map of codons and known amino acid changes."
@@ -32,4 +33,4 @@
                       :aa-pos 1 :known {"P" ["EVG30" "RAL15"]}}} 0 "C") => "A1P_EVG30_RAL15")
 
 (fact "Generate amino acid changes based on input reads."
-  (calc-aas-from-reads bam-file ref-file prot-map :count-file count-file) => nil)
+  (calc-aa-from-reads bam-file call-file ref-file prot-map :count-file count-file) => nil)
