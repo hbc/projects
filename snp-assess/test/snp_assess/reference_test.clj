@@ -23,7 +23,7 @@
         ref-vc (convert-to-vc "test" 0 {"G" 1.0})]
     (.getChr alt-vc) => "test"
     (.getStart ref-vc) => 1
-    (-> alt-vc (.getAttributes) (.get "AF")) => "0.1"
+    (-> alt-vc (.getAttributes) (.get "AF")) => "0.10"
     (.getAttributes ref-vc) => {}
     (-> alt-vc (.getReference) (.getBaseString)) => "G"
     (.isBiallelic alt-vc) => true

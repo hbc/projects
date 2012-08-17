@@ -8,17 +8,17 @@
                                     raw-reads-by-pos call-vrns-at-pos
                                     add-classification-info]]
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
-        [snp-assess.protein.calc :only [calc-aa-change prep-protein-map]])
+        [snp-assess.protein.calc :only [prep-protein-map]]
+        [snp-assess.protein.read :only [annotate-calls-w-aa]])
   (:require [fs.core :as fs]
             [clj-yaml.core :as yaml]))
 
 (defn vrns-by-pos
   "Lazy sequence of variation calls at each position."
-  [rdr classifier aa-finder config]
+  [rdr classifier config]
   (letfn [(vrns-as-vc [x]
             (let [[contig pos] (:position x)]
               (convert-to-vc contig pos (:calls x) :depth (:total x)
-                             :aa-finder aa-finder
                              :back-filter-freq (:back-filter-freq x))))]
     (let [classifier-passes? (classifier-checker classifier config)]
       (->> (raw-reads-by-pos rdr config)
@@ -27,11 +27,11 @@
 
 (defn write-calls-as-vcf
   "Call bases using supplied read classifier, writing as VCF output."
-  [read-file ref-file classifier aa-finder config]
+  [read-file ref-file classifier config]
   (let [out-file (str (fs/file (fs/parent read-file)
                                (str (fs/name read-file) "-calls.vcf")))]
     (with-open [rdr (reader read-file)]
-      (write-vcf-calls (vrns-by-pos rdr classifier aa-finder config)
+      (write-vcf-calls (vrns-by-pos rdr classifier config)
                        out-file ref-file))))
 
 (defn- read-run-config
@@ -56,7 +56,9 @@
                    (assoc :verbose true)
                    add-classification-info)
         c (prepare-classifier nil nil (get-in run-config [:ref :files]) work-dir config)
-        aa-finder (partial calc-aa-change (prep-protein-map (:ref run-config)))]
+        prot-map (prep-protein-map (:ref run-config))]
     (doseq [x (:experiments run-config)]
-      (write-calls-as-vcf (:files x) (-> run-config :ref :files)
-                          c aa-finder config))))
+      (let [ref-file (-> run-config :ref :files)
+            mv-call-file (write-calls-as-vcf (:files x) ref-file c config)]
+        (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
+                             :count-file (:count-file x))))))

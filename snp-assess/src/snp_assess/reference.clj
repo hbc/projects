@@ -60,17 +60,13 @@
 
 (defn convert-to-vc
   "Convert base frequency information into a VCF VariantContext."
-  [contig pos base-freqs & {:keys [depth aa-finder back-filter-freq]}]
+  [contig pos base-freqs & {:keys [depth back-filter-freq]}]
   (letfn [(to-alleles [bases]
             (map-indexed (fn [i [base _]]
                            (Allele/create (str base) (= i 0)))
                          bases))
           (to-freqs [bases]
-            (join "," (rest (map second bases))))
-          (aa-changes [bases]
-            (join "," (map #(aa-finder {:position pos :new %
-                                        :majority (first (keys bases))})
-                           (rest (keys bases)))))]
+            (join "," (rest (map #(format "%.2f" (second %)) bases))))]
     (let [ordered-bases (sort-by second > (vec base-freqs))]
       (-> (VariantContextBuilder. contig contig (+ 1 pos) (+ 1 pos) (to-alleles ordered-bases))
           (.attributes (-> {}
@@ -79,10 +75,6 @@
                                %))
                            (#(if (nil? depth) %
                                (assoc % "DP" depth)))
-                           (#(if (and (not (nil? aa-finder))
-                                      (> (count ordered-bases) 1))
-                               (assoc % "AA_CHANGE" (aa-changes ordered-bases))
-                               %))
                            (#(if (nil? back-filter-freq) %
                                  (assoc % "AFBACK" (format "%.5f" back-filter-freq))))))
           (.make)))))
