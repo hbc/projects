@@ -11,7 +11,8 @@
         [snp-assess.protein.calc :only [prep-protein-map]]
         [snp-assess.protein.read :only [annotate-calls-w-aa]])
   (:require [fs.core :as fs]
-            [clj-yaml.core :as yaml]))
+            [clj-yaml.core :as yaml]
+            [bcbio.run.itx :as itx]))
 
 (defn vrns-by-pos
   "Lazy sequence of variation calls at each position."
@@ -30,9 +31,11 @@
   [read-file ref-file classifier config]
   (let [out-file (str (fs/file (fs/parent read-file)
                                (str (fs/name read-file) "-calls.vcf")))]
-    (with-open [rdr (reader read-file)]
-      (write-vcf-calls (vrns-by-pos rdr classifier config)
-                       out-file ref-file))))
+    (when (itx/needs-run? out-file)
+      (with-open [rdr (reader read-file)]
+        (write-vcf-calls (vrns-by-pos rdr classifier config)
+                         out-file ref-file)))
+    out-file))
 
 (defn- read-run-config
   "Read input configuration file, mapping relative paths to absolute."

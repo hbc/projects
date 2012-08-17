@@ -25,7 +25,7 @@ params:
   map-score-range: [0.0, 250.0]
   #min-score: 1.2
   min-freq: 0.0012
-  #min-freq: 0.0027
+  #min-freq: 0.0031
   allowed-freq-diff: 5.0
   verbose: false
   classification:
