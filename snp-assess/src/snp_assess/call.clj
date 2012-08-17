@@ -3,7 +3,7 @@
    Writes output as VCF file with information on allele frequencies, read
    depth and variant effects."
   (:use [clojure.java.io]
-        [snp-assess.core :only [load-config]]
+        [snp-assess.core :only [load-config load-run-config]]
         [snp-assess.classify :only [pipeline-prep-classifier classifier-checker
                                     raw-reads-by-pos call-vrns-at-pos
                                     add-classification-info]]
@@ -37,24 +37,8 @@
                          out-file ref-file)))
     out-file))
 
-(defn- read-run-config
-  "Read input configuration file, mapping relative paths to absolute."
-  [run-config-file work-dir]
-  (letfn [(add-full-path [coll keys]
-            (loop [ks keys
-                   x coll]
-              (if (empty? ks)
-                x
-                (recur (rest ks)
-                       (assoc x (first ks)
-                              (str (fs/file work-dir (get x (first ks)))))))))]
-    (-> (-> run-config-file slurp yaml/parse-string)
-        (#(assoc % :ref (add-full-path (:ref %) [:files :known :control])))
-        (#(assoc % :experiments (map (fn [x] (add-full-path x [:files :align :count]))
-                                     (:experiments %)))))))
-
 (defn -main [run-config-file param-config-file work-dir]
-  (let [run-config (read-run-config run-config-file work-dir)
+  (let [run-config (load-run-config run-config-file work-dir)
         config (-> (load-config param-config-file)
                    (assoc :verbose true)
                    add-classification-info)

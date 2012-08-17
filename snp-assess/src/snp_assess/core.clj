@@ -7,7 +7,8 @@
         [cascalog.api]
         [snp-assess.score :only [score-calc-cascalog]])
   (:require [cascalog [ops :as ops]]
-            [clj-yaml.core :as yaml]))
+            [clj-yaml.core :as yaml]
+            [fs.core :as fs]))
 
 ;; Summary statistics for positions of interest
 
@@ -70,8 +71,26 @@
     (doseq [row sort-out]
       (println (apply format "| %s | %s | %s | %5s | %.1f | %.1e | %.1f | %.1f | %10s |" row)))))
 
+;; ## Configuration file management
+
 (defn load-config [in-file]
   (-> in-file slurp yaml/parse-string :params))
+
+(defn load-run-config
+  "Read input configuration file, mapping relative paths to absolute."
+  [run-config-file work-dir]
+  (letfn [(add-full-path [coll keys]
+            (loop [ks keys
+                   x coll]
+              (if (empty? ks)
+                x
+                (recur (rest ks)
+                       (assoc x (first ks)
+                              (str (fs/file work-dir (get x (first ks)))))))))]
+    (-> (-> run-config-file slurp yaml/parse-string)
+        (#(assoc % :ref (add-full-path (:ref %) [:files :known :control])))
+        (#(assoc % :experiments (map (fn [x] (add-full-path x [:files :align :count]))
+                                     (:experiments %)))))))
 
 (defn -main [data-dir pos-dir config-file]
   (target-snpdata-stats data-dir pos-dir (load-config config-file)))

@@ -8,14 +8,16 @@
         [clj-ml.data :only [make-dataset dataset-set-class make-instance]]
         [clj-ml.classifiers :only [make-classifier classifier-train
                                    classifier-evaluate classifier-classify]]
-        [snp-assess.core :only [parse-snpdata-line load-config
+        [snp-assess.core :only [parse-snpdata-line load-config load-run-config
                                 parse-pos-line]]
         [snp-assess.score :only [minority-variants naive-read-passes?
                                  roughly-freq?]]
         [snp-assess.features :only [metrics-to-features]]
-        [snp-assess.classify-eval :only [write-assessment print-vrn-summary]]
+        [snp-assess.classify-eval :only [write-assessment print-vrn-summary
+                                         roc-summarize-assessment]]
         [snp-assess.reference :only [read-vcf-ref]])
-  (:require [fs.core :as fs]))
+  (:require [clojure.string :as string]
+            [fs.core :as fs]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
 ;; kmer and mapping scores) and naive classifier based on simple
@@ -275,17 +277,19 @@
          (map (fn [xs] (call-vrns-at-pos xs (fn [_ _ _] true) config)))
          doall)))
 
-(defn assess-classifier [data-file pos-file ref-file classifier config]
+(defn assess-classifier
   "Determine rates of true/false positive/negatives with trained classifier"
+  [data-file pos-file ref-file classifier config & {:keys [downsample]}]
   (let [classifier-passes? (classifier-checker classifier config)
         known-vrns (read-ref pos-file ref-file 101.0)]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config)
+           (map (partial downsample-at-pos downsample))
            (map (fn [xs] (call-vrns-at-pos xs classifier-passes? config)))
            (map (fn [x] (assign-position-type (:position x) (:calls x)
                                               (:total x) known-vrns config)))
            (remove #(nil? (:class %)))
-           (map (fn [xs] (if (:verbose config) (println xs)) xs))
+           (map (fn [xs] (when (:verbose config) (println xs)) xs))
            vec))))
 
 (defn add-classification-info
@@ -311,14 +315,29 @@
                               :downsample downsample :always-prep? always-prep?)]
     (println c)
     (when evaluate?
-      (let [a (assess-classifier data-file pos-file ref-file c config)]
+      (let [a (assess-classifier data-file pos-file ref-file c config
+                                 :downsample downsample)]
         (write-assessment a data-file work-dir)
         (print-vrn-summary a)))
     c))
 
-(defn -main [data-file pos-file ref-file config-file work-dir]
-  (pipeline-prep-classifier data-file pos-file ref-file work-dir
-                            (-> (load-config config-file)
-                                (assoc :verbose true)
-                                add-classification-info)
-                            :evaluate? true))
+(defn -main [run-config-file param-config-file work-dir]
+  (let [run-config (load-run-config run-config-file work-dir)
+        config (-> (load-config param-config-file)
+                   (assoc :verbose true)
+                   add-classification-info)
+        roc-classes [:true-positive :false-positive :true-negative :false-negative]
+        classify-exp (first (filter :classify (:experiments run-config)))
+        data-file (:files classify-exp)
+        pos-file (get-in run-config [:ref :control])
+        ref-file (get-in run-config [:ref :files])
+        out-file (file work-dir "classifier" "downsample.csv")]
+    (with-open [wtr (writer out-file)]
+      (doseq [pct (get-in run-config [:downsample :percents])]
+        (doseq [i (range (get-in run-config [:downsample :replicates]))]
+          (let [c (prepare-classifier data-file pos-file ref-file work-dir config
+                                      :downsample pct :always-prep? true)
+                a (assess-classifier data-file pos-file ref-file c config
+                                     :downsample pct)
+                a-sum (roc-summarize-assessment a)]
+            (.write wtr (str (string/join "," (concat [pct i] (map a-sum roc-classes)))))))))))

@@ -13,6 +13,9 @@
 
 ;; Provide summary details about read calls based on frequency
 
+(defn roc-summarize-assessment [data]
+  (frequencies (map :class data)))
+
 (defn summarize-assessment [data]
   "Summarize assessment data to provide reflection of true/false positives"
   (letfn [(summarize-calls [info]

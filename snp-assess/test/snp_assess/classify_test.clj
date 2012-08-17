@@ -3,7 +3,7 @@
         [snp-assess.core :only [load-config]]
         [snp-assess.classify]
         [snp-assess.features :only [metrics-to-features]]
-        [snp-assess.classify-eval :only [summarize-assessment]])
+        [snp-assess.classify-eval :only [summarize-assessment roc-summarize-assessment]])
   (:require [fs.core :as fs]))
 
 ;; Top level definitions useful for all tests
@@ -47,6 +47,7 @@
     (.toString c) => (contains "Linear Regression Model")
     ((classifier-checker c config) 20 1.0E-3 200) => true))
 
+;.;. There is an inevitable reward for good deeds. -- Ming Fu Wu
 (facts "Random forest classification"
   (let [rf-config (-> config
                       (assoc-in [:classification :algorithm] "random-forest")
@@ -54,6 +55,7 @@
         c (train-classifier data-file vrn-file ref-file rf-config)
         assess-data (assess-classifier data-file vrn-file ref-file c rf-config) => nil]
     (.toString c) => (contains "Random forest")
+    (roc-summarize-assessment assess-data) => {:true-positive 1 :false-positive 1 :false-negative 1}
     (map :class assess-data) => [:true-positive :false-positive :false-negative]))
 
 (facts "Assess a classifier based on variant calling ability"

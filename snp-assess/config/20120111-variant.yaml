@@ -20,6 +20,10 @@ experiments:
     align: align/S5_ACAGTG_L003_R1-sort-realign.bam
     count: align/S5_ACAGTG_L003_R1-unique-counts.yaml
 
+downsample:
+  replicates: 10
+  percents: [1.0, 0.9, 0.75, 0.5, 0.25, 0.1, 0.05]
+
 ref:
   files: refinfo/hxb2-ref.fa
   known: refinfo/known_integrase_mutations.csv
