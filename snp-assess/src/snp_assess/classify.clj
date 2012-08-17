@@ -294,12 +294,19 @@
              :random-sample true
              :group :numerical})))
 
+(defn pipeline-prep-classifier
+  [data-file pos-file ref-file work-dir config & {:keys [evaluate?]}]
+  (let [c (prepare-classifier data-file pos-file ref-file work-dir config)]
+    (println c)
+    (when evaluate?
+      (let [a (assess-classifier data-file pos-file ref-file c config)]
+        (write-assessment a data-file work-dir)
+        (print-vrn-summary a)))
+    c))
+
 (defn -main [data-file pos-file ref-file config-file work-dir]
-  (let [config (-> (load-config config-file)
-                   (assoc :verbose true)
-                   add-classification-info)
-        c (prepare-classifier data-file pos-file ref-file work-dir config)
-        _ (println c)
-        a (assess-classifier data-file pos-file ref-file c config)]
-    (write-assessment a data-file work-dir)
-    (print-vrn-summary a)))
+  (pipeline-prep-classifier data-file pos-file ref-file work-dir
+                            (-> (load-config config-file)
+                                (assoc :verbose true)
+                                add-classification-info)
+                            :evaluate? true))
