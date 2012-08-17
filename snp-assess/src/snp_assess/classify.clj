@@ -331,13 +331,13 @@
         data-file (:files classify-exp)
         pos-file (get-in run-config [:ref :control])
         ref-file (get-in run-config [:ref :files])
-        out-file (file work-dir "classifier" "downsample.csv")]
+        out-file (file work-dir "classifier" "downsample.csv")
+        c (prepare-classifier data-file pos-file ref-file work-dir config)]
     (with-open [wtr (writer out-file)]
+      (.write wtr (str (string/join "," (concat ["downsample" "rep"] (map name roc-classes)))))
       (doseq [pct (get-in run-config [:downsample :percents])]
         (doseq [i (range (get-in run-config [:downsample :replicates]))]
-          (let [c (prepare-classifier data-file pos-file ref-file work-dir config
-                                      :downsample pct :always-prep? true)
-                a (assess-classifier data-file pos-file ref-file c config
+          (let [a (assess-classifier data-file pos-file ref-file c config
                                      :downsample pct)
                 a-sum (roc-summarize-assessment a)]
             (.write wtr (str (string/join "," (concat [pct i] (map a-sum roc-classes)))))))))))
