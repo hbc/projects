@@ -9,4 +9,5 @@ test/data/reference/*.fai
 test/data/reference/*.dict
 test/data/align/*.bai
 test/data/align/*.idx
+test/data/align/*-protein.vcf
 images/

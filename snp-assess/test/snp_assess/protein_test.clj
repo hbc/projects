@@ -2,7 +2,8 @@
   (:use [midje.sweet]
         [snp-assess.protein.calc]
         [snp-assess.protein.read])
-  (:require [fs.core :as fs]))
+  (:require [fs.core :as fs]
+            [bcbio.run.itx :as itx]))
 
 (background
  (around :facts
@@ -13,7 +14,10 @@
                                            :frame-offset 0 :aa-offset 49})
                bam-file (str (fs/file data-dir "align" "S6-test.bam"))
                count-file (str (fs/file data-dir "align" "S6-test-counts.yaml"))
-               call-file (str (fs/file data-dir "align" "S6-calls.vcf"))]
+               call-file (str (fs/file data-dir "align" "S6-calls.vcf"))
+               call-out-file (itx/add-file-part call-file "protein")]
+           (doseq [x [call-out-file]]
+             (itx/remove-path x))
            ?form)))
 
 (fact "Convert reference sequence into map of codons and known amino acid changes."
@@ -40,4 +44,5 @@
 
 (fact "Generate amino acid changes based on input reads."
   (let [aa-changes (calc-aa-from-reads bam-file call-file ref-file prot-map :count-file count-file)]
-    (get aa-changes 32) => {"G59R" 15, "G59G" 128}))
+    (get aa-changes 32) => {"G59R" 15, "G59G" 128}
+    (annotate-calls-w-aa bam-file call-file ref-file prot-map :count-file count-file) => call-out-file))
