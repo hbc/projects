@@ -95,9 +95,6 @@
                                     VCFHeaderLineType/Float "Allele Frequency")
                 (VCFInfoHeaderLine. "DP" 1
                                     VCFHeaderLineType/Integer "Total Depth")
-                (VCFInfoHeaderLine. "AA_CHANGE" VCFHeaderLineCount/A
-                                    VCFHeaderLineType/String
-                                    "Amino acid change caused by a variant")
                 (VCFInfoHeaderLine. "AFBACK" 1
                                     VCFHeaderLineType/Float
                                     "Filtered background allele frequency")}))

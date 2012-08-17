@@ -111,12 +111,20 @@
         negatives (take (count positives) (shuffle (filter #(contains? #{0 :b} (last %)) data)))]
     (concat positives negatives)))
 
-(defn prep-classifier-data [data-file pos-file ref-file config]
+(defn downsample-at-pos
+  "Downsample reads to a given percentage of total input reads at a position."
+  [pct reads]
+  (if (nil? pct)
+    reads
+    (take (Math/round (* pct (count reads))) (shuffle reads))))
+
+(defn prep-classifier-data [data-file pos-file ref-file config & {:keys [downsample]}]
   "Retrieve classification data based on variant/non-variant positions"
   (let [positives (read-ref pos-file ref-file
                             (-> config :classification :max-pos-pct))]
     (with-open [rdr (reader data-file)]
       (->> (raw-reads-by-pos rdr config :is-training? true)
+           (map (partial downsample-at-pos downsample))
            (map (fn [xs] (group-by (juxt :space :pos :base) xs)))
            (map #(data-from-pos % positives config))
            (apply concat)
@@ -136,26 +144,28 @@
         header (conj (unique-keywords (drop-last (first data))) (if category? {:c [:a :b]} :c))]
     (make-dataset "ds" header data {:class :c})))
 
-(defn train-classifier [data-file pos-file ref-file config]
+(defn train-classifier [data-file pos-file ref-file config & {:keys [downsample]}]
   "Manage retrieving data and training the classifier."
-  (let [class-data (prep-classifier-data data-file pos-file ref-file config)
+  (let [class-data (prep-classifier-data data-file pos-file ref-file config :downsample downsample)
         ds (get-dataset class-data config)
         c (-> (apply make-classifier (conj (get-in config [:classification :classifier])
                                            (get-in config [:classification :options] {})))
               (classifier-train ds))]
     c))
 
-(defn prepare-classifier [data-file pos-file ref-file work-dir config]
-  "High level work to get classifier, included serialization to a file."
+(defn prepare-classifier
+  "High level work to get classifier, including serialization to a file."
+  [data-file pos-file ref-file work-dir config & {:keys [downsample always-prep?]}]
   (let [out-dir (str (fs/file work-dir "classifier"))
         classifier-file (str (fs/file out-dir
-                                      (format "%s-classifier.bin"
-                                              (-> config :classification :classifier last name))))]
+                                      (format "%s-classifier%s.bin"
+                                              (-> config :classification :classifier last name)
+                                              (if downsample (format "-%.1f" downsample) ""))))]
     (if-not (fs/exists? out-dir)
       (fs/mkdirs out-dir))
-    (if (fs/exists? classifier-file)
+    (if (and (not always-prep?) (fs/exists? classifier-file))
       (deserialize-from-file classifier-file)
-      (let [classifier (train-classifier data-file pos-file ref-file config)]
+      (let [classifier (train-classifier data-file pos-file ref-file config :downsample downsample)]
         (serialize-to-file classifier classifier-file)
         classifier))))
 
@@ -295,8 +305,10 @@
              :group :numerical})))
 
 (defn pipeline-prep-classifier
-  [data-file pos-file ref-file work-dir config & {:keys [evaluate?]}]
-  (let [c (prepare-classifier data-file pos-file ref-file work-dir config)]
+  [data-file pos-file ref-file work-dir config & {:keys [evaluate? always-prep?
+                                                         downsample]}]
+  (let [c (prepare-classifier data-file pos-file ref-file work-dir config
+                              :downsample downsample :always-prep? always-prep?)]
     (println c)
     (when evaluate?
       (let [a (assess-classifier data-file pos-file ref-file c config)]

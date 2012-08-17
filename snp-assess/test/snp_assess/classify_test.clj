@@ -36,6 +36,11 @@
     (map last data) => [1 1 1 0 0 0]    ; classifications
     (first data) => (contains [0.228 1])))
 
+(facts "Provide random downsampling of classification data."
+  (let [prep-fn (partial prep-classifier-data data-file vrn-file ref-file config)]
+    (count (first (prep-fn))) => 4
+    (count (first (prep-fn :downsample 0.5))) => #(contains? #{0 4} %)))
+
 (facts "Build a full classifier from file data"
   (let [c (train-classifier data-file vrn-file ref-file config)]
     (map float (.coefficients c)) => [0.0 0.0 0.0 0.0 0.5]
