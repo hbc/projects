@@ -39,4 +39,5 @@
                   {:position 0 :new "C"}) => "A1P_EVG30_RAL15")
 
 (fact "Generate amino acid changes based on input reads."
-  (calc-aa-from-reads bam-file call-file ref-file prot-map :count-file count-file) => nil)
+  (let [aa-changes (calc-aa-from-reads bam-file call-file ref-file prot-map :count-file count-file)]
+    (get aa-changes 32) => {"G59R" 15, "G59G" 128}))

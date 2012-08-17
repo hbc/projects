@@ -5,6 +5,7 @@
            [org.biojava3.core.sequence DNASequence])
   (:use [clojure.java.io]
         [bcbio.run.broad :only [index-bam]]
+        [snp-assess.protein.calc :only [calc-aa-change]]
         [snp-assess.reference :only [get-variants-by-pos]])
   (:require [clj-yaml.core :as yaml]))
 
@@ -20,10 +21,20 @@
           :ref-i (+ ref-start i)
           :read-seq (str (nth map-seq (+ read-start i)))})))))
 
-(defn- is-minority-variant?
+(defn- reformat-variant-to-change
+  "Convert variant position information to format for aa calculation.
+   Returns nil for non-analyzed positions and pre-filtered calls."
   [variant-map pos]
   (when-let [cur-vars (get variant-map ((juxt :contig :ref-i) pos))]
-    (contains? (set (:alt-alleles cur-vars)) (:read-seq pos))))
+    (when (contains? (set (cons (:ref cur-vars) (:alt-alleles cur-vars))) (:read-seq pos))
+      {:position (:ref-i pos)
+       :majority (:ref cur-vars)
+       :new (:read-seq pos)})))
+
+(defn- call-aa
+  [prot-map changes]
+  {:position (apply max (map :position changes))
+   :aa (apply calc-aa-change (cons prot-map changes))})
 
 (defn- aa-on-read
   "Retrieve amino acid changes predicted by current read."
@@ -33,11 +44,16 @@
                    (-> (DNASequence. map-seq)
                        .getReverseComplement
                        .getSequenceAsString)
-                   map-seq)]
+                   map-seq)
+        cnt (get count-map orig-seq 1)]
     (->> (mapped-reads-by-pos rec map-seq)
-         (filter (partial is-minority-variant? variant-map))
-         (group-by #(:aa-pos (get prot-map (:ref-i %)))))
-    {:count (get count-map orig-seq 1)}))
+         (map (partial reformat-variant-to-change variant-map))
+         (remove nil?)
+         (group-by #(:aa-pos (get prot-map (:position %))))
+         vals
+         (filter #(= 3 (count %)))
+         (map (partial call-aa prot-map))
+         (map #(assoc % :count cnt)))))
 
 (defn- get-read-counts
   "Map of original read sequence to counts from input YAML dump file."
@@ -55,5 +71,10 @@
         variant-map (get-variants-by-pos call-file ref-file)]
     (with-open [bam-rdr (SAMFileReader. (file bam-file))
                 bam-iter (.iterator bam-rdr)]
-      (doseq [x (take 20 (iterator-seq bam-iter))]
-        (aa-on-read x prot-map count-map variant-map)))))
+      (reduce (fn [coll x]
+                (let [cnts (get coll (:position x {}))]
+                  (assoc coll (:position x)
+                         (assoc cnts (:aa x)
+                                (+ (:count x) (get cnts (:aa x) 0))))))
+              {} (flatten (map #(aa-on-read % prot-map count-map variant-map)
+                               (iterator-seq bam-iter)))))))
