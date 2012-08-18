@@ -334,10 +334,13 @@
         out-file (file work-dir "classifier" "downsample.csv")
         c (prepare-classifier data-file pos-file ref-file work-dir config)]
     (with-open [wtr (writer out-file)]
-      (.write wtr (str (string/join "," (concat ["downsample" "rep"] (map name roc-classes)))))
+      (.write wtr (str (string/join "," (concat ["downsample" "rep"] (map name roc-classes)))
+                       "\n"))
       (doseq [pct (get-in run-config [:downsample :percents])]
         (doseq [i (range (get-in run-config [:downsample :replicates]))]
           (let [a (assess-classifier data-file pos-file ref-file c config
                                      :downsample pct)
                 a-sum (roc-summarize-assessment a)]
-            (.write wtr (str (string/join "," (concat [pct i] (map a-sum roc-classes)))))))))))
+            (.write wtr (str (string/join "," (concat [pct i] (map #(get a-sum % 0) roc-classes)))
+                             "\n"))
+            (.flush wtr)))))))
