@@ -1,0 +1,34 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 8
+  timeout: 10000
+  delay: 10
+
+dir:
+  results: results
+  doc: doc
+  ref: ref
+  data: data
+
+log_dir: log
+
+encode_file: data/Encode_CD14_CD20_CD34_SKMC_HESC.txt
+
+program:
+  fastqc: fastqc
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  trim:
+    name: trim
+    program: sickle
+    min_length: 20
+
+run:
+  [download_encode]
