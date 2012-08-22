@@ -1,0 +1,149 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 6
+  timeout: 10000
+  delay: 10
+
+dir:
+  results: results
+  doc: doc
+  ref: ref
+  data: data
+
+log_dir: log
+
+resources:
+  tophat:
+    cores: 8
+
+algorithm:
+  quality_format: sanger
+  max_errors: 2
+  gtf: ref/
+
+
+program:
+  fastqc: fastqc
+  tagdust: tagdust
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
+
+input:
+  - data/1-let-7-1_R_2012_06_12_15_22_56_user_ARC-330_Auto_ARC-330_598.fastq
+  - data/2-miR-522-1_R_2012_06_12_13_36_19_user_KRI-271_Auto_KRI-271_597.fastq
+  - data/3-miR-34-1_R_2012_06_12_17_48_23_user_ARC-331_Auto_ARC-331_600.fastq
+  - data/4-control-2_R_2012_06_14_14_46_40_user_ARC-335_Auto_ARC-335_608.fastq
+  - data/5-let-7-2-R_2012_06_19_14_05_43_user_ARC-344_reaanalysis.fastq
+  - data/6-miR-522-2-R_2012_06_11_16_42_48_user_KRI-269_Auto_KRI-269_593.fastq
+  - data/7-miR-34-2_R_2012_06_14_11_32_40_user_ARC-334_Auto_ARC-334_606.fastq
+  - data/8-control-2_R_2012_06_14_09_46_28_user_KRI-275_Auto_KRI-275_605.fastq
+
+groups:
+  positive: [miR-34]
+  negative: [control]
+  test: [let-7, miR-522]
+
+genome:
+  file: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/novoalign/hg19
+
+annotation:
+  name: human
+  file: ref/hg19.gtf
+  url: ftp://ftp.ensembl.org/pub/release-68/gtf/homo_sapiens/Homo_sapiens.GRCh37.68.gtf.gz
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  trim:
+    name: trim
+    program: sickle
+    min_length: 20
+    platform: illumina
+    pair: se
+
+  tagdust:
+    name: tagdust
+    program: tagdust
+    contaminants: meta/contaminants.fa
+    keep: [clean, dirty]    # [clean], [dirty] or [clean, dirty]
+    options:
+      - [-fdr, 0.01]
+      - [-singleline]
+
+  filter_length:
+    name: filter_length
+    min_length: 10
+    max_length: 10000
+
+  novoalign:
+    name: novoalign
+    program: novoalign
+    options:
+      - [-F, STDFQ]
+      - [-n, 250]
+      - [-k]
+      - [-H]
+      - [-r, all]
+      - [-e, 10]
+
+  count_ends:
+    name: count_ends
+
+  new_coverage:
+    name: new_coverage
+    program: picard
+    ref:
+      name: human
+      file: ref/refFlat.txt
+      url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
+    ribo: meta/rrna_ucsc_new.bed
+
+  tophat:
+    name: tophat
+    transcripts: meta/Homo_sapiens.GrCh37.68.gtf
+    genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/novoalign/hg19
+
+  macs:
+    name: macs
+    program: macs
+    options:
+      - [--format, BAM]
+      - [--gsize, hs]
+      - [--pvalue, 0.000001]
+      - [--mfold, "10,30"]
+
+  coverage:
+    name: coverage
+    program: bedtools
+    task: coverage
+    annotation: Homo_sapiens.GRCh37.68.gtf
+
+  jellyfish_5mer:
+    name: jellyfish_5mer
+    program: jellyfish
+    task: count
+    options:
+      - [--mer-len, 5]
+      - [--counter-len, 3]
+      - [--size, 10000000]
+      - [--threads, 8]
+
+  jellyfish_6mer:
+    name: jellyfish_6mer
+    program: jellyfish
+    task: count
+    options:
+      - [--mer-len, 6]
+      - [--counter-len, 3]
+      - [--size, 10000000]
+      - [--threads, 8]
+
+legacy:
+  [fastqc, trim, tagdust, fastqc, count_ends, tophat]
+
+run:
+  [fastqc, trim, tagdust, fastqc, count_ends, novoalign, new_coverage]

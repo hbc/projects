@@ -1,0 +1,40 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 6
+  timeout: 10000
+  delay: 10
+
+dir:
+  input_dir: data/aligned
+  results: results
+  doc: doc
+  ref: ref
+
+log_dir: log
+
+groups:
+  positive: [miR-34]
+  negative: [control]
+  test: [let-7, miR-522]
+
+stage:
+  macs:
+    name: macs
+    program: macs
+    options:
+      - [--format, BAM]
+      - [--gsize, hs]
+      - [--pvalue, 0.000001]
+      - [--mfold, "10,30"]
+
+stage:
+  overlap:
+    name: overlap
+    program: multiIntersectBed
+    options:
+      - [-cluster]
+      - [-header]
+
+run:
+  [macs]
