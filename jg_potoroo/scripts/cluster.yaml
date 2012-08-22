@@ -1,0 +1,7 @@
+---
+cluster: 
+  name: odyssey
+  profile: lsf
+  cores: 8
+  delay: 10
+  timeout: 1200

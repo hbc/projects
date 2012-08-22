@@ -1,0 +1,45 @@
+dir:
+  work: tmp
+  ref: ref
+  results: results
+
+log_dir: log
+
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 1
+
+query: results/oases_51_99/oases_51_57Merged/transcripts.filt.fa
+
+min_identity:
+  - 0
+  - 25
+  - 50
+
+refs:
+  - name: opossum
+    ensembl_name: mdomestica_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/monodelphis_domestica/cdna/Monodelphis_domestica.BROADO5.67.cdna.all.fa.gz
+    file: ref/Monodelphis_domestica.BROADO5.67.cdna.all.fa
+
+  - name: mouse
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/mus_musculus/cdna/Mus_musculus.NCBIM37.67.cdna.all.fa.gz
+    file: ref/Mus_musculus.NCBIM37.67.cdna.all.fa
+
+  - name: human
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh37.67.cdna.all.fa.gz
+    file: ref/Homo_sapiens.GRCh37.67.cdna.all.fa
+
+  - name: taz
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/sarcophilus_harrisii/cdna/Sarcophilus_harrisii.DEVIL7.0.67.cdna.all.fa.gz
+    file: ref/Sarcophilus_harrisii.DEVIL7.0.67.cdna.all.fa
+
+
+stage:
+  blastn:
+    name: blastn
+    program: blastn
+
+run:
+  [blastn]

@@ -1,0 +1,23 @@
+bpipe.Runner	INFO	|11:16:05 Starting 
+bpipe.Config	INFO	|11:16:05 Reading Bpipe configuration from /n/scratch00/hsph/projects/js_trinity/src/newbpipe/bpipe.config 
+bpipe.Config	INFO	|11:16:05 Merging local config file 
+bpipe.Config	INFO	|11:16:05 Default executor is Lsf 
+bpipe.ToolDatabase	INFO	|11:16:05 Loading tool database from user configuration 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool samtools 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool bwa 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool bowtie 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool bowtie2 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool GenomeAnalysisTK 
+bpipe.Tool	INFO	|11:16:05 Configured meta data about tool ls 
+bpipe.Pipeline	INFO	|11:16:05 Evaluating library file /n/home05/kirchner/hsph_scratch/projects/js_trinity/src/newbpipe/potoroo.groovy 
+bpipe.Pipeline	SEVERE	|11:16:06 Failed to evaluate script /n/home05/kirchner/hsph_scratch/projects/js_trinity/src/newbpipe/potoroo.groovy: groovy.lang.MissingPropertyException: No such property: fastqc for class: Script1 
+bpipe.Pipeline	INFO	|11:16:06 Loaded external reference: BPIPE_NO_EXTERNAL_STAGES 
+bpipe.Pipeline	INFO	|11:16:06 Loaded external reference: PROJDIR 
+bpipe.Pipeline	INFO	|11:16:06 External reference PROJDIR is overridden by local reference 
+bpipe.Pipeline	INFO	|11:16:06 Loaded external reference: TMPDIR 
+bpipe.Pipeline	INFO	|11:16:06 External reference TMPDIR is overridden by local reference 
+bpipe.Pipeline	INFO	|11:16:06 Loaded external reference: PICARD 
+bpipe.Pipeline	INFO	|11:16:06 External reference PICARD is overridden by local reference 
+bpipe.Pipeline	INFO	|11:16:06 Loaded external reference: KHMER 
+bpipe.Pipeline	INFO	|11:16:06 External reference KHMER is overridden by local reference 
+bpipe.Runner	INFO	|11:16:06 Deleting job file /n/home05/kirchner/.bpipedb/jobs/12494 

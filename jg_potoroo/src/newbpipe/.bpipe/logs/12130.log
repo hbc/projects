@@ -1,0 +1,7 @@
+org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:
+script_from_command_line: 24: unexpected token: : @ line 24, column 27.
+       samsort.using(optargs=: "SORT_ORDER=queryname TMP_DIR=$TMPDIR") +
+                             ^
+
+1 error
+

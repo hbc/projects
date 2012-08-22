@@ -1,0 +1,19 @@
+log_dir: log
+
+dir:
+  work: tmp
+  ref: ref
+  
+cdna_reads: results/oases_51_99/oases_51_57Merged/transcripts.fa
+
+ref:
+  - name: opossum
+    ensembl_name: mdomestica_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/monodelphis_domestica/cdna/Monodelphis_domestica.BROADO5.67.cdna.all.fa.gz
+    file: ref/Monodelphis_domestica.BROADO5.67.cdna.all.fa
+
+algorithm:
+  cores: 4
+  min_vec_bases: 50
+  min_stat_size: 250
+  no_hit_tl: .95

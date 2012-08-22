@@ -1,0 +1,17 @@
+WARN: Error evaluating script /n/home05/kirchner/hsph_scratch/projects/js_trinity/src/newbpipe/potoroo.groovy: No such property: fastqc for class: Script1
+Caught: groovy.lang.MissingPropertyException: No such property: fastqc for class: script_from_command_line
+groovy.lang.MissingPropertyException: No such property: fastqc for class: script_from_command_line
+	at script_from_command_line$_run_closure1.doCall(script_from_command_line:7)
+	at script_from_command_line$_run_closure1.doCall(script_from_command_line)
+	at bpipe.Pipeline$_execute_closure2_closure13.doCall(Pipeline.groovy:329)
+	at bpipe.Pipeline.withCurrentUnderConstructionPipeline(Pipeline.groovy:172)
+	at bpipe.Pipeline$withCurrentUnderConstructionPipeline.call(Unknown Source)
+	at bpipe.Pipeline$_execute_closure2.doCall(Pipeline.groovy:328)
+	at bpipe.Pipeline$_execute_closure2.doCall(Pipeline.groovy)
+	at bpipe.Pipeline.execute(Pipeline.groovy:325)
+	at bpipe.Pipeline.this$2$execute(Pipeline.groovy)
+	at bpipe.Pipeline$this$2$execute.call(Unknown Source)
+	at bpipe.Pipeline$this$2$execute.call(Unknown Source)
+	at bpipe.Pipeline.segment(Pipeline.groovy:205)
+	at script_from_command_line.run(script_from_command_line:6)
+	at bpipe.Runner.main(Runner.groovy:203)
