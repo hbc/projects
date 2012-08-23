@@ -34,8 +34,19 @@ def main(config_file):
                                  [config] * nfiles,
                                  [None] * nfiles,
                                  [stage] * nfiles)
+            # just use the peak files going forward
+            peak_files = [x[0] for x in out_files]
+            curr_files = peak_files
 
-            logger.info(out_files)
+        if stage == "intersect":
+            """ 1) loop over the ids in the negative group
+            """ for each one pick out the files that match it
+            """ combine them into one file
+            """ output it as the union
+            """ 2) loop over the ids in the positive and test group
+            """ find intersections of the ones that match the same id:
+            """ intersectBed -wao -bed -f fraction -r -a bed1 -b -bed2
+            """ might have to try a range of f
 
     stop_cluster()
 
