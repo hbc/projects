@@ -4,6 +4,7 @@ from rkinf.log import setup_logging
 from rkinf.toolbox import macs
 import glob
 import os
+import sys
 
 
 def main(config_file):
@@ -13,9 +14,9 @@ def main(config_file):
     setup_logging(config)
     from rkinf.log import logger
     start_cluster(config)
-
     from rkinf.cluster import view
-    input_dir = config["input_dir"]
+
+    input_dir = config["dir"]["input_dir"]
     results_dir = config["dir"]["results"]
     input_files = glob.glob(os.path.join(input_dir, "*.bam"))
 
@@ -29,10 +30,15 @@ def main(config_file):
         # file
         if stage == "macs":
             nfiles = len(curr_files)
-            out_files = view.map(macs.run, curr_files, [config] * nfiles,
+            out_files = view.map(macs.run_with_config, curr_files,
+                                 [config] * nfiles,
                                  [None] * nfiles,
                                  [stage] * nfiles)
 
             logger.info(out_files)
 
     stop_cluster()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1])

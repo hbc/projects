@@ -6,7 +6,7 @@ cluster:
   delay: 10
 
 dir:
-  input_dir: data/aligned
+  input_dir: data/novoalign
   results: results
   doc: doc
   ref: ref
@@ -28,7 +28,6 @@ stage:
       - [--pvalue, 0.000001]
       - [--mfold, "10,30"]
 
-stage:
   overlap:
     name: overlap
     program: multiIntersectBed
