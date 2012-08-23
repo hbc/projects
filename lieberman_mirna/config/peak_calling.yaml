@@ -6,7 +6,7 @@ cluster:
   delay: 10
 
 dir:
-  input_dir: data/novoalign
+  input_dir: data/IMPACT_v1/novoalign
   results: results
   doc: doc
   ref: ref

@@ -29,14 +29,14 @@ program:
   picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
 
 input:
-  - data/1-let-7-1_R_2012_06_12_15_22_56_user_ARC-330_Auto_ARC-330_598.fastq
-  - data/2-miR-522-1_R_2012_06_12_13_36_19_user_KRI-271_Auto_KRI-271_597.fastq
-  - data/3-miR-34-1_R_2012_06_12_17_48_23_user_ARC-331_Auto_ARC-331_600.fastq
-  - data/4-control-2_R_2012_06_14_14_46_40_user_ARC-335_Auto_ARC-335_608.fastq
-  - data/5-let-7-2-R_2012_06_19_14_05_43_user_ARC-344_reaanalysis.fastq
-  - data/6-miR-522-2-R_2012_06_11_16_42_48_user_KRI-269_Auto_KRI-269_593.fastq
-  - data/7-miR-34-2_R_2012_06_14_11_32_40_user_ARC-334_Auto_ARC-334_606.fastq
-  - data/8-control-2_R_2012_06_14_09_46_28_user_KRI-275_Auto_KRI-275_605.fastq
+  - data/IMPACT_v1/1-let-7-1_R_2012_06_12_15_22_56_user_ARC-330_Auto_ARC-330_598.fastq
+  - data/IMPACT_v1/2-miR-522-1_R_2012_06_12_13_36_19_user_KRI-271_Auto_KRI-271_597.fastq
+  - data/IMPACT_v1/3-miR-34-1_R_2012_06_12_17_48_23_user_ARC-331_Auto_ARC-331_600.fastq
+  - data/IMPACT_v1/4-control-2_R_2012_06_14_14_46_40_user_ARC-335_Auto_ARC-335_608.fastq
+  - data/IMPACT_v1/5-let-7-2-R_2012_06_19_14_05_43_user_ARC-344_reaanalysis.fastq
+  - data/IMPACT_v1/6-miR-522-2-R_2012_06_11_16_42_48_user_KRI-269_Auto_KRI-269_593.fastq
+  - data/IMPACT_v1/7-miR-34-2_R_2012_06_14_11_32_40_user_ARC-334_Auto_ARC-334_606.fastq
+  - data/IMPACT_v1/8-control-2_R_2012_06_14_09_46_28_user_KRI-275_Auto_KRI-275_605.fastq
 
 groups:
   positive: [miR-34]
