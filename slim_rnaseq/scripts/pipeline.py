@@ -6,7 +6,15 @@ from bcbio.utils import safe_makedir
 import csv
 import os
 from rkinf.utils import _download_ref, append_stem
-from rkinf.toolbox import fastqc, sickle
+from rkinf.toolbox import fastqc, sickle, cutadapt_tool, tophat, htseq_count
+
+
+def _get_stage_config(config, stage):
+    return config["stage"][stage]
+
+
+def _get_program(config, stage):
+    return config["stage"][stage]["program"]
 
 
 def _run_fastqc(curr_files, config):
@@ -79,13 +87,39 @@ def main(config_file):
     for stage in config["run"]:
         if stage == "download_encode":
             curr_files = _download_encode(config["encode_file"], config)
-        elif stage == "fastqc":
+        if stage == "fastqc":
             _run_fastqc(curr_files, config)
-        elif stage == "trim":
+        if stage == "trim":
             _run_trim(curr_files, config)
-        elif stage == "align":
-            _run_tophat(curr_files, config)
+        if stage == "cutadapt":
+            nfiles = len(curr_files)
+            logger.info("Running %s on %s" % (stage, str(curr_files)))
+            cutadapt_config = _get_stage_config(config, stage)
+            cutadapt_outputs = view.map(cutadapt_tool.run,
+                                        curr_files,
+                                        [cutadapt_config] * nfiles,
+                                        [config] * nfiles)
+            curr_files = cutadapt_outputs
+        if stage == "tophat":
+            nfiles = len(curr_files)
+            tophat_config = _get_stage_config(config, stage)
+            tophat_outputs = view.map(tophat.run_with_config, curr_files,
+                                      [None] * nfiles,
+                                      [config["ref"]] * nfiles,
+                                      ["tophat"] * nfiles,
+                                      [config] * nfiles)
+            curr_files = tophat_outputs
 
+        if stage == "htseq-count":
+            nfiles = len(curr_files)
+            htseq_config = _get_stage_config(config, stage)
+            htseq_outputs = view.map(htseq_count.run_with_config,
+                                     curr_files
+                                     [config] * nfiles,
+                                     [stage] * nfiles)
+
+            combined_out = htseq_count.combine_counts(htseq_outputs,
+                                                      "combined.counts")
 
     cell_types = _get_cell_types(config["encode_file"])
     logger.info("files: %s" % (curr_files))

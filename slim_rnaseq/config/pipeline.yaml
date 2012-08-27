@@ -14,9 +14,13 @@ dir:
 log_dir: log
 
 encode_file: data/Encode_CD14_CD20_CD34_SKMC_HESC.txt
+gtf: /n/hsphS10/hsphfs1/chb/projects/lieberman_mirna/ref/Homo_sapiens.GRCh37.68.gtf
+ref: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/bowtie/hg19
 
 program:
   fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
 
 stage:
   fastqc:
@@ -25,10 +29,27 @@ stage:
     options:
       - [--noextract]
 
-  trim:
-    name: trim
-    program: sickle
-    min_length: 20
+  cutadapt:
+    program: cutadapt
+    platform: [illumina, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--minimum-length, 20]
+
+  tophat:
+    name: tophat
+    program: tophat
+    quality_format: illumina
+    max_errors: 2
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
 
 run:
-  [download_encode]
+  [download_encode, fastqc, cutadapt, tophat, htseq-count]
