@@ -89,6 +89,8 @@ stage:
       - [-H]
       - [-r, all]
       - [-e, 10]
+      - [-g, 15]
+      - [-x, 4]
 
   count_ends:
     name: count_ends
