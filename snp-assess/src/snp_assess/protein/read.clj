@@ -71,19 +71,19 @@
 (defn calc-aa-from-reads
   "Prepare amino acid changes by position based on raw read data."
   [bam-file call-file ref-file prot-map & {:keys [count-file]}]
-  (index-bam bam-file)
+  
   (SAMFileReader/setDefaultValidationStringency SAMFileReader$ValidationStringency/LENIENT)
   (let [count-map (get-read-counts count-file)
         variant-map (get-variants-by-pos call-file ref-file)]
-    (with-open [bam-rdr (SAMFileReader. (file bam-file))
+    (with-open [bam-rdr (SAMFileReader. (file bam-file) (file (index-bam bam-file)))
                 bam-iter (.iterator bam-rdr)]
       (reduce (fn [coll x]
-                (let [cnts (get coll (:position x {}))]
+                (let [counts (get coll (:position x) {})]
                   (assoc coll (:position x)
-                         (assoc cnts (:aa x)
-                                (+ (:count x) (get cnts (:aa x) 0))))))
+                         (assoc counts (:aa x)
+                                (+ (:count x) (get counts (:aa x) 0))))))
               {} (flatten (map #(aa-on-read % prot-map count-map variant-map)
-                               (iterator-seq bam-iter)))))))
+                               (take 10 (iterator-seq bam-iter))))))))
 
 (defn- add-aa-to-vc
   "Add amino acid change information to the current variant context."
@@ -92,15 +92,17 @@
             (when-let [changes (get change-map i)]
               (when (> (count changes) 1)
                 (let [total (apply + (vals changes))]
-                  (->> (map (fn [[x n]] {:aa x :freq (/ n total)}) changes)
-                       (sort-by :freq >)
-                       rest)))))]
-    (if-let [freqs (get-change-freqs (dec (:start vc)))]
+                  {:freqs (->> (map (fn [[x n]] {:aa x :freq (/ n total)}) changes)
+                               (sort-by :freq >)
+                               rest)
+                   :total total}))))]
+    (if-let [changes (get-change-freqs (dec (:start vc)))]
       (-> (VariantContextBuilder. (:vc vc))
           (.attributes (-> (:attributes vc)
-                           (assoc "AA_CHANGE" (string/join "," (map :aa freqs)))
+                           (assoc "AA_CHANGE" (string/join "," (map :aa (:freqs changes))))
                            (assoc "AA_AF" (string/join "," (map #(format "%.2f" (* 100.0 (:freq %)))
-                                                                freqs)))))
+                                                                (:freqs changes))))
+                           (assoc "AA_DP" (:total changes))))
           .make)
       (:vc vc))))
 
@@ -112,7 +114,9 @@
                                           "Amino acid change caused by minority variants"))
     (.addMetaDataLine (VCFInfoHeaderLine. "AA_AF" VCFHeaderLineCount/UNBOUNDED
                                           VCFHeaderLineType/Float
-                                          "Amino acid change frequencies"))))
+                                          "Amino acid change frequencies"))
+    (.addMetaDataLine (VCFInfoHeaderLine. "AA_DP" 1 VCFHeaderLineType/Integer
+                                          "Number of reads contributing to amino acid calls"))))
 
 (defn annotate-calls-w-aa
   "Add grouped amino acid calls to a VCF file of call information."
