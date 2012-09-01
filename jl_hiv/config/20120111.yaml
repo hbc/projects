@@ -41,8 +41,8 @@ algorithm:
 program:
   barcode: barcode_sort_trim.py
   uniquify: fastq-unique-bloom.py
-  picard: /n/home05/bchapman/mylocal/share/java/picard
-  gatk: /n/home05/bchapman/mylocal/share/java/gatk
+  picard: /n/HSPH/local/share/java/picard
+  gatk: /n/HSPH/local/share/java/gatk
 
 dir:
   tmp: tmp
