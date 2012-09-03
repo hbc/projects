@@ -23,6 +23,7 @@ params:
   kmer-range: [0.00001, 0.1]
   qual-range: [2.0, 42.0]
   map-score-range: [0.0, 250.0]
+  kmer-size: 13
   #min-score: 1.2
   min-freq: 0.00065
   #min-freq: 0.0031

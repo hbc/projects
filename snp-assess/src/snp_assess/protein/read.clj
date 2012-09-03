@@ -25,7 +25,15 @@
        (for [i (range (.getLength block))]
          {:contig (.getReferenceName rec)
           :ref-i (+ ref-start i)
+          :read-i (+ read-start i)
           :read-seq (str (nth map-seq (+ read-start i)))})))))
+
+(defn- at-read-end?
+  "Identify bases located within kmer distance of front and end of reads"
+  [map-seq kmer-size x]
+  (let [half-kmer (/ (dec kmer-size) 2)]
+    (or (< (:read-i x) half-kmer)
+        (>= (:read-i x) (- (count map-seq) half-kmer)))))
 
 (defn- reformat-variant-to-change
   "Convert variant position information to format for aa calculation.
@@ -44,7 +52,7 @@
 
 (defn- aa-on-read
   "Retrieve amino acid changes predicted by current read."
-  [rec prot-map count-map variant-map]
+  [rec prot-map count-map variant-map kmer-size]
   (let [map-seq (.getReadString rec) 
         orig-seq (if (.getReadNegativeStrandFlag rec)
                    (-> (DNASequence. map-seq)
@@ -53,6 +61,7 @@
                    map-seq)
         cnt (get count-map orig-seq 1)]
     (->> (mapped-reads-by-pos rec map-seq)
+         (remove (partial at-read-end? map-seq kmer-size))
          (map (partial reformat-variant-to-change variant-map))
          (remove nil?)
          (group-by #(:aa-pos (get prot-map (:position %))))
@@ -70,7 +79,7 @@
 
 (defn calc-aa-from-reads
   "Prepare amino acid changes by position based on raw read data."
-  [bam-file call-file ref-file prot-map & {:keys [count-file]}]
+  [bam-file call-file ref-file prot-map kmer-size & {:keys [count-file]}]
   
   (SAMFileReader/setDefaultValidationStringency SAMFileReader$ValidationStringency/LENIENT)
   (let [count-map (get-read-counts count-file)
@@ -82,7 +91,7 @@
                   (assoc coll (:position x)
                          (assoc counts (:aa x)
                                 (+ (:count x) (get counts (:aa x) 0))))))
-              {} (flatten (map #(aa-on-read % prot-map count-map variant-map)
+              {} (flatten (map #(aa-on-read % prot-map count-map variant-map kmer-size)
                                (iterator-seq bam-iter)))))))
 
 (defn- add-aa-to-vc
@@ -120,10 +129,10 @@
 
 (defn annotate-calls-w-aa
   "Add grouped amino acid calls to a VCF file of call information."
-  [bam-file call-file ref-file prot-map & {:keys [count-file]}]
+  [bam-file call-file ref-file prot-map kmer-size & {:keys [count-file]}]
   (let [out-file (itx/add-file-part call-file "protein")]
     (when (itx/needs-run? out-file)
-      (let [change-map (calc-aa-from-reads bam-file call-file ref-file prot-map
+      (let [change-map (calc-aa-from-reads bam-file call-file ref-file prot-map kmer-size
                                            :count-file count-file)]
         (with-open [vcf-iter (get-vcf-iterator call-file ref-file)]
           (write-vcf-w-template call-file {:out out-file}

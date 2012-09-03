@@ -53,4 +53,4 @@
       (let [ref-file (-> run-config :ref :files)
             mv-call-file (write-calls-as-vcf (:files x) ref-file c config)]
         (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
-                             :count-file (:count x))))))
+                             (:kmer-size config) :count-file (:count x))))))
