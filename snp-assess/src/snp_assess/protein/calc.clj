@@ -13,6 +13,7 @@
   [codon]
   (let [tx-engine (-> (TranscriptionEngine$Builder.)
                       (.trimStop false)
+                      (.initMet false)
                       .build)]
     (str (.translate tx-engine (DNASequence. (join codon))))))
 
