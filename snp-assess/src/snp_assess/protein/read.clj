@@ -83,7 +83,7 @@
                          (assoc counts (:aa x)
                                 (+ (:count x) (get counts (:aa x) 0))))))
               {} (flatten (map #(aa-on-read % prot-map count-map variant-map)
-                               (take 10 (iterator-seq bam-iter))))))))
+                               (iterator-seq bam-iter)))))))
 
 (defn- add-aa-to-vc
   "Add amino acid change information to the current variant context."

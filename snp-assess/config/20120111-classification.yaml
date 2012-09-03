@@ -24,13 +24,13 @@ params:
   qual-range: [2.0, 42.0]
   map-score-range: [0.0, 250.0]
   #min-score: 1.2
-  min-freq: 0.0008
+  min-freq: 0.00065
   #min-freq: 0.0031
   allowed-freq-diff: 5.0
   verbose: false
   classification:
     max-pos-pct: 10.0
-    max-neg-pct: 1.0
+    max-neg-pct: 2.0
     algorithm: random-forest
     #algorithm: linear-regression
     #naive-min-score: 0.7
