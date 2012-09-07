@@ -9,8 +9,10 @@
 (defn background-freqs-at-pos
   "Return background frequencies at this constant position, with downsampling."
   [reads passes? config run-config]
+  (println (first reads))
   (mapcat (fn [downsample]
-            (->> (call-vrns-at-pos (downsample-at-pos downsample reads) passes? config)
+            (->> (call-vrns-at-pos (downsample-at-pos downsample reads) passes?
+                                   (assoc config :min-freq 0.0))
                  :calls
                  (map second)
                  (sort >)
@@ -27,7 +29,7 @@
                               (map first)
                               (map second)))]
     (with-open [rdr (reader data-file)]
-      (let [probs [0.9 0.925 0.95 0.975 0.99 0.999 0.9999 1.0]
+      (let [probs [0.8 0.85 0.9 0.925 0.95 0.975 0.99 0.999 0.9999 0.99999 1.0]
             backgrounds (->> (raw-reads-by-pos rdr config)
                              (filter #(contains? constant-is (:pos (first %))))
                              (mapcat #(background-freqs-at-pos % passes? config run-config)))]
