@@ -3,10 +3,10 @@
    Writes output as VCF file with information on allele frequencies, read
    depth and variant effects."
   (:use [clojure.java.io]
-        [snp-assess.core :only [load-config load-run-config]]
-        [snp-assess.classify :only [pipeline-prep-classifier classifier-checker
+        [snp-assess.classify :only [classifier-checker
                                     raw-reads-by-pos call-vrns-at-pos
-                                    add-classification-info]]
+                                    add-classification-info
+                                    prep-config-files prep-classifier-info]]
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
         [snp-assess.protein.calc :only [prep-protein-map]]
         [snp-assess.protein.read :only [annotate-calls-w-aa]])
@@ -38,19 +38,11 @@
     out-file))
 
 (defn -main [run-config-file param-config-file work-dir]
-  (let [run-config (load-run-config run-config-file work-dir)
-        config (-> (load-config param-config-file)
-                   (assoc :verbose true)
-                   add-classification-info)
-        classify-exp (first (filter :classify (:experiments run-config)))
-        c (pipeline-prep-classifier (:files classify-exp)
-                                    (get-in run-config [:ref :control])
-                                    (get-in run-config [:ref :files])
-                                    work-dir
-                                    config :evaluate? (:evaluate classify-exp))
+  (let [{:keys [config run-config]} (prep-config-files run-config-file param-config-file work-dir)
+        {:keys [c ref-file pos-file data-file]} (prep-classifier-info run-config config work-dir)
         prot-map (prep-protein-map (:ref run-config))]
     (doseq [x (:experiments run-config)]
       (let [ref-file (-> run-config :ref :files)
             mv-call-file (write-calls-as-vcf (:files x) ref-file c config)]
         (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
-                             :count-file (:count x))))))
+                             (:kmer-size config) :count-file (:count x))))))

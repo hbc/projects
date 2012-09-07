@@ -321,18 +321,30 @@
         (print-vrn-summary a)))
     c))
 
-(defn -main [run-config-file param-config-file work-dir]
-  (let [run-config (load-run-config run-config-file work-dir)
-        config (-> (load-config param-config-file)
+(defn prep-config-files
+  [run-config-file param-config-file work-dir]
+  {:run-config (load-run-config run-config-file work-dir)
+   :config (-> (load-config param-config-file)
                    (assoc :verbose true)
-                   add-classification-info)
-        roc-classes [:true-positive :false-positive :true-negative :false-negative]
-        classify-exp (first (filter :classify (:experiments run-config)))
+                   add-classification-info)})
+
+(defn prep-classifier-info
+  [run-config config work-dir]
+  (let [classify-exp (first (filter :classify (:experiments run-config)))
         data-file (:files classify-exp)
         pos-file (get-in run-config [:ref :control])
-        ref-file (get-in run-config [:ref :files])
-        out-file (file work-dir "classifier" "downsample.csv")
-        c (prepare-classifier data-file pos-file ref-file work-dir config)]
+        ref-file (get-in run-config [:ref :files])]
+    {:c (prepare-classifier data-file pos-file ref-file work-dir config
+                            :evaluate? (:evaluate classify-exp))
+     :ref-file ref-file
+     :pos-file pos-file
+     :data-file data-file}))
+
+(defn -main [run-config-file param-config-file work-dir]
+  (let [{:keys [config run-config]} (prep-config-files run-config-file param-config-file work-dir)
+        {:keys [c ref-file pos-file data-file]} (prep-classifier-info run-config config work-dir)
+        roc-classes [:true-positive :false-positive :true-negative :false-negative]
+        out-file (file work-dir "classifier" "downsample.csv")]
     (with-open [wtr (writer out-file)]
       (.write wtr (str (string/join "," (concat ["downsample" "rep"] (map name roc-classes)))
                        "\n"))

@@ -132,7 +132,7 @@ def plot_coverage(align_bam, name, out_file):
     data = {"position": [],
             "count": []}
     with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
-        for col in work_bam.pileup():
+        for col in work_bam.pileup(stepper="all", max_depth=1000000000):
             space = work_bam.getrname(col.tid)
             data["position"].append(col.pos)
             data["count"].append(col.n)
@@ -380,7 +380,7 @@ def positional_kmers(in_bam, params):
     with closing(pysam.Samfile(in_bam, 'rb')) as work_bam:
         #for col in (p for p in work_bam.pileup() if p.pos > 862 and p.pos < 891):
         #for col in (p for p in work_bam.pileup() if p.pos > 3280 and p.pos < 3310):
-        for col in work_bam.pileup():
+        for col in work_bam.pileup(stepper="all", max_depth=1000000000):
             space = work_bam.getrname(col.tid)
             kmers = filter(lambda x: x is not None,
                            [_read_surround_region(r, params, qual_map)

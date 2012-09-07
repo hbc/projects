@@ -29,6 +29,7 @@
             "snp-classify-eval" ["run" "-m" "snp-assess.classify-eval"]
             "snp-classify-read" ["run" "-m" "snp-assess.classify-read"]
             "snp-call" ["run" "-m" "snp-assess.call"]
+            "snp-lod" ["run" "-m" "snp-assess.detection"]
             "snp-reference" ["run" "-m" "snp-assess.reference"]}
   :jvm-opts ["-Xmx2g"]
   :aot [snp-assess.core])
