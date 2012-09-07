@@ -1,6 +1,6 @@
 cluster:
   name: odyssey
-  profile: lsf
+  profile: lsf2
   cores: 8
   timeout: 10000
   delay: 10
@@ -14,8 +14,12 @@ dir:
 log_dir: log
 
 encode_file: data/Encode_CD14_CD20_CD34_SKMC_HESC.txt
-gtf: /n/hsphS10/hsphfs1/chb/projects/lieberman_mirna/ref/Homo_sapiens.GRCh37.68.gtf
 ref: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/bowtie/hg19
+gtf: /n/home05/kirchner/hsph_scratch/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/UCSC/hg19/Annotation/Genes/genes.gtf
+
+annotation:
+  name: hg19
+  file: /n/home05/kirchner/hsph_scratch/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/UCSC/hg19/Annotation/Genes/genes.gtf
 
 program:
   fastqc: fastqc
@@ -35,6 +39,7 @@ stage:
     options:
       - [--error-rate, 0.1]
       - [--minimum-length, 20]
+      - [--quality-cutoff, 20]
 
   tophat:
     name: tophat
@@ -52,4 +57,4 @@ stage:
       - [--mode=union]
 
 run:
-  [download_encode, fastqc, cutadapt, tophat, htseq-count]
+  [fastqc, cutadapt, tophat, htseq-count]
