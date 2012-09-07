@@ -6,6 +6,7 @@ cluster:
 dir:
   data: data/whole_transcript/
   results: results/whole_transcript
+  ref: ref
 
 input:
   - control_rep1.fastq
@@ -27,8 +28,11 @@ genome:
 
 annotation:
   name: human
-  file: ref/hg19.gtf
+  file: ref/Homo_sapiens.GRCh37.68.gtf
   url: ftp://ftp.ensembl.org/pub/release-68/gtf/homo_sapiens/Homo_sapiens.GRCh37.68.gtf.gz
+
+program:
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
 
 stage:
   fastqc:
@@ -77,5 +81,14 @@ stage:
   threshold:
     value: auto
 
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: human
+      file: ref/refFlat.txt
+      url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
+    ribo: meta/rrna_ucsc_new.bed
+
 run:
-  [fastqc, cutadapt, novoalign, htseq-count, threshold]
+  [fastqc, cutadapt, novoalign, coverage, htseq-count, threshold]
