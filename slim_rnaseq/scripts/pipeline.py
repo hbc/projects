@@ -7,6 +7,8 @@ import csv
 import os
 from rkinf.utils import _download_ref, append_stem
 from rkinf.toolbox import fastqc, sickle, cutadapt_tool, tophat, htseq_count
+import glob
+from itertools import product
 
 
 def _get_stage_config(config, stage):
@@ -72,6 +74,10 @@ def _get_cell_types(input_file):
     return cell_types
 
 
+def _emit_stage_message(stage, curr_files):
+    logger.info("Running %s on %s" % (stage, curr_files))
+
+
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
@@ -84,47 +90,56 @@ def main(config_file):
 
     curr_files = config["encode_file"]
 
-    for stage in config["run"]:
-        if stage == "download_encode":
-            curr_files = _download_encode(config["encode_file"], config)
-        if stage == "fastqc":
-            _run_fastqc(curr_files, config)
-        if stage == "trim":
-            _run_trim(curr_files, config)
-        if stage == "cutadapt":
-            nfiles = len(curr_files)
-            logger.info("Running %s on %s" % (stage, str(curr_files)))
-            cutadapt_config = _get_stage_config(config, stage)
-            cutadapt_outputs = view.map(cutadapt_tool.run,
-                                        curr_files,
-                                        [cutadapt_config] * nfiles,
-                                        [config] * nfiles)
-            curr_files = cutadapt_outputs
-        if stage == "tophat":
-            nfiles = len(curr_files)
-            tophat_config = _get_stage_config(config, stage)
-            tophat_outputs = view.map(tophat.run_with_config, curr_files,
-                                      [None] * nfiles,
-                                      [config["ref"]] * nfiles,
-                                      ["tophat"] * nfiles,
-                                      [config] * nfiles)
-            curr_files = tophat_outputs
+    results_dir = config["dir"].get("results", "results")
 
-        if stage == "htseq-count":
-            nfiles = len(curr_files)
-            htseq_config = _get_stage_config(config, stage)
-            htseq_outputs = view.map(htseq_count.run_with_config,
-                                     curr_files
-                                     [config] * nfiles,
-                                     [stage] * nfiles)
-            # combine the counts for each type
+    for cell_type in config["cell_types"]:
+        cell_type_dir = os.path.join(results_dir, cell_type)
+        safe_makedir(cell_type_dir)
+        config["dir"]["results"] = cell_type_dir
+        in_files = glob.glob(os.path.join(config["dir"]["data"],
+                                          cell_type, "*"))
+        curr_files = in_files
+        for stage in config["run"]:
+            if stage == "fastqc":
+                _emit_stage_message(stage, curr_files)
+                fastqc_config = _get_stage_config(config, stage)
+                fastqc_args = zip(*product(curr_files, [fastqc_config],
+                                           [config]))
+                view.map(fastqc.run, *fastqc_args)
 
-            combined_out = htseq_count.combine_counts(htseq_outputs, None,
-                                                      "combined.counts")
+            if stage == "cutadapt":
+                _emit_stage_message(stage, curr_files)
+                cutadapt_config = _get_stage_config(config, stage)
+                cutadapt_args = zip(*product(curr_files, [cutadapt_config],
+                                             [config]))
+                cutadapt_outputs = view.map(cutadapt_tool.run, *cutadapt_args)
+                curr_files = cutadapt_outputs
 
-    cell_types = _get_cell_types(config["encode_file"])
-    logger.info("files: %s" % (curr_files))
-    logger.info("types: %s" % (cell_types))
+            if stage == "tophat":
+                _emit_stage_message(stage, curr_files)
+                tophat_config = _get_stage_config(config, stage)
+                tophat_args = zip(*product(curr_files, [None], [config["ref"]],
+                                           ["tophat"], [config]))
+                tophat_outputs = view.map(tophat.run_with_config, *tophat_args)
+                curr_files = tophat_outputs
+
+            if stage == "htseq-count":
+                _emit_stage_message(stage, curr_files)
+                htseq_config = _get_stage_config(config, stage)
+                htseq_args = zip(*product(curr_files, [config], [stage]))
+                htseq_outputs = view.map(htseq_count.run_with_config,
+                                         *htseq_args)
+                column_names = in_files
+                out_file = os.path.join(config["dir"]["results"], stage,
+                                        cell_type + ".combined.counts")
+                combined_out = htseq_count.combine_counts(htseq_outputs,
+                                                          column_names,
+                                                          out_file)
+                rpkm = htseq_count.calculate_rpkm(combined.out,
+                                                  config["annotation"]["file"])
+                rpkm_file = os.path.join(config["dir"]["results"], stage,
+                                         cell_type + ".rpkm.txt")
+                rpkm.to_csv(rpkm_file, sep="\t")
 
     # end gracefully
     stop_cluster()

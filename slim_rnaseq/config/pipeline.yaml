@@ -14,6 +14,13 @@ dir:
 log_dir: log
 
 encode_file: data/Encode_CD14_CD20_CD34_SKMC_HESC.txt
+cell_types:
+  - cd14
+  - cd34
+  - cd20
+  - skmc
+  - h1hesc
+
 ref: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/bowtie/hg19
 gtf: /n/home05/kirchner/hsph_scratch/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/UCSC/hg19/Annotation/Genes/genes.gtf
 
