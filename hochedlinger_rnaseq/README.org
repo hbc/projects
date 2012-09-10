@@ -1,0 +1,2 @@
+* FastQC
+Data looks totally fine to me, about 40 million reads per sample.

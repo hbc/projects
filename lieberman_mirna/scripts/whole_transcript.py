@@ -2,10 +2,14 @@ import yaml
 from rkinf.cluster import start_cluster, stop_cluster
 from rkinf.log import setup_logging
 from rkinf.toolbox import (fastqc, cutadapt_tool, novoindex, novoalign,
-                           htseq_count)
+                           htseq_count, blastn)
 from bcbio.utils import safe_makedir
 import sys
 import os
+from bcbio.broad import BroadRunner, picardrun
+import itertools
+from rkinf.utils import remove_suffix, replace_suffix
+from rkinf import gtf
 
 MAX_READ_LENGTH = 10000
 
@@ -16,6 +20,11 @@ def _get_stage_config(config, stage):
 
 def _get_program(config, stage):
     return config["stage"][stage]["program"]
+
+
+def _get_short_names(input_files):
+    return [remove_suffix(os.path.basename(x)) for x in
+            input_files]
 
 
 def main(config_file):
@@ -63,6 +72,17 @@ def main(config_file):
                                          [db] * nfiles,
                                          [novoalign_config] * nfiles,
                                          [config] * nfiles)
+            picard = BroadRunner(config["program"]["picard"])
+            args = zip(*itertools.product([picard], novoalign_outputs))
+            # conver to bam
+            bamfiles = view.map(picardrun.picard_formatconverter,
+                                *args)
+            args = zip(*itertools.product([picard], bamfiles))
+            # sort bam
+            sorted_bf = view.map(picardrun.picard_sort, *args)
+            # index bam
+            args = zip(*itertools.product([picard], sorted_bf))
+            view.map(picardrun.picard_index, *args)
             curr_files = novoalign_outputs
 
         if stage == "htseq-count":
@@ -72,8 +92,37 @@ def main(config_file):
                                      curr_files,
                                      [config] * nfiles,
                                      [stage] * nfiles)
+            column_names = _get_short_names(input_files)
+            logger.info("Column names: %s" % (column_names))
+            out_file = os.path.join(config["dir"]["results"], stage,
+                                    "combined.counts")
             combined_out = htseq_count.combine_counts(htseq_outputs,
-                                                      "combined.counts")
+                                                      column_names,
+                                                      out_file)
+            rpkm = htseq_count.calculate_rpkm(combined_out,
+                                              config["annotation"]["file"])
+            rpkm_file = os.path.join(config["dir"]["results"], stage,
+                                     "rpkm.txt")
+            rpkm.to_csv(rpkm_file, sep="\t")
+
+        if stage == "coverage":
+            logger.info("Calculating RNASeq metrics on %s." % (curr_files))
+            nrun = len(curr_files)
+            ref = blastn.prepare_ref_file(config["stage"][stage]["ref"],
+                                          config)
+            ribo = config["stage"][stage]["ribo"]
+            picard = BroadRunner(config["program"]["picard"])
+            out_dir = os.path.join(results_dir, stage)
+            safe_makedir(out_dir)
+            out_files = [replace_suffix(os.path.basename(x),
+                                        "metrics") for x in curr_files]
+            out_files = [os.path.join(out_dir, x) for x in out_files]
+            out_files = view.map(picardrun.picard_rnaseq_metrics,
+                                 [picard] * nrun,
+                                 curr_files,
+                                 [ref] * nrun,
+                                 [ribo] * nrun,
+                                 out_files)
 
     stop_cluster()
 

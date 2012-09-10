@@ -117,8 +117,9 @@ def main(config_file):
                                      curr_files
                                      [config] * nfiles,
                                      [stage] * nfiles)
+            # combine the counts for each type
 
-            combined_out = htseq_count.combine_counts(htseq_outputs,
+            combined_out = htseq_count.combine_counts(htseq_outputs, None,
                                                       "combined.counts")
 
     cell_types = _get_cell_types(config["encode_file"])
