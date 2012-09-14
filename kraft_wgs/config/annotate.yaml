@@ -1,0 +1,22 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 8
+  timeout: 10000
+  delay: 10
+
+dir:
+  data: data
+  results: results
+  log: log
+
+# stuff needed for snpeff_effects
+program:
+  snpEff: path_to_snpeff_data_dir
+
+algorithm:
+  hybrid_target: whatever_this_is i think this is if you did exome capture
+
+# stuff needed for gemini, combine with above when ready
+program:
+  gemini: path_to_gemini
