@@ -1,0 +1,9 @@
+The scripts to run the de novo assembly stuff are in src in the bpipe
+and old_bpipe directories. These were done before we settled on a pipeline
+setup, so they are a bit of a mess. They will one day be ported over to the
+new pipeline. These won't be functional without some massaging and are there
+as legacy to keep track of which parameters we used for everything.
+
+The scripts to perform the blastn annotation use the new pipeline. Those
+are in the scripts subdirectory and are runnable assuming ipython, bcbio
+and rkinf is installed.
