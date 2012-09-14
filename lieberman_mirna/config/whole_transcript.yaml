@@ -90,5 +90,11 @@ stage:
       url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
     ribo: meta/rrna_ucsc_new.bed
 
+  deseq:
+    comparisons:
+      - [control, mir34a]
+      - [control, mir522]
+      - [control, let7]
+
 run:
-  [fastqc, cutadapt, novoalign, coverage, htseq-count, threshold]
+  [fastqc, cutadapt, novoalign, coverage, htseq-count, threshold, deseq]

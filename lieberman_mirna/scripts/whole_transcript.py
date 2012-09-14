@@ -2,17 +2,16 @@ import yaml
 from rkinf.cluster import start_cluster, stop_cluster
 from rkinf.log import setup_logging
 from rkinf.toolbox import (fastqc, cutadapt_tool, novoindex, novoalign,
-                           htseq_count, blastn)
+                           htseq_count, blastn, deseq, annotate)
 from bcbio.utils import safe_makedir
 import sys
 import os
 from bcbio.broad import BroadRunner, picardrun
 import itertools
 from rkinf.utils import remove_suffix, replace_suffix
-from rkinf import gtf
+
 
 MAX_READ_LENGTH = 10000
-
 
 def _get_stage_config(config, stage):
     return config["stage"][stage]
@@ -123,6 +122,40 @@ def main(config_file):
                                  [ref] * nrun,
                                  [ribo] * nrun,
                                  out_files)
+
+        if stage == "deseq":
+            conditions = [os.path.basename(x).split("_")[0] for x in
+                          input_files]
+            deseq_config = _get_stage_config(config, stage)
+            out_dir = os.path.join(results_dir, stage)
+            safe_makedir(out_dir)
+            for comparison in deseq_config["comparisons"]:
+                comparison_name = "_vs_".join(comparison)
+                out_dir = os.path.join(results_dir, stage, comparison_name)
+                safe_makedir(out_dir)
+                # get the of the conditons that match this comparison
+                indexes = [x for x, y in enumerate(conditions) if
+                           y in comparison]
+                # find the htseq_files to combine and combine them
+                htseq_files = [htseq_outputs[index] for index in indexes]
+                htseq_columns = [column_names[index] for index in indexes]
+                logger.info(htseq_files)
+                logger.info(htseq_columns)
+                out_file = os.path.join(out_dir,
+                                        comparison_name + ".counts.txt")
+                combined_out = htseq_count.combine_counts(htseq_files,
+                                                          htseq_columns,
+                                                          out_file)
+                deseq_conds = [conditions[index] for index in indexes]
+                deseq_out = os.path.join(out_dir,
+                                         comparison_name + ".deseq.txt")
+
+                view.map(deseq.run, [combined_out], [deseq_conds], [deseq_out])
+
+                annotated_file = view.map(annotate.annotate_table_with_biomart,
+                                          [deseq_out],
+                                          ["id"],
+                                          ["human"], block=False)
 
     stop_cluster()
 
