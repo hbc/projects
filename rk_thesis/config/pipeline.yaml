@@ -1,0 +1,64 @@
+# configuration to run data analysis on tuberous sclerosis files
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 4
+  timeout: 10000
+  delay: 10
+
+dir:
+  results: results
+  doc: doc
+  ref: ref
+  data: data/tsc
+
+log_dir: log
+
+input_dirs:
+  - tsc
+  - wt
+
+ref: /n/scratch00/hsph/biodata/genomes/Mmusculus/mm9/bowtie/mm9
+gtf: /n/home05/kirchner/hsph_scratch/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+
+annotation:
+  name: mm9
+  file: /n/home05/kirchner/hsph_scratch/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    program: cutadapt
+    platform: [illumina, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--minimum-length, 20]
+      - [--quality-cutoff, 20]
+
+  tophat:
+    name: tophat
+    program: tophat
+    max_errors: 2
+ #    quality_format: solexa
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+run:
+  [fastqc, cutadapt, fastqc, tophat, htseq-count]
