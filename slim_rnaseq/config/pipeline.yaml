@@ -1,7 +1,7 @@
 cluster:
   name: odyssey
   profile: lsf2
-  cores: 8
+  cores: 4
   timeout: 10000
   delay: 10
 
@@ -51,7 +51,7 @@ stage:
   tophat:
     name: tophat
     program: tophat
-    quality_format: illumina
+    quality_format: solexa
     max_errors: 2
 
   htseq-count:
@@ -64,4 +64,4 @@ stage:
       - [--mode=union]
 
 run:
-  [fastqc, cutadapt, tophat, htseq-count]
+  [fastqc, cutadapt, fastqc, tophat, htseq-count]

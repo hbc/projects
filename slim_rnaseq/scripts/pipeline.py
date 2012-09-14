@@ -135,7 +135,7 @@ def main(config_file):
                 combined_out = htseq_count.combine_counts(htseq_outputs,
                                                           column_names,
                                                           out_file)
-                rpkm = htseq_count.calculate_rpkm(combined.out,
+                rpkm = htseq_count.calculate_rpkm(combined_out,
                                                   config["annotation"]["file"])
                 rpkm_file = os.path.join(config["dir"]["results"], stage,
                                          cell_type + ".rpkm.txt")
