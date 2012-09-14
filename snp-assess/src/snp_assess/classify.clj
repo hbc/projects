@@ -334,8 +334,8 @@
         data-file (:files classify-exp)
         pos-file (get-in run-config [:ref :control])
         ref-file (get-in run-config [:ref :files])]
-    {:c (prepare-classifier data-file pos-file ref-file work-dir config
-                            :evaluate? (:evaluate classify-exp))
+    {:c (pipeline-prep-classifier data-file pos-file ref-file work-dir config
+                                  :evaluate? (:evaluate classify-exp))
      :ref-file ref-file
      :pos-file pos-file
      :data-file data-file}))

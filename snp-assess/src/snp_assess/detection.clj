@@ -29,7 +29,7 @@
                               (map first)
                               (map second)))]
     (with-open [rdr (reader data-file)]
-      (let [probs [0.8 0.85 0.9 0.925 0.95 0.975 0.99 0.999 0.9999 0.99999 1.0]
+      (let [probs [0.8 0.85 0.9 0.925 0.95 0.975 0.98 0.985 0.99 0.999 0.9999 0.99999 1.0]
             backgrounds (->> (raw-reads-by-pos rdr config)
                              (filter #(contains? constant-is (:pos (first %))))
                              (mapcat #(background-freqs-at-pos % passes? config run-config)))]
