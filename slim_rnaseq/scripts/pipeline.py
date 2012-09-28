@@ -1,14 +1,17 @@
-from rkinf.cluster import start_cluster, stop_cluster
+from bipy.cluster import start_cluster, stop_cluster
 import sys
 import yaml
-from rkinf.log import setup_logging, logger
+from bipy.log import setup_logging, logger
 from bcbio.utils import safe_makedir
 import csv
 import os
-from rkinf.utils import _download_ref, append_stem
-from rkinf.toolbox import fastqc, sickle, cutadapt_tool, tophat, htseq_count
+from bipy.utils import _download_ref, append_stem, replace_suffix
+from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
+                           rseqc)
 import glob
 from itertools import product
+from bcbio.broad import BroadRunner, picardrun
+import sh
 
 
 def _get_stage_config(config, stage):
@@ -78,6 +81,17 @@ def _emit_stage_message(stage, curr_files):
     logger.info("Running %s on %s" % (stage, curr_files))
 
 
+def _sam_to_bam(in_file):
+    import sh
+    from bipy.utils import replace_suffix
+    from bcbio.utils import file_exists
+    bam_file = replace_suffix(in_file, "bam")
+    if file_exists(bam_file):
+        return bam_file
+    sh.samtools.view("-Sb", in_file, "-o", bam_file)
+    return bam_file
+
+
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
@@ -121,6 +135,33 @@ def main(config_file):
                 tophat_args = zip(*product(curr_files, [None], [config["ref"]],
                                            ["tophat"], [config]))
                 tophat_outputs = view.map(tophat.run_with_config, *tophat_args)
+
+                picard = BroadRunner(config["program"]["picard"])
+                # convert to bam
+                #args = zip(*product([picard], tophat_outputs))
+                #bamfiles = view.map(picardrun.picard_formatconverter,
+                #                    *args)
+                bamfiles = view.map(_sam_to_bam, tophat_outputs)
+                # sort bam
+                args = zip(*product([picard], bamfiles))
+                sorted_bf = view.map(picardrun.picard_sort, *args)
+                # index bam
+                args = zip(*product([picard], sorted_bf))
+                view.map(picardrun.picard_index, *args)
+                curr_files = sorted_bf
+
+            if stage == "rseqc":
+                _emit_stage_message(stage, curr_files)
+                rseqc_config = _get_stage_config(config, stage)
+                rseq_args = zip(*product(curr_files, [config]))
+                view.map(rseqc.bam2bigwig, *rseq_args, block=False)
+                view.map(rseqc.bam_stat, *rseq_args, block=False)
+                view.map(rseqc.clipping_profile, *rseq_args, block=False)
+                view.map(rseqc.genebody_coverage, *rseq_args, block=False)
+                view.map(rseqc.junction_annotation, *rseq_args, block=False)
+                view.map(rseqc.junction_saturation, *rseq_args, block=False)
+                view.map(rseqc.RPKM_count, *rseq_args, block=False)
+                view.map(rseqc.RPKM_saturation, *rseq_args, block=False)
                 curr_files = tophat_outputs
 
             if stage == "htseq-count":
@@ -151,6 +192,6 @@ if __name__ == "__main__":
         startup_config = yaml.load(config_in_handle)
     setup_logging(startup_config)
     start_cluster(startup_config)
-    from rkinf.cluster import view
+    from bipy.cluster import view
 
     main(main_config_file)

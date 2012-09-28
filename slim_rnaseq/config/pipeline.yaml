@@ -1,9 +1,9 @@
 cluster:
   name: odyssey
   profile: lsf2
-  cores: 4
+  cores: 31
   timeout: 10000
-  delay: 10
+  delay: 60
 
 dir:
   results: results
@@ -32,6 +32,7 @@ program:
   fastqc: fastqc
   tophat: tophat
   bowtie: bowtie
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
 
 stage:
   fastqc:
@@ -63,5 +64,8 @@ stage:
       - [--idattr=gene_id]
       - [--mode=union]
 
+  rseqc:
+    name: rseqc
+
 run:
-  [fastqc, cutadapt, fastqc, tophat, htseq-count]
+  [fastqc, cutadapt, fastqc, tophat, rseqc, htseq-count]
