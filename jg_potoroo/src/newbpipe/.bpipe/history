@@ -1,9 +1,0 @@
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run 
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run potoroo.groovy ../../data/combined.clean.fasta
-/n/home05/kirchner/opt/share/bpipe-0.9.5/bin/bpipe run khmer_script.groovy ../../data/combined.clean.fasta
