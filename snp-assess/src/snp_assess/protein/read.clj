@@ -99,18 +99,23 @@
   [change-map vc]
   (letfn [(get-change-freqs [i]
             (when-let [changes (get change-map i)]
-              (when (> (count changes) 1)
-                (let [total (apply + (vals changes))]
-                  {:freqs (->> (map (fn [[x n]] {:aa x :freq (/ n total)}) changes)
+              (let [total (apply + (vals changes))]
+                {:freqs (when (> (count changes) 1)
+                          (->> (map (fn [[x n]] {:aa x :freq (/ n total)}) changes)
                                (sort-by :freq >)
-                               rest)
-                   :total total}))))]
+                               rest))
+                 :total total})))
+          (maybe-add-aa-change [attrs freqs]
+            (if freqs
+              (-> attrs
+                  (assoc "AA_CHANGE" (string/join "," (map :aa freqs)))
+                  (assoc "AA_AF" (string/join "," (map #(format "%.2f" (* 100.0 (:freq %)))
+                                                       freqs))))
+              attrs))]
     (if-let [changes (get-change-freqs (dec (:start vc)))]
       (-> (VariantContextBuilder. (:vc vc))
           (.attributes (-> (:attributes vc)
-                           (assoc "AA_CHANGE" (string/join "," (map :aa (:freqs changes))))
-                           (assoc "AA_AF" (string/join "," (map #(format "%.2f" (* 100.0 (:freq %)))
-                                                                (:freqs changes))))
+                           (maybe-add-aa-change (:freqs changes))
                            (assoc "AA_DP" (:total changes))))
           .make)
       (:vc vc))))
