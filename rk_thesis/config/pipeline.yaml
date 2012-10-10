@@ -19,11 +19,13 @@ input_dirs:
   - wt
 
 ref: /n/scratch00/hsph/biodata/genomes/Mmusculus/mm9/bowtie/mm9
-gtf: /n/home05/kirchner/hsph_scratch/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+ref: mm9
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
+
 
 annotation:
   name: mm9
-  file: /n/home05/kirchner/hsph_scratch/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+  file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
 
 program:
   fastqc: fastqc
@@ -42,14 +44,20 @@ stage:
     platform: [illumina, polya]
     options:
       - [--error-rate, 0.1]
-      - [--minimum-length, 20]
       - [--quality-cutoff, 20]
 
   tophat:
     name: tophat
     program: tophat
     max_errors: 2
- #    quality_format: solexa
+    quality_format: illumina
+
+  sickle:
+    name: sickle
+    program: sickle
+    quality_type: illumina
+    length_cutoff: 20
+    quality_cutoff: 20
 
   htseq-count:
     name: htseq-count
@@ -61,4 +69,4 @@ stage:
       - [--mode=union]
 
 run:
-  [fastqc, cutadapt, fastqc, tophat, htseq-count]
+  [fastqc, cutadapt, sickle, fastqc, tophat, htseq-count]

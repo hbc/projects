@@ -1,13 +1,13 @@
 # scripts to run data analysis on tuberous sclerosis mice
-from rkinf.cluster import start_cluster, stop_cluster
+from bipy.cluster import start_cluster, stop_cluster
 import sys
 import yaml
-from rkinf.log import setup_logging, logger
+from bipy.log import setup_logging, logger
 from bcbio.utils import safe_makedir
 import csv
 import os
-from rkinf.utils import append_stem
-from rkinf.toolbox import (fastqc, sickle, cutadapt_tool, tophat,
+from bipy.utils import append_stem, combine_pairs, flatten
+from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat,
                            htseq_count, deseq)
 import glob
 from itertools import product, repeat
@@ -81,12 +81,32 @@ def main(config_file):
                 cutadapt_outputs = view.map(cutadapt_tool.run, *cutadapt_args)
                 curr_files = cutadapt_outputs
 
+            if stage == "sickle":
+                _emit_stage_message(stage, curr_files)
+                pairs = combine_pairs(curr_files)
+                first = [x[0] for x in pairs]
+                second = [x[1] for x in pairs]
+                fixed = view.map(sickle.run_with_config,
+                                 first, second, [config] * len(first))
+                curr_files = list(flatten(fixed))
+
+
             if stage == "tophat":
                 _emit_stage_message(stage, curr_files)
                 tophat_config = _get_stage_config(config, stage)
-                tophat_args = zip(*product(curr_files, [None], [config["ref"]],
-                                           ["tophat"], [config]))
-                tophat_outputs = view.map(tophat.run_with_config, *tophat_args)
+                pairs = combine_pairs(curr_files)
+                first = [x[0] for x in pairs]
+                second = [x[1] for x in pairs]
+                logger.info("first %s" % (first))
+                logger.info("second %s" % (second))
+
+                #tophat_args = zip(*product(first, second, [config["ref"]],
+                #                           ["tophat"], [config]))
+                tophat_outputs = view.map(tophat.run_with_config,
+                                          first, second,
+                                          [config["ref"]] * len(first),
+                                          ["tophat"] * len(first),
+                                          [config] * len(first))
                 curr_files = tophat_outputs
 
             if stage == "htseq-count":
@@ -114,7 +134,7 @@ def main(config_file):
     out_file = os.path.join(deseq_dir, "deseq.txt")
     logger.info("Running deseq on %s with conditions %s and "
                 " writing to %s." % (combined_out, conditions, out_file))
-    deseq.run(count_file, conditions, out_file=out_file)
+    deseq.run(combined_out, conditions, out_file=out_file)
 
     # end gracefully
     stop_cluster()
@@ -126,6 +146,6 @@ if __name__ == "__main__":
         startup_config = yaml.load(config_in_handle)
     setup_logging(startup_config)
     start_cluster(startup_config)
-    from rkinf.cluster import view
+    from bipy.cluster import view
 
     main(main_config_file)
