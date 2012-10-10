@@ -1,10 +1,34 @@
 import yaml
-from rkinf.cluster import start_cluster, stop_cluster
-from rkinf.log import setup_logging
-from rkinf.toolbox import macs
+from bcbio.utils import file_exists
+from bipy.cluster import start_cluster, stop_cluster
+from bipy.log import setup_logging
+from bipy.toolbox import macs
+from bipy.utils import remove_suffix
 import glob
 import os
 import sys
+import sh
+
+def _merge_condition(in_files, condition):
+    """
+    merge all of the bam files from a condition together
+    as recomended in the MACS manual
+    """
+    condition_files = [filename for filename in in_files if
+                       condition in filename]
+    if not condition_files:
+        return None
+    condition_filename = os.path.join(os.path.dirname(condition_files[1]),
+                                      condition + "_merged.bam")
+    sorted_prefix = remove_suffix(condition_filename) + ".sorted"
+    sorted_filename = sorted_prefix + ".bam"
+    if file_exists(sorted_filename):
+        return sorted_filename
+
+    sh.samtools("merge", condition_filename, condition_files)
+    sh.samtools("sort", condition_filename, sorted_prefix)
+    sh.samtools("index", sorted_filename)
+    return sorted_filename
 
 
 def main(config_file):
@@ -12,9 +36,9 @@ def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
     setup_logging(config)
-    from rkinf.log import logger
+    from bipy.log import logger
     start_cluster(config)
-    from rkinf.cluster import view
+    from bipy.cluster import view
 
     input_dir = config["dir"]["input_dir"]
     results_dir = config["dir"]["results"]
@@ -25,6 +49,14 @@ def main(config_file):
     """
 
     curr_files = input_files
+    # first combine all the negative controls into one file
+    negative_control = _merge_condition(input_files, 
+                                        config["groups"]["negative"])
+    test_files = [_merge_condition(input_files, condition) for
+                  condition in config["groups"]["test"]]
+    test_files = [x for x in test_files if x]
+    curr_files = test_files
+    
     for stage in config["run"]:
         # for now just run macs on all of these files without the control
         # file
@@ -32,21 +64,11 @@ def main(config_file):
             nfiles = len(curr_files)
             out_files = view.map(macs.run_with_config, curr_files,
                                  [config] * nfiles,
-                                 [None] * nfiles,
+                                 [negative_control] * nfiles,
                                  [stage] * nfiles)
             # just use the peak files going forward
             peak_files = [x[0] for x in out_files]
             curr_files = peak_files
-
-        if stage == "intersect":
-            """ 1) loop over the ids in the negative group
-            for each one pick out the files that match it
-             combine them into one file
-            output it as the union
-            2) loop over the ids in the positive and test group
-            find intersections of the ones that match the same id:
-            intersectBed -wao -bed -f fraction -r -a bed1 -b -bed2
-            might have to try a range of f """
 
     stop_cluster()
 

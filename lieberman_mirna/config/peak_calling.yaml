@@ -6,17 +6,17 @@ cluster:
   delay: 10
 
 dir:
-  input_dir: data/IMPACT_v1/novoalign
-  results: results
+  input_dir: results/IMPACT_v2/length_filtered/novoalign
+  results: results/IMPACT_v2/macs_tweaking/peak_calls
   doc: doc
   ref: ref
 
 log_dir: log
 
 groups:
-  positive: [miR-34]
-  negative: [control]
-  test: [let-7, miR-522]
+  positive: miR-34
+  negative: control
+  test: [let-7, miR-522, miR-34]
 
 stage:
   macs:
@@ -24,16 +24,11 @@ stage:
     program: macs
     options:
       - [--format, BAM]
-      - [--gsize, hs]
-      - [--pvalue, 0.000001]
-      - [--mfold, "10,30"]
-
-  overlap:
-    name: overlap
-    program: multiIntersectBed
-    options:
-      - [-cluster]
-      - [-header]
+      - [--gsize, 6e+7]
+      - [--pvalue, 0.01]
+      - [--mfold, "10,1000"]
+      - [--call-subpeaks]
+      - [--wig]
 
 run:
   [macs]

@@ -147,15 +147,17 @@ def main(config_file):
                                                           htseq_columns,
                                                           out_file)
                 deseq_conds = [conditions[index] for index in indexes]
-                deseq_out = os.path.join(out_dir,
-                                         comparison_name + ".deseq.txt")
+                deseq_prefix = os.path.join(out_dir, comparison_name)
 
-                view.map(deseq.run, [combined_out], [deseq_conds], [deseq_out])
-
+                deseq_out = view.map(deseq.run, [combined_out],
+                                     [deseq_conds], [deseq_prefix])
+                logger.info("Annotating %s." % (deseq_out))
                 annotated_file = view.map(annotate.annotate_table_with_biomart,
                                           [deseq_out],
                                           ["id"],
-                                          ["human"], block=False)
+                                          ["ensembl_gene_id"],
+                                          ["human"])
+
 
     stop_cluster()
 
