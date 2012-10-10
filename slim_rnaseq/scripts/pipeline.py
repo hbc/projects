@@ -7,7 +7,7 @@ import csv
 import os
 from bipy.utils import _download_ref, append_stem, replace_suffix
 from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
-                           rseqc)
+                           rseqc, sam)
 import glob
 from itertools import product
 from bcbio.broad import BroadRunner, picardrun
@@ -141,13 +141,9 @@ def main(config_file):
                 #args = zip(*product([picard], tophat_outputs))
                 #bamfiles = view.map(picardrun.picard_formatconverter,
                 #                    *args)
-                bamfiles = view.map(_sam_to_bam, tophat_outputs)
-                # sort bam
-                args = zip(*product([picard], bamfiles))
-                sorted_bf = view.map(picardrun.picard_sort, *args)
-                # index bam
-                args = zip(*product([picard], sorted_bf))
-                view.map(picardrun.picard_index, *args)
+                bamfiles = view.map(sam.sam2bam, tophat_outputs)
+                sorted_bf = view.map(sam.bamsort, bamfiles)
+                view.map(sam.bamindex, sorted_bf)
                 curr_files = sorted_bf
 
             if stage == "rseqc":
@@ -160,7 +156,14 @@ def main(config_file):
                 view.map(rseqc.genebody_coverage, *rseq_args, block=False)
                 view.map(rseqc.junction_annotation, *rseq_args, block=False)
                 view.map(rseqc.junction_saturation, *rseq_args, block=False)
-                view.map(rseqc.RPKM_count, *rseq_args, block=False)
+                RPKM_count_files = view.map(rseqc.RPKM_count,
+                                            *rseq_args)
+                dirs_to_process = list(set(map(os.path.dirname,
+                                               RPKM_count_files)))
+                logger.info("Count files: %s" % (RPKM_count_files))
+                logger.info("dirnames to process: %s" % (dirs_to_process))
+                RPKM_merged = view.map(rseqc.merge_RPKM, dirs_to_process)
+
                 view.map(rseqc.RPKM_saturation, *rseq_args, block=False)
                 curr_files = tophat_outputs
 
@@ -182,7 +185,27 @@ def main(config_file):
                                          cell_type + ".rpkm.txt")
                 rpkm.to_csv(rpkm_file, sep="\t")
 
-    # end gracefully
+            if stage == "coverage":
+                logger.info("Calculating RNASeq metrics on %s." % (curr_files))
+                nrun = len(curr_files)
+                ref = blastn.prepare_ref_file(config["stage"][stage]["ref"],
+                                              config)
+                ribo = config["stage"][stage]["ribo"]
+                picard = BroadRunner(config["program"]["picard"])
+                out_dir = os.path.join(results_dir, stage)
+                safe_makedir(out_dir)
+                out_files = [replace_suffix(os.path.basename(x),
+                                            "metrics") for x in curr_files]
+                out_files = [os.path.join(out_dir, x) for x in out_files]
+                out_files = view.map(picardrun.picard_rnaseq_metrics,
+                                     [picard] * nrun,
+                                     curr_files,
+                                     [ref] * nrun,
+                                     [ribo] * nrun,
+                                     out_files)
+
+    # end gracefully, wait for jobs to finish, then exit
+    view.wait()
     stop_cluster()
 
 if __name__ == "__main__":

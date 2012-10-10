@@ -64,8 +64,17 @@ stage:
       - [--idattr=gene_id]
       - [--mode=union]
 
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: human
+      file: ref/refFlat.txt
+      url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
+    ribo: meta/rrna_ucsc_new.bed
+
   rseqc:
     name: rseqc
 
 run:
-  [fastqc, cutadapt, fastqc, tophat, rseqc, htseq-count]
+  [fastqc, cutadapt, fastqc, tophat, rseqc, coverage, htseq-count]
