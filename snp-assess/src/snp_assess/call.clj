@@ -3,6 +3,7 @@
    Writes output as VCF file with information on allele frequencies, read
    depth and variant effects."
   (:use [clojure.java.io]
+        [snp-assess.annotate :only [add-mv-annotations]]
         [snp-assess.classify :only [classifier-checker
                                     raw-reads-by-pos call-vrns-at-pos
                                     add-classification-info
@@ -43,6 +44,7 @@
         prot-map (prep-protein-map (:ref run-config))]
     (doseq [x (:experiments run-config)]
       (let [ref-file (-> run-config :ref :files)
-            mv-call-file (write-calls-as-vcf (:files x) ref-file c config)]
-        (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
-                             (:kmer-size config) :count-file (:count x))))))
+            mv-call-file (write-calls-as-vcf (:files x) ref-file c config)
+            aa-call-file (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
+                                              (:kmer-size config) :count-file (:count x))]
+        (add-mv-annotations aa-call-file (:align x) ref-file)))))
