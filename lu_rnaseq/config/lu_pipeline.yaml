@@ -1,7 +1,7 @@
 # configuration to run data analysis on tuberous sclerosis files
 cluster:
   name: odyssey
-  profile: lsf2
+  profile: bigmem
   cores: 4
   timeout: 10000
   delay: 10
@@ -24,14 +24,14 @@ sample_parse:
   delimiter: _
   fields: [sample, condition, trial, barcode, read]
 
-
-ref: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/bowtie/hg19
-gtf: ref/Homo_sapiens.GRCh37.68.gtf
+ref: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Sequence/BowtieIndex/genome
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
 
 
 annotation:
   name: hg19
-  file: ref/Homo_sapiens.GRCh37.68.gtf
+  file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
 
 program:
   fastqc: fastqc
@@ -52,6 +52,7 @@ stage:
     options:
       - [--error-rate, 0.1]
       - [--quality-cutoff, 20]
+      - [--minimum-length, 20]
 
   tophat:
     name: tophat
@@ -83,9 +84,15 @@ stage:
     program: picard
     ref:
       name: human
-      file: ref/refFlat.txt
-      url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
-    ribo: meta/rrna_ucsc_new.bed
+      file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/refFlat.txt
+    ribo: meta/rrna_final.bed
+
+  deseq:
+    comparisons:
+      - [control, exposed]
+
+  rseqc:
+    name: rseqc
 
 run:
-  [fastqc, cutadapt, sickle, fastqc, tophat, rseqc, coverage, htseq-count]
+  [fastqc, cutadapt, fastqc, tophat, coverage, rseqc, htseq-count, deseq]
