@@ -17,4 +17,5 @@ setup(name = "bcbio-hiv",
           "biopython >= 1.57",
           "pysam >= 0.4.1",
           "PyYAML >= 3.09",
-          "numpy >= 1.5.1"])
+          "numpy >= 1.5.1",
+          "bcbio-nextgen >= 0.4a"])
