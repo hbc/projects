@@ -14,7 +14,7 @@ import pandas.rpy.common as com
 import rpy2.robjects as rpy
 
 def main(sample_dir):
-    max_freq = 5.0
+    max_freq = 1.5
     out_file = os.path.join(sample_dir, "patient_sample_heatmap.pdf")
     freqs = {}
     for fname in glob.glob(os.path.join(sample_dir, "*.vcf")):
@@ -33,7 +33,7 @@ def main(sample_dir):
     pheatmap(as.matrix(df),
              main="Amino acid change\n    population frequencies",
              cluster_rows=FALSE, cluster_cols=FALSE, border_color=NA,
-             color=brewer.pal(9,"Greys")[5:9])
+             color=brewer.pal(9,"Greys")[4:9])
     dev.off()
     ''')
     #color=colorRampPalette(brewer.pal(9,"Blues")[5:9])(5))
