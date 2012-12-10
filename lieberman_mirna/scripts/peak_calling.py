@@ -50,13 +50,13 @@ def main(config_file):
 
     curr_files = input_files
     # first combine all the negative controls into one file
-    negative_control = _merge_condition(input_files, 
+    negative_control = _merge_condition(input_files,
                                         config["groups"]["negative"])
     test_files = [_merge_condition(input_files, condition) for
                   condition in config["groups"]["test"]]
     test_files = [x for x in test_files if x]
     curr_files = test_files
-    
+
     for stage in config["run"]:
         # for now just run macs on all of these files without the control
         # file
@@ -69,6 +69,11 @@ def main(config_file):
             # just use the peak files going forward
             peak_files = [x[0] for x in out_files]
             curr_files = peak_files
+
+        if stage == "piranha":
+            nfiles = len(curr_files)
+            piranha_runner = piranha.PiranhaStage(config)
+            out_files = view.map(piranha_runner, curr_files)
 
     stop_cluster()
 
