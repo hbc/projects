@@ -12,6 +12,7 @@ from bipy.utils import (append_stem,  flatten, prepare_ref_file,
                         replace_suffix)
 from bipy.toolbox import (fastqc, trim, tophat,
                           htseq_count, deseq, fastq, annotate, rseqc, sam)
+from bipy.toolbox.tophat import Bowtie
 from bcbio.broad import BroadRunner, picardrun
 import glob
 from itertools import product
@@ -51,18 +52,10 @@ def main(config_file):
             stage_runner = trim.Cutadapt(config)
             curr_files = view.map(stage_runner, curr_files)
 
-        if stage == "tophat":
-            logger.info("Running tophat on %s." % (curr_files))
-            tophat_outputs = view.map(tophat.run_with_config,
-                                      curr_files, [None] * len(curr_files),
-                                      [config["ref"]] * len(curr_files),
-                                      ["tophat"] * len(curr_files),
-                                      [config] * len(curr_files))
-            bamfiles = view.map(sam.sam2bam, tophat_outputs)
-            bamsort = view.map(sam.bamsort, bamfiles)
-            view.map(sam.bamindex, bamsort)
-            final_bamfiles = bamsort
-            curr_files = tophat_outputs
+        if stage == "bowtie":
+            logger.info("Running bowtie on %s." % (curr_files))
+            bowtie = Bowtie(config)
+            curr_files = view.map(bowtie, curr_files)
 
         if stage == "coverage":
             logger.info("Calculating RNASeq metrics on %s." % (curr_files))
@@ -81,26 +74,6 @@ def main(config_file):
                                  [ref] * nrun,
                                  [ribo] * nrun,
                                  out_files)
-
-        if stage == "rseqc":
-            logger.info("Running rseqc on %s." % (curr_files))
-            rseq_args = zip(*product(curr_files, [config]))
-            view.map(rseqc.bam_stat, *rseq_args)
-            view.map(rseqc.genebody_coverage, *rseq_args)
-            view.map(rseqc.junction_annotation, *rseq_args)
-            view.map(rseqc.junction_saturation, *rseq_args)
-            RPKM_args = zip(*product(final_bamfiles, [config]))
-            RPKM_count_out = view.map(rseqc.RPKM_count, *RPKM_args)
-            RPKM_count_fixed = view.map(rseqc.fix_RPKM_count_file,
-                                        RPKM_count_out)
-            annotate_args = zip(*product(RPKM_count_fixed,
-                                         ["gene_id"],
-                                         ["ensembl_gene_id"],
-                                         ["human"]))
-            view.map(annotate.annotate_table_with_biomart,
-                     *annotate_args)
-            view.map(rseqc.RPKM_saturation, *rseq_args)
-            curr_files = tophat_outputs
 
     stop_cluster()
 

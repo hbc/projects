@@ -15,13 +15,14 @@ dir:
 log_dir: log
 id_file: "sample_ids.yaml"
 
-ref: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Sequence/BowtieIndex/genome
-gtf: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+ref: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Sequence/BowtieIndex/genome
+ref_file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Sequence/BowtieIndex/genome
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
 
 
 annotation:
-  name: hg19
-  file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+  name: mm9
+  file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
 
 
 program:
@@ -74,16 +75,15 @@ stage:
     name: coverage
     program: picard
     ref:
-      name: human
-      file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/refFlat.txt
-    ribo: meta/rrna_final.bed
-
-  deseq:
-    comparisons:
-      - [control, exposed]
+      name: mm9
+      file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/refFlat.txt
+    ribo: meta/mouse_rrna.bed
 
   rseqc:
     name: rseqc
 
+  bowtie:
+    n: 2
+
 run:
-  [fastqc, cutadapt, fastqc, tophat, coverage, rseqc]
+  [fastqc, cutadapt, fastqc, bowtie, coverage]
