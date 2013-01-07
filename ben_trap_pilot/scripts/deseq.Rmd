@@ -131,35 +131,24 @@ n
 ```
 
 ## Variance estimation
-```{r test, echo=FALSE, cache=TRUE}
+```{r test, echo=FALSE, cache=TRUE, fig.cap=""}
 cds = estimateDispersions(cds, method='blind',  sharingMode="fit-only")
 plotDispEsts = function(cds) {
 	estimates = data.frame(means = rowMeans(counts(cds, normalized=TRUE)),
-		fit = fitInfo(cds)$perGeneDispEsts)
+		variance = fitInfo(cds)$perGeneDispEsts)
 	xg = 10^seq(-0.5, 5, length.out=300)
 	yg = fitInfo(cds)$dispFun(xg)
-	p = ggplot(estimates, aes(means, fit)) + geom_point(size=1) +
+	fitline = data.frame(xg=xg, yg=yg)
+	p = ggplot(estimates, aes(means, variance)) + geom_point(size=1) +
 		scale_x_log10() + scale_y_log10() +
-		+ geom_line(aes(x=xg, y=yg)) +
-		theme_grey(base_size=16, base_family="GillSans")
-
+		geom_line(data=fitline, aes(xg, yg), color="red") +
+		theme_grey(base_size=16, base_family="GillSans") +
+		opts(title="variance estimation while pooling all samples") +
+		xlab("mean number of mapped reads per gene") +
+		ylab("estimated variance")
 	p
 }
-plotDispEstsOld = function(cds) {
-	plot(rowMeans(counts(cds, normalized=TRUE)),
-		fitInfo(cds)$perGeneDispEsts, pch = '.', log="xy")
-	xg <- 10^seq(-0.5, 5, length.out=300)
-	lines(xg, fitInfo(cds)$dispFun(xg), col="red")
-}
-
 plotDispEsts(cds)
-plotDisEstsOld(cds)
-```
-```{r old_plot, echo=FALSE}
-plot(rowMeans(counts(cds, normalized=TRUE)),
-	fitInfo(cds)$perGeneDispEsts, pch = '.', log="xy")
-xg <- 10^seq(-0.5, 5, length.out=300)
-lines(xg, fitInfo(cds)$dispFun(xg), col="red")
 ```
 
 ## Differential expression
