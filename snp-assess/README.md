@@ -1,8 +1,76 @@
-[Cascalog][1] query for assessing deep sequencing variation call
-statistics with [Hadoop][3]. The goal is to examine problematic
-call positions and assess how tweaking filtering parameters can help
-to distinguish sequencing noise from real low frequency variations
-in mixed populations.
+# Variant calling in deeply sequenced viral populations
+
+This library provides variant calling for viral populations provided Illumina
+inputs. Given read statistics calculated by
+[our alignment and quality assessment pipeline][0-0], it identifies low
+frequency mutations (> 0.1%) in the population by separating real variations
+from sequencing errors. It uses an input control library with known low
+frequency variations to train a random forest classifier that filters sequencing
+errors.
+
+The detailed steps in variant calling are:
+
+- Use a control population with known low frequency variations to identify
+  positions with real variations and positions with false positives caused by
+  sequencing errors.
+  
+- Extract classification metrics from the raw read statistics:
+
+   - Read quality. Phred scaled quality scores given to the individual called
+     base by the sequencer.
+   - Mapping score. The Novoalign score assigned to a sequencing read positioned 
+     in the genome.
+   - K-mer abundance. A metric describing the uniqueness of the 13bp region
+     surrounding the read. Rare k-mers with low frequencies are more likely to be
+     sequencing errors.
+
+- Train a [random forest ensemble classifier][0-4] using the classification
+  metrics and true and false positive examples identified.
+  
+- Use this classifier to identify variants in each of the sample populations.
+  Following filtering with the random forest classifier, remaining low frequency
+  changes are real variants.
+  
+- Annotate variations with amino acid changes and map these changes to known
+  drug resistance mutations.
+
+- Report resulting variations, annotations and metrics in a standard
+  [VCF format][0-3] file.
+
+## Usage
+
+To get started, you need four things:
+
+- A processing directory created by the [alignment pipeline][0-0], which will
+  have a `variation` subdirectory containing detailed read information.
+- A run configuration file with detailed information about the experiments to
+  process: [example configuration file][0-1].
+- A parameter configuration file specifying the filtering and calling approaches
+  to use: [example configuration file][0-2].
+- The [Leiningen][2] build tool, which will install required dependencies.
+
+Then run the entire variant calling process with a single command:
+
+    $ lein snp-call <run config YAML> <parameter config YAML> <work directory>
+    
+Each `variation/raw_*tsv` file of read statistics will have an associated
+`variation/raw_*calls-protein-annotate.vcf` file containing variants and amino
+acid changes in [VCF format][0-3].
+
+[0-0]: https://github.com/hbc/projects/tree/master/jl_hiv
+[0-1]: https://github.com/hbc/projects/blob/master/snp-assess/config/20120111-variant.yaml
+[0-2]: https://github.com/hbc/projects/blob/master/snp-assess/config/20120111-classification.yaml
+[0-3]: http://www.1000genomes.org/wiki/Analysis/Variant%20Call%20Format/vcf-variant-call-format-version-41
+[0-4]: https://en.wikipedia.org/wiki/Random_forest
+
+# Parallelized Hadoop utilities
+
+In addition to variant calling, this library provides parallel utilities for
+mining and evaluating next-generation sequencing data. It uses [Cascalog][1]
+queries for assessing deep sequencing variation call statistics with
+[Hadoop][3]. The goal is to examine problematic call positions and assess how
+tweaking filtering parameters can help to distinguish sequencing noise from real
+low frequency variations in mixed populations.
 
 The test directory contains example variation data and positions. The
 variation data file is a combination of positions, individual read
@@ -18,12 +86,10 @@ Requires:
 
 To run standalone:
 
-        % lein deps
         % lein snp-data /directory/of/varation/data /directory/of/positions
 
 To run on Hadoop:
 
-        % lein deps
         % lein uberjar
         % hadoop fs -mkdir /tmp/snp-assess/data
         % hadoop fs -mkdir /tmp/snp-assess/positions

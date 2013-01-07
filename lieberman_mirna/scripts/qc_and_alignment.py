@@ -5,23 +5,40 @@ directory like this: python scripts/count_3prime_g.py config/qc.yaml """
 import stat
 import os
 import sys
-from rkinf.toolbox import (tagdust, novoalign, fastqc, bedtools, blastn,
-                           sickle)
-from rkinf.toolbox.fasta import filter_seqio, apply_seqio
-from rkinf.log import setup_logging, logger
-from rkinf.cluster import start_cluster, stop_cluster
+from bipy.toolbox import (tagdust, novoalign, fastqc, bedtools, blastn,
+                           sickle, htseq_count)
+from bipy.toolbox.fasta import filter_seqio, apply_seqio
+from bipy.log import setup_logging, logger
+from bipy.cluster import start_cluster, stop_cluster
 import pandas as pd
 from itertools import takewhile
 import yaml
 from functools import partial
 from bcbio.utils import safe_makedir
-from rkinf.utils import append_stem, replace_suffix
+from bipy.utils import append_stem, replace_suffix, remove_suffix
 from bcbio.broad import BroadRunner, picardrun
 from bcbio.ngsalign import tophat
-import shutil
+#import shutil
+import sh
 
 MAX_READ_LENGTH = 10000
 
+def _get_short_names(input_files):
+    return [remove_suffix(os.path.basename(x)) for x in
+            input_files]
+
+def write_ratios(bam1, bam2, count_file):
+    rbam1 = int(sh.samtools.view("-c", bam1))
+    rbam2 = int(sh.samtools.view("-c", bam2))
+    header = "\t".join(["total reads",
+                        "mre reads",
+                        "percentage mre"]) + "\n"
+    line = "\t".join([str(rbam1), str(rbam2),
+                     str(float(rbam2) / rbam1)]) + "\n"
+
+    with open(count_file, "w") as out_handle:
+        out_handle.write(header)
+        out_handle.write(line)
 
 def _get_stage_config(config, stage):
     return config["stage"][stage]
@@ -74,7 +91,7 @@ def main(config_file):
     start_cluster(config)
 
     # after the cluster is up, import the view to i
-    from rkinf.cluster import view
+    from bipy.cluster import view
     input_files = config["input"]
     results_dir = config["dir"]["results"]
 
@@ -230,20 +247,22 @@ def main(config_file):
             sorted_bf = view.map(picardrun.picard_sort,
                                  [picard] * len(bamfiles),
                                  bamfiles)
+            view.map(picardrun.picard_index, [picard] * len(sorted_bf),
+                     sorted_bf)
             # these files are the new starting point for the downstream
             # analyses, so copy them over into the data dir and setting
             # them to read only
-            data_dir = os.path.join(config["dir"]["data"], stage)
-            safe_makedir(data_dir)
-            view.map(shutil.copy, sorted_bf, [data_dir] * len(sorted_bf))
-            new_files = [os.path.join(data_dir, x) for x in
-                         map(os.path.basename, sorted_bf)]
-            [os.chmod(x, stat.S_IREAD | stat.S_IRGRP) for x in new_files]
+            #data_dir = os.path.join(config["dir"]["data"], stage)
+            #safe_makedir(data_dir)
+            #view.map(shutil.copy, sorted_bf, [data_dir] * len(sorted_bf))
+            #new_files = [os.path.join(data_dir, x) for x in
+            #             map(os.path.basename, sorted_bf)]
+            #[os.chmod(x, stat.S_IREAD | stat.S_IRGRP) for x in new_files]
             # index the bam files for later use
-            view.map(picardrun.picard_index, [picard] * len(new_files),
-                     new_files)
+            #view.map(picardrun.picard_index, [picard] * len(new_files),
+            #         new_files)
 
-            curr_files = new_files
+            curr_files = sorted_bf
 
         if stage == "new_coverage":
             logger.info("Calculating RNASeq metrics on %s." % (curr_files))
@@ -280,6 +299,44 @@ def main(config_file):
             view.map(bedtools.count_overlaps, sorted_bf,
                      [gtf] * len(sorted_bf),
                      out_files)
+
+        if stage == "htseq-count":
+            nfiles = len(curr_files)
+            htseq_config = _get_stage_config(config, stage)
+            htseq_outputs = view.map(htseq_count.run_with_config,
+                                     aligned_outputs,
+                                     [config] * nfiles,
+                                     [stage] * nfiles)
+            column_names = _get_short_names(input_files)
+            logger.info("Column names: %s" % (column_names))
+            out_file = os.path.join(config["dir"]["results"], stage,
+                                    "combined.counts")
+            combined_out = htseq_count.combine_counts(htseq_outputs,
+                                                      column_names,
+                                                      out_file)
+        if stage == "bedtools_intersect":
+            bedfiles = config["stage"]["bedtools_intersect"].get("bed", None)
+            out_dir = os.path.join(results_dir, stage)
+            safe_makedir(out_dir)
+            for bedfile in bedfiles:
+                bedbase, bedext = os.path.splitext(bedfile)
+                out_files = [remove_suffix(x) for x in sorted_bf]
+                out_files = [os.path.join(out_dir, os.path.basename(x)) for x in
+                             out_files]
+                out_files = ["_vs_".join([x, os.path.basename(bedbase)])
+                             for x in out_files]
+                out_files = [".".join([x, "bam"]) for x in out_files]
+                test_out = map(bedtools.intersectbam2bed, sorted_bf,
+                               [bedfile] * len(sorted_bf),
+                               [False] * len(sorted_bf),
+                               out_files)
+                count_files = [replace_suffix(x, "stats") for x in
+                               out_files]
+                map(write_ratios, sorted_bf, out_files, count_files)
+
+        if stage == "piranha":
+            piranha_runner = piranha.PiranhaStage(config)
+            out_files = view.map(piranha_runner, curr_files)
 
     stop_cluster()
 

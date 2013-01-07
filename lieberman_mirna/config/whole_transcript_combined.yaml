@@ -1,0 +1,101 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 8
+
+dir:
+  data: data/whole_transcript_combined/
+  results: results/whole_transcript_combined/
+  ref: ref
+
+input:
+  - control_combined_v1.fastq
+  - control_combined_v2.fastq
+  - let7_combined_v1.fastq
+  - let7_combined_v2.fastq
+  - mir34a_combined_v1.fastq
+  - mir34a_combined_v2.fastq
+  - mir522_combined_v1.fastq
+  - mir522_combined_v2.fastq
+
+genome:
+  file: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg19/novoalign/hg19
+
+annotation:
+  name: human
+  file: ref/Homo_sapiens.GRCh37.68.gtf
+  url: ftp://ftp.ensembl.org/pub/release-68/gtf/homo_sapiens/Homo_sapiens.GRCh37.68.gtf.gz
+
+program:
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    name: cutadapt
+    program: cutadapt
+    platform: [iontorrent, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--minimum-length, 10]
+
+  novoindex:
+    name: novoindex
+    program: novoindex
+    options:
+      -k: 14
+      -s: 1
+
+  novoalign:
+    name: novoalign
+    program: novoalign
+    options:
+      - [-F, STDFQ]
+      - [-n, 250]
+      - [-k]
+      - [-H]
+      - [-r, all, 10]
+      - [-e, 10]
+      - [-g, 15]
+      - [-x, 4]
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  threshold:
+    value: auto
+
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: human
+      file: ref/refFlat.txt
+      url: ftp://genome-ftp.cse.ucsc.edu/goldenPath/hg19/database/refFlat.txt.gz
+    ribo: meta/rrna_ucsc_new.bed
+
+  deseq:
+    comparisons:
+      - [control, mir34a]
+      - [control, mir522]
+      - [control, let7]
+
+  dss:
+    comparisons:
+      - [control, mir34a]
+      - [control, mir522]
+      - [control, let7]
+
+run:
+  [fastqc, cutadapt, novoalign, coverage, htseq-count, threshold, deseq]

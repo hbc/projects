@@ -2,14 +2,14 @@ import yaml
 from bipy.cluster import start_cluster, stop_cluster
 from bipy.log import setup_logging
 from bipy.toolbox import (fastqc, cutadapt_tool, novoindex, novoalign,
-                           htseq_count, blastn, deseq, annotate)
+                           htseq_count, blastn, deseq, annotate, dss)
 from bcbio.utils import safe_makedir
 import sys
 import os
 from bcbio.broad import BroadRunner, picardrun
 import itertools
-from bipy.utils import remove_suffix, replace_suffix
-
+from bipy.utils import remove_suffix, replace_suffix, flatten
+import glob
 
 MAX_READ_LENGTH = 10000
 
@@ -33,11 +33,12 @@ def main(config_file):
     from bipy.log import logger
     start_cluster(config)
 
+    data_dir = config["dir"]["data"]
     from bipy.cluster import view
-    #    view.push({'logger': logger})
-
-    input_files = [os.path.join(config["dir"]["data"], x) for x in
-                   config["input"]]
+    input_files = [glob.glob(os.path.join(data_dir, x, "*_rep*")) for x in
+                   config["input_dirs"]]
+    input_files = list(flatten(input_files))
+    logger.info("Input files to process: %s" % (input_files))
     results_dir = config["dir"]["results"]
 
     map(safe_makedir, config["dir"].values())
@@ -87,16 +88,14 @@ def main(config_file):
             curr_files = novoalign_outputs
 
         if stage == "htseq-count":
-            nfiles = len(curr_files)
-            htseq_config = _get_stage_config(config, stage)
-            htseq_outputs = view.map(htseq_count.run_with_config,
-                                     curr_files,
-                                     [config] * nfiles,
-                                     [stage] * nfiles)
+            logger.info("Running htseq-count on %s" %(curr_files))
+            htseq_outputs = curr_files
             column_names = _get_short_names(input_files)
             logger.info("Column names: %s" % (column_names))
             out_file = os.path.join(config["dir"]["results"], stage,
                                     "combined.counts")
+            out_dir = os.path.join(results_dir, stage)
+            safe_makedir(out_dir)
             combined_out = htseq_count.combine_counts(htseq_outputs,
                                                       column_names,
                                                       out_file)
@@ -160,6 +159,33 @@ def main(config_file):
                                           ["ensembl_gene_id"],
                                           ["human"])
 
+        if stage == "dss":
+            conditions = [os.path.basename(x).split("_")[0] for x in
+                          input_files]
+            dss_config = _get_stage_config(config, stage)
+            out_dir = os.path.join(results_dir, stage)
+            safe_makedir(out_dir)
+            for comparison in dss_config["comparisons"]:
+                comparison_name = "_vs_".join(comparison)
+                out_dir = os.path.join(results_dir, stage, comparison_name)
+                safe_makedir(out_dir)
+                # get the of the conditons that match this comparison
+                indexes = [x for x, y in enumerate(conditions) if
+                           y in comparison]
+                # find the htseq_files to combine and combine them
+                htseq_files = [htseq_outputs[index] for index in indexes]
+                htseq_columns = [column_names[index] for index in indexes]
+                out_file = os.path.join(out_dir,
+                                        comparison_name + ".counts.txt")
+                combined_out = htseq_count.combine_counts(htseq_files,
+                                                          htseq_columns,
+                                                          out_file)
+                dss_conds = [conditions[index] for index in indexes]
+                dss_prefix = os.path.join(out_dir, comparison_name)
+                logger.info("Running DSS on %s with conditions %s and comparison %s." % (combined_out, dss_conds, comparison))
+
+                dss_out = dss.run(combined_out, dss_conds, comparison,
+                                  dss_prefix)
 
     stop_cluster()
 

@@ -1,0 +1,84 @@
+# configuration to run data analysis on tuberous sclerosis files
+cluster:
+  name: odyssey
+  profile: lsf2
+  cores: 4
+  timeout: 10000
+  delay: 10
+
+dir:
+  results: results
+  doc: doc
+  ref: ref
+  data: data/tsc
+
+log_dir: log
+
+input_dirs:
+  - tsc
+  - wt
+
+ref: /n/hsphS10/hsphfs1/chb/biodata/genomes/Mmusculus/mm9/bowtie/mm9
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
+
+pair_info:
+  forward_read_suffix: "/1"
+  reverse_read_suffix: "/3"
+
+annotation:
+  name: mm9
+  file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
+  genome: mm9
+
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    program: cutadapt
+    platform: [illumina, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--quality-cutoff, 20]
+      - [--minimum-length, 20]
+
+  tophat:
+    name: tophat
+    program: tophat
+    max_errors: 2
+    quality_format: illumina
+
+  sickle:
+    name: sickle
+    program: sickle
+    quality_type: illumina
+    length_cutoff: 20
+    quality_cutoff: 20
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  deseq:
+    comparisons:
+      - [wt, tsc]
+
+  rseqc:
+    name: rseqc
+
+
+run:
+  [fastqc, cutadapt, fastqc, tophat, rseqc, htseq-count, deseq]

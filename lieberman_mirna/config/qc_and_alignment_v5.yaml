@@ -6,10 +6,10 @@ cluster:
   delay: 10
 
 dir:
-  results: results/IMPACT_v2/length_filtered
+  results: results/IMPACT_v5/
   doc: doc
   ref: ref
-  data: data/IMPACT_v2
+  data: data/IMPACT_v5
 
 log_dir: log
 
@@ -29,14 +29,10 @@ program:
   picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
 
 input:
-  - data/IMPACT_v2/1-control_R.fastq
-  - data/IMPACT_v2/2-control_R.fastq
-  - data/IMPACT_v2/3-miR-34_R.fastq
-  - data/IMPACT_v2/4-miR-34_R.fastq
-  - data/IMPACT_v2/5-let-7_R.fastq
-  - data/IMPACT_v2/6-let-7_R.fastq
-  - data/IMPACT_v2/7-miR-522_R.fastq
-  - data/IMPACT_v2/8-miR-522_R.fastq
+  - data/IMPACT_v5/5-miR-34_R.fastq
+  - data/IMPACT_v5/5-miR-522_R.fastq
+  - data/IMPACT_v5/5-let-7_R.fastq
+  - data/IMPACT_v5/5-control_R.fastq
 
 groups:
   positive: [miR-34]
@@ -114,7 +110,6 @@ stage:
     program: macs
     options:
       - [--format, BAM]
-
       - [--pvalue, 0.000001]
       - [--mfold, "10,30"]
 
@@ -123,26 +118,6 @@ stage:
     program: bedtools
     task: coverage
     annotation: Homo_sapiens.GRCh37.68.gtf
-
-  jellyfish_5mer:
-    name: jellyfish_5mer
-    program: jellyfish
-    task: count
-    options:
-      - [--mer-len, 5]
-      - [--counter-len, 3]
-      - [--size, 10000000]
-      - [--threads, 8]
-
-  jellyfish_6mer:
-    name: jellyfish_6mer
-    program: jellyfish
-    task: count
-    options:
-      - [--mer-len, 6]
-      - [--counter-len, 3]
-      - [--size, 10000000]
-      - [--threads, 8]
 
   bedtools_intersect:
      name: bedtools_intersect
