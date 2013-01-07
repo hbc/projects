@@ -131,6 +131,23 @@ n
 ```
 
 ## Variance estimation
+For samples without replicates it is not possible to get an accurate
+repesentation of the biological variability. However if we make an
+assumption that genes with counts at a given level all have similar
+dispersions we can use the dispersions calculated across all genes with
+a given number of counts as a proxy for the dispersion of that gene.
+Dispersion describes the fluctuation of the observed counts for a gene
+around the mean counts for that gene and can be the square of the
+coefficient of biological variation.
+For example, if a gene's expression level fluctuates by 20% the
+calculated dispersion is
+$0.2^2 = 0.04$.
+
+Below is a plot of the estimated dispersion for genes with given counts;
+the dispersion increases as the mean count decreases meaning it is
+more difficult to accurately measure the expression level of
+low-count genes.
+
 ```{r test, echo=FALSE, cache=TRUE, fig.cap=""}
 cds = estimateDispersions(cds, method='blind',  sharingMode="fit-only")
 plotDispEsts = function(cds) {
@@ -143,9 +160,9 @@ plotDispEsts = function(cds) {
 		scale_x_log10() + scale_y_log10() +
 		geom_line(data=fitline, aes(xg, yg), color="red") +
 		theme_grey(base_size=16, base_family="GillSans") +
-		opts(title="variance estimation while pooling all samples") +
+		opts(title="dispersion estimation while pooling all samples") +
 		xlab("mean number of mapped reads per gene") +
-		ylab("estimated variance")
+		ylab("estimated dispersion")
 	p
 }
 plotDispEsts(cds)
