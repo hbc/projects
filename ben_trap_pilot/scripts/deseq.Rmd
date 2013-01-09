@@ -29,9 +29,9 @@ library("scales")
 ```
 
 ```{r variables}
-wd = '/Users/rory/cache/projects/ben_trap_pilot/scripts'
+wd = '/Users/rory/cache/projects/ben_trap_pilot/scripts/'
 setwd(wd)
-infile = paste(wd, '../data/combined.counts')
+infile = paste(wd, '../data/combined.counts', sep="")
 design = c("CLK1", "CLK3")
 gene_symbol = 'mgi_symbol'
 ensembl_gene = 'mmusculus_gene_ensembl'
@@ -189,6 +189,15 @@ plotMvA <- function(res) {
     plot(res$baseMean, res$log2FoldChange, log="x", pch=20,
 		cex=.3, col=ifelse(res$padj < .1, "red", "black"))
 }
+```
+
+On the left is a MvA plot showing the calculated fold change vs. the mean
+expression level. On the right is a histogram of the unadjusted p-values
+as a diagnostic; samples with no differentially expressed genes should
+have an exponential-like p-value distribution without the uptick at the
+extreme low p-values.
+
+```{r diagnostic}
 plotMvA(res)
 hist(res$pval, breaks=100, col="skyblue", border="slateblue", main="")
 ```
@@ -210,4 +219,10 @@ upreg = head(non_inf[order(-non_inf$foldChange, -non_inf$baseMean), ], 25)
 upreg = clean_gvistable(upreg)
 annotated_upreg = annotate_df(upreg)
 print(gvisTable(annotated_upreg, options=list(width=900)), "chart")
+```
+
+```{r write_results}
+annotated_res = annotate_df(res)
+out_file = paste(infile, ".deseq.annotated.txt", sep="")
+write.table(annotated_res, out_file, quote=FALSE, row.names=FALSE, sep="\t")
 ```
