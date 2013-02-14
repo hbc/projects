@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}
+Welcome to the 23andMe API example client
+{% endblock %}
+
+{% block body %}
+<h1>Welcome to the 23andme example client</h1>
+<p>This demo will take you through the basic authentication flow</p>
+<p><a href="{{auth_url}}">Click here</a> to authorize this client to access your genetics. After authorizing the application, you will be forwarded back to this application with a code that displays</p>
+{% endblock %}
