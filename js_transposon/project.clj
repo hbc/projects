@@ -4,7 +4,8 @@
                  [org.clojure/data.csv "0.1.2"]
                  [clj-yaml "0.4.0"]
                  [me.raynes/fs "1.4.0"]
-                 [incanter "1.4.1"]]
+                 [incanter "1.4.1"]
+                 [lonocloud/synthread "1.0.1" :exclusions [org.clojure/clojure]]]
   :min-lein-version "2.0.0"
   :profiles {:dev {:dependencies [[midje "1.5-RC1" :exclusions [org.clojure/clojure]]]}}
   :plugins [[lein-midje "3.0-RC1"]]

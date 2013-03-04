@@ -3,11 +3,12 @@
 
 (ns hbc.transposon.score
   (:use [incanter.io :only [read-dataset]])
-  (:require [incanter.core :as icore]
-            [incanter.stats :as stats]
-            [clojure.string :as string]
+  (:require [clojure.string :as string]
             [clj-yaml.core :as yaml]
-            [me.raynes.fs :as fs]))
+            [incanter.core :as icore]
+            [incanter.stats :as stats]
+            [me.raynes.fs :as fs]
+            [lonocloud.synthread :as ->]))
 
 ;; Columns that are not experimental data
 (def ^:dynamic *ignore-cols* #{:chr :pos :seq})
@@ -25,8 +26,7 @@
   "Print out count statistics for the given dataset"
   (println "| exp | mean | median | std-dev |")
   (doseq [[x m md sd] (summarize-count-statistics ds)]
-    (println (format "| %s | %.3f | %.3f | %.3f |" (name x) m md sd)))
-  ds)
+    (println (format "| %s | %.3f | %.3f | %.3f |" (name x) m md sd))))
 
 ;; ## Dataset normalization
 ;;
@@ -42,7 +42,7 @@
 (defn normalize-counts
   "Normalize counts to standard metric based on totals in each experiment.
    By default normalizes to total count in a column scaled to 1 million reads."
-  [config dataset & {:keys [base ignore]
+  [dataset config & {:keys [base ignore]
                      :or {base 1e6
                           ignore *ignore-cols*}}]
   (letfn [(normalize [x total]
@@ -80,7 +80,7 @@
   "Normalize counts as the percentage of the max at a position.
    This normalizes by row, in contrast to normalize-counts
    which handles columns."
-  [config ds & {:keys [ignore]
+  [ds config & {:keys [ignore]
                 :or {ignore *ignore-cols*}}]
   (let [conf-ignore (if (= "auto" (get-in config [:algorithm :rownorm] ""))
                       ignore
@@ -94,9 +94,10 @@
 
 ; ## Dataset filtration
 
-(defn- filter-by-fn [filter-fn?]
+(defn- filter-by-fn
   "General by-row filter utility based on a evaluator function."
-  (fn [config ds & {:keys [ignore]
+  [filter-fn?]
+  (fn [ds config & {:keys [ignore]
                     :or {ignore *ignore-cols*}}]
     (let [cols (remove #(contains? ignore %) (icore/col-names ds))]
       (icore/dataset (icore/col-names ds)
@@ -154,15 +155,18 @@
                                   (#(string/join "." %)))
                                ext))]
       (-> (read-dataset merge-file :header true)
-          ((partial normalize-counts config))
-          ((partial normalize-pos-ratios config))
-          print-count-stats
-          (#(do (icore/save % (mod-file-name "normal.csv")) %))
-          ((partial filter-by-controls config))
-          (#(do (icore/save % (mod-file-name "normal-nomultifilter.csv")) %))
-          ((partial filter-by-multiple config))
-          print-count-stats
-          (icore/save (mod-file-name "normal-filter.csv"))))))
+          (normalize-counts config)
+          (normalize-pos-ratios config)
+          (->/aside ds
+            (print-count-stats ds)
+            (icore/save ds (mod-file-name "normal.csv")))
+          (filter-by-controls config)
+          (->/aside ds
+            (icore/save ds (mod-file-name "normal-nomultifilter.csv")))
+          (filter-by-multiple config)
+          (->/aside ds
+            (print-count-stats ds)
+            (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
 (defn -main [merge-file config-file]
   (normalize-merge merge-file config-file))
