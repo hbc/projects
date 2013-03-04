@@ -1,15 +1,33 @@
 import argparse
 import sh
+from collections import deque
+from itertools import chain, islice
 
 
-def main(coordinate_file, vcf_file):
+def main(coordinate_file, vcf_file, chunk_size):
     tabix = _get_tabix_cmd(vcf_file)
 
     with open(coordinate_file) as coordinate_handle:
-        for line in coordinate_handle:
-            tabix_line = _lookup_line(tabix, line)
-            if tabix_line:
-                print tabix_line[0]
+        for chunk in chunks(coordinate_handle, chunk_size):
+            print chunk
+            #for line in coordinate_handle:
+            tabix_lines = _lookup_chunk(tabix, chunk)
+            for line in tabix_lines:
+                print line
+            #print len(tabix_lines)
+
+def chunks(items, n):
+    items = iter(items)
+    for first in items:
+        chunk = chain((first,), islice(items, n-1))
+        yield chunk
+        deque(chunk, 0)
+
+
+def _lookup_chunk(tabix, c):
+    coordinates = map(_get_coordinate, c)
+    return _parse_tabix_output(tabix(coordinates))
+
 
 def _lookup_line(tabix, line):
     coordinate, rsid = _get_coordinate_and_rsid(line)
@@ -37,6 +55,11 @@ def _get_coordinate_and_rsid(line):
     rsid = line.split("\t")[1]
     return _convert_coordinate(coordinate), rsid
 
+def _get_coordinate(line):
+    coordinate = line.split("\t")[0]
+    return _convert_coordinate(coordinate)
+
+
 def _convert_coordinate(coordinate):
     chromosome = coordinate.split(":")[0]
     base_string = coordinate.split(":")[1]
@@ -51,5 +74,6 @@ if __name__ == "__main__":
                         help="Name of file with coordinates to look up.")
     parser.add_argument('vcf_file',
                         help="Name of indexed file to look variants up in.")
+    parser.add_argument('--chunk_size', default=500, type=int)
     args = parser.parse_args()
-    main(args.coordinate_file, args.vcf_file)
+    main(args.coordinate_file, args.vcf_file, args.chunk_size)
