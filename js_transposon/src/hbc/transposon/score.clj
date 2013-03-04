@@ -4,11 +4,12 @@
 (ns hbc.transposon.score
   (:use [incanter.io :only [read-dataset]])
   (:require [clojure.string :as string]
-            [clj-yaml.core :as yaml]
+            [clojure.tools.cli :refer [cli]]
             [incanter.core :as icore]
             [incanter.stats :as stats]
             [me.raynes.fs :as fs]
-            [lonocloud.synthread :as ->]))
+            [lonocloud.synthread :as ->]
+            [hbc.transposon.config :as tconfig]))
 
 ;; Columns that are not experimental data
 (def ^:dynamic *ignore-cols* #{:chr :pos :seq})
@@ -144,9 +145,9 @@
 
 ; ## Top level functionality
 
-(defn normalize-merge [merge-file config-file]
+(defn normalize-merge [merge-file config-file excel-file]
   "Normalize and prepare statistics on a merged file."
-  (let [config (-> config-file slurp yaml/parse-string)]
+  (let [config (tconfig/do-load (str (fs/parent merge-file)) config-file excel-file)]
     (letfn [(mod-file-name [ext]
               (format "%s-%s" (-> merge-file (string/split #"\.")
                                   reverse
@@ -168,5 +169,9 @@
             (print-count-stats ds)
             (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
-(defn -main [merge-file config-file]
-  (normalize-merge merge-file config-file))
+(defn -main [& args]
+  (let [[opts [merge-file] _]
+        (cli args
+             ["-c" "--config" "YAML config file with inputs"]
+             ["-x" "--excel" "Excel file with experiment info" :default nil])]
+    (normalize-merge merge-file (:config opts) (:excel opts))))
