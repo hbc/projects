@@ -7,7 +7,7 @@
             [incanter.stats :as stats]
             [clojure.string :as string]
             [clj-yaml.core :as yaml]
-            [fs]))
+            [me.raynes.fs :as fs]))
 
 ;; Columns that are not experimental data
 (def ^:dynamic *ignore-cols* #{:chr :pos :seq})
