@@ -19,10 +19,10 @@
                             {:name "three"}]
                :algorithm {:rownorm ""}}]
   (fact "Normalize a CSV file by reads and experiment counts."
-    (let [ncounts (normalize-counts config ds :base 100)
-          ncounts-raw (normalize-counts config2 ds)
-          n2counts (normalize-pos-ratios config ncounts)
-          n2counts-raw (normalize-pos-ratios config2 ncounts-raw)]
+    (let [ncounts (normalize-counts ds config :base 100)
+          ncounts-raw (normalize-counts ds config2)
+          n2counts (normalize-pos-ratios ncounts config)
+          n2counts-raw (normalize-pos-ratios ncounts-raw config2)]
       (icore/sel ncounts :cols :one) => [0.0 100.0]
       (icore/sel ncounts :cols :two) => [20.0 80.0]
       (icore/col-names ncounts) => [:chr :pos :one :two :three :seq]
@@ -43,7 +43,7 @@
                             {:name "two"}
                             {:name "three"}]}]
   (fact "Filter dataset to remove single experiment only rows."
-    (let [fds (filter-by-multiple config ds)]
+    (let [fds (filter-by-multiple ds config)]
       (icore/nrow fds) => 1
       (icore/sel fds :rows 0) => ["chr1" 20 1.0 0.5 1.0 "GG"])))
 
@@ -56,8 +56,8 @@
                              {:name "two" :controls []}]
                :controls ["two"]}]
   (fact "Filter dataset to remove control dominated rows."
-    (let [fds (filter-by-controls config ds)
-          fds2 (filter-by-controls config2 ds)]
+    (let [fds (filter-by-controls ds config)
+          fds2 (filter-by-controls ds config2)]
       (icore/nrow fds) => 1
       (icore/nrow fds2) => 1
       (icore/sel fds :rows 0) => ["chr1" 20 1.0 0.5 "GG"]

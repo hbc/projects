@@ -6,7 +6,7 @@
             [clojure.data.csv :as csv]
             [clojure.string :as string]
             [clj-yaml.core :as yaml]
-            [fs]))
+            [me.raynes.fs :as fs]))
 
 ;; Collapse read locations into related groups by position
 
@@ -79,7 +79,7 @@
   "Read details on experiment names and files from YAML config"
   (letfn [(name-and-file [item]
             {:name (string/trim (format "%s %s" (:lineage item) (or (:timepoint item) "")))
-             :file (fs/join work-dir (-> config :dir :orig) (:name item))})
+             :file (str (io/file work-dir (-> config :dir :orig) (:name item)))})
           (add-positions [item]
             (assoc item :positions
                    (map #(assoc % :exp (:name item))
@@ -93,10 +93,10 @@
   "Output merged CSV file of counts at each position."
   (let [config (-> config-file slurp yaml/parse-string)
         exps (prepare-experiments work-dir config)
-        out-dir (fs/mkdir (fs/join work-dir (-> config :dir :out)))
-        out-file (fs/join out-dir
-                          (format "%s-merge.csv"
-                                  (-> config-file fs/basename (string/split #"\.") first)))]
+        out-dir (fs/mkdir (str (io/file work-dir (-> config :dir :out))))
+        out-file (str (io/file out-dir
+                               (format "%s-merge.csv"
+                                       (-> config-file fs/base-name (string/split #"\.") first))))]
     (output-combined out-file
                      (map :name exps)
                      (combine-locations (combine-by-position (apply concat (map :positions exps))
