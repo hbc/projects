@@ -5,8 +5,9 @@
   (:require [clojure.java.io :as io]
             [clojure.data.csv :as csv]
             [clojure.string :as string]
-            [clj-yaml.core :as yaml]
-            [me.raynes.fs :as fs]))
+            [clojure.tools.cli :refer [cli]]
+            [me.raynes.fs :as fs]
+            [hbc.transposon.config :as tconfig]))
 
 ;; Collapse read locations into related groups by position
 
@@ -78,8 +79,10 @@
 (defn prepare-experiments [work-dir config]
   "Read details on experiment names and files from YAML config"
   (letfn [(name-and-file [item]
-            {:name (string/trim (format "%s %s" (:lineage item) (or (:timepoint item) "")))
-             :file (str (io/file work-dir (-> config :dir :orig) (:name item)))})
+            {:name (string/trim (format "%s %s %s" (:sample item) (:lineage item) (or (:timepoint item) "")))
+             :file (if (fs/absolute? (:name item))
+                     (:name item)
+                     (str (io/file work-dir (-> config :dir :orig) (:name item))))})
           (add-positions [item]
             (assoc item :positions
                    (map #(assoc % :exp (:name item))
@@ -89,19 +92,30 @@
               add-positions)
          (:experiments config))))
 
-(defn write-merged-file [work-dir config-file]
+(defn write-merged-file
   "Output merged CSV file of counts at each position."
-  (let [config (-> config-file slurp yaml/parse-string)
+  [work-dir config-file excel-file]
+  (let [config (tconfig/do-load work-dir config-file excel-file) 
         exps (prepare-experiments work-dir config)
-        out-dir (fs/mkdir (str (io/file work-dir (-> config :dir :out))))
+        out-dir (str (io/file work-dir (-> config :dir :out)))
         out-file (str (io/file out-dir
                                (format "%s-merge.csv"
-                                       (-> config-file fs/base-name (string/split #"\.") first))))]
+                                       (-> (or config-file excel-file)
+                                           fs/base-name
+                                           (string/split #"\.")
+                                           first
+                                           (string/replace " " "_")))))]
+    (when-not (fs/exists? out-dir)
+      (fs/mkdirs out-dir))
     (output-combined out-file
                      (map :name exps)
                      (combine-locations (combine-by-position (apply concat (map :positions exps))
                                                              config)))
     out-file))
 
-(defn -main [work-dir config-file]
-  (write-merged-file work-dir config-file))
+(defn -main [& args]
+  (let [[opts [work-dir] _]
+        (cli args
+             ["-c" "--config" "YAML config file with inputs"]
+             ["-x" "--excel" "Excel file with experiment info" :default nil])]
+    (write-merged-file work-dir (:config opts) (:excel opts))))
