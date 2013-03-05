@@ -170,8 +170,14 @@
             (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
 (defn -main [& args]
-  (let [[opts [merge-file] _]
+  (let [[opts [merge-file] help]
         (cli args
              ["-c" "--config" "YAML config file with inputs"]
              ["-x" "--excel" "Excel file with experiment info" :default nil])]
-    (normalize-merge merge-file (:config opts) (:excel opts))))
+    (if (nil? merge-file)
+      (do
+        (println "Expect merged CSV file as input.")
+        (println "Required: score <merge-csv-file>")
+        (println help)
+        (System/exit 0))
+      (normalize-merge merge-file (:config opts) (:excel opts)))))

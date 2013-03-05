@@ -12,5 +12,7 @@
   :min-lein-version "2.0.0"
   :profiles {:dev {:dependencies [[midje "1.5-RC1" :exclusions [org.clojure/clojure]]]}}
   :plugins [[lein-midje "3.0-RC1"]]
+  :javac-options ["-nowarn" "-target" "1.6" "-source" "1.6"]
+  :main hbc.transposon.core
   :aliases {"merge" ["run" "-m" "hbc.transposon.merge"]
             "score" ["run" "-m" "hbc.transposon.score"]})

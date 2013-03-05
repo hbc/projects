@@ -114,8 +114,14 @@
     out-file))
 
 (defn -main [& args]
-  (let [[opts [work-dir] _]
+  (let [[opts [work-dir] help]
         (cli args
              ["-c" "--config" "YAML config file with inputs"]
              ["-x" "--excel" "Excel file with experiment info" :default nil])]
-    (write-merged-file work-dir (:config opts) (:excel opts))))
+    (if (nil? work-dir)
+      (do
+        (println "Expect work directory with input files.")
+        (println "Required: merge <work-dir>")
+        (println help)
+        (System/exit 0))
+      (write-merged-file work-dir (:config opts) (:excel opts)))))
