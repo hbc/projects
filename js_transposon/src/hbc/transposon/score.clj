@@ -2,9 +2,11 @@
 ;; assigning quality scores.
 
 (ns hbc.transposon.score
-  (:require [clojure.string :as string]
+  (:require [clojure.java.io :as io]
+            [clojure.string :as string]
             [clojure.tools.cli :refer [cli]]
             [incanter.core :as icore]
+            [incanter.charts :as icharts]
             [incanter.io :refer [read-dataset]]
             [incanter.stats :as stats]
             [me.raynes.fs :as fs]
@@ -184,10 +186,27 @@
 
 (defn- find-contam-thresh
   "Identify threshold for removing contamination, based on off-sample counts."
-  [rows]
-  (let [cvals (flatten (map #(find-contam-vals % 0.0) rows))]
-    (+ (stats/mean cvals)
-       (* 1 (stats/sd cvals)))))
+  [rows out-dir]
+  (let [cvals (->> rows
+                   (map #(find-contam-vals % 0.0))
+                   flatten
+                   (filter #(> % 4.0)))
+        quantiles [0.75 0.8 0.85 0.875 0.9 0.925 0.93 0.935 0.95 0.975]
+        filter-quantile 0.93
+        plot-thresh 200]
+    (println "* Cross-sample contamination")
+    (println "quantiles" (map-indexed (fn [i x]
+                                        (let [cur (nth quantiles i)]
+                                          [(if (= filter-quantile cur) "*" "") cur x]))
+                                      (stats/quantile cvals :probs quantiles)))
+    (println "mean" (stats/mean cvals))
+    (println "median" (stats/median cvals))
+    (println "stdev" (stats/sd cvals))
+    (doto (icharts/histogram (map #(if (< % plot-thresh) % plot-thresh) cvals) :nbins 100
+                             :title "Off-sample contamination"
+                             :x-label "Counts")
+      (icore/save (str (io/file out-dir "contamination-counts.png"))))
+    (stats/quantile cvals :probs filter-quantile)))
 
 (defn- filter-row-contam
   "Convert potential contamination below threshold to zero values."
@@ -218,7 +237,7 @@
   [ds config]
   (let [rows (ds-row-iter ds (:experiments config))
         cols (icore/col-names ds)
-        thresh (find-contam-thresh rows)]
+        thresh (find-contam-thresh rows (get-in config [:dir :out]))]
     (icore/dataset cols 
                    (map-indexed (fn [idx row]
                                   (update-row-contam ds idx row cols thresh))
@@ -240,13 +259,15 @@
           (normalize-counts config)
           (normalize-pos-ratios config)
           (->/aside ds
+            (println "* Normalized samples")
             (print-count-stats ds)
             (icore/save ds (mod-file-name "normal.csv")))
-          (filter-by-controls config)
+          (filter-by-control-samples config)
+          ;; (->/aside ds
+          ;;   (icore/save ds (mod-file-name "normal-nomultifilter.csv")))
+          ;; (filter-by-multiple config)
           (->/aside ds
-            (icore/save ds (mod-file-name "normal-nomultifilter.csv")))
-          (filter-by-multiple config)
-          (->/aside ds
+            (println "* Filtered samples")
             (print-count-stats ds)
             (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
@@ -259,6 +280,6 @@
       (do
         (println "Expect merged CSV file as input.")
         (println "Required: score <merge-csv-file>")
-        (println help)
-        (System/exit 0))
-      (normalize-merge merge-file (:config opts) (:excel opts)))))
+        (println help))
+      (normalize-merge merge-file (:config opts) (:excel opts)))
+    (System/exit 0)))

@@ -97,7 +97,9 @@
   [work-dir config-file excel-file]
   (let [config (tconfig/do-load work-dir config-file excel-file) 
         exps (prepare-experiments work-dir config)
-        out-dir (str (io/file work-dir (-> config :dir :out)))
+        out-dir (if (fs/absolute? (get-in config [:dir :out]))
+                  (get-in config [:dir :out])
+                  (str (io/file work-dir (get-in config [:dir :out]))))
         out-file (str (io/file out-dir
                                (format "%s-merge.csv"
                                        (-> (or config-file excel-file)
@@ -124,4 +126,5 @@
         (println "Required: merge <work-dir>")
         (println help)
         (System/exit 0))
-      (write-merged-file work-dir (:config opts) (:excel opts)))))
+      (let [out-file (write-merged-file work-dir (:config opts) (:excel opts))]
+        (println "Merged barcodes written to" out-file)))))

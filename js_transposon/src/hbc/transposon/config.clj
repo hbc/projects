@@ -24,7 +24,8 @@
               {:sample sample
                :name (find-file fname)
                :lineage (find-lineage lineage)
-               :timepoint (int timepoint)}))]
+               :timepoint (int timepoint)
+               :expnorm "auto"}))]
     (->> (excel/load-workbook excel-file)
          excel/sheet-seq
          first
@@ -39,7 +40,9 @@
   (let [config (if yaml-file
                  (-> yaml-file slurp yaml/parse-string)
                  {:algorithm {:rownorm "" :distance 25}
-                  :dir {:orig base-dir :out "merge"}})
+                  :dir {:orig base-dir :out (if (.endsWith base-dir "merge")
+                                              base-dir
+                                              (str (io/file base-dir "merge")))}})
         ready-excel-file (if (and excel-file (not (fs/absolute? excel-file)))
                            (first (filter fs/exists?
                                           (map #(str (io/file % excel-file))

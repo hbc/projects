@@ -1,4 +1,4 @@
-(defproject hbc.transposon "0.0.2-SNAPSHOT"
+(defproject hbc.transposon "0.0.2"
   :description "Track and analyze transposon insertion points over time."
   :dependencies [[org.clojure/clojure "1.5.0"]
                  [org.clojure/data.csv "0.1.2"]
@@ -7,6 +7,7 @@
                  [dk.ative/docjure "1.6.0"]
                  [me.raynes/fs "1.4.0"]
                  [incanter/incanter-core "1.4.1"]
+                 [incanter/incanter-charts "1.4.1"]
                  [incanter/incanter-io "1.4.1"]
                  [lonocloud/synthread "1.0.1" :exclusions [org.clojure/clojure]]]
   :min-lein-version "2.0.0"
