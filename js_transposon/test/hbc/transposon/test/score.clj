@@ -62,3 +62,14 @@
       (icore/nrow fds2) => 1
       (icore/sel fds :rows 0) => ["chr1" 20 1.0 0.5 "GG"]
       (icore/sel fds2 :rows 0) => ["chr1" 20 1.0 0.5 "GG"])))
+
+(let [ds (icore/dataset [:chr :pos :one :two :three :seq]
+                        [["chr1" 10  0  50  5 "GG"]
+                         ["chr1" 20 10 200 20 "CC"]])
+      config {:experiments [{:sample "one"}
+                            {:sample "two"}
+                            {:sample "three"}]}]
+  (fact "Filter dataset to use other processed samples as background controls"
+    (let [fds (filter-by-control-samples ds config)]
+      (icore/sel fds :rows 0) => ["chr1" 10 0.0 50 0.0 "GG"]
+      (icore/sel fds :rows 1) => ["chr1" 20 0.0 200 20 "CC"])))

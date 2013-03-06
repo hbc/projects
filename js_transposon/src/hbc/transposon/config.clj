@@ -10,8 +10,9 @@
   [excel-file base-dir]
   (letfn [(find-file [x]
             (first (filter fs/exists?
-                           [x (str x ".final.txt") (str (io/file base-dir x))
-                            (str (io/file base-dir (str x ".final.txt")))])))
+                           [(str (io/file base-dir x))
+                            (str (io/file base-dir (str x ".final.txt")))
+                            x (str x ".final.txt")])))
           (find-lineage [x]
             (cond
              (.startsWith x "Gr") "Gr"

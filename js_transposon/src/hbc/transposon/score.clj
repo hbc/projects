@@ -2,10 +2,10 @@
 ;; assigning quality scores.
 
 (ns hbc.transposon.score
-  (:use [incanter.io :only [read-dataset]])
   (:require [clojure.string :as string]
             [clojure.tools.cli :refer [cli]]
             [incanter.core :as icore]
+            [incanter.io :refer [read-dataset]]
             [incanter.stats :as stats]
             [me.raynes.fs :as fs]
             [lonocloud.synthread :as ->]
@@ -95,6 +95,18 @@
 
 ; ## Dataset filtration
 
+(defn- ds-row-iter
+  "Iterate over a dataset by rows"
+  [ds exps]
+  (let [cols (remove #(contains? *ignore-cols* %) (icore/col-names ds))]
+    (map (fn [row]
+           (map-indexed (fn [idx col]
+                          (-> (nth exps idx)
+                              (assoc :val (icore/sel ds :rows row :cols col))
+                              (assoc :col col)))
+                        cols))
+         (range (icore/nrow ds)))))
+
 (defn- filter-by-fn
   "General by-row filter utility based on a evaluator function."
   [filter-fn?]
@@ -142,6 +154,75 @@
                    (remove nil?)
                    (not-every? false?))))]
     (filter-by-fn is-control-dominated?)))
+
+(defn- get-ref-sample
+  "Retrieve sample with the highest count for a barcode."
+  [exps limit]
+  (->> exps
+       (group-by :sample)
+       (map (fn [[s xs]]
+              {:sample s
+               :val (->> (map :val xs)
+                         (filter #(> % limit))
+                         (cons 0.0)
+                         (apply max))}))
+       (sort-by :val >)
+       (filter #(pos? (:val %)))
+       first
+       :sample))
+
+(defn- find-contam-vals
+  "Identify the sample with highest count as main sample for a barcode.
+   Retrieve all counts in other samples that are greater than a defined
+   threshold as potential sources of contamination."
+  [exps limit]
+  (let [ref-sample (get-ref-sample exps limit)]
+    (->> exps
+         (remove #(= ref-sample (:sample %)))
+         (map :val)
+         (filter #(> % limit)))))
+
+(defn- find-contam-thresh
+  "Identify threshold for removing contamination, based on off-sample counts."
+  [rows]
+  (let [cvals (flatten (map #(find-contam-vals % 0.0) rows))]
+    (+ (stats/mean cvals)
+       (* 1 (stats/sd cvals)))))
+
+(defn- filter-row-contam
+  "Convert potential contamination below threshold to zero values."
+  [exps thresh]
+  (let [ref-sample (get-ref-sample exps thresh)]
+    (letfn [(maybe-remove-contam [x]
+              (if (and (not= ref-sample (:sample x))
+                       (< (:val x) thresh))
+                (assoc x :val 0.0)
+                x))]
+      (->> exps
+           (map maybe-remove-contam)
+           (map (juxt :col :val))
+           (into {})))))
+
+(defn- update-row-contam
+  "Update a dataset row with contamination filtered out."
+  [ds row-idx exps cols thresh]
+  (let [filtered-cols (filter-row-contam exps thresh)]
+    (map #(get filtered-cols %
+               (icore/sel ds :rows row-idx :cols %)) cols)))
+
+(defn filter-by-control-samples
+  "Filter experiments using other samples as controls.
+   With multiple sample experiments we expect no barcode overlap,
+   so can use counts in other samples to identify cross contamination
+   thresholds."
+  [ds config]
+  (let [rows (ds-row-iter ds (:experiments config))
+        cols (icore/col-names ds)
+        thresh (find-contam-thresh rows)]
+    (icore/dataset cols 
+                   (map-indexed (fn [idx row]
+                                  (update-row-contam ds idx row cols thresh))
+                        rows))))
 
 ; ## Top level functionality
 

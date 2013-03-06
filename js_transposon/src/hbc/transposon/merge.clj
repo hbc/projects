@@ -82,7 +82,7 @@
             {:name (string/trim (format "%s %s %s" (:sample item) (:lineage item) (or (:timepoint item) "")))
              :file (if (fs/absolute? (:name item))
                      (:name item)
-                     (str (io/file work-dir (-> config :dir :orig) (:name item))))})
+                     (str (io/file work-dir (:name item))))})
           (add-positions [item]
             (assoc item :positions
                    (map #(assoc % :exp (:name item))
