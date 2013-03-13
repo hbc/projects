@@ -1,0 +1,154 @@
+<!--
+Analysis of pollutant vs. influenza data for the Kobzik lab
+-->
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=TRUE, highlight=TRUE, autodep=TRUE)
+```
+
+
+```{r variables-and-libraries}
+library(ggplot2)
+library(reshape)
+library(googleVis)
+library(stringr)
+library(edgeR)
+wd = '/Users/rory/cache/projects/kobzik_influenza/scripts/'
+setwd(wd)
+in_file = paste(wd, '../data/ROFAFluScreenKobzikFeb222013.csv', sep='')
+FDR_CUTOFF = 0.10
+ensembl_gene = 'hsapiens_gene_ensembl'
+gene_symbol = 'hgnc_symbol'
+filter_type = 'refseq_mrna'
+```
+
+# Overview
+This is an analysis to look at the amplifying effect of a pollutant (ROFA) on cell death
+of influenza infected lung epithelium. The experiment is a shRNA screen. Briefly,
+lung epithelium tissue was infected with a lentiviral shRNA library to low MOI
+and either left alone exposed to ROFA, infected with influenza or
+exposed to ROFA and then infected with influenza. Surviving cells were cultured, grown
+back up and subjected to another round of exposure and regrowth. This process was
+repeated four times after which the shRNA was sequenced from the surviving cells and counts
+generated of each shRNA. The idea is that this process should enrich for shRNA which are
+conferring resistance to cell death and that different genes may need to be regulated for
+the influenza treated samples to survive. ROFA is theorized to have an amplifying effect
+on lung epiptheium death during influenza infection so there may be a different set of
+genes involved in that process. If anything interesting comes up it may inform a better
+treatment of influenza in regions with high air pollution such as cities.
+
+Open questions:
+are these samples paired in any way?
+
+```{r data-load}
+counts = read.table(in_file, header=TRUE, sep=",")
+```
+We will use the order column as the ID column since those values are unique.
+We want to melt the dataframe using these as the values.
+
+```{r id-column}
+control_cols = c("control_rep1", "control_rep2", "control_rep3", "control_rep4")
+ROFA_cols = c("ROFA_rep1", "ROFA_rep2", "ROFA_rep3", "ROFA_rep4")
+virus_cols = c("virus_rep1", "virus_rep2", "virus_rep3", "virus_rep4")
+ROFA_virus_cols = c("ROFA_virus_rep1", "ROFA_virus_rep2", "ROFA_virus_rep3", "ROFA_virus_rep4")
+small_data = subset(counts, select=c(control_cols, ROFA_cols, virus_cols, ROFA_virus_cols, "order", "RefSeq", "GeneSymbol"))
+melted = melt(small_data, id=17:19)
+melted$treatment = sapply(melted$variable, function(x) str_split(x, "_rep", n=2)[[1]][1])
+names(melted) = c("order", "refseq", "symbol", "replicate", "count", "treatment")
+melted$treatment = factor(melted$treatment)
+melted$replicate = factor(melted$replicate)
+```
+
+## Exploratory data analysis
+
+Counts are non-normal, looks like they might be better fit by a poisson
+distribution. Poisson distribution doesn't really fit either though,
+neither does the negative binomial. Logging the data shows it kind of gets
+near a normal distribution if you drop the 0 counts out, but there is a long left
+shift in the distribution.
+```{r prefiltering-exploratory-analysis}
+ ggplot(melted, aes(x=count)) + geom_histogram()
+```
+
+shRNA counts have very similar distributions for each of the conditions:
+```{r logged-counts}
+ ggplot(melted, aes(x=count)) + geom_histogram() + scale_x_log10() + facet_grid(. ~ treatment)
+```
+
+```{r raw-boxplot}
+ ggplot(melted, aes(y=count, x=treatment)) + geom_boxplot()
+```
+
+In particular the counts for the control and ROFA alone are highly correlated; this
+is supported by the preliminary data which observed there was not much cell death when
+ROFA alone was applied.
+```{r pairwise-plots-of-average}
+casted = cast(melted, refseq ~ treatment, value="count", mean)
+plotmatrix(casted[2:5])
+```
+
+Each treatment group has higher within-group correlation, with the control and
+ROFA only groups having the highest correlation with each other, with ROFA + virus
+having the lowest correlation with the two control groups.
+```{r high-correlation2}
+ cor.m = melt(cor(small_data[1:16]))
+ ggplot(cor.m, aes(X1, X2)) + geom_tile(aes(fill=value)) + opts(axis.text.x=theme_text(angle=-90))
+```
+
+The library was constructed with what it looks like to be 5-6 shRNA per gene.
+```{r multiple-hits, results='asis'}
+multihit_table = table(small_data$RefSeq)
+print(gvisTable(data.frame(table(multihit_table))), "chart")
+```
+
+Libraries have a similar number of total shRNA counts:
+```{r library-counts, results='asis'}
+count_sums = cast(melted, replicate ~ ., value="count", sum)
+colnames(count_sums) = c("replicate", "shRNA count")
+print(gvisTable(count_sums), "chart")
+```
+
+Most of the large deviations from control are in the ROFA virus treatment condition which
+is a good sanity check that we should pull something out at the end of this. This
+is a table of how many shRNA counts are at least two standard deviations away from
+the control mean for each condition.
+```{r two-std-away, results='asis'}
+control_mean = cast(subset(melted, treatment == "control"), order ~ ., value="count", mean)
+colnames(control_mean) = c("order", "control_mean")
+z = merge(melted, control_mean, by.x="order", by.y="order")
+z$abs_diff = abs(z$count - z$control_mean)
+bigdiff = subset(z, abs_diff > 2 * sd(count))
+print(gvisTable(data.frame(table(bigdiff$treatment))), "chart")
+```
+
+Calculate z-scores:
+```{r z-score, results='asis'}
+
+
+```{r annotate-df}
+annotate_df = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, gene_symbol, "description"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	return(m)
+	}
+```
+
+```{r more-than-one-hit, results='asis'}
+gene_hits = data.frame(table(bigdiff$refseq))
+colnames(gene_hits) = c("id", "hits")
+gene_hits = subset(gene_hits, hits > 1, drop.levels=TRUE)
+gene_hits = annotate_df(gene_hits)
+print(gvisTable(gene_hits), "chart")
+```
+
+## Differential expression
+
+Most samples cluster together but two of the four ROFA_virus samples are way off on their
+own.
+```{r mds-plot}
+plotMDS(dge)
+```

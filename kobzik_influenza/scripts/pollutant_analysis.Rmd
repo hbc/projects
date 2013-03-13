@@ -1,0 +1,228 @@
+<!--
+Analysis of pollutant vs. influenza data for the Kobzik lab
+-->
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE)
+```
+
+
+```{r variables-and-libraries}
+library(ggplot2)
+library(reshape)
+library(googleVis)
+library(stringr)
+library(edgeR)
+wd = '/Users/rory/cache/projects/kobzik_influenza/scripts/'
+setwd(wd)
+in_file = paste(wd, '../data/ROFAFluScreenKobzikFeb222013.csv', sep='')
+FDR_CUTOFF = 0.10
+```
+
+
+
+```{r data-load}
+counts = read.table(in_file, header=TRUE, sep=",")
+```
+We will use the order column as the ID column since those values are unique.
+We want to melt the dataframe using these as the values.
+
+```{r id-column}
+control_cols = c("control_rep1", "control_rep2", "control_rep3", "control_rep4")
+ROFA_cols = c("ROFA_rep1", "ROFA_rep2", "ROFA_rep3", "ROFA_rep4")
+virus_cols = c("virus_rep1", "virus_rep2", "virus_rep3", "virus_rep4")
+ROFA_virus_cols = c("ROFA_virus_rep1", "ROFA_virus_rep2", "ROFA_virus_rep3", "ROFA_virus_rep4")
+small_data = subset(counts, select=c(control_cols, ROFA_cols, virus_cols, ROFA_virus_cols, "order", "RefSeq", "GeneSymbol"))
+melted = melt(small_data, id=17:19)
+melted$treatment = sapply(melted$variable, function(x) str_split(x, "_rep", n=2)[[1]][1])
+names(melted) = c("order", "refseq", "symbol", "replicate", "count", "treatment")
+melted$treatment = factor(melted$treatment)
+melted$replicate = factor(melted$replicate)
+```
+
+## Exploratory data analysis
+
+Counts are non-normal, looks like they might be better fit by a poisson
+distribution. Poisson distribution doesn't really fit either though,
+neither does the negative binomial. Logging the data shows it kind of gets
+near a normal distribution if you drop the 0 counts out, but there is a long left
+shift in the distribution.
+```{r prefiltering-exploratory-analysis}
+ ggplot(melted, aes(x=count)) + geom_histogram()
+```
+
+shRNA counts have very similar distributions for each of the conditions:
+```{r logged-counts}
+ ggplot(melted, aes(x=count)) + geom_histogram() + scale_x_log10() + facet_grid(. ~ treatment)
+```
+
+```{r raw-boxplot}
+ ggplot(melted, aes(y=count, x=treatment)) + geom_boxplot()
+```
+
+In particular the counts for the control and ROFA alone are highly correlated.
+```{r pairwise-plots-of-average}
+casted = cast(melted, refseq ~ treatment, value="count", mean)
+plotmatrix(casted[2:5])
+```
+
+Each treatment group has higher within-group correlation, with the control and
+ROFA only groups having the highest correlation with each other, with ROFA + virus
+having the lowest correlation with the two control groups.
+```{r high-correlation2}
+ cor.m = melt(cor(small_data[1:16]))
+ ggplot(cor.m, aes(X1, X2)) + geom_tile(aes(fill=value)) + opts(axis.text.x=theme_text(angle=-90))
+```
+
+
+Look at the number of multiple hits for each gene. Oliver suggested throwing
+out all of the singles. There aren't any though. Almost all have 5-6 hits
+except for some outliers.
+```{r multiple-hits, results='asis'}
+multihit_table = table(small_data$RefSeq)
+print(gvisTable(data.frame(table(multihit_table))), "chart")
+```
+
+Within a condition, do the shRNA counts for shRNA all in the same gene differ by
+a lot?
+
+
+Sample of dataframe for use with edgeR-- order is the unique ID to link back
+to the original table.
+```{r construct-edger-dataframe, results='asis'}
+edger_df = data.frame(order=small_data$order, small_data[1:16])
+rownames(edger_df) = small_data$order
+print(gvisTable(head(edger_df), options=list(width=900)), "chart")
+edger_df$order = NULL
+```
+Is it possible to use EdgeR for this data? EdgeR is designed to handle count data,
+but makes some key assumptions in doing it. What are those assumptions?
+I wrote Mark Robinson and he seemed to think it would be okay as long some
+of the assumptions were not violated.
+
+From Mark:
+Thanks for the note.  I have had a bit of experience with shRNA data treated as
+counts, but I think we had some technical difficulties; so far, it hasn't worked
+out very well. But, it sounds like you've done some obvious checks -- scatter
+plots (log-scale probably) -- pairs(), M-versus-A plots -- plotSmear(), MDS
+plots -- plotMDS(), mean-variance relationships -- plotMeanVar(), biological
+coeff. variation plots -- plotBCV(), etc. are all standard things to look at.
+If things looks similar to what we see for RNA-seq (and ChIP-seq, etc.), then I
+would think you are in good shape.
+
+```{r load-dge}
+group = as.factor(c("control", "control", "control", "control",
+	"ROFA", "ROFA", "ROFA", "ROFA",
+	"virus", "virus", "virus", "virus",
+	"ROFA_virus", "ROFA_virus", "ROFA_virus", "ROFA_virus"))
+dge = DGEList(edger_df, group=group)
+```
+
+Libraries tend to have the same number of shRNA counts.
+```{r simple-design, results='asis'}
+design = model.matrix(~0+group)
+dge = calcNormFactors(dge)
+print(gvisTable(dge$samples, options=list(width=900)), "chart")
+```
+
+Most samples cluster together but two of the four ROFA_virus samples are way off on their
+own.
+```{r mds-plot}
+plotMDS(dge)
+```
+
+Common dispersion estimation with biological coefficient of variation.
+```{r common-dispersion-estimation}
+dge = estimateCommonDisp(dge, verbose=TRUE)
+```
+Trended dispersion estimation.
+```{r trended-dispersion-estimation}
+dge = estimateTagwiseDisp(dge)
+```
+
+For low count data there is quite a bit of biological variation but this drops as
+the tag count increases. We should treat any differentially expressed tags that have
+low CPM as suspect.
+```{r bcv-plot}
+plotBCV(dge)
+```
+
+## Exploratory model fitting
+We fit a model of this form to the data:
+```{r model}
+design
+```
+Did we do well modeling the dispersion? Read a litlte bit more about what
+these are doing.
+```{r model-fitting}
+fit = glmFit(dge, design)
+g = gof(fit)
+z = zscoreGamma(g$gof.statistics,shape=g$df/2,scale=2)
+qqnorm(z)
+```
+
+On the left is the MDA plot from the raw tag counts, on the right is the MDS plot
+of the fitted counts.
+Fitting the model results in separating out the conditions based on their
+first and second principal components.
+```{r model-fit-effect-on-MDS}
+plotMDS(dge)
+plotMDS(DGEList(fit$fitted.values))
+```
+These are plots of the mean tag count vs the residual of the fitted values vs. the
+Poisson distribution.
+```{r model-fit-exploration}
+dglmStdResid(fit$counts, design)
+dglmStdResid(fit$fitted.values, design)
+```
+
+## Differential expression
+### ROFA vs. control
+There are no differences between control and ROFA that pass the FDR cutoff. This
+matches up with the preliminary results from the grant proposal.
+```{r diffexp-rofa-vs-control, results='asis'}
+et = exactTest(dge, pair=c(1, 2))
+et_table = et$table
+et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
+m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
+colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
+m = annotate_df(m)
+print(gvisTable(m, options=list(width=900)), "chart")
+```
+### Virus vs. control
+```{r diffexp-virus-vs-control, results='asis'}
+et = exactTest(dge, pair=c(1, 3))
+et_table = et$table
+et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
+m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
+colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
+m = annotate_df(m)
+print(gvisTable(m, options=list(width=900)), "chart")
+```
+### Virus vs ROFA + virus
+```{r diffexp-virus-and-rofa-vs-virus, results='asis'}
+et = exactTest(dge, pair=c(3, 4))
+et_table = et$table
+et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
+m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
+colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
+m = annotate_df(m)
+print(gvisTable(m, options=list(width=900)), "chart")
+```
+
+```{r differential-expression}
+lrt = glmLRT(fit, coef=3:4)
+de = decideTestsDGE(lrt)
+lrt_table = lrt$table
+lrt_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
+#lrt_table = annotate_df(lrt_table)
+table(lrt_table$DE)
+```
+
+## Wrapup
+```{r wrapup}
+```
+
+## Citations
+```{r citations}
+```
