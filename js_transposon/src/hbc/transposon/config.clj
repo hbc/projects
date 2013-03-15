@@ -31,8 +31,7 @@
          first
          excel/row-seq
          (map excel/cell-seq)
-         (map process-row)
-         (sort-by (juxt :sample :lineage :timepoint)))))
+         (map process-row))))
 
 (defn do-load
   "Load configuration, potentially adding experimental details from input Excel."
