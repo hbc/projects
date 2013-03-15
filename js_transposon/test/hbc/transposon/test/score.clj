@@ -73,4 +73,6 @@
   (fact "Filter dataset to use other processed samples as background controls"
     (let [fds (filter-by-control-samples ds config)]
       (icore/sel fds :rows 0) => ["chr1" 10 0.0 50 0.0 "GG"]
-      (icore/sel fds :rows 1) => ["chr1" 20 0.0 200 20 "CC"])))
+      (icore/sel fds :rows 1) => ["chr1" 20 0.0 200 20 "CC"]))
+  (fact "Provide report on remaining artifacts"
+    (print-artifacts ds config)))

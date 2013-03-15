@@ -247,6 +247,22 @@
                                   (update-row-contam ds idx row cols thresh))
                         rows))))
 
+(defn- find-contam-ratios
+  "Determine ratios of contamination to top results."
+  [exps limit]
+  (when-let [contam (seq (find-contam-vals exps limit))]
+    (float (/ (apply max contam) (apply max (map :val exps))))))
+
+(defn print-artifacts
+  "Print out potential remaining artifacts after filtering"
+  [ds config]
+  (let [rows (ds-row-iter ds (:experiments config))
+        cvals (->> rows
+                   (map #(find-contam-ratios % 0.0))
+                   (remove nil?)
+                   sort)]
+    (println (count cvals) cvals)))
+
 ; ## Top level functionality
 
 (defn normalize-merge [merge-file config-file excel-file filter-quantile]
@@ -274,6 +290,8 @@
           (->/aside ds
             (println "* Filtered samples")
             (print-count-stats ds)
+            (println "* Remaining potential artifacts")
+            (print-artifacts ds config)
             (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
 (defn -main [& args]
