@@ -20,11 +20,15 @@
              (.startsWith x "T") "T"
              :else x))
           (process-row [items]
-            (let [[fname sample lineage timepoint & args] (map excel/read-cell items)]
+            (let [[fname sample lineage timepoint & args] (map excel/read-cell items)
+                  in-file (find-file fname)]
+              (when (nil? in-file)
+                (throw (Exception. (format "Could not find input file for %s in %s"
+                                           fname base-dir))))
               {:sample sample
-               :name (find-file fname)
-               :lineage (find-lineage lineage)
-               :timepoint (int timepoint)
+               :name in-file
+               :lineage (find-lineage (str lineage))
+               :timepoint (str timepoint)
                :expnorm "auto"}))]
     (->> (excel/load-workbook excel-file)
          excel/sheet-seq
@@ -48,5 +52,7 @@
                                                [base-dir (fs/parent base-dir)])))
                            excel-file)]
     (if excel-file
-      (assoc config :experiments (read-exps ready-excel-file base-dir))
+      (if (nil? ready-excel-file)
+        (throw (Exception. (str "Could not find input excel file: " excel-file)))
+        (assoc config :experiments (read-exps ready-excel-file base-dir)))
       config)))
