@@ -3,7 +3,7 @@ Analysis of pollutant vs. influenza data for the Kobzik lab
 -->
 
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE)
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE)
 ```
 
 
@@ -13,10 +13,13 @@ library(reshape)
 library(googleVis)
 library(stringr)
 library(edgeR)
-wd = '/Users/rory/cache/projects/kobzik_influenza/scripts/'
+wd = '/n/home05/kirchner/cache/projects/kobzik_influenza/scripts/'
 setwd(wd)
 in_file = paste(wd, '../data/ROFAFluScreenKobzikFeb222013.csv', sep='')
 FDR_CUTOFF = 0.10
+ensembl_gene = 'hsapiens_gene_ensembl'
+gene_symbol = 'hgnc_symbol'
+filter_type = 'refseq_mrna'
 ```
 
 
@@ -180,43 +183,109 @@ dglmStdResid(fit$fitted.values, design)
 ### ROFA vs. control
 There are no differences between control and ROFA that pass the FDR cutoff. This
 matches up with the preliminary results from the grant proposal.
-```{r diffexp-rofa-vs-control, results='asis'}
-et = exactTest(dge, pair=c(1, 2))
-et_table = et$table
-et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
-m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
-colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
-m = annotate_df(m)
-print(gvisTable(m, options=list(width=900)), "chart")
+```{r differential-test-function}
+differential_test = function(dge, pair) {
+	et = exactTest(dge, pair=pair)
+	et_table = et$table
+	et_table$DE = as.numeric(decideTestsDGE(et, p.value=FDR_CUTOFF))
+	et_table$FDR = p.adjust(et_table$PValue, method="BH")
+	return(et_table)
+}
 ```
-### Virus vs. control
-```{r diffexp-virus-vs-control, results='asis'}
-et = exactTest(dge, pair=c(1, 3))
-et_table = et$table
-et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
-m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
-colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
-m = annotate_df(m)
-print(gvisTable(m, options=list(width=900)), "chart")
+```{r tabulate-multiple-hits-function}
+multiple_hits_table = function(df, field="id") {
+	table(table(df$field))
+}
 ```
-### Virus vs ROFA + virus
-```{r diffexp-virus-and-rofa-vs-virus, results='asis'}
-et = exactTest(dge, pair=c(3, 4))
-et_table = et$table
-et_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
-m = merge(et_table, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
-colnames(m) = c("order", "logFC", "logCPM", "pvalue", "id")
-m = annotate_df(m)
-print(gvisTable(m, options=list(width=900)), "chart")
+```{r annotate-edgeR-de-df-function}
+annotate_edgeR_de_df = function(df) {
+	m = merge(df, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
+	colnames(m) = c("order", "logFC", "logCPM", "pvalue", "DE", "FDR", "id")
+	m = annotate_df(m)
+	return(m)
+}
 ```
 
-```{r differential-expression}
-lrt = glmLRT(fit, coef=3:4)
-de = decideTestsDGE(lrt)
-lrt_table = lrt$table
-lrt_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
-#lrt_table = annotate_df(lrt_table)
-table(lrt_table$DE)
+```{r diffexp-functions}
+write_diffexp_table = function(df, name, direction) {
+	out_file = paste(name, "_", direction, ".txt", sep="")
+	write.table(df, out_file, quote=FALSE, row.names=FALSE, sep="\t")
+}
+process_downregulated = function(dge, pair, cname) {
+	et_table = differential_test(dge, pair)
+	down = subset(et_table, DE == -1, drop=TRUE)
+	if(dim(down)[1] != 0) {
+		print(sprintf("Total number of %s shRNA in %s: %d", "downregulated", cname, dim(down)[1]))
+		annotated = annotate_edgeR_de_df(down)
+		return(annotated)
+	}
+	else {
+		print(sprintf("There are 0 dowregulated shRNA for %s", cname))
+		return(data.frame())
+	}
+}
+process_upregulated = function(dge, pair, cname) {
+	et_table = differential_test(dge, pair)
+	up = subset(et_table, DE == 1, drop=TRUE)
+	if(dim(up)[1] != 0) {
+		print(sprintf("Total number of %s shRNA in %s: %d", "upregulated", cname, dim(up)[1]))
+		annotated = annotate_edgeR_de_df(up)
+		return(annotated)
+	}
+	else {
+		print(sprintf("There are 0 upregulated shRNA for %s", cname))
+		return(data.frame())
+	}
+}
+annotate_df = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, gene_symbol, "description"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	return(m)
+}
+wrap_gvistable = function(table) {
+	to_display = c("id", "hgnc_symbol", "description")
+	if(dim(table)[1] > 0) {
+		print(gvisTable(table[, to_display], options=list(width=900)), "chart")
+	}
+}
+process_multiple_hits = function(df, field="id") {
+	multiple_hits_table(df, field)
+	multihit_table = table(df[, field])
+	multihit_ids = names(multihit_table[multihit_table > 1])
+	return(droplevels(df[df$id %in% multihit_ids,]))
+}
+```
+```{r process-regulation-function}
+process_regulation = function(df, pair, name) {
+	down = process_downregulated(df, pair, name)
+	write_diffexp_table(down, name, "downregulated")
+	wrap_gvistable(down)
+	up = process_upregulated(df, pair, name)
+	write_diffexp_table(up, name, "upregulated")
+	wrap_gvistable(up)
+	return(c(down, up))
+}
+```
+```{r block-of-go-helper-functions}
+```
+```{r setup_chunk, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE)
+```
+### ROFA vs. control
+```{r results='asis'}
+down_and_up = process_regulation(dge, c(1, 2), "rofa-vs-control")
+```
+### Virus vs. control
+```{r virus-vs-control, results='asis'}
+down_and_up = process_regulation(dge, c(1, 3), "virus-vs-control")
+```
+### Virus vs. ROFA + virus
+```{r results='asis'}
+down_and_up = process_regulation(dge, c(3, 4), "ROFA+virus-vs-virus")
 ```
 
 ## Wrapup
