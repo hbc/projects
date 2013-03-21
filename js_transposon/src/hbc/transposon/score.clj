@@ -186,13 +186,15 @@
 
 (defn- find-contam-thresh
   "Identify threshold for removing contamination, based on off-sample counts."
-  [rows out-dir]
+  [rows out-dir {:keys [filter-quantile filter-cutoff]}]
   (let [cvals (->> rows
-                   (map #(find-contam-vals % 0.0))
-                   flatten
-                   (filter #(> % 4.0)))
-        quantiles [0.75 0.8 0.85 0.875 0.9 0.925 0.93 0.935 0.95 0.975]
-        filter-quantile 0.93
+                       (map #(find-contam-vals % 0.0))
+                       flatten
+                       (filter #(> % 2.0)))
+        quantiles (-> #{0.75 0.8 0.85 0.875 0.9 0.925 0.95 0.975 0.985 0.995}
+                      (conj filter-quantile)
+                      vec
+                      sort)
         plot-thresh 200]
     (println "* Cross-sample contamination")
     (println "quantiles" (map-indexed (fn [i x]
@@ -202,19 +204,24 @@
     (println "mean" (stats/mean cvals))
     (println "median" (stats/median cvals))
     (println "stdev" (stats/sd cvals))
-    (doto (icharts/histogram (map #(if (< % plot-thresh) % plot-thresh) cvals) :nbins 100
+    (doto (icharts/histogram (map #(if (< % plot-thresh) % plot-thresh) cvals)
+                             :nbins 200
                              :title "Off-sample contamination"
-                             :x-label "Counts")
+                             :x-label "Transposon counts"
+                             :y-label "Frequency")
       (icore/save (str (io/file out-dir "contamination-counts.png"))))
-    (stats/quantile cvals :probs filter-quantile)))
+    (if filter-cutoff
+      (do
+        (println (str "Using hard filter cutoff: " filter-cutoff))
+        filter-cutoff)
+      (stats/quantile cvals :probs filter-quantile))))
 
 (defn- filter-row-contam
   "Convert potential contamination below threshold to zero values."
   [exps thresh]
   (let [ref-sample (get-ref-sample exps thresh)]
     (letfn [(maybe-remove-contam [x]
-              (if (and (not= ref-sample (:sample x))
-                       (< (:val x) thresh))
+              (if (< (:val x) thresh)
                 (assoc x :val 0.0)
                 x))]
       (->> exps
@@ -237,17 +244,37 @@
   [ds config]
   (let [rows (ds-row-iter ds (:experiments config))
         cols (icore/col-names ds)
-        thresh (find-contam-thresh rows (get-in config [:dir :out]))]
+        thresh (find-contam-thresh rows (get-in config [:dir :out])
+                                   (:algorithm config))]
     (icore/dataset cols 
                    (map-indexed (fn [idx row]
                                   (update-row-contam ds idx row cols thresh))
                         rows))))
 
+(defn- find-contam-ratios
+  "Determine ratios of contamination to top results."
+  [exps limit]
+  (when-let [contam (seq (find-contam-vals exps limit))]
+    (float (/ (apply max contam) (apply max (map :val exps))))))
+
+(defn print-artifacts
+  "Print out potential remaining artifacts after filtering"
+  [ds config]
+  (let [rows (ds-row-iter ds (:experiments config))
+        cvals (->> rows
+                   (map #(find-contam-ratios % 0.0))
+                   (remove nil?)
+                   sort)]
+    (println (count cvals) cvals)))
+
 ; ## Top level functionality
 
-(defn normalize-merge [merge-file config-file excel-file]
+(defn normalize-merge [merge-file config-file excel-file filter-quantile
+                       filter-cutoff]
   "Normalize and prepare statistics on a merged file."
-  (let [config (tconfig/do-load (str (fs/parent merge-file)) config-file excel-file)]
+  (let [config (-> (tconfig/do-load (str (fs/parent merge-file)) config-file excel-file)
+                   (assoc-in [:algorithm :filter-quantile] filter-quantile)
+                   (assoc-in [:algorithm :filter-cutoff] filter-cutoff))]
     (letfn [(mod-file-name [ext]
               (format "%s-%s" (-> merge-file (string/split #"\.")
                                   reverse
@@ -269,17 +296,24 @@
           (->/aside ds
             (println "* Filtered samples")
             (print-count-stats ds)
+            (println "* Remaining potential artifacts")
+            (print-artifacts ds config)
             (icore/save ds (mod-file-name "normal-filter.csv")))))))
 
 (defn -main [& args]
   (let [[opts [merge-file] help]
         (cli args
              ["-c" "--config" "YAML config file with inputs"]
-             ["-x" "--excel" "Excel file with experiment info" :default nil])]
+             ["-x" "--excel" "Excel file with experiment info" :default nil]
+             ["-p" "--percentile" "Background percentile cutoff for filtering" :default 0.975
+              :parse-fn #(let [x (Float. %)] (if (> x 1.0) (/ x 100.0) x))]
+             ["-f" "--filter-cutoff" :default nil
+              :parse-fn #(Float. %)])]
     (if (nil? merge-file)
       (do
         (println "Expect merged CSV file as input.")
         (println "Required: score <merge-csv-file>")
         (println help))
-      (normalize-merge merge-file (:config opts) (:excel opts)))
+      (normalize-merge merge-file (:config opts) (:excel opts) (:percentile opts)
+                       (:filter-cutoff opts)))
     (System/exit 0)))

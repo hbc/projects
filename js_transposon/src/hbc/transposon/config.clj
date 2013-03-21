@@ -12,6 +12,8 @@
             (first (filter fs/exists?
                            [(str (io/file base-dir x))
                             (str (io/file base-dir (str x ".final.txt")))
+                            (str (fs/file (fs/parent base-dir) x))
+                            (str (fs/file (fs/parent base-dir) (str x ".final.txt")))
                             x (str x ".final.txt")])))
           (find-lineage [x]
             (cond
@@ -20,19 +22,22 @@
              (.startsWith x "T") "T"
              :else x))
           (process-row [items]
-            (let [[fname sample lineage timepoint & args] (map excel/read-cell items)]
+            (let [[fname sample lineage timepoint & args] (map excel/read-cell items)
+                  in-file (find-file fname)]
+              (when (nil? in-file)
+                (throw (Exception. (format "Could not find input file for %s in %s"
+                                           fname base-dir))))
               {:sample sample
-               :name (find-file fname)
-               :lineage (find-lineage lineage)
-               :timepoint (int timepoint)
+               :name in-file
+               :lineage (find-lineage (str lineage))
+               :timepoint (str timepoint)
                :expnorm "auto"}))]
     (->> (excel/load-workbook excel-file)
          excel/sheet-seq
          first
          excel/row-seq
          (map excel/cell-seq)
-         (map process-row)
-         (sort-by (juxt :sample :lineage :timepoint)))))
+         (map process-row))))
 
 (defn do-load
   "Load configuration, potentially adding experimental details from input Excel."
@@ -49,5 +54,7 @@
                                                [base-dir (fs/parent base-dir)])))
                            excel-file)]
     (if excel-file
-      (assoc config :experiments (read-exps ready-excel-file base-dir))
+      (if (nil? ready-excel-file)
+        (throw (Exception. (str "Could not find input excel file: " excel-file)))
+        (assoc config :experiments (read-exps ready-excel-file base-dir)))
       config)))
