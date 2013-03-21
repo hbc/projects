@@ -186,7 +186,7 @@
 
 (defn- find-contam-thresh
   "Identify threshold for removing contamination, based on off-sample counts."
-  [rows out-dir filter-quantile]
+  [rows out-dir {:keys [filter-quantile filter-cutoff]}]
   (let [cvals (->> rows
                        (map #(find-contam-vals % 0.0))
                        flatten
@@ -210,7 +210,11 @@
                              :x-label "Transposon counts"
                              :y-label "Frequency")
       (icore/save (str (io/file out-dir "contamination-counts.png"))))
-    (stats/quantile cvals :probs filter-quantile)))
+    (if filter-cutoff
+      (do
+        (println (str "Using hard filter cutoff: " filter-cutoff))
+        filter-cutoff)
+      (stats/quantile cvals :probs filter-quantile))))
 
 (defn- filter-row-contam
   "Convert potential contamination below threshold to zero values."
@@ -241,7 +245,7 @@
   (let [rows (ds-row-iter ds (:experiments config))
         cols (icore/col-names ds)
         thresh (find-contam-thresh rows (get-in config [:dir :out])
-                                   (get-in config [:algorithm :filter-quantile]))]
+                                   (:algorithm config))]
     (icore/dataset cols 
                    (map-indexed (fn [idx row]
                                   (update-row-contam ds idx row cols thresh))
@@ -265,10 +269,12 @@
 
 ; ## Top level functionality
 
-(defn normalize-merge [merge-file config-file excel-file filter-quantile]
+(defn normalize-merge [merge-file config-file excel-file filter-quantile
+                       filter-cutoff]
   "Normalize and prepare statistics on a merged file."
   (let [config (-> (tconfig/do-load (str (fs/parent merge-file)) config-file excel-file)
-                   (assoc-in [:algorithm :filter-quantile] filter-quantile))]
+                   (assoc-in [:algorithm :filter-quantile] filter-quantile)
+                   (assoc-in [:algorithm :filter-cutoff] filter-cutoff))]
     (letfn [(mod-file-name [ext]
               (format "%s-%s" (-> merge-file (string/split #"\.")
                                   reverse
@@ -300,11 +306,14 @@
              ["-c" "--config" "YAML config file with inputs"]
              ["-x" "--excel" "Excel file with experiment info" :default nil]
              ["-p" "--percentile" "Background percentile cutoff for filtering" :default 0.975
-              :parse-fn #(let [x (Float. %)] (if (> x 1.0) (/ x 100.0) x))])]
+              :parse-fn #(let [x (Float. %)] (if (> x 1.0) (/ x 100.0) x))]
+             ["-f" "--filter-cutoff" :default nil
+              :parse-fn #(Float. %)])]
     (if (nil? merge-file)
       (do
         (println "Expect merged CSV file as input.")
         (println "Required: score <merge-csv-file>")
         (println help))
-      (normalize-merge merge-file (:config opts) (:excel opts) (:percentile opts)))
+      (normalize-merge merge-file (:config opts) (:excel opts) (:percentile opts)
+                       (:filter-cutoff opts)))
     (System/exit 0)))

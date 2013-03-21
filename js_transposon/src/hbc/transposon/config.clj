@@ -12,6 +12,8 @@
             (first (filter fs/exists?
                            [(str (io/file base-dir x))
                             (str (io/file base-dir (str x ".final.txt")))
+                            (str (fs/file (fs/parent base-dir) x))
+                            (str (fs/file (fs/parent base-dir) (str x ".final.txt")))
                             x (str x ".final.txt")])))
           (find-lineage [x]
             (cond

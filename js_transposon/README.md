@@ -8,13 +8,19 @@ Requires Java and commandline access to run. Download the latest release jar:
 Runs in a two step process. The first takes a YAML config or Excel sample file
 and merges into a single output CSV file:
 
-    $ java -jar hbc.transposon-0.0.3-standalone.jar 
+    $ java -jar hbc.transposon-0.0.3-standalone.jar
       merge <work_directory> -c <YAML config file> -x <Excel sample file>
-    
+
 The second scores and filters the merged samples:
-    
-    $ java -jar hbc.transposon-0.0.3-standalone.jar 
+
+    $ java -jar hbc.transposon-0.0.3-standalone.jar
       score <merged CSV file> -c <YAML config file> -x <Excel sample file>
+
+To control filtering of contamination two options are available:
+
+- `-f 50` Specify a hard cutoff of read counts to filter below.
+- `-p 0.95` Specify a percentile to filter below. The algorithm calculates read
+  count from the distribution of potential contamination.
 
 # Development
 
