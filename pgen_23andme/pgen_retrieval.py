@@ -4,7 +4,6 @@ import argparse
 import collections
 import csv
 import os
-import sys
 
 import requests
 import flask
@@ -13,8 +12,8 @@ from flask import request
 PORT = 5000
 API_SERVER = "api.23andme.com"
 BASE_API_URL = "https://%s/" % API_SERVER
-BASE_CLIENT_URL = 'http://localhost:%s/'% PORT
-REDIRECT_URI = '%sreceive_code/'  % BASE_CLIENT_URL
+BASE_CLIENT_URL = 'http://localhost:%s/' % PORT
+REDIRECT_URI = '%sreceive_code/' % BASE_CLIENT_URL
 DEFAULT_SCOPE = "basic analyses"
 CLIENT_ID = os.environ["CLIENT_23ANDME_ID"]
 CLIENT_SECRET = os.environ["CLIENT_23ANDME_SECRET"]
@@ -31,14 +30,17 @@ def get_user_info(headers):
 
 def get_pgen_patient_id(headers):
     user_info = get_user_info(headers)
-    assert len(user_info["profiles"]) == 1
-    profile_id = user_info["profiles"][0]
-    response = requests.get("%s1/phenotypes/%s?phenotypes=bd_pgen_patient_id" %
-                            (BASE_API_URL, profile_id),
-                            headers=headers,
-                            verify=False)
-    res = response.json()
-    return res["bd_pgen_patient_id"]
+    if len(user_info["profiles"]) == 1:
+        profile_id = user_info["profiles"][0]
+        response = requests.get("%s1/phenotypes/%s?phenotypes=bd_pgen_patient_id" %
+                                (BASE_API_URL, profile_id),
+                                headers=headers,
+                                verify=False)
+        res = response.json()
+        return res["bd_pgen_patient_id"]
+    else:
+        print "Incorrect profile information", user_info
+        return None
 
 def summarize_analyses(access_token, pgen=False):
     """Provide a summary of available analysis traits for the given access token.
@@ -46,6 +48,8 @@ def summarize_analyses(access_token, pgen=False):
     headers = {'Authorization': 'Bearer %s' % access_token}
     if pgen:
         profile_id = get_pgen_patient_id(headers)
+        if profile_id is None:
+            return
     else:
         profile_id = None
     Analysis = collections.namedtuple("Analysis", ["name", "attrs"])
@@ -70,7 +74,6 @@ def summarize_analyses(access_token, pgen=False):
                     info[-1] = ";".join(info[-1])
                 yield info
         else:
-            reponse_text = response.text
             response.raise_for_status()
 
 def write_summary_analyses(access_token, out_file):
@@ -81,13 +84,21 @@ def write_summary_analyses(access_token, out_file):
             writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
 
 def write_pgen_analyses(access_tokens, out_file):
+    problem_file = "%s-problems.txt" % os.path.splitext(out_file)[0]
+    problem_handle = open(problem_file, "w")
     with open(out_file, "w") as out_handle:
         writer = csv.writer(out_handle)
         writer.writerow(["patientid", "analysis", "result", "population"])
-        for access_token in access_tokens:
-            print access_token
-            for xs in summarize_analyses(access_token, pgen=True):
-                writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
+        print "Processing ", len(access_tokens), " tokens"
+        for i, access_token in enumerate(access_tokens):
+            print i, access_token
+            analyses = list(summarize_analyses(access_token, pgen=True))
+            if len(analyses) == 0:
+                print "No genotype data"
+                problem_handle.write("%s %s\n" % (i + 1, access_token))
+            else:
+                for xs in summarize_analyses(access_token, pgen=True):
+                    writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
 
 def get_pgen_access_tokens():
     """Retrieve PGen access tokens from specialized endpoint at 23andme.
@@ -97,7 +108,7 @@ def get_pgen_access_tokens():
         'client_secret': CLIENT_SECRET}
     response = requests.post(
         "%s%s" % (BASE_API_URL, "access_tokens/"),
-        data = parameters,
+        data=parameters,
         verify=False
     )
     if response.status_code == 200:
@@ -108,8 +119,9 @@ def get_pgen_access_tokens():
 
 @app.route('/')
 def index():
-    auth_url = "%sauthorize/?response_type=code&redirect_uri=%s&client_id=%s&scope=%s" % (BASE_API_URL, REDIRECT_URI, CLIENT_ID, DEFAULT_SCOPE)
-    return flask.render_template('index.html', auth_url = auth_url)
+    auth_url = "%sauthorize/?response_type=code&redirect_uri=%s&client_id=%s&scope=%s" % (
+        BASE_API_URL, REDIRECT_URI, CLIENT_ID, DEFAULT_SCOPE)
+    return flask.render_template('index.html', auth_url=auth_url)
 
 @app.route('/receive_code/')
 def receive_code(code=None):
