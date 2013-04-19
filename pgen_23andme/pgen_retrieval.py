@@ -83,22 +83,26 @@ def write_summary_analyses(access_token, out_file):
         for xs in summarize_analyses(access_token):
             writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
 
-def write_pgen_analyses(access_tokens, out_file):
+def write_pgen_analyses(access_tokens, out_file, starttoken=None):
     problem_file = "%s-problems.txt" % os.path.splitext(out_file)[0]
     problem_handle = open(problem_file, "w")
     with open(out_file, "w") as out_handle:
         writer = csv.writer(out_handle)
         writer.writerow(["patientid", "analysis", "result", "population"])
         print "Processing ", len(access_tokens), " tokens"
+        start = False
         for i, access_token in enumerate(access_tokens):
             print i, access_token
-            analyses = list(summarize_analyses(access_token, pgen=True))
-            if len(analyses) == 0:
-                print "No genotype data"
-                problem_handle.write("%s %s\n" % (i + 1, access_token))
-            else:
-                for xs in summarize_analyses(access_token, pgen=True):
-                    writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
+            if starttoken is None or starttoken == access_token:
+                start = True
+            if start:
+                analyses = list(summarize_analyses(access_token, pgen=True))
+                if len(analyses) == 0:
+                    print "No genotype data"
+                    problem_handle.write("%s %s\n" % (i + 1, access_token))
+                else:
+                    for xs in summarize_analyses(access_token, pgen=True):
+                        writer.writerow([unicode(x).encode('ascii', errors='replace') for x in xs])
 
 def get_pgen_access_tokens():
     """Retrieve PGen access tokens from specialized endpoint at 23andme.
@@ -152,10 +156,11 @@ if __name__ == '__main__':
     parser.add_argument("--out", help="Output file to write CSV results")
     parser.add_argument("--pgen", action='store_true', default=False,
                         help="Run retrieval of PGen specific results")
+    parser.add_argument("--starttoken", help="Token to start pgen analysis at")
     args = parser.parse_args()
     if args.pgen:
         tokens = get_pgen_access_tokens()
-        write_pgen_analyses(tokens, args.out)
+        write_pgen_analyses(tokens, args.out, args.starttoken)
     elif args.token is not None:
         print "Retrieving results for", args.token
         write_summary_analyses(args.token, args.out)
