@@ -3,7 +3,7 @@ experiments:
     align: align/S6_GCCAAT_L003_R1-sort-realign.bam
     count: align/S6_GCCAAT_L003_R1-unique-counts.yaml
     classify: true
-    evaluate: true
+    #evaluate: true
   - files: variation/raw_S1_ATCACG_L003_R1-sort-realign.tsv
     align: align/S1_ATCACG_L003_R1-sort-realign.bam
     count: align/S1_ATCACG_L003_R1-unique-counts.yaml 

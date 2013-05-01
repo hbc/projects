@@ -36,6 +36,7 @@ params:
     #algorithm: linear-regression
     #naive-min-score: 0.7
     #pass-thresh: 0.5
-    assess-bases: [24, 378]
+    #assess-bases: [24, 378]
+    assess-bases: [0, 400]
     train-bases: [180, 320]
     #train-bases: [24, 378]

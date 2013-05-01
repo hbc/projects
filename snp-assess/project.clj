@@ -34,4 +34,5 @@
             "snp-call" ["run" "-m" "snp-assess.call"]
             "snp-lod" ["run" "-m" "snp-assess.detection"]
             "snp-reference" ["run" "-m" "snp-assess.reference"]}
-  :jvm-opts ["-Xmx2g"])
+  ;;:jvm-opts ["-Xmx2g"]
+  )
