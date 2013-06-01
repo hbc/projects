@@ -1,0 +1,5 @@
+scripts/cache
+scripts/figure
+scripts/*.md
+data/
+scripts/*.html
