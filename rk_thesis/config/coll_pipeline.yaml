@@ -1,0 +1,80 @@
+# configuration to run data analysis for the superior colliculus data
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 12
+  timeout: 10000
+  delay: 10
+  scheduler: lsf
+  queue: hsph
+
+dir:
+  results: results/coll
+  doc: doc
+  ref: ref
+  data: data/coll
+
+test_pipeline: False
+
+log_dir: log
+
+input_dirs:
+  - open
+  - closed
+
+ref: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Sequence/Bowtie2Index/genome
+gtf: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Annotation/Genes/genes.gtf
+
+annotation:
+  name: rn4
+  file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Annotation/Genes/genes.gtf
+  genome: rn4
+
+program:
+  max_threads: 8
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie2
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    program: cutadapt
+    platform: [illumina, polya]
+    quality_format: sanger
+    options:
+      error-rate: 0.1
+      quality-cutoff: 20
+
+  tophat:
+    name: tophat
+    program: tophat
+    options:
+      b2-sensitive: True
+      num-threads: 8
+    quality_format: sanger
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  deseq:
+    comparisons:
+      - [wt, tsc]
+
+  rseqc:
+    name: rseqc
+
+
+run:
+  [fastqc, cutadapt, fastqc, tophat, rseqc, htseq-count, deseq]

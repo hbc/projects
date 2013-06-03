@@ -1,0 +1,6 @@
+scripts/*.txt
+scripts/*.md
+scripts/*.html
+scripts/cache/
+scripts/figure/
+scripts/*.pdf

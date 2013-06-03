@@ -1,16 +1,20 @@
-# configuration to run data analysis on tuberous sclerosis files
+# configuration to run data analysis for the superior colliculus data
 cluster:
   name: odyssey
-  profile: lsf2
-  cores: 4
+  profile: lsf
+  cores: 12
   timeout: 10000
   delay: 10
+  scheduler: lsf
+  queue: hsph
 
 dir:
-  results: results
+  results: results/tsc
   doc: doc
   ref: ref
   data: data/tsc
+
+test_pipeline: False
 
 log_dir: log
 
@@ -18,22 +22,23 @@ input_dirs:
   - tsc
   - wt
 
-ref: /n/hsphS10/hsphfs1/chb/biodata/genomes/Mmusculus/mm9/bowtie/mm9
-gtf: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
+ref: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Sequence/Bowtie2Index/genome
+gtf: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Annotation/Genes/genes.gtf
 
-pair_info:
-  forward_read_suffix: "/1"
-  reverse_read_suffix: "/3"
+#pair_info:
+#  forward_read_suffix: "/1"
+#  reverse_read_suffix: "/3"
 
 annotation:
-  name: mm9
-  file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes_with_chr.gtf
-  genome: mm9
+  name: rn4
+  file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Rattus_norvegicus/Ensembl/RGSC3.4/Annotation/Genes/genes.gtf
+  genome: rn4
 
 program:
+  max_threads: 8
   fastqc: fastqc
   tophat: tophat
-  bowtie: bowtie
+  bowtie: bowtie2
 
 stage:
   fastqc:
@@ -45,16 +50,18 @@ stage:
   cutadapt:
     program: cutadapt
     platform: [illumina, polya]
+    quality_format: sanger
     options:
-      - [--error-rate, 0.1]
-      - [--quality-cutoff, 20]
-      - [--minimum-length, 20]
+      error-rate: 0.1
+      quality-cutoff: 20
 
   tophat:
     name: tophat
     program: tophat
-    max_errors: 2
-    quality_format: illumina
+    options:
+        b2-sensitive: True
+        num-threads: 8
+    quality_format: sanger
 
   sickle:
     name: sickle

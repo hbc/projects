@@ -1,0 +1,319 @@
+<!--
+Analysis of pollutant vs. influenza data for the Kobzik lab
+-->
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE)
+```
+
+
+```{r variables-and-libraries}
+library(ggplot2)
+library(reshape)
+library(googleVis)
+library(stringr)
+library(edgeR)
+wd = '/n/home05/kirchner/cache/projects/kobzik_influenza/scripts/'
+setwd(wd)
+in_file = paste(wd, '../data/ROFAFluScreenKobzikFeb222013.csv', sep='')
+FDR_CUTOFF = 0.10
+ensembl_gene = 'hsapiens_gene_ensembl'
+gene_symbol = 'hgnc_symbol'
+filter_type = 'refseq_mrna'
+results_dir = paste(wd, "../results/", sep='')
+```
+
+
+
+```{r data-load}
+counts = read.table(in_file, header=TRUE, sep=",")
+```
+We will use the order column as the ID column since those values are unique.
+We want to melt the dataframe using these as the values.
+
+```{r id-column}
+control_cols = c("control_rep1", "control_rep2", "control_rep3", "control_rep4")
+ROFA_cols = c("ROFA_rep1", "ROFA_rep2", "ROFA_rep3", "ROFA_rep4")
+virus_cols = c("virus_rep1", "virus_rep2", "virus_rep3", "virus_rep4")
+ROFA_virus_cols = c("ROFA_virus_rep1", "ROFA_virus_rep2", "ROFA_virus_rep3", "ROFA_virus_rep4")
+small_data = subset(counts, select=c(control_cols, ROFA_cols, virus_cols, ROFA_virus_cols, "order", "RefSeq", "GeneSymbol"))
+melted = melt(small_data, id=17:19)
+#melted$treatment = sapply(melted$variable,
+melted$treatment = Map(function(x) str_split(x, "_rep", n=2)[[1]][1], melted$variable)
+names(melted) = c("order", "refseq", "symbol", "replicate", "count", "treatment")
+melted$treatment = factor(melted$treatment)
+melted$replicate = factor(melted$replicate)
+```
+
+## Exploratory data analysis
+
+Counts are non-normal, looks like they might be better fit by a poisson
+distribution. Poisson distribution doesn't really fit either though,
+neither does the negative binomial. Logging the data shows it kind of gets
+near a normal distribution if you drop the 0 counts out, but there is a long left
+shift in the distribution.
+```{r prefiltering-exploratory-analysis}
+ ggplot(melted, aes(x=count)) + geom_histogram()
+```
+
+shRNA counts have very similar distributions for each of the conditions:
+```{r logged-counts}
+ ggplot(melted, aes(x=count)) + geom_histogram() + scale_x_log10() + facet_grid(. ~ treatment)
+```
+
+```{r raw-boxplot}
+ ggplot(melted, aes(y=count, x=treatment)) + geom_boxplot()
+```
+
+In particular the counts for the control and ROFA alone are highly correlated.
+```{r pairwise-plots-of-average}
+casted = cast(melted, refseq ~ treatment, value="count", mean)
+plotmatrix(casted[2:5])
+```
+
+Each treatment group has higher within-group correlation, with the control and
+ROFA only groups having the highest correlation with each other, with ROFA + virus
+having the lowest correlation with the two control groups.
+```{r high-correlation2}
+ cor.m = melt(cor(small_data[1:16]))
+ ggplot(cor.m, aes(X1, X2)) + geom_tile(aes(fill=value)) + opts(axis.text.x=theme_text(angle=-90))
+```
+
+
+Look at the number of multiple hits for each gene. Oliver suggested throwing
+out all of the singles. There aren't any though. Almost all have 5-6 hits
+except for some outliers.
+```{r multiple-hits, results='asis'}
+multihit_table = table(small_data$RefSeq)
+print(gvisTable(data.frame(table(multihit_table))), "chart")
+```
+
+Within a condition, do the shRNA counts for shRNA all in the same gene differ by
+a lot?
+
+
+Sample of dataframe for use with edgeR-- order is the unique ID to link back
+to the original table.
+```{r construct-edger-dataframe, results='asis'}
+edger_df = data.frame(order=small_data$order, small_data[1:16])
+rownames(edger_df) = small_data$order
+print(gvisTable(head(edger_df), options=list(width=900)), "chart")
+edger_df$order = NULL
+```
+Is it possible to use EdgeR for this data? EdgeR is designed to handle count data,
+but makes some key assumptions in doing it. What are those assumptions?
+I wrote Mark Robinson and he seemed to think it would be okay as long some
+of the assumptions were not violated.
+
+From Mark:
+Thanks for the note.  I have had a bit of experience with shRNA data treated as
+counts, but I think we had some technical difficulties; so far, it hasn't worked
+out very well. But, it sounds like you've done some obvious checks -- scatter
+plots (log-scale probably) -- pairs(), M-versus-A plots -- plotSmear(), MDS
+plots -- plotMDS(), mean-variance relationships -- plotMeanVar(), biological
+coeff. variation plots -- plotBCV(), etc. are all standard things to look at.
+If things looks similar to what we see for RNA-seq (and ChIP-seq, etc.), then I
+would think you are in good shape.
+
+```{r load-dge}
+group = as.factor(c("control", "control", "control", "control",
+	"ROFA", "ROFA", "ROFA", "ROFA",
+	"virus", "virus", "virus", "virus",
+	"ROFA_virus", "ROFA_virus", "ROFA_virus", "ROFA_virus"))
+dge = DGEList(edger_df, group=group)
+```
+
+Libraries tend to have the same number of shRNA counts.
+```{r simple-design, results='asis'}
+design = model.matrix(~0+group)
+dge = calcNormFactors(dge)
+print(gvisTable(dge$samples, options=list(width=900)), "chart")
+```
+
+Most samples cluster together but two of the four ROFA_virus samples are way off on their
+own.
+```{r mds-plot}
+plotMDS(dge)
+```
+
+Common dispersion estimation with biological coefficient of variation.
+```{r common-dispersion-estimation}
+dge = estimateCommonDisp(dge, verbose=TRUE)
+```
+Trended dispersion estimation.
+```{r trended-dispersion-estimation}
+dge = estimateTagwiseDisp(dge)
+```
+
+For low count data there is quite a bit of biological variation but this drops as
+the tag count increases. We should treat any differentially expressed tags that have
+low CPM as suspect.
+```{r bcv-plot}
+plotBCV(dge)
+```
+
+## Exploratory model fitting
+We fit a model of this form to the data:
+```{r model}
+design
+```
+Did we do well modeling the dispersion? Read a litlte bit more about what
+these are doing.
+```{r model-fitting}
+fit = glmFit(dge, design)
+g = gof(fit)
+z = zscoreGamma(g$gof.statistics,shape=g$df/2,scale=2)
+qqnorm(z)
+```
+
+On the left is the MDA plot from the raw tag counts, on the right is the MDS plot
+of the fitted counts.
+Fitting the model results in separating out the conditions based on their
+first and second principal components.
+```{r model-fit-effect-on-MDS}
+plotMDS(dge)
+plotMDS(DGEList(fit$fitted.values))
+```
+These are plots of the mean tag count vs the residual of the fitted values vs. the
+Poisson distribution.
+```{r model-fit-exploration}
+dglmStdResid(fit$counts, design)
+dglmStdResid(fit$fitted.values, design)
+```
+
+## Differential expression
+### ROFA vs. control
+There are no differences between control and ROFA that pass the FDR cutoff. This
+matches up with the preliminary results from the grant proposal.
+```{r differential-test-function}
+differential_test = function(dge, pair) {
+	et = exactTest(dge, pair=pair)
+	et_table = et$table
+	et_table$DE = as.numeric(decideTestsDGE(et, p.value=FDR_CUTOFF))
+	et_table$FDR = p.adjust(et_table$PValue, method="BH")
+	return(et_table)
+}
+```
+```{r tabulate-multiple-hits-function}
+multiple_hits_table = function(df, field="id") {
+	table(table(df$field))
+}
+```
+```{r annotate-edgeR-de-df-function}
+annotate_edgeR_de_df = function(df) {
+	m = merge(df, counts[, c("order", "RefSeq")], by.x=0, by.y="order")
+	colnames(m) = c("order", "logFC", "logCPM", "pvalue", "DE", "FDR", "id")
+	m = annotate_df(m)
+	return(m)
+}
+```
+
+```{r diffexp-functions}
+write_diffexp_table = function(df, name, direction, results_dir="") {
+	out_file = paste(results_dir, name, "_", direction, ".txt", sep="")
+	write.table(df, out_file, quote=FALSE, row.names=FALSE, sep="\t")
+}
+process_downregulated = function(dge, pair, cname) {
+	et_table = differential_test(dge, pair)
+	down = subset(et_table, DE == -1, drop=TRUE)
+	if(dim(down)[1] != 0) {
+		print(sprintf("Total number of %s shRNA in %s: %d", "downregulated", cname, dim(down)[1]))
+		annotated = annotate_edgeR_de_df(down)
+		return(annotated)
+	}
+	else {
+		print(sprintf("There are 0 dowregulated shRNA for %s", cname))
+		return(data.frame())
+	}
+}
+process_upregulated = function(dge, pair, cname) {
+	et_table = differential_test(dge, pair)
+	up = subset(et_table, DE == 1, drop=TRUE)
+	if(dim(up)[1] != 0) {
+		print(sprintf("Total number of %s shRNA in %s: %d", "upregulated", cname, dim(up)[1]))
+		annotated = annotate_edgeR_de_df(up)
+		return(annotated)
+	}
+	else {
+		print(sprintf("There are 0 upregulated shRNA for %s", cname))
+		return(data.frame())
+	}
+}
+annotate_df = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, gene_symbol, "description",
+		"entrezgene"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	return(m)
+}
+annotate_df_with_uniprot = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, "uniprot_swissprot_accession"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	return(m)
+}
+wrap_gvistable = function(table) {
+	to_display = c("id", "hgnc_symbol", "description")
+	if(dim(table)[1] > 0) {
+		print(gvisTable(table[, to_display], options=list(width=900)), "chart")
+	}
+}
+subset_multiple_hits = function(df, field="id") {
+	multiple_hits_table(df, field)
+	multihit_table = table(df[, field])
+	multihit_ids = names(multihit_table[multihit_table > 1])
+	return(droplevels(df[df$id %in% multihit_ids,]))
+}
+process_multiple_hits = function(df, name, direction) {
+	multihits = subset_multiple_hits(df)
+	#multihits = annotate_df_with_uniprot(multihits)
+	write_diffexp_table(multihits, name, direction, results_dir)
+	return(multihits)
+}
+```
+```{r process-regulation-function}
+process_regulation = function(df, pair, name) {
+	down = process_downregulated(df, pair, name)
+	down = annotate_df_with_uniprot(down)
+	write_diffexp_table(down, name, "down", results_dir)
+	wrap_gvistable(down)
+	process_multiple_hits(down, name, "multihits-down")
+	up = process_upregulated(df, pair, name)
+	up = annotate_df_with_uniprot(up)
+	write_diffexp_table(up, name, "up", results_dir)
+	wrap_gvistable(up)
+	process_multiple_hits(up, name, "multihits-up")
+	return(c(down, up))
+}
+```
+```{r block-of-go-helper-functions}
+```
+```{r setup_chunk, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, cache=FALSE, highlight=TRUE, autodep=TRUE)
+```
+### ROFA vs. control
+```{r results='asis'}
+down_and_up = process_regulation(dge, c(1, 2), "rofa-vs-control")
+```
+### Virus vs. control
+```{r virus-vs-control, results='asis'}
+down_and_up = process_regulation(dge, c(1, 3), "virus-vs-control")
+```
+### Virus vs. ROFA + virus
+```{r results='asis'}
+down_and_up = process_regulation(dge, c(3, 4), "ROFA+virus-vs-virus")
+```
+
+## Wrapup
+```{r wrapup}
+```
+
+## Citations
+```{r citations}
+```

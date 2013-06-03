@@ -2,17 +2,19 @@
 pipeline to handle performing differential analysis on ES
 cells
 """
-from rkinf.cluster import start_cluster, stop_cluster
+from bipy.cluster import start_cluster, stop_cluster
 import sys
 import yaml
-from rkinf.log import setup_logging, logger
+from bipy.log import setup_logging, logger
 from bcbio.utils import safe_makedir, file_exists
 import csv
 import os
-from rkinf.utils import _download_ref, append_stem
-from rkinf.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
-                           deseq)
+from bipy.utils import (_download_ref, append_stem, prepare_ref_file,
+                        replace_suffix)
+from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
+                           deseq, rseqc, sam, annotate)
 from itertools import product
+from bcbio.broad import BroadRunner, picardrun
 
 
 def _get_stage_config(config, stage):
@@ -117,7 +119,12 @@ def main(config_file):
             tophat_args = zip(*product(curr_files, [None], [config["ref"]],
                                        ["tophat"], [config]))
             tophat_outputs = view.map(tophat.run_with_config, *tophat_args)
-            curr_files = _make_current_files(tophat_outputs)
+            bamfiles = view.map(sam.sam2bam, tophat_outputs)
+            bamsort = view.map(sam.bamsort, bamfiles)
+            view.map(sam.bamindex, bamsort)
+            final_bamfiles = bamsort
+            curr_files = tophat_outputs
+
 
         if stage == "htseq-count":
             _emit_stage_message(stage, curr_files)
@@ -129,6 +136,44 @@ def main(config_file):
                                         "all_combined.counts")
             combined_out = htseq_count.combine_counts(htseq_outputs, None,
                                                       out_file=combined_out)
+
+        if stage == "rseqc":
+            _emit_stage_message(stage, curr_files)
+            rseqc_config = _get_stage_config(config, stage)
+            rseq_args = zip(*product(curr_files, [config]))
+            view.map(rseqc.bam_stat, *rseq_args)
+            view.map(rseqc.genebody_coverage, *rseq_args)
+            view.map(rseqc.junction_annotation, *rseq_args)
+            view.map(rseqc.junction_saturation, *rseq_args)
+            RPKM_args = zip(*product(final_bamfiles, [config]))
+            RPKM_count_out = view.map(rseqc.RPKM_count, *RPKM_args)
+            RPKM_count_fixed = view.map(rseqc.fix_RPKM_count_file,
+                                        RPKM_count_out)
+            annotate_args = zip(*product(RPKM_count_fixed,
+                                         ["gene_id"],
+                                         ["ensembl_transcript_id"],
+                                         ["mouse"]))
+            view.map(annotate.annotate_table_with_biomart,
+                     *annotate_args)
+            view.map(rseqc.RPKM_saturation, *RPKM_args)
+
+        if stage == "coverage":
+            logger.info("Calculating RNASeq metrics on %s." % (curr_files))
+            nrun = len(curr_files)
+            ref = prepare_ref_file(config["stage"][stage]["ref"], config)
+            ribo = config["stage"][stage]["ribo"]
+            picard = BroadRunner(config["program"]["picard"])
+            out_dir = os.path.join(config["dir"]["results"], stage)
+            safe_makedir(out_dir)
+            out_files = [replace_suffix(os.path.basename(x),
+                                        "metrics") for x in curr_files]
+            out_files = [os.path.join(out_dir, x) for x in out_files]
+            out_files = view.map(picardrun.picard_rnaseq_metrics,
+                                 [picard] * nrun,
+                                 curr_files,
+                                 [ref] * nrun,
+                                 [ribo] * nrun,
+                                 out_files)
 
         if stage == "deseq":
             _emit_stage_message(stage, curr_files)
@@ -171,6 +216,6 @@ if __name__ == "__main__":
         startup_config = yaml.load(config_in_handle)
     setup_logging(startup_config)
     start_cluster(startup_config)
-    from rkinf.cluster import view
+    from bipy.cluster import view
 
     main(main_config_file)

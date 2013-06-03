@@ -44,8 +44,8 @@ def main(config_file):
     for stage in config["run"]:
         if stage == "fastqc":
             logger.info("Running fastqc on %s." % (curr_files))
-            stage_runner = fastqc.FastQCStage(config)
-            view.map(stage_runner, curr_files)
+            stage_runner = fastqc.FastQC(config)
+            view.map(stage_runner, curr_files, block=False)
 
         if stage == "cutadapt":
             logger.info("Running cutadapt on %s." % (curr_files))
@@ -56,6 +56,13 @@ def main(config_file):
             logger.info("Running bowtie on %s." % (curr_files))
             bowtie = Bowtie(config)
             curr_files = view.map(bowtie, curr_files)
+            mapped = view.map(sam.only_mapped, curr_files)
+            unmapped = view.map(sam.only_unmapped, curr_files)
+            curr_files = mapped
+            bam_files = view.map(sam.sam2bam, mapped)
+            bam_sorted = view.map(sam.bamsort, bam_files)
+            view.map(sam.bamindex, bam_sorted)
+
 
         if stage == "coverage":
             logger.info("Calculating RNASeq metrics on %s." % (curr_files))

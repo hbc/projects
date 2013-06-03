@@ -1,0 +1,104 @@
+# example configuration file for rna-seq analysis
+cluster:
+  name: odyssey # arbitrary name
+  profile: lsf # ipython profile to run under
+  cores: 4 # number of ipython engines to spin up
+  timeout: 10000 # time to wait for the cluster to be up before failing
+  delay: 10 # the delay in spinning up engines once the controller is up
+
+dir:
+  results: results_test # results will go in this directory
+  doc: doc # documentation for this analysis goes here
+  ref: ref # reference files
+  data: data # raw data goes here. make everything read only for safety
+  meta: meta # metadata (annotation, etc) goes here
+
+log_dir: log
+
+input_dirs:
+  - N2_N4
+  - N5_N8
+  - sample_lane2
+
+sample_parse:
+  identifier: Pb*.fastq
+  delimiter: _
+  fields: [sample, condition, trial, barcode, read]
+
+ref: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Sequence/BowtieIndex/genome
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
+
+annotation:
+  name: hg19
+  file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
+
+# this is the paths to the programs; if a Java library the path to where
+# the jar file is kept
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
+
+# configuration options for each stage of the analysis
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+      - [--threads, 4]
+
+  cutadapt:
+    program: cutadapt
+    platform: [truseq, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--quality-cutoff, 20]
+      - [--minimum-length, 20]
+
+  tophat:
+    name: tophat
+    program: tophat
+    max_errors: 2
+    quality_format: sanger
+
+  sickle:
+    name: sickle
+    program: sickle
+    quality_type: sanger
+    length_cutoff: 20
+    quality_cutoff: 20
+
+    rseqc:
+      name: rseqc
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: human
+      file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/refFlat.txt
+    ribo: meta/rrna_final.bed
+
+  deseq:
+    comparisons:
+      - [control, exposed]
+
+  rseqc:
+    name: rseqc
+
+# order to run the stages in
+run:
+  [fastqc, cutadapt, fastqc, tophat]

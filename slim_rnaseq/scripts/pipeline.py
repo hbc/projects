@@ -5,7 +5,7 @@ from bipy.log import setup_logging, logger
 from bcbio.utils import safe_makedir
 import csv
 import os
-from bipy.utils import _download_ref, append_stem, replace_suffix
+from bipy.utils import _download_ref, append_stem, replace_suffix, prepare_ref_file
 from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
                            rseqc, sam)
 import glob
@@ -188,11 +188,11 @@ def main(config_file):
             if stage == "coverage":
                 logger.info("Calculating RNASeq metrics on %s." % (curr_files))
                 nrun = len(curr_files)
-                ref = blastn.prepare_ref_file(config["stage"][stage]["ref"],
+                ref = prepare_ref_file(config["stage"][stage]["ref"],
                                               config)
                 ribo = config["stage"][stage]["ribo"]
                 picard = BroadRunner(config["program"]["picard"])
-                out_dir = os.path.join(results_dir, stage)
+                out_dir = os.path.join(config["dir"]["results"], stage)
                 safe_makedir(out_dir)
                 out_files = [replace_suffix(os.path.basename(x),
                                             "metrics") for x in curr_files]

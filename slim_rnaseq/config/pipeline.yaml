@@ -1,7 +1,7 @@
 cluster:
   name: odyssey
   profile: lsf2
-  cores: 31
+  cores: 10
   timeout: 10000
   delay: 60
 
