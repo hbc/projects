@@ -39,10 +39,12 @@ import yaml
 import unittest
 from itertools import izip
 import os
+from collections import defaultdict
 
 config_file = "test_pairs.yaml"
 MATCH_LENGTH = 20
 OUT_DIR = "barcoded"
+CHUNK_SIZE = 100000
 
 def main(config_file, fq1, fq2):
     if not os.path.exists(OUT_DIR):
@@ -56,19 +58,43 @@ def main(config_file, fq1, fq2):
     parsers = izip(SeqIO.parse(fq1, "fastq"), SeqIO.parse(fq2, "fastq"))
     fq1_base, fq1_ext = os.path.splitext(fq1)
     fq2_base, fq2_ext = os.path.splitext(fq2)
+    barcode_fq1_reads = defaultdict(list)
+    barcode_fq2_reads = defaultdict(list)
+    count = 0
     for r1, r2 in parsers:
+        count = count + 1
         assert r1.id == r2.id
         barcode = _guess_barcode(r1, r2, barcodes, anchors)
-        # if barcode is None write to unknown file
+        """
         with open(_out_filename(fq1_base, fq1_ext, barcode), "a") as out_handle:
-            SeqIO.write(r1, out_handle, "fastq")
+                SeqIO.write(r1, out_handle, "fastq")
         with open(_out_filename(fq2_base, fq2_ext, barcode), "a") as out_handle:
-            SeqIO.write(r2, out_handle, "fastq")
+                SeqIO.write(r2, out_handle, "fastq")
+                """
+        barcode_fq1_reads[barcode].append(r1)
+        barcode_fq2_reads[barcode].append(r2)
+        if count > CHUNK_SIZE:
+            for bc, reads in barcode_fq1_reads.items():
+                with open(_out_filename(fq1_base, fq1_ext, bc), "a") as out_handle:
+                    SeqIO.write(reads, out_handle, "fastq")
+            for bc, reads in barcode_fq2_reads.items():
+                with open(_out_filename(fq2_base, fq2_ext, bc), "a") as out_handle:
+                    SeqIO.write(reads, out_handle, "fastq")
+            count = 0
+            barcode_fq1_reads = defaultdict(list)
+            barcode_fq2_reads = defaultdict(list)
+    for bc, reads in barcode_fq1_reads.items():
+        with open(_out_filename(fq1_base, fq1_ext, bc), "a") as out_handle:
+            SeqIO.write(reads, out_handle, "fastq")
+    for bc, reads in barcode_fq2_reads.items():
+        with open(_out_filename(fq2_base, fq2_ext, bc), "a") as out_handle:
+            SeqIO.write(reads, out_handle, "fastq")
+
 
 def _out_filename(base, ext, barcode):
     if not barcode:
         barcode = "ambiguous"
-    out_name = base + "_" + barcode + ext
+    out_name = os.path.basename(base) + "_" + barcode + ext
     return os.path.join(OUT_DIR, out_name)
 
 def _guess_barcode(r1, r2, barcodes, anchors):
@@ -102,18 +128,32 @@ def _match_barcodes(r1_seq, r2_seq, barcodes, anchors):
     rv_matches = []
     for barcode in barcodes.items():
         fw_anchor, rv_anchor = _anchor_barcode(barcode, anchors)
-        for a in pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10):
+        score = pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1)
+        if score >= float(len(fw_anchor)) * 0.90:
+                fw_matches.append(barcode[0])
+        score = pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1)
+        if score >= float(len(fw_anchor)) * 0.90:
+                fw_matches.append(barcode[0])
+        score = pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1)
+        if score >= float(len(fw_anchor)) * 0.90:
+                rv_matches.append(barcode[0])
+        score = pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1)
+        if score >= float(len(rv_anchor)) * 0.90:
+                rv_matches.append(barcode[0])
+                """
+        for a in pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1):
             if a[2] >= float(len(fw_anchor)) * 0.90:
                 fw_matches.append(barcode[0])
-        for a in pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10):
+        for a in pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1):
             if a[2] >= float(len(rv_anchor)) * 0.90:
                 fw_matches.append(barcode[0])
-        for a in pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10):
+        for a in pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1):
             if a[2] >= float(len(rv_anchor)) * 0.90:
                 rv_matches.append(barcode[0])
-        for a in pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10):
+        for a in pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1):
             if a[2] >= float(len(fw_anchor)) * 0.90:
                 rv_matches.append(barcode[0])
+                """
     return fw_matches, rv_matches
 
 class TestSplitter(unittest.TestCase):
