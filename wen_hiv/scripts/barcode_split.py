@@ -38,59 +38,83 @@ import sys
 import yaml
 import unittest
 from itertools import izip
+import os
 
 config_file = "test_pairs.yaml"
 MATCH_LENGTH = 20
+OUT_DIR = "barcoded"
 
 def main(config_file, fq1, fq2):
+    if not os.path.exists(OUT_DIR):
+        os.makedirs(OUT_DIR)
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
 
     barcodes = config["barcodes"]
-    #    anchors = zip(barcodes.keys(), map(_anchor_barcode, barcodes.items(),
-    #                                   [config["anchors"]] * len(barcodes)))
     anchors = config["anchors"]
 
     parsers = izip(SeqIO.parse(fq1, "fastq"), SeqIO.parse(fq2, "fastq"))
+    fq1_base, fq1_ext = os.path.splitext(fq1)
+    fq2_base, fq2_ext = os.path.splitext(fq2)
     for r1, r2 in parsers:
         assert r1.id == r2.id
-        r1_matches, r2_matches = match_barcodes(r1.seq[0:MATCH_LENGTH],
-                                                r2.seq[0:MATCH_LENGTH], barcodes, anchors)
-        print r1.id, r1_matches, r2_matches
+        barcode = _guess_barcode(r1, r2, barcodes, anchors)
+        # if barcode is None write to unknown file
+        with open(_out_filename(fq1_base, fq1_ext, barcode), "a") as out_handle:
+            SeqIO.write(r1, out_handle, "fastq")
+        with open(_out_filename(fq2_base, fq2_ext, barcode), "a") as out_handle:
+            SeqIO.write(r2, out_handle, "fastq")
+
+def _out_filename(base, ext, barcode):
+    if not barcode:
+        barcode = "ambiguous"
+    out_name = base + "_" + barcode + ext
+    return os.path.join(OUT_DIR, out_name)
+
+def _guess_barcode(r1, r2, barcodes, anchors):
+    r1_matches, r2_matches = _match_barcodes(r1.seq[0:MATCH_LENGTH],
+                                            r2.seq[0:MATCH_LENGTH], barcodes, anchors)
+    return _consensus_barcode(r1_matches, r2_matches)
+
+def _consensus_barcode(b1, b2):
+    """
+    returns the consensus barcode if any from two sets of barcodes
+    """
+    s1 = set(b1)
+    s2 = set(b2)
+    i = s1.intersection(s2)
+    if len(i) == 1:
+        return i.pop()
+    elif len(s1) == 0 and len(s2) == 1:
+        return s2.pop()
+    elif len(s1) == 1 and len(s2) == 0:
+        return s1.pop()
+    else:
+        return None
 
 def _anchor_barcode(barcode, anchors):
     bc = barcode[0]
     desc = barcode[1]
     return bc + anchors[desc[1]][0], bc + anchors[desc[1]][1],
 
-
-def match_barcodes(r1_seq, r2_seq, barcodes, anchors):
+def _match_barcodes(r1_seq, r2_seq, barcodes, anchors):
     fw_matches = []
     rv_matches = []
     for barcode in barcodes.items():
         fw_anchor, rv_anchor = _anchor_barcode(barcode, anchors)
         for a in pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10):
-            if a[2] >= (float(len(fw_anchor)) * 0.90):
+            if a[2] >= float(len(fw_anchor)) * 0.90:
+                fw_matches.append(barcode[0])
+        for a in pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10):
+            if a[2] >= float(len(rv_anchor)) * 0.90:
                 fw_matches.append(barcode[0])
         for a in pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10):
             if a[2] >= float(len(rv_anchor)) * 0.90:
                 rv_matches.append(barcode[0])
+        for a in pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10):
+            if a[2] >= float(len(fw_anchor)) * 0.90:
+                rv_matches.append(barcode[0])
     return fw_matches, rv_matches
-
-def t(fq1, fq2, config_file=config_file):
-    with open(config_file) as in_handle:
-        config = yaml.load(in_handle)
-    with open(fq1) as fq1_handle, open(fq2) as fq2_handle:
-        fq1_parser = SeqIO.parse(fq1_handle, "fastq")
-        fq2_parser = SeqIO.parse(fq2_handle, "fastq")
-        for fq1_read in fq1_parser:
-            fq2_read = fq2_parser.next()
-            if not (fq1_read.id in config["answers"] and
-                    fq2_read.id in config["answers"]):
-                print "Read id not found in answers %s, %s" % (fq1_read.id, fq2_read.id)
-            else:
-                print config["answers"][fq1_read.id]
-
 
 class TestSplitter(unittest.TestCase):
 
