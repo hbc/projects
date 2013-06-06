@@ -39,11 +39,11 @@ import yaml
 import unittest
 from itertools import izip
 import os
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 config_file = "test_pairs.yaml"
-MATCH_LENGTH = 20
-OUT_DIR = "barcoded"
+MATCH_LENGTH = 12
+OUT_DIR = "results/barcoded_less_permissive"
 CHUNK_SIZE = 100000
 
 def main(config_file, fq1, fq2):
@@ -61,10 +61,12 @@ def main(config_file, fq1, fq2):
     barcode_fq1_reads = defaultdict(list)
     barcode_fq2_reads = defaultdict(list)
     count = 0
+    match_stats = Counter()
     for r1, r2 in parsers:
         count = count + 1
         assert r1.id == r2.id
-        barcode = _guess_barcode(r1, r2, barcodes, anchors)
+        barcode, match_type = _guess_barcode(r1, r2, barcodes, anchors)
+        match_stats.update([str(barcode) + "_" + match_type])
         """
         with open(_out_filename(fq1_base, fq1_ext, barcode), "a") as out_handle:
                 SeqIO.write(r1, out_handle, "fastq")
@@ -90,6 +92,10 @@ def main(config_file, fq1, fq2):
         with open(_out_filename(fq2_base, fq2_ext, bc), "a") as out_handle:
             SeqIO.write(reads, out_handle, "fastq")
 
+    stats_file = os.path.join(OUT_DIR, "stats.txt")
+    with open(stats_file, "w") as out_handle:
+        for key, value in stats_file.elements():
+            out_handle.write(key + ": " + value  + "\n")
 
 def _out_filename(base, ext, barcode):
     if not barcode:
@@ -100,7 +106,8 @@ def _out_filename(base, ext, barcode):
 def _guess_barcode(r1, r2, barcodes, anchors):
     r1_matches, r2_matches = _match_barcodes(r1.seq[0:MATCH_LENGTH],
                                             r2.seq[0:MATCH_LENGTH], barcodes, anchors)
-    return _consensus_barcode(r1_matches, r2_matches)
+    consensus, match_type = _consensus_barcode(r1_matches, r2_matches)
+    return consensus, match_type
 
 def _consensus_barcode(b1, b2):
     """
@@ -110,51 +117,113 @@ def _consensus_barcode(b1, b2):
     s2 = set(b2)
     i = s1.intersection(s2)
     if len(i) == 1:
-        return i.pop()
+        return i.pop(), "consensus"
     elif len(s1) == 0 and len(s2) == 1:
-        return s2.pop()
+        return s2.pop(), "r2_evidence"
     elif len(s1) == 1 and len(s2) == 0:
-        return s1.pop()
+        return s1.pop(), "r1_evidence"
+    elif len(s1) == 0 and len(s2) == 0:
+        return None, "no_barcode"
     else:
-        return None
+        return None, "ambiguous"
+
+def _has_consensus_barcode(b1, b2):
+    return len(set(b1).intersection(b2)) == 1
+
 
 def _anchor_barcode(barcode, anchors):
     bc = barcode[0]
     desc = barcode[1]
-    return bc + anchors[desc[1]][0], bc + anchors[desc[1]][1],
+    fw_barcode = bc + anchors[desc[1]][0]
+    rv_barcode = bc + anchors[desc[1]][1]
+    return fw_barcode, rv_barcode
 
 def _match_barcodes(r1_seq, r2_seq, barcodes, anchors):
     fw_matches = []
     rv_matches = []
     for barcode in barcodes.items():
         fw_anchor, rv_anchor = _anchor_barcode(barcode, anchors)
+        #print fw_anchor, rv_anchor
+        # go for the easy ones first-- we see the barcode + the anchor exactly
+        if fw_anchor in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if rv_anchor in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if fw_anchor in str(r2_seq):
+            rv_matches.append(barcode[0])
+        if rv_anchor in str(r2_seq):
+            rv_matches.append(barcode[0])
+
+        if fw_matches or rv_matches:
+            return fw_matches, rv_matches
+
+        # match clipping off the first base of the barcode
+        if fw_anchor[1:] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if rv_anchor[1:] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if fw_anchor[1:] in str(r2_seq):
+            rv_matches.append(barcode[0])
+        if rv_anchor[1:] in str(r2_seq):
+            rv_matches.append(barcode[0])
+
+        if fw_matches or rv_matches:
+            return fw_matches, rv_matches
+
+        # match clipping off the last bases of the anchor
+        """
+        if fw_anchor[:-3] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if rv_anchor[:-3] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if fw_anchor[:-3] in str(r2_seq):
+            rv_matches.append(barcode[0])
+        if rv_anchor[:-3] in str(r2_seq):
+            rv_matches.append(barcode[0])
+
+        if fw_matches or rv_matches:
+            return fw_matches, rv_matches
+            """
+    return fw_matches, rv_matches
+"""
+        # match clipping off the last bases of the anchor and first base of the barcode
+        if fw_anchor[1:-2] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if rv_anchor[1:-2] in str(r1_seq):
+            fw_matches.append(barcode[0])
+        if fw_anchor[1:-2] in str(r2_seq):
+            rv_matches.append(barcode[0])
+        if rv_anchor[1:-2] in str(r2_seq):
+            rv_matches.append(barcode[0])
+
+        if fw_matches or rv_matches:
+            return fw_matches, rv_matches
+
         score = pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1)
-        if score >= float(len(fw_anchor)) * 0.90:
+        if score >= float(len(fw_anchor)):
                 fw_matches.append(barcode[0])
         score = pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1)
-        if score >= float(len(fw_anchor)) * 0.90:
+        if score >= float(len(fw_anchor)):
                 fw_matches.append(barcode[0])
         score = pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1)
-        if score >= float(len(fw_anchor)) * 0.90:
+        if score >= float(len(fw_anchor)):
                 rv_matches.append(barcode[0])
         score = pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1)
-        if score >= float(len(rv_anchor)) * 0.90:
+        if score >= float(len(rv_anchor)):
                 rv_matches.append(barcode[0])
-                """
         for a in pairwise2.align.localms(fw_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1):
-            if a[2] >= float(len(fw_anchor)) * 0.90:
+            if a[2] >= float(len(fw_anchor)):
                 fw_matches.append(barcode[0])
         for a in pairwise2.align.localms(rv_anchor, str(r1_seq), 1, -1, -20, -10, score_only=1):
-            if a[2] >= float(len(rv_anchor)) * 0.90:
+            if a[2] >= float(len(rv_anchor)):
                 fw_matches.append(barcode[0])
         for a in pairwise2.align.localms(rv_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1):
-            if a[2] >= float(len(rv_anchor)) * 0.90:
+            if a[2] >= float(len(rv_anchor)):
                 rv_matches.append(barcode[0])
         for a in pairwise2.align.localms(fw_anchor, str(r2_seq), 1, -1, -20, -10, score_only=1):
-            if a[2] >= float(len(fw_anchor)) * 0.90:
+            if a[2] >= float(len(fw_anchor)):
                 rv_matches.append(barcode[0])
                 """
-    return fw_matches, rv_matches
 
 class TestSplitter(unittest.TestCase):
 
