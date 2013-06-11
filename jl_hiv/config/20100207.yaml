@@ -1,0 +1,51 @@
+---
+input:
+  - fastq: Sequences/s_5_sequence.txt
+    name: s_5
+    control: true
+    format: ILMFQ
+  - fastq: Sequences/s_6_sequence.txt
+    name: s_5
+    control: true
+    format: ILMFQ
+
+ref: Resources/Genomes/hxb2_iupac_93-5.fa
+expected:
+  - name: gag
+    file: Resources/ExpectedPercents/GagExpected-100_NO_INSERT.txt
+    offset: -1 
+  - name: rt
+    file: Resources/ExpectedPercents/RTExpected-100.txt
+    offset: -1
+
+algorithm:
+  # current algorithm parameters
+  barcode_mismatch: 1
+  allowed_ns: 0
+  # kmer_correct: shrec 
+  realignment: gatk
+  kmer_size: 13
+  call_thresh: 0.0035
+  normal_score_thresh: 1.0
+  kmer_range: [0.00001, 0.1]
+  qual_range: [4.0, 35.0]
+  mapscore_range: [0.0, 250.0]
+  # processing details
+  cores: 1
+  platform: illumina
+  java_memory: 12g
+
+program:
+  barcode: barcode_sort_trim.py
+  bamsort: picard_sam_to_bam.py
+  uniquify: fastq-brentbioplayground
+  picard: /n/sw/picard-tools-1.44
+  gatk: /n/home05/bchapman/mylocal/share/java/gatk
+
+dir:
+  tmp: tmp
+  align: align
+  vrn: variation
+  stats: variation_stats
+  calls: variation_calls
+  plot: plot

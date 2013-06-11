@@ -1,0 +1,81 @@
+---
+input:
+  - fastq: Sequences/s_6_sequence.txt
+    old_style_barcodes: true
+    format: ILMFQ
+    barcodes:
+      - name: bc1_outer
+        seq: ATCACGA
+        call_bases: true
+      - name: bc2_itermed
+        seq: CGATGTA
+        control: true
+      - name: bc3_inner
+        seq: TTAGGCA
+        call_bases: true
+      - name: bc4_genomic
+        seq: TGACCAA
+        call_bases: true
+
+ref: Resources/Genomes/hxb2_iupac_93-5.fa
+expected:
+  - name: gag
+    file: Resources/ExpectedPercents/GagExpected-100_NO_INSERT.txt
+    offset: -1 
+  - name: rt
+    file: Resources/ExpectedPercents/RTExpected-100.txt
+    offset: -1
+
+algorithm:
+  # current algorithm parameters
+  barcode_mismatch: 1
+  allowed_ns: 0
+  # kmer_correct: shrec 
+  realignment: gatk
+  #trim_three: 36
+  kmer_size: 13
+  call_thresh: 0.0035
+  normal_score_thresh: 1.2
+  kmer_range: [0.00001, 0.1]
+  qual_range: [4.0, 35.0]
+  mapscore_range: [0.0, 250.0]
+  #align_score_thresh: 0
+  #qual_thresh: 10
+  #kmer_thresh: 0.0004
+  #kmer_thresh: 0.0025
+  #range_params: [kmer_thresh, qual_thresh]
+  #qual_thresh: [0, 10, 20]
+  #kmer_thresh: [0.0025, 0.0015, 0.0005]
+  ##align_score_thresh: [100, 125, 145, 150, 155, 175, 200]
+  # processing details
+  cores: 4
+  platform: illumina
+  java_memory: 12g
+
+roc_plot:
+  region: rt
+  qual: 20
+  small_thresh: 5.0
+  file: images/roc_bc2.pdf
+  curves:
+    - name: Base
+      file: variation_stats/6_bc2_itermed_1.yaml
+    - name: Shrec
+      file: variation_stats/6_bc2_itermed_1-no_ns-shrec-fix.yaml
+    - name: Trim
+      file: variation_stats/6_bc2_itermed_1-trim.yaml
+  
+program:
+  barcode: barcode_sort_trim.py
+  bamsort: picard_sam_to_bam.py
+  uniquify: fastq-brentbioplayground
+  picard: /n/sw/picard-tools-1.44
+  gatk: /n/home05/bchapman/mylocal/share/java/gatk
+
+dir:
+  tmp: tmp
+  align: align
+  vrn: variation
+  stats: variation_stats
+  calls: variation_calls
+  plot: images 

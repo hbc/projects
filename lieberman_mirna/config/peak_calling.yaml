@@ -1,0 +1,34 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 6
+  timeout: 10000
+  delay: 10
+
+dir:
+  input_dir: results/IMPACT_v2/length_filtered/novoalign
+  results: results/IMPACT_v2/macs_tweaking/peak_calls
+  doc: doc
+  ref: ref
+
+log_dir: log
+
+groups:
+  positive: miR-34
+  negative: control
+  test: [let-7, miR-522, miR-34]
+
+stage:
+  macs:
+    name: macs
+    program: macs
+    options:
+      - [--format, BAM]
+      - [--gsize, 6e+7]
+      - [--pvalue, 0.01]
+      - [--mfold, "10,1000"]
+      - [--call-subpeaks]
+      - [--wig]
+
+run:
+  [macs]

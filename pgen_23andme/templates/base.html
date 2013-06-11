@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{% block title %}{% endblock %}</title>
+    <!-- Bootstrap -->
+    <link href="http://cdn.jsdelivr.net/bootstrap/2.1.1/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body>
+    <div style='width:900px;margin:auto;'>
+    {% block body %}
+    {% endblock %}
+    </div>
+    <script src="http://code.jquery.com/jquery-latest.js"></script>
+    <script src="http://cdn.jsdelivr.net/bootstrap/2.1.1/js/bootstrap.min.js"></script>
+  </body>
+</html>

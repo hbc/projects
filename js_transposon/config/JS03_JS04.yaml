@@ -1,0 +1,92 @@
+experiments:
+  - name: JS03-6.final.txt
+    lineage: Gr
+    timepoint: 15wk
+  - name: JS04-1.final.txt
+    lineage: B
+    timepoint: 15wk
+  - name: JS04-2.final.txt
+    lineage: T
+    timepoint: 15wk
+  - name: JS03-7.final.txt
+    lineage: Gr
+    timepoint: 21wk
+  - name: JS03-8.final.txt
+    lineage: Gr
+    timepoint: 23wk
+  - name: JS04-3.final.txt
+    lineage: B
+    timepoint: 23wk
+  - name: JS04-4.final.txt
+    lineage: T
+    timepoint: 23wk
+  - name: JS04-12.final.txt
+    lineage: Gr
+    timepoint: 28wk
+  - name: JS03-9.final.txt
+    lineage: Gr
+    timepoint: 32wk
+  - name: JS03-10.final.txt
+    lineage: Gr
+    timepoint: 36wk
+  - name: JS04-5.final.txt
+    lineage: B
+    timepoint: 36wk
+  - name: JS04-6.final.txt
+    lineage: T
+    timepoint: 36wk
+  - name: JS03-11.final.txt
+    lineage: Gr
+    timepoint: 41wk
+  - name: JS04-11.final.txt
+    lineage: Gr-2
+    timepoint: 41wk
+  - name: JS04-7.final.txt
+    lineage: B
+    timepoint: 41wk
+  - name: JS04-8.final.txt
+    lineage: T
+    timepoint: 41wk
+  - name: JS04-9.final.txt
+    lineage: Tn-1
+    timepoint:
+    controls: []
+  - name: JS03-12.final.txt
+    lineage: Tn-2
+    timepoint:
+    controls: []
+  - name: JS04-10.final.txt
+    lineage: No-template
+    timepoint:
+    controls: []
+  - name: JS03-1.final.txt
+    lineage: 12-clone-control-1
+    timepoint: 
+    controls: []
+  - name: JS03-2.final.txt
+    lineage: 12-clone-control-2
+    timepoint: 
+    controls: []
+  - name: JS03-3.final.txt
+    lineage: 12-clone-control-3
+    timepoint: 
+    controls: []
+  - name: JS03-4.final.txt
+    lineage: Test-Pool-repeat-1
+    timepoint: 
+    controls: []
+  - name: JS03-5.final.txt
+    lineage: Test-Pool-repeat-2
+    timepoint: 
+    controls: []
+controls: [JS04-9.final.txt, JS03-12.final.txt, JS04-10.final.txt,
+           JS03-1.final.txt, JS03-2.final.txt, JS03-3.final.txt,
+           JS03-4.final.txt, JS03-5.final.txt]
+
+algorithm:
+  rownorm: ''
+  distance: 25 # bp to consider two reads as same transposon position
+
+dir:
+  orig: origdata_110111
+  out: merge_110111

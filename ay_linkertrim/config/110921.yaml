@@ -1,0 +1,83 @@
+---
+linkers: [CTGCAGCAGT, GGATCCGTGGTCTCATACA]
+  
+algorithm:
+  trim_aligner: bowtie
+  trim_genome: /n/scratch00/hsph/biodata/genomes/Hsapiens/hg18/bowtie/hg18
+  align_mismatches: 2
+  simple_trims: {50: [[5, 20], [15, 10], [20, 5]],
+                 40: [[5, 10], [15, 5], [20, 0]],
+                 32: [[5, 2], [10, 0], [15, 0]]}
+  aligner: bowtie2
+  genome_build: hg19
+  biomart_dataset: hsapiens_gene_ensembl
+  quality_format: Illumina
+  merge_distance: 10
+  count_min_experiments: 2
+  count_min_required: 10
+  pval_thresh: 0.1
+  top_targets: 250
+  final_targets: 1000
+  
+  num_cores: 1
+  #anchor_sizes: [5, 7]
+  #anchor_mismatches: 1
+  #min_size: 15
+
+experiment_name: Abdullah_shRNA
+experiments:
+  - file: ATF4_H5
+    name: ATF4_H
+  - file: ATF4_L5
+    name: ATF4_L
+  - file: ATF6_H5
+    name: ATF6_H
+  - file: ATF6_L5
+    name: ATF6_L
+  - file: AU_H5
+    name: AU_H
+  - file: AU_L5
+    name: AU_L
+  - file: REF2
+    name: REF2
+  - file: '1_REF1_sequence.txt'
+    name: REF1
+  - file: '2_ERSE High_sequence.txt'
+    name: ERSE_H
+  - file: '3_ERSE Low_sequence.txt'
+    name: ERSE_L
+  - file: '5_X4 High_sequence.txt'
+    name: X4_H
+  - file: '6_X4 Low_sequence.txt'
+    name: X4_L
+  - file: '7_UPRE High_sequence.txt'
+    name: UPRE_H
+  - file: '8_UPRE Low_sequence.txt'
+    name: UPRE_L
+comparisons:
+  - background: REF2
+    conditions: [ATF4_H, ATF4_L, ATF6_H, ATF6_L, AU_H, AU_L]
+  - background: REF1
+    conditions: [ERSE_H, ERSE_L, X4_H, X4_L, UPRE_H, UPRE_L]
+    
+
+program:
+  uniquify: fastq-unique-bloom.py
+  diffexp: /n/home05/bchapman/hsph/projects/tp_shrna/inst/scripts/shrna_diffexp.R
+
+distributed:
+  platform_args: "-q normal_parallel"
+
+analysis:
+  process_program: hsph_trim_by_align.py
+
+dir:
+  annotation: annotation
+  fastq: fastq
+  final: trim
+  work_trim: work_trim
+  work_fastq: work_fastq
+  align: align
+  counts: counts
+  expression: diffexp
+  tmp: tmp

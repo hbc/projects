@@ -1,0 +1,66 @@
+# example configuration file for rna-seq analysis
+cluster:
+  name: odyssey # arbitrary name
+  profile: lsf2 # ipython profile to run under
+  cores: 12 # number of ipython engines to spin up
+  timeout: 10000 # time to wait for the cluster to be up before failing
+  delay: 20 # the delay in spinning up engines once the controller is up
+
+dir:
+  results: results/exon_counts/ # results will go in this directory
+  doc: doc # documentation for this analysis goes here
+  ref: ref # reference files
+  data: data # raw data goes here. make everything read only for safety
+  meta: meta # metadata (annotation, etc) goes here
+
+test_pipeline: False
+
+log_dir: log
+
+input_dir: results/exon_counts/tophat/
+
+file: meta/human_genes_with_exon_id.gtf
+ref: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Sequence/Bowtie2Index/genome
+
+annotation:
+  name: hg19
+  file: meta/human_genes_with_exon_id.gtf
+  #file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
+# this is the paths to the programs; if a Java library the path to where
+# the jar file is kept
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie2
+  bowtie2: bowtie2
+  picard: /n/HSPH/local/share/java/picard-1.79/
+
+# configuration options for each stage of the analysis
+stage:
+  htseq-count:
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=exon_id]
+      - [--mode=union]
+
+  rnaseq_metrics:
+    name: rnaseq_metrics
+    program: picard
+    ref:
+      name: mouse
+      file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/refFlat.txt
+    ribo: meta/human_rrna.bed
+
+  deseq:
+    comparisons:
+      - [control, exposed]
+
+  rseqc:
+    name: rseqc
+
+# order to run the stages in
+run:
+  [htseq-count]

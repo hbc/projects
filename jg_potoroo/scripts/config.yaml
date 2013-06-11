@@ -1,0 +1,25 @@
+dir:
+  work: tmp
+  ref: ref
+cdna_reads: cdna/Ptk2-cDNA.fa
+ref:
+  - name: opossum
+    ensembl_name: mdomestica_gene_ensembl
+    file: ref/Monodelphis_domestica.BROADO5.61.cdna.all.fa
+  - name: human
+    ensembl_name: hsapiens_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-62/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh37.62.cdna.all.fa.gz
+  #- name: opossum_ncrna
+  #  ensembl_name: mdomestica_gene_ensembl
+  #  file: ref/Monodelphis_domestica.BROADO5.61.ncrna.fa
+  - name: opossum_genome
+    file: ref/Monodelphis_domestica.BROADO5.61.dna.toplevel.fa
+vector:
+  name: vector
+  file: ref/UniVec
+
+algorithm:
+  cores: 4
+  min_vec_bases: 50
+  min_stat_size: 250
+  no_hit_tl: .95
