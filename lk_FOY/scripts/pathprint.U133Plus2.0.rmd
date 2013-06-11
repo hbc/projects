@@ -1,0 +1,355 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# PATHPRINT ANALYSES OF U133PLUS2.0 STUDIES
+
+---
+
+Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUP
+
+## General purpose R libraries necessary for analysis
+
+```{r general_libraries_functions}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(xtable) # table generation for reports
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+library(pheatmap)# pretty heatmaps
+library(Biobase)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+
+# formula to count number of occurrences of each of the pathprint outcomes
+count_trinary_outcomes <- function(vector){
+  c(length(which(vector==-1)),length(which(vector==0)),length(which(vector==1)) )
+  }
+```
+
+## Locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY"
+      }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+
+## these are the arrays that showed problems in the raw data QC
+exclude.IDs <-  c("GSM493776","GSM493778","GSM493779","GSM493780","GSM493788","GSM493790","GSM493794","GSM493798","GSM493799","GSM493802","GSM493815","GSM647538","GSM647539","GSM647566","GSM648632","GSM648694","T1D_C3_3","T1D_C2_3","T1D_C2_5","T1D_C2_6","T1D_C2_4","T1D_C3_2","T1D_C3_5","T1D_C1_5","T1D_C3_1","T1D_C3_4","GSM565090","GSM647608","GSM648630","GSM648631","GSM648691","GSM648692","GSM648693","T1D_C1_4","T1D_C1_1","T1D_C1_2","T1D_C1_3","T1D_C2_2","T1D_C2_1","GSM270838","GSM401075","GSM401110","GSM401130","GSM402322","GSM402328","GSM468380","GSM468381","GSM468390","GSM468391","GSM468392","GSM468397","GSM912849","GSM912841","GSM912838","HPBT105","HPBT101","HPBT108","HPBT106","HPBT107","HPBT102","HPBT103","HPBT104","153579hp133a11")
+````
+
+## Load in raw and RMA normalized  microarray data from generic microarray [analysis][1]
+
+```{r load_affybatch, echo=FALSE}
+load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0"))
+pd <- pData(mic.norm.eset)
+```
+
+---
+
+# Pathprint
+## Load libraries
+
+```{r pathprint_libraries}
+library(pathprint)
+library(limma)
+library(ape)
+# annotations for the hgU1332.0Plus array
+library(hgu133plus2.db)
+```
+
+## Pathprint samples - default settings
+
+```{r pathprint, cache=TRUE}
+mic.platform <- "GPL570"
+mic.species <- "human"
+mic.names <- pData(mic.norm.eset)$ID
+mic.f.default <- exprs2fingerprint(exprs = exprs(mic.norm.eset), platform = mic.platform, species = mic.species, progressBar = FALSE)
+dimnames(mic.f.default)[[2]] <- pData(mic.norm.eset)$ID
+```
+
+```{r nexus, echo=FALSE}
+Nexus <- function (matrixname, file, dataType = "discrete") {
+  mat <- t(matrixname)
+  manb <- dim(mat)[2]
+  innb <- dim(mat)[1]
+  indnames <- rownames(mat)
+  charnames <- colnames(mat)
+  print("Removing punctuation from taxa and character names")
+  indnames <- gsub("[[:punct:]]", "", indnames)
+  indnames <- gsub(" ", "", indnames)
+  charnames <- gsub("[[:punct:]]", "", charnames)
+  charnames <- gsub(" ", "", charnames)
+  if (sum(duplicated(indnames) > 0)) 
+    stop("duplicated taxa names")
+  if (sum(duplicated(charnames) > 0)) 
+    stop("duplicated character names")
+  for (i in 1:length(charnames)) {
+    charnames[i] <- paste(i, charnames[i], sep = " ")
+    }
+  charstring <- paste(charnames, collapse = ", ")
+  matm <- mat
+  symbols <- paste(unique(as.character(mat)), collapse = "")
+  print(paste("compiling NEXUS file using", dataType, "characters", 
+              sep = " "))
+  cat("#NEXUS", "\n", "\n", "begin taxa;", "\n", "dimensions ntax=", 
+      innb, ";", "\n", file = file, sep = "")
+  cat("taxlabels", "\n", file = file, sep = "", append = TRUE)
+  for (i in 1:innb) {
+    cat(indnames[i], "\n", file = file, sep = "", append = TRUE)
+    }
+  cat(";", "\n", "end;", "\n", "\n", file = file, sep = "", 
+      append = TRUE)
+  cat("begin characters;", "\n", "dimensions nchar=", manb, 
+      " ntax=", innb, ";", "\n", file = file, sep = "", append = TRUE)
+  if (dataType == "discrete") {
+    cat("Format datatype=Standard symbols=", "\"", symbols, 
+        "\"", ";", "\n", file = file, sep = "", append = TRUE)
+    }
+  if (dataType == "continuous") {
+    cat("Format datatype=continuous", ";", "\n", file = file, 
+        sep = "", append = TRUE)
+    }
+  cat("CHARSTATELABELS", "\n", file = file, sep = "", append = TRUE)
+  cat(charstring, " ;", "\n", file = file, sep = "", append = TRUE)
+  cat("matrix", "\n", file = file, sep = "", append = TRUE)
+  for (j in 1:innb) {
+    if (dataType == "discrete") {
+      cat(indnames[j], "\t", matm[j, ], "\n", file = file, 
+          sep = "", append = TRUE)
+      }
+    if (dataType == "continuous") {
+      cat(indnames[j], "\t", file = file, sep = "", append = TRUE)
+      cat(matm[j, ], file = file, sep = " ", append = TRUE)
+      cat("\n", file = file, sep = "", append = TRUE)
+      }
+    }
+  cat(";", "\n", "end;", "\n", "\n", file = file, sep = "", 
+      append = TRUE)
+  }
+mic.f.default.adult <- mic.f.default[,unlist(pd$ID[which(pd$stage=="adult")])]
+colnames(mic.f.default.adult) <- paste("adult", colnames(mic.f.default.adult), sep="_")
+mic.f.default.child <- mic.f.default[,unlist(pd$ID[which(pd$stage=="child")])]
+colnames(mic.f.default.child) <- paste("child", colnames(mic.f.default.child), sep="_")
+mic.f.default.adult.child <- cbind(mic.f.default.adult, mic.f.default.child)
+Nexus((mic.f.default.adult.child+1), file.path(resultsDir, "fingerprints.adult.child.nxs"))
+```
+
+### Default Pathway Differentiation
+
+Took a similar general approach as I took for the barcoding [analyses][1].
+i.e. minimize intra-group variation while maximizing inter-group variation.
+
+```{r pathwaydiff_vars}
+# cutoffs used to filter the data
+fisherpval.cutoff=1e-5
+ttest.cutoff=1e-6
+sd.cutoff=0.6
+```
+
+For this, I set two filtering criteria:
+1) maximize homogeneity within an age group - based on minimizing the standard deviation (as I have no idea how to calculate a trinary entropy), cutoff used was sd<`r sd.cutoff`
+2) maximize differences between groups - using ttests, cutoff used here was p<`r fisherpval.cutoff`
+
+#### Setup design and contrast matrices 
+
+Same setup as for the previous limma [analysis][2]
+
+```{r design}
+design <- model.matrix(~ -1+factor(pd$stage))
+# make sure the headings match
+colnames(design) <- sub("factor.pd.stage.", "", colnames(design))
+```
+
+```{r contrastmatrix}
+contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
+```
+
+#### Heatmaps
+- clustered by both column (sample) and row (pathway)
+
+```{r heatmap_colors}
+# annotation colors
+study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+gender_colors <- c("cyan", "pink")
+names(gender_colors) <- unique(unlist(pd$gender))
+ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+```
+
+
+```{r default_pathprint_contrasts, fig.width=12, fig.height=12}
+# for each comparison
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  mic.f.default.contrast <- mic.f.default[,pData(mic.norm.eset)$stage %in% c(stage.1, stage.2)]
+  pData.contrast <- pData(mic.norm.eset)[pData(mic.norm.eset)$stage %in% c(stage.1, stage.2),] 
+  contrast.factor <- as.factor(pData.contrast$stage)
+  sds.stage = adply(mic.f.default.contrast, 1, function(x) {
+    by(x, contrast.factor, function(x) sd(x))
+    })
+  row.names(sds.stage) <- sds.stage$X1
+  sds.stage$X1 <- NULL
+  sds.stage <- as.matrix(sds.stage)
+  mode(sds.stage) <- "numeric"
+  # t-tests between groups
+  ttestpvals.contrast <- apply(mic.f.default.contrast, 1, function(x) {
+    try(t.test(x~contrast.factor)$p.value)
+    })
+  ttestpvals.contrast<-as.numeric(ttestpvals.contrast)
+  # filter genes by intra-group variation and across group differences
+  mic.f.default.contrast.sub <- mic.f.default.contrast[sds.stage[,stage.1]<=sd.cutoff  & sds.stage[,stage.2]<=sd.cutoff & ttestpvals.contrast<ttest.cutoff &  !is.na(ttestpvals.contrast),]
+  dim(mic.f.default.contrast.sub)
+  ## Heatmaps
+  # annotations for heatmaps
+  heatmap.annots <- pData.contrast[,c("ID", "study", "stage", "gender")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  row.names(heatmap.annots) <- heatmap.annots$ID
+  heatmap.annots$ID <- NULL
+  # both genders
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  }
+```
+
+## Optimizing Pathprint thresholds
+
+### Calculate SCEs and POEs
+
+```{r POE_thresholds}
+library(metaArray)
+library(foreach)
+library(multicore)
+library(doMC)
+registerDoMC(cores = 2)
+
+gsdb=get(genesets[mic.species])
+geo.ann=customCDFAnn(exprs(mic.norm.eset), chipframe[[mic.platform]]$ann)
+SCE=single.chip.enrichment(exprs=geo.ann, geneset=gsdb,transformation = "squared.rank", statistic = "mean",normalizedScore = FALSE, progressBar = FALSE)
+
+pb <- txtProgressBar(min = 0,max = length(pathprint.Hs.gs),style = 3)
+POE<- foreach (i = names(pathprint.Hs.gs)) %dopar% {
+  # load the SCG values for each pathway
+  sample <- SCE[i,]
+  # setup POE vector
+  sample.POE<-sample
+  sample.POE[]<-NA
+  # subset to avoid NAs
+  sample.valid<-sample[!(is.na(sample))]
+  fit<-fit.em(sample.valid,cl = rep(0,length(sample.valid)))
+  setTxtProgressBar(pb, match(i, names(pathprint.Hs.gs)))
+  sample.POE[!(is.na(sample))]<-fit$expr
+  }
+# correct for NA rows
+if(sum(sapply(POE, length) == 0) > 0){
+  POE[[which(sapply(POE, length) == 0)]] = rep(0, ncol(SCE))
+  }
+POE.matrix<-as.matrix(t(as.data.frame(POE)))
+rownames(POE.matrix)<-names(pathprint.Hs.gs)
+colnames(POE.matrix)<-colnames(SCE)
+dimnames(POE.matrix)[[2]] <- pData(mic.norm.eset)$ID
+save(POE.matrix, file =file.path(resultsDir, "POE.matrix.RData"))
+```
+
+### Heatmap of POEs for Adult-Child comparison
+
+Here I used the POEs for the adult-child comparison to construct a heatmap. Pathways were filtered based on t-test pvalues between the two groups.
+
+```{r POE.ttests, fig.width=18, fig.height=18}
+n=1
+contrast <- dimnames(contrast.matrix)$Contrasts[n]
+contrast <- gsub(" ", "", contrast)
+stage.1 <- unlist(strsplit(contrast, "-"))[1]
+stage.2 <- unlist(strsplit(contrast, "-"))[2]
+contrast <- dimnames(contrast.matrix)$Contrasts[n]
+contrast <- gsub(" ", "", contrast)
+stage.1 <- unlist(strsplit(contrast, "-"))[1]
+stage.2 <- unlist(strsplit(contrast, "-"))[2]
+# subset metadata
+pd.contrast <- pd[which(pd$stage %in% c(stage.1, stage.2)),]
+contrast.factor <- as.factor(pd.contrast$stage)
+# annotations for heatmaps
+heatmap.annots <- pd.contrast[,c("ID", "study", "stage", "gender")]
+heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+row.names(heatmap.annots) <- heatmap.annots$ID
+heatmap.annots$ID <- NULL
+# subset data
+POE.matrix.contrast <- POE.matrix[,which(pd$stage %in% c(stage.1, stage.2))]
+# t-tests for inter-group differences
+POE.ttests <- apply(POE.matrix.contrast, 1, function(x) {
+    try(t.test(x~contrast.factor)$p.value)
+    })
+pheatmap(POE.matrix.contrast[which(POE.ttests<1e-2) ,], color=rev(brewer.pal(11,"RdBu")), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  main=paste("Pathways for ", contrast, "comparison",sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors, show_rownames=F)
+```
+
+### Intra and inter group mean euclidean distances
+- for different thresholds for the adult-child comparisons
+- measure of how the different thresholds affect clustering of the sample groups
+  - is there a threshold that separates the two groups while maximizing similarity within each group?
+
+```{r threshold_euclideans}
+library(fields) # for the euclidean distance calculations
+calc_euclidean_mean <- function(x,y, fingerprint, contrasts) {
+  dists <- rdist(t(fingerprint)[which(contrasts==x),],t(fingerprint)[which(contrasts==y),])
+  dists <- dists[upper.tri(dists)]
+  mean.dist <- mean(dists)
+  return(mean.dist)
+  }  
+# subset data and metadata
+pd.contrast <- pd[which(pd$stage %in% c("adult", "child")),]
+contrast.factor <- as.factor(pd.contrast$stage)
+POE.matrix.contrast <- POE.matrix[,which(pd$stage %in% c("child", "adult"))]
+
+# calculate the mean euclidean distances for the three comparisons (intra-adult, intra-child and inter-child-adult)
+distances <- sapply(seq(0,1,0.0005), function(threshold) {
+  f.threshold<-(POE.matrix.contrast > threshold) - (POE.matrix.contrast < - threshold)
+  adult_adult <- calc_euclidean_mean("adult", "adult", f.threshold, contrast.factor)
+  child_child <- calc_euclidean_mean("child", "child", f.threshold, contrast.factor)
+  adult_child <- calc_euclidean_mean("adult", "child", f.threshold, contrast.factor)
+  return(list(threshold=threshold,intraadult=adult_adult, intrachild=child_child, inter=adult_child)    )
+  })
+#setup for ggplot
+distances <- as.data.frame(t(distances))
+library(reshape2)
+library(scales)  
+distances.m <- melt(distances, id="threshold")
+
+# plot mean euclideand distances as a funciton of threshold used
+ggplot(distances.m, aes(x=unlist(threshold), y=unlist(value), colour=variable)) + geom_line()+ ggtitle("Mean euclidean  distances within and between adult and child sample fingerprints") + xlab("threshold")  + ylab("mean euclidean distance")
+
+ggplot(distances.m, aes(x=unlist(threshold), y=unlist(value), colour=variable)) + geom_line()+ scale_x_continuous(trans=log2_trans())+ggtitle("Mean euclidean  distances within and between adult and child sample fingerprints") + xlab("threshold (log2 scale)")  + ylab("mean euclidean distance")
+
+# try to find the threshold where the mean inter-distance is largest relative to the intra-distance
+distances <- apply(distances, 2, as.numeric)
+distance.ratios <- distances[,"inter"]/rowMeans(distances[,c("intrachild", "intraadult")]) 
+qplot(distances[,"threshold"],distance.ratios )+xlab("threshold")+ylab("inter/mean(intra)")
+qplot(distances[,"threshold"],distance.ratios )+xlab("threshold (log2 scale)")+ylab("inter/mean(intra)")+ scale_x_continuous(trans=log2_trans())
+```
+
+
+
+[1]: https://dl.dropboxusercontent.com/u/4253254/Consults/lk_FOY/April.18.2013/barcode.microarray.U133Plus2.0.html (previous barcode analysis)
+[2]: https://dl.dropboxusercontent.com/u/4253254/Consults/lk_FOY/April.18.2013/Generic.microarray.U133Plus2.0.html (previous microarray analysis)

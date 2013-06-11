@@ -1,0 +1,64 @@
+
+```{r toptable}
+stats.top.core <- topTable(fit2.core, coef=1, adjust="fdr", sort.by="p", p.value=1, number=100, genelist=cbind(fit2.core$genes,symbols)) 
+# expression levels for these genes in all samples
+eset.top.core = exprs(affyNorm.core[stats.top.core[, "ID"], ]) 
+colnames(eset.top.core) = pData(affyNorm.core)$Sample
+eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
+```
+
+
+
+
+### output pvalues and expression levels to files
+
+```{r outputs}
+write.table(stats.core, file="./results/all.genes.stats.tab", quote=F, sep="\t", row.names=F, col.names=T)
+write.table(eset.stats.top.core, file='./results/KO_vs_WT.top100.pvalues.expression_levels.xls', row.names=F, sep='\t')
+```
+[results for all genes]("./results/all.genes.stats.tab")
+[genes with top100 pvalues]("./results/KO_vs_WT.top100.pvalues.xls")
+
+
+### heatmaps of top results
+
+```{r heatmaps, fig.cap="KO_vs_WT.top100pvalues.annotated.heatmap"}
+## add in gene symbols for each Affy probe
+row.names(eset.top.core)=  paste(row.names(eset.top.core), stats.top.core$symbols, sep= "-")
+#write out heatmaps with Affy probeset IDs
+pheatmap(eset.top.core, main=colnames(fit2.core$coefficients), color=brewer.pal(11, "RdBu"), fontsize_row=8)
+```
+
+
+##PATHPRINT
+## Pathprint, can we find any cell types that match well? how do the samples differ in terms of pathways?
+mic.data.platform <- "GPL6246"
+mic.data.species <- "mouse"
+mic.data.names <- pData(affyNorm.core)$Sample
+
+mic.data.fingerprint <- exprs2fingerprint(exprs = eset.core, platform = mic.data.platform, species = mic.data.species, progressBar = TRUE)
+
+## KO v WT
+### variable pahtwyas
+pdf("./results/pathprint.variable.pathways.pdf")
+heatmap(mic.data.fingerprint[apply(mic.data.fingerprint, 1, sd) > 0.5, ], labCol = mic.data.names, mar = c(10,20), col = c("blue", "white", "red"))
+dev.off()
+
+consistent.pathways=mic.data.fingerprint[apply(mic.data.fingerprint, 1, sd) > 0.5, ]
+pdf("./results/pathprint.consistent.pathways.pdf", height=11, width=8.5)
+heatmap(consistent.pathways[which(consistent.pathways[,1]==consistent.pathways[,2] & consistent.pathways[,3]==consistent.pathways[,4] & consistent.pathways[,1]!=consistent.pathways[,4]),1:4], labCol = mic.data.names[1:4], mar = c(10,25), col = c("blue", "white", "red"))
+dev.off()
+
+# similar cell types
+WT.consensus=consensusFingerprint(mic.data.fingerprint[,1:2], threshold=0.9)
+geo.WT.consensus.distance=consensusDistance(WT.consensus, GEO.fingerprint.matrix)
+table(GEO.metadata.matrix[match(head(row.names(geo.WT.consensus.distance),50), GEO.metadata.matrix$GSM),"Source"])
+
+KO.consensus=consensusFingerprint(mic.data.fingerprint[,1:2], threshold=0.9)
+geo.KO.consensus.distance=consensusDistance(KO.consensus, GEO.fingerprint.matrix)
+table(GEO.metadata.matrix[match(head(row.names(geo.KO.consensus.distance),50), GEO.metadata.matrix$GSM),"Source"])
+```
+
+[^1]: BioC
+[^2]: arrayQualityMetrics
+[^3]: RMA

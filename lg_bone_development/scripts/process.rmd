@@ -1,0 +1,352 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=TRUE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE)
+```
+
+Array analysis for [Anju Singh](mailto:asingh150@gmail.com), Glimcher group at HSPH.  Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+---
+## Methods summary
+All MoGene 1.0 ST arrays were processed using the 'oligo' BioConductor package[^1], quality-controlled with arrayQualityMetrics[^2] and RMA normalized[^3]. Differentially expressed genes were identified using limma[^4].
+---
+## Workflow
+The sections below provide minimal code to reproduce the included results and plots. Libraries used to process and visualize data:
+---
+## Load Bioconductor and R libraies used to process and visualize the data
+
+```{r libraries}
+library(oligo)
+library(arrayQualityMetrics)
+library(limma)
+library(pheatmap)
+library(RColorBrewer)
+library(pathprint)
+library(xtable)
+library(Biobase)
+```
+
+## Setup Data and Results directory variables
+```{r variables}
+dataDir <- "/Users/johnhutchinson/Work/Consults/lg_bone_development/data"
+resultsDir <- "/Users/johnhutchinson/Work/Consults/lg_bone_development/results"
+```
+
+## Load the data
+- load in phenotypes and array names from covars.desc in "data" subdirectory
+  - this file contains the names and descriptions of CEL files contained in same directory 
+- use array names to load in actual arrays 
+
+```{r dataload, results='hide'}
+covars <- read.delim(paste(dataDir, "LG20120803_SampleInfo.txt", sep="/"), row.names=1)
+celFiles <- list.celfiles(dataDir, pattern='LG20120803',full.names=TRUE)
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+validObject(affyRaw)
+affyRaw <- affyRaw[,order(pData(affyRaw)$Group)]
+````
+
+## Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+pDataTable <- xtable(pData(affyRaw))
+print(pDataTable, type='html')
+```
+
+## QA/QC - 1 
+- using arrayQualityMetrics library
+- raw data
+
+```{r rawQC, cache=TRUE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=paste(resultsDir, "/report_raw", sep=""), force=TRUE, do.logtransform=TRUE)
+```
+
+[raw data QC report](./results/report_raw/index.html)
+
+## Background correct and normalize
+- using RMA
+- summarize data probe information on the gene (`core`) level
+
+```{r normalize, results='hide'}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+affyNorm.probeset <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
+# cleanup
+rm(affyRaw)
+```
+
+## QA/QC - 2 
+- using arrayQualityMetrics library
+- normalized data
+
+```{r normQC, cache=TRUE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=paste(resultsDir, "/report_rma.core", sep=""), force=TRUE, do.logtransform=FALSE)
+```
+
+[normalized data QC report](./results/report_rma.core/index.html)
+
+## QA/QC - 3
+### Primary Clustering
+- do the samples cluster by sample type?
+
+```{r pca, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", fig.width=8.5, fig.height=8.5}
+eset.core <- exprs(affyNorm.core) 
+colnames(eset.core) <- pData(affyNorm.core)$Sample
+myPca.core <- prcomp(t(eset.core))
+tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+colors <- brewer.pal(length(unique(pData(affyNorm.core)$Group)), "Dark2")[factor(pData(affyNorm.core)$Group)]
+plot(tmpPCAData.core, col=colors, pch=as.character(pData(affyNorm.core)$Group), cex=1.5)
+# cleanup
+rm(tmpPCAData.core, myPca.core)
+```
+
+## Annotations
+- load in feature data, gene symbols in particular
+
+```{r features, results='hide'}
+# retrieve NetAffx Biological Annotation
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, 'transcript')
+
+# Extract the 'gene assignment' annotation
+annot <- pData(featureData(affyNorm.core)[, c('geneassignment', 'category', 'seqname','transcriptclusterid')])
+head(annot[!is.na(annot), ], 1)
+# Generate a list of gene symbols from the gene assignment
+desc <- annot[, 1]
+symbols <- lapply(desc, function(x) strsplit(x, ' // ')[[1]][2])
+annot$symbol <- symbols
+# check to make sure data is correct
+identical(length(featureData(affyNorm.core)$probesetid), length(symbols))
+head(symbols[!is.na(symbols)])
+```
+
+c
+## Results
+### Volcanoplot to visualize relationship between fold change and signifcance of changes in expression between groups
+- genes outside the two vertical orange lines show more than 2-fold changes in expression between groups
+- genes which pass an FDR  (false discovery rate) multiple testing correction of 0.25 (25% FDR) are colored blue (none here)
+- the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
+
+```{r volcanoplot, fig.cap="Volcano plot", fig.width=8.5, fig.height=8.5}
+all.stats <- llply(seq(1,4,1), function(n) {
+  contrast <- gsub(" ", "", dimnames(fit2.core$contrasts)$Contrasts[n])
+  stats.core <- topTable(fit2.core, coef=n, sort.by="B",number=nrow(annot), genelist=annot[,c("category", "seqname", "transcriptclusterid", "symbol")])
+  stats.core$Passes.0.25.FDR.threshold  <-  as.factor(stats.core$adj.P.Val<0.25)
+  g <- ggplot(data=stats.core, aes(x=logFC, y=-log10(P.Value), color=Passes.0.25.FDR.threshold, size=B)) +
+    geom_point(alpha=0.5) +
+    geom_vline(xintercept=c(-1,1), color="orange", alpha=0.6) +
+    xlab("log2 fold change") + ylab("-log10 p-value") +
+    opts(title=contrast)
+  return(list(g=g, stats.core=stats.core, contrast=contrast))
+  })
+lapply(all.stats, function(x) x$g)
+```
+
+----
+
+### Obtain top results
+- Generates list of top 100 genes most likely to be differentially expressed, as sorted by "B", the log-odds that a gene is differentially expressed
+- note that I excluded all control probesets before I took these top 100 genes, otherwise the top 100 would include a large number of control probes
+- usually one wants to base gene selection on the adjusted P-value rather than the t- or B-value, but there are no significant adjusted P-values
+- I avoided selection based on the logFC because the data is quite noisy and I was seeing a very high number of control intronic probes when sorting by logFC
+
+#### The summary table contains the following information: 
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 10 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+
+```{r toptable}
+top.stats <- lapply(seq(1,4,1), function(n) {
+  contrast <- gsub(" ", "", dimnames(fit2.core$contrasts)$Contrasts[n])
+  stats.top.core <- topTable(fit2.core, coef=n, adjust="fdr", sort.by="B", p.value=1, number=1000, genelist=annot[,c("category", "seqname", "transcriptclusterid", "symbol")])
+  stats.top.core <- stats.top.core[!is.na(stats.top.core$symbol),][1:100,]
+  names(stats.top.core)[1:10] <- c("probeset_category", "chrom", "probesetID", "gene_symbol", "logFC", "AveExpr", "t_statistic", "pvalue", "adjusted.pvalue", "B")
+  # expression levels for these genes in all samples
+  eset.top.core  <-  exprs(affyNorm.core)[as.character(stats.top.core$probesetID), ] 
+  colnames(eset.top.core)  <-  pData(affyNorm.core)$Sample
+  eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
+  return(list(eset.stats.top.core=eset.stats.top.core, contrast=contrast))
+})
+```
+
+### Output pvalues and expression levels to files
+
+```{r outputs}
+lapply(all.stats, function(x) {
+  contrast=x$contrast
+  out <- data.frame(lapply(x$stats.core, function(x) factor(unlist(x))))
+  write.table(out, file=paste(resultsDir, "/all.genes.stats.", contrast, ".xls",sep=""), sep="\t", row.names=F, col.names=T)
+})
+lapply(top.stats, function(x){
+  contrast=x$contrast
+  out <- data.frame(lapply(x$eset.stats.top.core, function(x) factor(unlist(x))))
+  write.table(out, file=paste(resultsDir, "/top100.Bvalues.expression_levels.", contrast, ".xls",sep=""), row.names=F, col.names=T, sep='\t')
+})
+```
+[Link to Excel file with results for all genes, Group1 v Group2](./results/all.genes.stats.Group1-Group2.xls)
+[Link to Excel file with results for all genes, Group1 v Group3](./results/all.genes.stats.Group1-Group3.xls)
+[Link to Excel file with results for all genes, Group1 v Group4](./results/all.genes.stats.Group1-Group4.xls)
+[Link to Excel file with results for all genes, Group3 v Group4](./results/all.genes.stats.Group3-Group4.xls)
+
+[Link to Excel file with results for genes with top100 log-odds of differential expression, Group1 v Group2](./results/top100.Bvalues.expression_levels.Group1-Group2.xls)
+[Link to Excel file with results for genes with top100 log-odds of differential expression, Group1 v Group3](./results/top100.Bvalues.expression_levels.Group1-Group3.xls)
+[Link to Excel file with results for genes with top100 log-odds of differential expression, Group1 v Group4](./results/top100.Bvalues.expression_levels.Group1-Group4.xls)
+[Link to Excel file with results for genes with top100 log-odds of differential expression, Group3 v Group4](./results/top100.Bvalues.expression_levels.Group3-Group4.xls)
+
+
+### Results Summary
+These results show 
+1) no significant differences between Groups 1 and 2
+2) no signficant differences between Groups 3 and 4
+3) many signficant differences between Groups 1 and 3
+4) many signficant differences between Groups 1 and 4
+
+
+### Heatmaps of top results
+- the row names have the probeset and the gene symbol separated by a dash
+- rows with "NA" for the gene symbol are mainly intronic control probes (one of them is an exonic control probe)
+
+```{r heatmaps, fig.width=8.5, fig.height=15}
+lapply(top.stats, function(x) {
+  contrast=x$contrast
+  data=data.frame(lapply(x$eset.stats.top.core, function(x) factor(unlist(x))))
+  ## add in gene symbols for each Affy probe
+  row.names(data)=  paste(data$probesetID, data$gene_symbol, sep= "-")
+  #write out heatmaps with Affy probeset IDs
+  exprdata=data[,11:20]
+  exprdata=apply(exprdata, 2, function(x) as.numeric(x))
+  dimnames(exprdata)[[1]]=row.names(data)
+  pheatmap(exprdata, main=contrast, color=brewer.pal(11, "RdBu"), fontsize_row=8, cluster_cols=FALSE)
+  })
+```
+
+
+
+------
+## Compare to previous results
+- 2nd analysis done by Oliver has D16.5 equivalents to Group1 (AS_2A and AS_2B) and Group3 (AS_1A and AS_1B)
+- load in these samples, and compare the expression changes seen previously with those you see now
+
+```{r libraries2}
+library(genefilter)
+library(sva)
+```
+
+## DATA IMPORT 2
+```{r dataimport2}
+celFiles2 <- list.celfiles(dataDir, pattern='LG201204', full.names=TRUE)
+affyRaw2 <- read.celfiles(celFiles2, verbose=T)
+# Set up covariates based on sample information from Anju
+pDataFile <- file.path(dataDir, 'sampleInfo_secondGroup.txt')
+covars2 <- read.table(pDataFile, row.names=1, header=T, sep='\t')
+all(rownames(covars2) == colnames(exprs(affyRaw2)))
+covars2$Batch <- factor(c(rep(1, 4), rep(2, 4)))
+pData(affyRaw2) <- covars2
+pData(affyRaw2)
+```
+
+## NORMALIZE
+```{r normalize}
+# Transcript (gene) level normalization using RMA
+affyNorm.core2 <- rma(affyRaw2, target='core')
+```
+
+# BATCH CORRECTION
+```{r batchcorrect}
+# Create model with Condition as factor variable
+mod <- model.matrix(~as.factor(Condition), data=covars2)
+batch <- pData(affyNorm.core2)$Batch
+# Modify expression matrix
+eset.core2 <- exprs(affyNorm.core2)
+combat_edata <- ComBat(dat=eset.core2,
+                       batch=batch,
+                       mod=mod,
+                       numCovs=NULL,
+                       par.prior=TRUE, 
+                       prior.plots=TRUE)
+affyNorm.core2.batch <- affyNorm.core2
+exprs(affyNorm.core2.batch) <- combat_edata
+eset.core2.batch <- exprs(affyNorm.core2.batch)
+```
+
+## ANNOTATE
+```{r annotations}
+# retrieve NetAffx Biological Annotation
+featureData(affyNorm.core2.batch) <- getNetAffx(affyNorm.core2.batch, 'transcript')
+# Extract the 'gene assignment' annotation
+annot2 <- pData(featureData(affyNorm.core2.batch)[, c('geneassignment', 'category', 'seqname','transcriptclusterid')])
+head(annot2[!is.na(annot2), ], 1)
+# Generate a list of gene symbols from the gene assignment
+desc2 <- annot2[, 1]
+symbols2 <- lapply(desc2, function(x) strsplit(x, ' // ')[[1]][2])
+annot2$symbol <- symbols2
+# check to make sure data is correct
+identical(length(featureData(affyNorm.core2.batch)$probesetid), length(symbols2))
+head(symbols2[!is.na(symbols2)])
+```
+## Analyses
+### Limma
+#### Create appropriate design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group, 
+```{r design, results="asis"}
+design2 <- model.matrix(~ -1+factor(pData(affyNorm.core2.batch)$Condition))
+# make sure the headings match
+colnames(design2) <- c("S1", "S2", "S3", "S4")
+
+designTable2 <- xtable(design2)
+print(designTable2, type='html')
+```
+#### Fit a linear model
+- for each gene based on the given series of arrays
+```{r linearmodel}
+fit.core2 <- lmFit(eset.core2.batch, design2) 
+```
+#### Create contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+```{r contrastmatrix, results='asis'}
+contrast.matrix2 <- makeContrasts(S2-S1, levels=c("S1", "S2", "S3", "S4"))
+contrastmatrixTable2 <- xtable(contrast.matrix)
+print(contrastmatrixTable, type='html')
+```
+#### Compute estimated coefficients and standard errors for contrasts
+```{r contrastfit}
+fit2.core2 <- contrasts.fit(fit.core2, contrast.matrix2) 
+```
+#### Compute moderated t-statistics and log-odds of differential expression 
+- by empirical Bayes shrinkage of the standard errors towards a common value
+```{r bayes}
+fit2.core2 <- eBayes(fit2.core2) 
+```
+
+```{r stats2}
+all.stats.current <- topTable(fit2.core, coef=2, lfc=1, p.value=0.1, sort.by="B", number=nrow(annot), genelist=annot[,c("category", "seqname", "transcriptclusterid", "symbol")])
+all.stats.old <- topTable(fit2.core2, coef=1, lfc=1, p.value=0.1, sort.by="B", number=nrow(annot2), genelist=annot2[,c("category", "seqname", "transcriptclusterid", "symbol")])
+
+top.current=unique(as.vector(unlist(all.stats.current$symbol)))
+top.old=unique(as.vector(unlist(all.stats.old$symbol)))
+top.intersect=intersect(top.old, top.current)
+top.union=na.omit(union(top.old, top.current))
+
+pdf(file.path(resultsDir, "venn.diagram.pdf"))
+plot(venneuler(c(current=length(top.current)-length(top.intersect), old=length(top.old)-length(top.intersect),  "old&current"=length(top.intersect))))
+dev.off()
+
+df=as.data.frame(cbind(cbind(top.union %in% top.current, top.union %in% top.old), top.union %in% top.current & top.union %in% top.old))
+row.names(df)=top.union
+names(df)=c("current", "old", "both")
+overlap=apply(df, 1, function(n){
+  ifelse(n[3], "both", ifelse(n[2], "old", "current"))
+ })
+overlap=as.data.frame(overlap)
+overlap$temp=row.names(overlap)
+overlap <- overlap[order(overlap$temp),]
+overlap$temp <- NULL
+outputfile=file.path(resultsDir, "overlap.xls")
+write.table(overlap, file=outputfile, sep="\t", row.names=T, col.names=NA)
+     
+     
+```
+

@@ -1,0 +1,504 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# STANDARD MICROARRAY ANALYSES OF U133PLUS2.0 STUDIES
+
+---
+
+Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUP
+
+## General purpose R libraries necessary for analysis
+
+```{r general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+```
+
+## Locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY"
+      }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+````
+
+----
+
+# Microarray Analysis
+
+## Load [Bioconductor][1] libraries for the microarray analysis 
+
+```{r microarray_analysis_libraries}
+library(virtualArray)
+library(beadchip)
+library(lumi)
+# to parse the CEL files and work with intensity values
+library(affy) 
+# for QC reports
+library(arrayQualityMetrics)
+# library to do stats 
+library(limma) 
+# pretty heatmaps
+library(pheatmap) 
+# annotations for the hgU1332.0Plus array
+library(hgu133plus2.db) 
+library(hgu133a2.db)
+library(hgu133a.db)
+library(illuminaHumanv3.db)
+library(illuminaHumanv4.db)
+```
+
+## Functions
+
+```{r functions}
+PCAplot <- function(eset=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  eset.core <- exprs(eset) 
+  myPca.core <- prcomp(t(eset.core))
+  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+  pd <- pData(eset)
+  colors <- colorpalette[factor(as.character(unlist(pd[,categories])))]
+  legend_values=unique(cbind(colors, as.character(pd[,categories])))
+  pairs(tmpPCAData.core, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+  }
+rownames2col <- function(df, colname) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- colname
+  return(output)
+}
+col2rownames <- function(df, colname, removecol=FALSE){
+  row.names(df) <- df[,colname]
+  if(removecol){df[,colname] <- NULL}
+  return(df)
+}
+```
+- use virtualArray library to  bring in as many array types as possible
+- used arrays for which there are bioconductor array platform annotations
+- restricted myself to affy 3' arrays for now, as I know how to import and work with them with minimal code changes
+
+Platforms then include Affymetrix Human Genome U133 Plus 2.0 Arrays, Affymetrix Human Genome U133A Arrays and Affymetrix Human Genome U133A 2.0 Arrays (essentially, this is a U133 dataset)
+
+- also subsetted to samples for which we gender, age and raw data
+
+(also excluded the studies I excluded from the previous U133Plus2.0 analyses)
+
+```{r subset_data}
+refined.metadata <- read.delim(file.path(metaDir,"unified-metadata-refined.04-17-13.tab"))
+refined.metadata <- refined.metadata[which(!is.na(refined.metadata$age) & !is.na(refined.metadata$gender) & !is.na(refined.metadata$CEL_regex)),]
+refined.metadata  <- refined.metadata[!(refined.metadata$study %in% c("GSE18897", "MEXP-2917", "TABM-940", "TABM-666")),]
+refined.metadata  <- refined.metadata[refined.metadata$platform %in% c("GPL570", "A-AFFY-44", "GPL96", "A-AFFY-33", "GPL571", "GPL9188"),]
+U133.meta <- refined.metadata
+write.table(U133.meta, file.path(metaDir, "unified-metadata-refined_U133.tab"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(U133.meta, file.path(metaDir, "unified-metadata-refined_U133.xls"), sep="\t", row.names=F, col.names=T)
+```
+
+That metadata file is [here](./meta/unified-metadata-refined_U133.xls)
+
+## Setup
+
+### Setup some more variables for the microarray analyses
+- color palette for plots
+- age ranges and names of the groups  
+  - neonate = 0-4 years
+  - child = 5-10 years
+  - adult = 18-40 years
+
+```{r microarray_analysis_variables}
+# colorblind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+# age ranges to compare
+child.age.range <- c(5,10)
+adult.age.range <- c(18,40)
+neonate.age.range <- c(0,4)
+```
+
+### Load and parse the unified, refined and subsetted metadata 
+To make a covariate table that allows you to load the CEL files using the [affy][2] Bioconductor library
+- this table has the CEL file location in the first column, without a header
+- the other columns contain the sampleIDs, ages, genders,ethnicities and respective studies
+
+- also limit samples to those wihtin the age ranges described above and label each with their "stage"
+
+```{r covariatedataframe}
+covartemplate.file <- "unified-metadata-refined_U133.tab" 
+covartemplate <- read.table(file.path(metaDir,covartemplate.file ), header=T, colClasses="character", sep="\t")
+# convert character ages to numeric to allow numeric subsetting 
+covartemplate$age <- as.numeric(covartemplate$age) 
+## limit samples to those within the described child, adult and neonate age ranges
+covartemplate <- covartemplate[union(union(which(covartemplate$age<=max(child.age.range) & covartemplate$age>=min(child.age.range)), which(covartemplate$age<min(child.age.range))), which(covartemplate$age<=max(adult.age.range) & covartemplate$age>=min(adult.age.range))),] 
+# convert age back to character value so you can use it in a character matrix
+covartemplate$age <- as.character(covartemplate$age)
+covartemplate <- as.matrix(covartemplate)
+covars <- aaply(covartemplate, 1, function(n){
+  # pull out the info you need piece by piece
+  sampleID <- n[1] 
+  age <- n[3]
+  gender <- n[4]
+  ethnicity=n[5]
+  CELregex <- n[7]
+  CELFTP <- n[6]
+  study=n[9]
+  platform=n[8]
+  if(n[10]=="GEO"){
+    # for GEO studies, get the CEL file name from the FTP locaiton in the metadata file
+    CELfileloc <- file.path(dataDir,study, sub(".gz", "", basename(as.character(CELFTP)))) 
+  } else {
+    # for ArrayExpress studies, get the CEL file name directly from the CEL file regex in the metadata file
+    CELfileloc <- file.path(dataDir, study, CELregex) 
+    }
+  if(!file.exists(CELfileloc)){
+    # check if the CEL file is actually where its supposed to be, if not notify and move on
+    print(paste(CELfileloc, "does not exist", sep=" ")) 
+    break
+    } else {
+      # if CEL file is where its supposed to be, add location to covariate table
+      return(list(CELfileloc=CELfileloc, ID=sampleID, age=age, gender=gender, ethnicity=ethnicity, study=study, platform=platform)) 
+      }
+  })
+covars <- as.data.frame(covars)
+covars$age <- as.numeric(covars$age)
+# label samples with their stage as determined by age
+# don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
+covars$stage <- ifelse(covars$age<max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", "adult")) 
+```
+
+### Load CEL files
+- do this separately for each array type
+
+```{r load_data}
+GPL.groups <- list(U133.plus2=c("GPL570", "A-AFFY-44"), U133.A=c("GPL96", "A-AFFY-33"),U133.A.2=c("GPL571", "GPL9188"))
+for(n in 1:length(GPL.groups)) {
+  GPLs <- GPL.groups[[n]]
+  covars.array <- covars[covars$platform %in% GPLs,]
+  mic.raw <- ReadAffy(filenames=as.character(covars.array$CELfileloc), phenoData=covars.array)
+  assign(paste("mic.raw", names(GPL.groups)[n], sep="."), mic.raw)
+  rm(mic.raw)
+}
+```
+
+### QC checks of raw data
+
+```{r QC_raw, eval=FALSE}
+for(n in 1:length(GPL.groups)){
+  mic.raw <- get(paste("mic.raw", names(GPL.groups)[n], sep="."))
+  arrayQualityMetrics(expressionset=mic.raw.temp, outdir=file.path(resultsDir, "QCreport_raw", names(GPL.groups)[n]), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
+  rm(mic.raw)
+  }
+# had to log transform exprs outside of arrayQualityMetrics to finish the U133.A.2 analysis
+```
+
+[U133plus2 Raw Data QC Report](./results/QCreport_raw/U133.plus2/index.html)
+[U133A Raw Data QC Report](./results/QCreport_raw/U133.A/index.html)
+[U133A2 Raw Data QC Report](./results/QCreport_raw/U133.A.2/index.html)
+
+### Outlier/Low quality array removal
+
+For U133plus2, low quality studies and arrays have already been removed above (determined by the previous U133Plus2 analyses).
+
+For U133A arrays, GSM768546 and GSM768549  (i.e. GSE31014 study) will be removed due to failed Relative Log Expression (RLE) outlier detection and Normalized Unscaled Standard Error (NUSE) tests. There also appear to be some visual artefacts on the GSM768549 array.
+
+For U133A.2 arrays, all arrays from GSE17732 (GSM442648.CEL, GSM442649.CEL, GSM442650.CEL, GSM442651.CEL, GSM442652.CEL, GSM442653.CEL) failed both or either of the RLE and NUSE tests and will be removed. The individual arrays GSE17732.CEL, GSM474745.CEL, GSM474756.CEL, GSM539024.CEL, GSM539027.CEL, GSM539028.CEL, GSM758056.CEL, GSM758072.CEL also failed either of the RLE and NUSE tests and will be removed.
+
+```{r filter_arrays}
+filter_IDs <- list(U133.plus2="", U133.A=c("GSM768546","GSM768549"), U133.A.2=c("GSM442648", "GSM442649","GSM442650", "GSM442651", "GSM442652", "GSM442653", "GSE17732", "GSM474745", "GSM474756", "GSM539024", "GSM539027", "GSM539028", "GSM758056", "GSM758072"))
+for (n in names(filter_IDs)){
+  mic.raw <- get(paste("mic.raw", n, sep="."))
+  mic.raw <- mic.raw[,which(!pData(mic.raw)$ID %in% filter_IDs[[n]])]
+  assign(paste("mic.raw", n, sep="."), mic.raw)
+  rm(mic.raw)
+}
+```
+
+## Virtualarray
+- subsets and combines different arrays by common gene symbols
+- quantile normalizes data
+
+```{r virtualarray}
+# convert AffyBatch objects to ExpressionSet objects
+# density plots of intensities
+# also removed background
+for (n in names(GPL.groups)){
+  mic.raw <- mic.raw <- get(paste("mic.raw", n, sep="."))
+  mic.raw.eset <- rma(mic.raw, verbose=F, normalize=F, background=T)
+  sampleNames(mic.raw.eset) <- as.vector(unlist(pData(mic.raw.eset)$ID))
+  assign(paste("mic.raw.eset", n, sep="."), mic.raw.eset)
+  density(mic.raw.eset)
+  rm(mic.raw, mic.raw.eset)
+  }
+
+# load into virtualarray
+esets <- paste("mic.raw.eset", names(GPL.groups), sep=".")
+virtualArrays <- virtualArrayExpressionSets(all_expression_sets=esets,removeBatcheffect = T )
+# can't include additional stage covariates in batch removal because the U133.A dataset only contains one stage 
+# without these additional stage covariates, the removeBatcheffect option makes no difference to the output, so left it as TRUE
+pData(virtualArrays)$Array.name <- NULL
+pData(virtualArrays)$Covariate.1 <- NULL
+# setup pData
+# setup sampleinfo dataframe
+sampleinfo.df <- ldply(names(GPL.groups), function(n) {
+  mic.raw.eset <- get(paste("mic.raw.eset", n, sep="."))
+  pData(mic.raw.eset)$Batch <- n
+  pData(mic.raw.eset)$CELfileloc <- NULL
+  return(pData(mic.raw.eset))
+  })
+sampleinfo.df <- merge(pData(virtualArrays), sampleinfo.df, by.y="ID", by.x="Sample.name", sort=F)
+names(sampleinfo.df) <- sub("Sample.name", "ID", names(sampleinfo.df))
+row.names(sampleinfo.df) <- sampleinfo.df$ID
+identical(as.character(unlist(pData(virtualArrays)$Sample.name)), as.character(unlist(sampleinfo.df$ID))) #check to make sure order is matched to current pData
+identical(row.names(sampleinfo.df), sampleNames(virtualArrays))#check to make sure order is matched to current pData
+density(virtualArrays)
+pData(virtualArrays) <- sampleinfo.df
+validObject(virtualArrays) # secondary sanity check
+pd <- pData(virtualArrays)
+```
+
+### QC checks on combined data with [ArrayQualityMetrics][3]
+
+```{r virtualArrayQC, eval=FALSE}
+arrayQualityMetrics(expressionset=virtualArrays, outdir=file.path(resultsDir, "QCreport_virtualarrays"), force=T, do.logtransform=F, intgroup=c("stage", "study"))
+````
+
+[Post combined and normalized QC Report](./results/QCreport_virtualarrays/index.html)
+
+### Metadata for remaining studies
+**Number of U133Plus2.0 arrays:**
+Adult - `r length(which(pd$Batch.y=="U133.plus2" & pd$stage=="adult"))`
+Child - `r length(which(pd$Batch.y=="U133.plus2" & pd$stage=="child"))`
+Neonate - `r length(which(pd$Batch.y=="U133.plus2" & pd$stage=="neonate"))`
+**Number of U133.A.2 arrays:**
+Adult - `r length(which(pd$Batch.y=="U133.A.2" & pd$stage=="adult"))`
+Child - `r length(which(pd$Batch.y=="U133.A.2" & pd$stage=="child"))`
+Neonate - `r length(which(pd$Batch.y=="U133.A.2" & pd$stage=="neonate"))`
+**Number of U133.A arrays:**
+Adult - `r length(which(pd$Batch.y=="U133.A" & pd$stage=="adult"))`
+Child - `r length(which(pd$Batch.y=="U133.A" & pd$stage=="child"))`
+Neonate - `r length(which(pd$Batch.y=="U133.A" & pd$stage=="neonate"))`
+
+```{r print_metadata, results='asis'}
+pd <- pData(virtualArrays)
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
+print(pd.gvis, "chart")
+```
+
+### Primary Componenet Analysis Clustering
+- the goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself
+- in basic terms, we are checking whether the samples cluster by sample type
+  - its a good sign if they do
+
+```{r virtualarray.pca, fig.width=16, fig.height=16}
+## All samples
+## by platform
+PCAplot(virtualArrays, categories="Batch.y", title="VirtualArrays - no batch correction", colorpalette=cbPalette, alpha=0.7) 
+```
+
+Very clearly clustering by platform type. Try batch correcting.
+
+## BATCH CORRECTION
+
+Correct for batch effects with ComBat from the [sva][4] package:
+
+```{r batchcorrect, cache=TRUE}
+library(sva)
+# Create model with batch as factor variable
+mod <- model.matrix(~as.factor(stage), data=pd)
+batch <- pData(virtualArrays)$Batch.y
+# Modify expression matrix
+eset.core <- exprs(virtualArrays)
+combat_edata <- ComBat(dat=eset.core,
+                       batch=batch,
+                       mod=mod,
+                       numCovs=NULL,
+                       par.prior=TRUE, 
+                       prior.plots=TRUE)
+virtualArrays.batch <- virtualArrays
+exprs(virtualArrays.batch) <- combat_edata
+
+eset.batch <- exprs(virtualArrays.batch)
+colnames(eset.batch) <- pData(virtualArrays.batch)$ID
+pd <- pData(virtualArrays.batch)
+```
+
+### Post Batch correction PCA
+
+```{r virtualarray.PCA2, fig.height=18, fig.width=18}
+PCAplot(virtualArrays.batch, categories="Batch.y", title="VirtualArrays - batch corrected, by platform", colorpalette=cbPalette, alpha=0.7)
+PCAplot(virtualArrays.batch, categories="stage", title="VirtualArrays - batch corrected, by stage", colorpalette=cbPalette[5:7], alpha=0.7)
+PCAplot(virtualArrays.batch, categories="study", title="VirtualArrays - batch corrected, by study", colorpalette=sort(c(brewer.pal(8,"Set1"),brewer.pal(8,"Set2"))), alpha=0.7)
+```
+
+These look much better. Still clustering by study, but with the number of single stage studies, it is difficult to conclusively say whether this is study or stage driven.
+
+## Differential Expression Analyses
+
+### Limma
+
+A linear model for microarray data analysis [Limma][5] was performed on the samples to identify differentially expressed genes between all pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+
+```{r design, results="asis"}
+design <- model.matrix(~ -1+factor(pData(virtualArrays)$stage))
+# make sure the headings match
+colnames(design) <- sub("factor\\(pData\\(virtualArrays\\)\\$stage\\)", "", colnames(design))
+design.gvis <- gvisTable(as.data.frame(apply(design, 2, as.character)), options=list(width=240))  
+print(design.gvis, "chart")
+```
+
+#### Contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
+contrast.gvis <- gvisTable(as.data.frame(apply(contrast.matrix, 2, as.character)), options=list(width=240, height=120))  
+print(contrast.gvis, "chart")
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+#### Fit a linear model
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+exprs.norm <- exprs(virtualArrays)
+dimnames(exprs.norm)[[2]] <- as.character(pData(virtualArrays)$ID)
+fit.exprs <- lmFit(exprs.norm, design) 
+```
+
+#### Compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.exprs <- contrasts.fit(fit.exprs, contrast.matrix) 
+```
+
+#### Compute moderated t-statistics and log-odds of differential expression 
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.exprs <- eBayes(fit2.exprs) 
+```
+
+### Obtain top results
+- generate a list of top 100 differentially expressed genes with at least 2 fold changes in expression and an adjusted pvalue <0.1,  as sorted by unadjusted pvalue
+
+#### The summary table contains the following information: 
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+
+```{r virtualarray.toptable, results='hide'}
+top.stats <- lapply(seq(1,3,1), function(n) {
+  contrast <- dimnames(fit2.exprs$contrasts)$Contrasts[n]
+  contrast <- gsub(" ", "", top.stats[[1]]$contrast)
+  stats.top <- topTable(fit2.exprs, coef=n, adjust="fdr", sort.by="p", p.value=0.1, lfc=1, number=100, genelist=row.names(exprs.norm)) 
+  # expression levels for these genes in all samples
+  if(nrow(stats.top)>0) {
+    exprs.norm.sub  <-  exprs.norm[stats.top[, "ID"], ] 
+    stats.exprs.norm.top <- cbind(stats.top, exprs.norm.sub)
+    } else { stats.exprs.norm.top <-"NA"}
+  return(list(data=stats.exprs.norm.top, contrast=contrast))
+  })
+# write stats and expression levels to file
+lapply(top.stats, function(n) {
+  output <- n$data
+  write.table(output, file.path(resultsDir, paste("U133.virtualarray.top100.DE.genes", contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+  })
+```
+
+#### Excel files with statistics and normalized sample intensities for the top 100 differentially expressed probesets for each comparison
+
+`r index=1`
+
+[`r toupper(top.stats[[index]]$contrast)` comparison](./results/`r paste("U133.virtualarray.top100.DE.genes", gsub(" ", "", top.stats[[index]]$contrast), "xls", sep=".")`)
+`r index=index+1`
+
+[`r toupper(top.stats[[index]]$contrast)` comparison](./results/`r paste("U133.virtualarray.top100.DE.genes", gsub(" ", "", top.stats[[index]]$contrast), "xls", sep=".")`)
+`r index=index+1`
+
+[`r toupper(top.stats[[index]]$contrast)` comparison](./results/`r paste("U133.virtualarray.top100.DE.genes", gsub(" ", "", top.stats[[index]]$contrast), "xls", sep=".")`)
+`r index=index+1`
+
+### Heatmaps of top 100 differentially expressed genes for each pairwise comparison
+- there are three heatmaps for each comparison
+  - both genders
+  - female only
+  - male only
+
+*note that the differentially expressed genes clustered in these heatmaps are based on comparisons that include both genders* 
+
+```{r virtualarray.heatmaps, fig.width=24, fig.height=24}
+for(n in 1:3){
+  # get the names of the stages that are being compared in this comparison
+  contrast <- top.stats[[n]]$contrast
+  stages <- names(which(abs(contrast.matrix[,contrast])>0))
+  # subset the samples and the data to those in the stages compared in this comparison
+  sample.indices <- which(design[,stages[1]]>0 | design[,stages[2]]>0)
+  sample.pd <- pData(virtualArrays)[sample.indices,]
+  top.exprs.contrast <- top.stats[[n]]$data
+  row.names(top.exprs.contrast) <- top.exprs.contrast$ID
+  top.exprs.contrast <- top.exprs.contrast[,as.character(unlist(sample.pd$ID))]
+    # heatmap annotations
+  heatmap.annots <- sample.pd[,c("ID", "study", "stage", "gender")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  heatmap.annots <- col2rownames(heatmap.annots, "ID", removecol=T)
+  # heatmap annotation colors
+  study_colors <- c(brewer.pal(8, "Set1"), brewer.pal(8, "Set2"))
+  names(study_colors) <- unique(unlist(pd$study))
+  stage_colors <- c("white", "darkgrey", "black")
+  names(stage_colors) <- unique(unlist(pd$stage))
+  gender_colors <- c("cyan", "pink")
+  names(gender_colors) <- unique(unlist(pd$gender))
+  ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+  ## Heatmaps
+  # ALL genders 
+  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  # FEMALE gender  
+  top.exprs.contrast.female <- top.exprs.contrast[,which(sample.pd$gender=="FEMALE")]
+  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE)", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  # MALE gender  
+  top.exprs.contrast.male <- top.exprs.contrast[,which(sample.pd$gender=="MALE")]
+  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE)", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors)  
+  }
+```
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/release/bioc/html/affy.html (affy)
+[3]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/sva.html (sva)
+[5]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+

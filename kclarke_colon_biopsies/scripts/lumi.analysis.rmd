@@ -1,0 +1,472 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE)
+## setup report details
+clientname="Ashwin Ananthakrishnan"
+clientemail="AANANTHAKRISHNAN@PARTNERS.ORG"
+lablocation="MGH"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`) at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+---
+
+## Methods summary
+Raw data was imported, normalized and differentially expressed genes identified with limma.
+
+---
+
+## Workflow
+The sections below provide descriptions of the included results and include code to reproduce them. 
+
+---
+
+## [Bioconductor][1] and R libraries used to process and visualize the data
+- also miscellaneous convenience functions
+
+```{r libraries, echo=TRUE, results='hide'}
+library(limma)
+library(arrayQualityMetrics)
+library(lumi)
+library(pheatmap)
+library(RColorBrewer)
+library(googleVis)
+library(plyr)
+library(ggplot2)
+library(biomaRt)
+library(genefilter)
+library(lumiHumanAll.db)
+library(lumiHumanIDMapping)
+if (require(lumiHumanIDMapping))
+  {lumiHumanIDMapping()}
+rownames2col <- function(df) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- "ID"
+  return(output)
+}
+```
+
+## Functions
+
+```{r functions}
+PCAplot <- function(eset=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  pd <- pData(eset)
+  eset <- exprs(eset) 
+  myPca <- prcomp(t(eset))
+  tmpPCAData <- as.data.frame(myPca$x[,1:4])
+  colors <- colorpalette[factor(as.character(unlist(pd[,categories])))]
+  legend_values=unique(cbind(colors, as.character(pd[,categories])))
+  pairs(tmpPCAData, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+  }
+rownames2col <- function(df, colname) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- colname
+  return(output)
+  }
+col2rownames <- function(df, colname, removecol=FALSE){
+  row.names(df) <- df[,colname]
+  if(removecol){df[,colname] <- NULL}
+  return(df)
+  }
+# pathway enrichment, adapted from Emmanuel Dimont and Rory Kirchner
+# usage: pathEnrich(your_gene_list_of_interest, your_background_gene_list)
+# gene lists should be a list of entrez ids
+# background_gene_list should be tailored to your experiment, so for example if
+# you are looking at RNA-seq data, your background should be all non-zero expressed genes,
+# not all genes
+pathEnrich = function (Genelist, geneset=pathways.Hs, bgGenelist)
+{
+    Nbackground = length(bgGenelist)
+    genelist = unique(Genelist[!is.na(Genelist)])
+    Nsig <- length(genelist)
+    hyper <- as.data.frame(matrix(nrow = length(geneset), ncol = 1))
+    colnames(hyper) <- c("p-value")
+  hyper[,1] = as.numeric(lapply(geneset,function(x)
+		{
+			if(length(intersect(genelist,x))<1) return(1)
+			else return(sum(dhyper(length(intersect(genelist,x)):Nsig,length(x), Nbackground - length(x), Nsig)))
+		}))
+    hyper[,2] <- p.adjust(hyper[, 1], method = "BH")
+	overlap = lapply(geneset,function(x)
+		{
+			return(as.list(intersect(genelist,x)))
+		})
+    hyper[,3] = as.numeric(lapply(overlap,function(x) return(length(x))))
+    hyper[,4] = as.numeric(lapply(geneset,function(x) return(length(x))))
+    hyper[,5] <- names(geneset)
+	genes = lapply(overlap, function(x) return(as.numeric(x)))
+	hyper$genes = I(genes)
+    colnames(hyper) <- c("p.value","FDR", "nGenes","nPathway","Name", "Genes")
+    hyper = hyper[with(hyper, order(FDR)),]
+    return(hyper)
+	}
+# load in pathways
+load("~/resources/pathways/pathways.Hs.RData")
+```
+
+---
+
+## Variables
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/home08/jhutchin/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/kclarke_colon_biopsies/"
+  } else if (file.exists("/Volumes/ody/")){
+  baseDir="/Volumes/ody/projects/kclarke_colon_biopsies/"
+}
+metaDir=file.path(baseDir, "meta")
+dataDir=file.path(baseDir, "data")
+resultsDir=file.path(baseDir, "results")
+
+# datafile
+rawDatafile <- file.path(dataDir, "1809Clarke_FinalReport.txt")
+# covariates
+covarfile <- file.path(metaDir, "covars.desc")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+pvalcutoff=0.25
+logFCcutoff=1
+exprfilter <- 2.5
+sdfilter <- 0.1
+numtopgenes <- 200
+```
+
+---
+
+## Load the raw data
+
+```{r dataload, results='hide', cache=TRUE}
+lumib.raw <- lumiR.batch(rawDatafile,sampleInfoFile=covarfile,lib.mapping='lumiHumanIDMapping',convertNuID=T)
+
+# Quick sanity check, what's the predicted chip type?
+if (require(lumiHumanIDMapping))
+  {getChipInfo(lumib.raw, species='Human')}
+````
+
+## Sample metadata
+- load phenotypes and sample names from metadata file
+  - this file also contains the arrayIDs
+
+```{r covars, results='asis'}
+## Sample information table
+pd <- pData(lumib.raw)
+pData(lumib.raw)$samplelabel <- paste(pd$Group,  pd$Replicate, sep="_")
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
+print(pd.gvis, "chart")
+```
+
+## QA/QC
+QC summary and analysis with [arrayQualityMetrics][2]
+
+```{r QCsummary, results='hide'}
+# Summary of data, QC Info
+QC.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))
+print(QC.gvis, "chart")
+arrayQualityMetrics(lumib.raw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("Group"))
+```
+
+[Raw data arrayQualityMetrics report](./results/report_raw/index.html)
+
+The arrays look pretty good overall, there is decent clustering by "inflamed"" versus "not inflamed" samples
+Filtered out two arrays due to quality concerns:
+- remove 7105_1809D due to low intensity levels
+- remove 7284_1809N due to outlying MA-pot (this is a conservative choice)
+
+```{r drop_arrays}
+filterarrays <- c("7105_1809D","7284_1809N")
+lumib.raw <- lumib.raw[,which(!pd$sampleID %in% filterarrays)]
+pd <- pData(lumib.raw)
+validObject(lumib.raw) ## sanity check
+```
+
+## Background correct and normalize
+The data was transformed for differential gene expression analysis using Variance Stablilizing transformation ([VST][3]) from the [lumi][4] BioConductor package. The general assumption of statistical tests to microarray data is that variance is independent of intensity. In reality, larger intensities tend to have larger variations. 
+Here, VST does a simple generalized log2 transformation of the data.
+
+Following this, arrays are normalized by Robust Spline Normalization [RSN][5]
+
+```{r normalize, results='hide'}
+lumib.norm <- lumiExpresso(lumib.raw, QC.evaluation=TRUE, bg.correct=TRUE, variance.stabilize=T, varianceStabilize.param=list(method='log2'), normalize.param=list(method='rsn'))
+```
+
+## QA/QC - 2 
+- using arrayQualityMetrics library
+- normalized data
+
+```{r normQC,  eval=FALSE}
+arrayQualityMetrics(lumib.norm, outdir=file.path(resultsDir, 'report_log2vst_rsn'), force=TRUE, do.logtransform=FALSE,intgroup=c("Group"))
+```
+
+[normalized data QC report](./results/report_log2vst_rsn/index.html)
+
+- all the samples look fine after normalization
+
+## QA/QC - 3
+
+### Primary Componenet Analysis Clustering
+- the goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself
+- in basic terms, we are checking whether the samples cluster by sample type
+  - its a good sign if they do
+
+```{r pca, fig.width=12, fig.height=12}
+PCAplot(lumib.norm, categories="Group", colorpalette=cbPalette, alpha=0.75, title="All samples")
+PCAplot(lumib.norm[,pd$Group!="NonInflamed"], categories="Group", colorpalette=cbPalette, alpha=0.75, title="Inflamed samples")
+```
+
+**Principal Component Analysis Figure**
+The figure shows a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color. Principal component analysis is a dimension reduction and visualisation technique that is here used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays.
+
+You can use these plots to explore if the arrays cluster, and whether this is according to an intended experimental factor or according to unintended causes (eg. batch effects). 
+
+- from these plots it appears that the samples do not cluster particularly well by group, though there is some separation between non-inflamed and inflamed group clusters for certain principal component combinations (ie. PC1 and PC2, or PC1 and PC4).
+
+## Pre-filtering
+
+Use the mean expression levels to filter out probes that are poorly expressed. We're unlikely to to see significant differences for these genes and by using fewer probes in the [multiple test correction](http://en.wikipedia.org/wiki/Multiple_comparisons) of our statistical tests we increase our chances of seeing significant results.
+
+Here I filtered out probes that show a mean intensity level (after log transformation) of less than `r exprfilter`.
+
+```{r genefilter}
+## remove probes with low expression levels 
+means <- rowMeans(exprs(lumib.norm))
+lumib.norm <- lumib.norm[which(means>exprfilter),]
+
+exprs.norm <- exprs(lumib.norm)
+pd <- pData(lumib.norm)
+```
+
+## Annotations
+Parse the array feature data (i.e. information about the probes) to get the gene symbols that correspond to each probeset group on the array
+
+```{r features, results='hide'}
+# Generate a dataframe of gene symbols, RefSeq and Entrez ids from the nuIDs
+if (require(lumiHumanIDMapping)) {
+    nuIDs <- featureNames(lumib.norm)
+    mappingInfo <- as.data.frame(nuID2RefSeqID(nuIDs, lib.mapping='lumiHumanIDMapping', returnAllInfo=T))
+}
+identical(nuIDs, row.names(mappingInfo)) # sanity check, sane=TRUE
+head(mappingInfo$Symbol[!is.na(mappingInfo$Symbol)]) # sanity check, sane=>see gene ids
+```
+
+## Differential Expression Analyses
+### Limma
+A linear model for microarray data analysis ([Limma][7]) was performed on the samples to identify differentially expressed genes between pair-wise comparisons of sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we constructed two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Design matrix 
+- make a matrix with arrays as rows, treatment groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
+- in this case it looks like this, where 1-26 are the 26 microarrays remaining after removing the two arrays earlier.
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0+factor(pd$Group))
+row.names(design) <- unlist(pd$samplelabel)
+# make sure the headings match
+colnames(design) <- sub("factor.pd.Group.", "", colnames(design))
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design, "samplelabel"), 2, as.character)), options=list(width=960))  
+print(design.gvis, "chart")
+```
+
+#### Contrast matrix
+- to perform pairwise comparisons
+ - can also setup more complex comparisons, such as to look for the subset of genes different in inflamed tissue that are also different between naiive and non-naiive inflamed tissues
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  generally speaking, a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+**Comparisons**
+- for now, just did all pairwise comparisons of individual groups
+  - will devise higher level comparisons after consultation
+
+Differences between NonInflamed and Inflamed samples (inflammation in resistant patients), and between the NaivInflamed and Inflamed samples (non-resistant verus resistant)
+  
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(Inflamed.v.NonInflamed=Inflamed - NonInflamed, Inflamed.v.NaivInflamed=Inflamed - NaivInflamed, levels=c("Inflamed" ,"NaivInflamed","NonInflamed"))
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix, "category"), 2, as.character)), options=list(width=960, height=120))  
+print(contrast.gvis, "chart")
+```
+
+#### Linear model
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix 
+  - for each gene based on the given series of arrays
+
+```{r linearmodel}
+fit <- lmFit(lumib.norm, design) 
+```
+
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2 <- contrasts.fit(fit, contrast.matrix) 
+```
+
+- compute moderated t-statistics and log-odds of differential expression 
+  - by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2 <- eBayes(fit2) 
+```
+
+
+### Volcanoplots
+These plots help visualize relationship between fold change and signifcance of changes in expression between groups.
+
+- genes outside the two vertical orange lines show more than 2-fold changes in expression between groups
+- genes which pass an FDR  (false discovery rate) multiple testing correction of `r pvalcutoff` (`r pvalcutoff*100`% FDR) and show at least a `r 2^logFCcutoff`-fold change in expression are colored blue
+- the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
+
+```{r volcanoplot, fig.cap="", fig.width=12, fig.height=12, results='hide', cache=TRUE}
+all.stats <- llply(seq(1,ncol(contrast.matrix),1), function(n) {
+  contrast <- dimnames(fit2$contrasts)$Contrasts[n]
+  stats <- topTable(fit2, coef=n, sort.by="B"  ,number=nrow(fit2$genes), genelist=rownames2col(mappingInfo, "NuID"))
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalcutoff & abs(stats$logFC)>logFCcutoff)
+  g <- ggplot(data=stats, aes(x=logFC, y=-log10(P.Value), color=Passes.FDR.threshold, size=B)) +
+    geom_point(alpha=0.5) +
+    geom_vline(xintercept=c(-1,1), color="orange", alpha=0.7, lwd=1.25) +
+    xlab("log2 fold change") + ylab("-log10 p-value") +
+    labs(title=contrast)
+  return(list(g=g, stats=stats, contrast=contrast))
+  })
+lapply(all.stats, function(x) {
+  x$g
+  })
+```
+
+#### Statistics and expression levels for ALL genes (in Excel files)
+
+```{r all_exprs_stats, results='hide'}
+all.exprs.stats <- lapply(all.stats, function(x) {
+  contrast <- x$contrast
+  stats <- x$stats
+  eset.all <- exprs(lumib.norm)[stats$NuID,]
+  colnames(eset.all) <- pData(lumib.norm)$samplelabel
+  eset.stats.all <- cbind(stats, eset.all)  
+  return(list(eset.stats.all=eset.stats.all, contrast=contrast ))
+  })
+
+lapply(all.exprs.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.all, file=file.path(resultsDir, paste("all.stats", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+`r index=1`
+
+[Links to Excel files with results for genes in `r all.stats[[index]]$contrast` comparison](./results/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+`r index=index+1`
+
+[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+
+---
+
+### Top results
+The top `r numtopgenes` differentially expressed genes as sorted by "B", the log-odds that a gene is differentially expressed
+
+#### The summary table contains the following information:
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last columns contain the log-transformed normalized expression levels for these genes in each sample
+
+```{r toptable, cache=TRUE}
+top.stats <- lapply(seq(1,ncol(contrast.matrix),1), function(n) {
+  contrast <- dimnames(fit2$contrasts)$Contrasts[n]
+  if (length(which(all.stats[[n]]$stats$adj.P.Val<pvalcutoff & abs(all.stats[[n]]$stats$logFC)>logFCcutoff))>=numtopgenes) {
+    print(paste(contrast, "has at least", numtopgenes, "probes with an ajusted p.value of at least", pvalcutoff,  "and a log fold change of at least", logFCcutoff, sep=" "))
+    stats.top <- topTable(fit2, coef=n, adjust="fdr", p.value=pvalcutoff, lfc=logFCcutoff, sort.by="B", number=nrow(mappingInfo), genelist=rownames2col(mappingInfo, "NuID"))
+    stats.top <- stats.top[!is.na(stats.top$Symbol),]
+    } else {
+      print(paste(contrast, "does NOT have at least", numtopgenes, "probes with an ajusted p.value of at least", pvalcutoff,  "and a log fold change of at least", logFCcutoff, sep=" "))
+      stats.top <- topTable(fit2, coef=n, adjust="fdr", sort.by="B", number=nrow(mappingInfo), genelist=rownames2col(mappingInfo, "NuID"))
+      stats.top <- stats.top[!is.na(stats.top$Symbol),]
+      }
+  if (nrow(stats.top)>=numtopgenes){
+    stats.top <- stats.top[1:numtopgenes,]
+    } 
+  # incorporate expression levels for these genes in all samples
+  if(nrow(stats.top)>0) {
+    eset.top  <-  exprs(lumib.norm[stats.top[, "NuID"], ]) 
+    colnames(eset.top)  <-  pData(lumib.norm)[,"samplelabel"]
+    eset.stats.top <- cbind(stats.top, eset.top)
+    } else { eset.stats.top<-"NA"}
+  return(list(eset.stats.top=eset.stats.top, contrast=contrast))
+  })
+```
+
+#### Output statistics and expression levels for these genes to Excel files
+
+```{r output_top, results='hide'}
+lapply(top.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.top, file=file.path(resultsDir, paste("top", numtopgenes, "stats.exprs", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+`r index=1`
+
+[Links to Excel files with results for genes in top `r numtopgenes` log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/`r paste("top", numtopgenes, "stats.exprs", top.stats[[index]]$contrast, "xls",sep=".")`)
+`r index=index+1`
+
+[Links to Excel files with results for genes in top `r numtopgenes` log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/`r paste("top", numtopgenes, "stats.exprs", top.stats[[index]]$contrast, "xls",sep=".")`)
+
+### Heatmaps
+- of Top 50 Results
+- as sorted by "B", the log-odds that a gene is differentially expressed
+- clustered for similarity by probe/gene and sample
+
+```{r heatmaps, fig.width=12, fig.height=12}
+for(n in 1:ncol(contrast.matrix)){
+  # get the names of the stages that are being compared in this comparison
+  contrast <- top.stats[[n]]$contrast
+  stages <- names(which(abs(contrast.matrix[,contrast])>0))
+  # subset the samples and the data to those in the stages compared in this comparison
+  sample.indices <- which(design[,stages[1]]>0 | design[,stages[2]]>0)
+  sample.pd <- pData(lumib.norm)[sample.indices,]
+  top.exprs.contrast <- top.stats[[n]]$eset.stats.top
+  # setup row names for the heatmap, paste probeset ID to gene symbol
+  row.names(top.exprs.contrast) <- paste(1:nrow(top.exprs.contrast), top.exprs.contrast$Symbol, sep="_")
+  # subset to relevant samples
+  top.exprs.contrast <- top.exprs.contrast[,unlist(sample.pd$samplelabel)]
+  # heatmap annotations
+  heatmap.annots <- as.data.frame(sample.pd[,c("samplelabel", "Group")])
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  heatmap.annots <- col2rownames(heatmap.annots, "samplelabel", T)
+  # heatmap annotation colors
+  group_colors <- cbPalette[1:2]
+  names(group_colors) <- unique(unlist(sample.pd$Group))
+  ann_colors = list(Group = group_colors)
+  ## Heatmaps
+  pheatmap(as.matrix(top.exprs.contrast[1:50,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=F, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)  
+  }
+```
+
+## Basic Pathway Enrichment
+- hypergeometric distribution based
+
+```{r pathway}
+pathway.enrichment <- pathEnrich(as.vector(unlist(top.stats[[2]]$eset.stats.top$EntrezID[1:100])), pathways.Hs, all.exprs.stats[[2]]$eset.stats.all$EntrezID)
+pathway.enrichment$Symbols <- lapply(pathway.enrichment$Genes, function(n) {
+  as.character(droplevels(unique(mappingInfo$Symbol[which(mappingInfo$EntrezID %in% as.vector(unlist(n)))])))
+  })
+
+```
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[3]: http://en.wikipedia.org/wiki/Variance-stabilizing_transformation (VST)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/lumi.html (lumi)
+[5] (RSN)
+[6] http://www.ploscompbiol.org/article/info%3Adoi%2F10.1371%2Fjournal.pcbi.1002276 (methods paper)
+[7]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+
+

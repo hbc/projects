@@ -1,0 +1,231 @@
+<!-- Performs DESeq on two UNREPLICATED samples. Uses the blind method when
+estimating the dispersions so do not use this if you have replicates as
+this will ignore it. Edit the variables in the variables block for
+your experiment. You will also want to edit the text to discuss some of
+the figures
+
+infile: a file with the rownames as ids with a column for each sample
+wd: directory to run the script in
+design: describes what the two columns represent
+gene_symbol: how to look up the gene symbol using biomaRt
+ensembl_gene: how to look up the ensembl gene id using biomaRt
+filter_type: the type of identifier that your id is
+
+The biomaRt vignette contains documentation that can help you figure what
+these should be:
+http://www.bioconductor.org/packages/2.11/bioc/html/biomaRt.html
+-->
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, message=FALSE, error=FALSE, warning=FALSE, cache=TRUE)
+```
+
+
+```{r libraries}
+library("DESeq")
+library("googleVis")
+library("ggplot2")
+library("ggthemes")
+library("scales")
+```
+
+```{r variables}
+wd = '/Users/rory/cache/bipy/scripts/'
+setwd(wd)
+infile = paste(wd, '../data/combined.counts', sep="")
+design = c("CLK1", "CLK3")
+gene_symbol = 'mgi_symbol'
+ensembl_gene = 'mmusculus_gene_ensembl'
+filter_type = 'ensembl_gene_id'
+```
+Differential expression of CLK1 vs CLK3 for a pilot study.
+
+```{r data-load}
+counts = read.table(infile, header=TRUE, row.names=1, col.names=design)
+cds = newCountDataSet(counts, design)
+```
+
+```{r annotate-df}
+annotate_df = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, gene_symbol, "description"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	return(m)
+}
+```
+
+```{r gvistabl-clean}
+clean_gvistable = function(df) {
+	df[sapply(df, is.infinite)] = NA
+	names(df)[match("baseMeanA", names(df))] = c(design[1])
+	names(df)[match("baseMeanB", names(df))] = c(design[2])
+	return(df)
+}
+```
+
+
+## Normalization?pl
+Here is a sample of 25 of the non-normalized counts of reads mapping to
+genes in the annotation. These are just chosen at random for
+display purposes:
+```{r counts, results='asis'}
+annotated_counts = head(as.data.frame(counts(cds)), 25)
+annotated_counts$id = rownames(annotated_counts)
+annotated_counts = annotate_df(annotated_counts)
+print(gvisTable(annotated_counts, options=list(width=900)), "chart")
+```
+To normalize for different depth of sequencing, size factors are calculated
+for each sample.
+Call $k_{ij}$ the count for gene $i$ in sample $j$.
+For all samples $j$, assume most of the counts for genes will have
+a constant ratio comparing any two samples in $j$, reflecting the assumption
+that most genes are not differentially expressed between samples.
+A reference set of
+counts is created by taking $f_i$, geometric mean of the counts for each
+gene $i$, and the median of of $\frac{k_i}{f_i}$ for sample $j$ is called the size
+factor for sample $j$. The size factors can be thought of as an attempt to
+normalize for the total number
+of reads mapping to transcripts, depending on the assumption that most
+of the transcripts are not vastly different between samples.
+
+Here are the size factors for each sample in this experiment:
+```{r sizefactors, tidy=TRUE}
+cds = estimateSizeFactors(cds)
+sizeFactors(cds)
+```
+
+These are the normalized counts, which are the raw counts divided by
+the size factor, for the same 25 genes:
+```{r normalized_counts, results='asis'}
+annotated_normalized = head(as.data.frame(counts(cds, normalized=TRUE)), 25)
+annotated_normalized$id = rownames(annotated_normalized)
+annotated_normalized = annotate_df(annotated_normalized)
+print(gvisTable(annotated_normalized, options=list(width=900)), "chart")
+```
+
+We can see the assumption holds true by plotting the ratio of counts for
+both two samples and noting the distribution has a large central peak.
+On the left are the raw counts and on the right are the normalized counts.
+The effect of normalization is to shift the mean ratio towards 1.
+
+```{r ratio_hist, fig.cap=""}
+raw = counts(cds)
+countdata = data.frame(ratio=raw[,1] / raw[,2])
+c = ggplot(countdata, aes(ratio)) + geom_density() +
+	scale_x_log10(breaks=c(0.01, 0.1, 1, 10, 100),
+		labels=math_format(format=log10)) +
+	theme_grey(base_size=16, base_family="GillSans") +
+	opts(title="raw counts")
+c
+normalized = counts(cds, normalized=TRUE)
+normdata = data.frame(ratio=normalized[,1] / normalized[,2])
+n = ggplot(normdata, aes(ratio)) + geom_density() +
+	scale_x_log10(breaks=c(0.01, 0.1, 1, 10, 100),
+		labels=math_format(format=log10)) +
+	theme_grey(base_size=16, base_family="GillSans") +
+	opts(title="normalized counts")
+n
+```
+
+## Variance estimation
+For samples without replicates it is not possible to get an accurate
+repesentation of the biological variability. However if we make an
+assumption that genes with counts at a given level all have similar
+dispersions we can use the dispersions calculated across all genes with
+a given number of counts as a proxy for the dispersion of that gene.
+Dispersion describes the fluctuation of the observed counts for a gene
+around the mean counts for that gene and can be the square of the
+coefficient of biological variation.
+For example, if a gene's expression level fluctuates by 20% the
+calculated dispersion is
+$0.2^2 = 0.04$.
+
+Below is a plot of the estimated dispersion for genes with given counts;
+the dispersion increases as the mean count decreases meaning it is
+more difficult to accurately measure the expression level of
+low-count genes.
+
+```{r test, echo=FALSE, cache=TRUE, fig.cap=""}
+cds = estimateDispersions(cds, method='blind',  sharingMode="fit-only")
+plotDispEsts = function(cds) {
+	estimates = data.frame(means = rowMeans(counts(cds, normalized=TRUE)),
+		variance = fitInfo(cds)$perGeneDispEsts)
+	xg = 10^seq(-0.5, 5, length.out=300)
+	yg = fitInfo(cds)$dispFun(xg)
+	fitline = data.frame(xg=xg, yg=yg)
+	p = ggplot(estimates, aes(means, variance)) + geom_point(size=1) +
+		scale_x_log10() + scale_y_log10() +
+		geom_line(data=fitline, aes(xg, yg), color="red") +
+		theme_grey(base_size=16, base_family="GillSans") +
+		opts(title="dispersion estimation while pooling all samples") +
+		xlab("mean number of mapped reads per gene") +
+		ylab("estimated dispersion")
+	p
+}
+plotDispEsts(cds)
+scvPlot(cds)
+```
+
+
+
+## Differential expression
+### All upregulated genes with adjusted p-value < 0.1:
+```{r upregulated, echo=FALSE,  results='asis', cache=TRUE}
+res = nbinomTest(cds, design[1], design[2])
+upreg_sig = subset(res, padj < 0.1 & foldChange > 1)
+upreg_sig = clean_gvistable(upreg_sig)
+print(gvisTable(annotate_df(upreg_sig), options=list(width=900)), "chart")
+```
+
+### All downregulated genes with adjusted p-value < 0.1:
+```{r downregulated, echo=FALSE, cache=TRUE, results='asis'}
+downreg_sig = subset(res, padj < 0.1 & foldChange < 1)
+downreg_sig = clean_gvistable(downreg_sig)
+print(gvisTable(annotate_df(downreg_sig), options=list(width=900)), "chart")
+```
+
+```{r diffexp_plots, echo=FALSE, cache=TRUE}
+plotMvA <- function(res) {
+    plot(res$baseMean, res$log2FoldChange, log="x", pch=20,
+		cex=.3, col=ifelse(res$padj < .1, "red", "black"))
+}
+```
+
+On the left is a MvA plot showing the calculated fold change vs. the mean
+expression level. On the right is a histogram of the unadjusted p-values
+as a diagnostic; samples with no differentially expressed genes should
+have an exponential-like p-value distribution without the uptick at the
+extreme low p-values.
+
+```{r diagnostic}
+plotMvA(res)
+hist(res$pval, breaks=100, col="skyblue", border="slateblue", main="")
+```
+
+The top 25 most downregulated genes by fold change for genes with reads
+in both conditions.
+```{r downreg_foldchange, results='asis', cache=TRUE}
+#print(gvisTable(annotated_normalized, options=list(width=900)), "chart")
+non_inf = subset(res, foldChange < Inf & log2FoldChange > -Inf)
+downreg = head(non_inf[order(non_inf$foldChange, -non_inf$baseMean), ], 25)
+downreg = clean_gvistable(downreg)
+annotated_downreg = annotate_df(downreg)
+print(gvisTable(annotated_downreg, options=list(width=900)), "chart")
+```
+The top 25 most upregulated genes by fold change for genes with reads
+in both conditions.
+```{r upreg_foldchange, echo=FALSE, results='asis', cache=TRUE}
+upreg = head(non_inf[order(-non_inf$foldChange, -non_inf$baseMean), ], 25)
+upreg = clean_gvistable(upreg)
+annotated_upreg = annotate_df(upreg)
+print(gvisTable(annotated_upreg, options=list(width=900)), "chart")
+```
+
+```{r write_results}
+annotated_res = annotate_df(res)
+out_file = paste(infile, ".deseq.annotated.txt", sep="")
+write.table(annotated_res, out_file, quote=FALSE, row.names=FALSE, sep="\t")
+```

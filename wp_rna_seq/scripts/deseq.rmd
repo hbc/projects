@@ -1,0 +1,339 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, message=FALSE, error=FALSE, warning=FALSE)
+```
+
+## LIBRARIES
+- using DESeq for normalization, dispersion adjustment and significance testing
+
+```{r libraries}
+library(DESeq)
+library(plyr)
+library(reshape)
+library(ggplot2)
+library(xtable)
+```
+
+## VARIABLES
+- used Tophat aligned trimmed (11bp from 5' end) reads
+- FDR of 0.1
+
+```{r variables, cache=FALSE}
+dataDir <- "/Volumes/ody/scratch/projects/wp_rna_seq/data/"
+resultsDir <- "/Volumes/ody/scratch/projects/wp_rna_seq/results/tophataligns/trimmed/"
+samples <- c("LIB003615_TRA00004588_CGATGT_L005","LIB003615_TRA00004674_TGACCA_L005","LIB003615_TRA00004675_ACAGTG_L005","LIB003615_TRA00004676_GCCAAT_L005","LIB003615_TRA00004677_CAGATC_L005","LIB003615_TRA00004678_TAGCTT_L005","LIB003615_TRA00004679_CTTGTA_L005","LIB003616_TRA00004589_CGATGT_L006","LIB003616_TRA00004680_TGACCA_L006","LIB003616_TRA00004681_ACAGTG_L006","LIB003616_TRA00004682_GCCAAT_L006","LIB003616_TRA00004683_CAGATC_L006","LIB003616_TRA00004684_TAGCTT_L006","LIB003616_TRA00004685_CTTGTA_L006")
+pvalcutoff=0.1
+```
+
+```{r functions, cache=FALSE}
+plotDispEsts <- function( cds ) {
+ plot(rowMeans( counts( cds, normalized=TRUE ) ), fitInfo(cds)$perGeneDispEsts, pch = '.', log="xy" , ylab="dispersion", xlab="mean normalized counts")
+ xg <- 10^seq( -.5, 5, length.out=300 )
+ lines( xg, fitInfo(cds)$dispFun( xg ), col="red" )
+}
+
+lm_eqn = function(df){
+    m = lm(rep.2 ~ rep.1, df);
+    eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(r)^2~"="~r2, 
+         list(a = format(coef(m)[1], digits = 2), 
+              b = format(coef(m)[2], digits = 2), 
+             r2 = format(summary(m)$r.squared, digits = 3)))
+    as.character(as.expression(eq));                 
+}
+
+qq = function(pvaldf,  cutoffpval, samples) {
+  title=paste("Quantile-quantile plot of p-values", samples, sep=" - ")
+  pvaldf <- pvaldf[order(pvaldf$pval, decreasing=F),]
+  pvals <- as.vector(unlist(pvaldf$pval))
+  padjs <- as.numeric(as.vector(unlist(pvaldf$padj)))
+  colors <- as.vector(ifelse(padjs<cutoffpval, "sig", "nonsig"))
+  o = -log10(pvals)
+  e = -log10( 1:length(o)/length(o) )
+  plot=qplot(e,o, color=colors, xlim=c(0,max(e)), ylim=c(0,max(o))) + stat_abline(intercept=0,slope=1, col="darkgrey")
+  plot=plot+opts(title=title)
+  plot=plot+scale_x_continuous(name=expression(Expected~~-log[10](italic(p))))
+  plot=plot+scale_y_continuous(name=expression(Observed~~-log[10](italic(p))))
+  plot=plot + scale_colour_manual(name="BFH adjusted pvalue", values=c("black", "red"), labels=c(paste("q>", cutoffpval, sep=""),paste("q<", cutoffpval,sep=""))) 
+  plot
+}
+
+plotDE <- function(res, cutoffpval, samples ) {
+  title=paste("M-A plot of", samples, sep=" - ")
+  res$colors <- ifelse(res$padj<cutoffpval, "sig", "nonsig" )
+  plot <- ggplot(data=res, aes(x=log(baseMean), y=log2(foldChange), colour=colors)) + 
+    geom_point( size=3)  +  
+    scale_colour_manual(name="BFH adjusted pvalue", values=c("#00000033","#FF0000FF"),labels=c(paste("q>", cutoffpval, sep=""),paste("q<", cutoffpval,sep=""))) +
+    opts(title=title)
+  plot
+}
+```
+
+## DATALOAD and PREP
+- HTseq counts were generated for individual genes (using the UCSC GTF annoation from iGenomes) from the Tophat aligments
+- covariates include genotype, treatment and RNA type
+- processed and loaded all data into a DESeq CountDataSet
+
+```{r dataload_and_reshape, cache=FALSE}
+covars <- read.table(paste(dataDir, "covars.desc", sep=""), header=T, row.names=5)
+covars$replicate.setname <- paste(covars[,1], covars[,2], covars[,3],sep="-")
+counts <- llply(samples, function(n) {
+  read.table(paste(resultsDir, n, "/HTseq-counts.tab",sep="" ))
+})  
+names(counts) <- samples
+counts <- melt(counts)
+counts <- cast(counts, V1 ~ L1)
+row.names(counts) <- counts$V1
+counts <- as.data.frame(counts[,names(counts) %in% samples])
+counts.ds <- newCountDataSet(counts, covars)
+```
+
+## NORMALIZATION
+- estimate library size adjustements and gene variances/dispersions for all samples
+- took the most conservative approach to reducing the variability of the dispersion estimates
+
+```{r estimate_sizefactors, results='hide', cache=FALSE}
+counts.ds <- estimateSizeFactors(counts.ds)
+head(counts(counts.ds, normalized=TRUE))
+# modelFrame - identical rows in this dataframe will be marked as replicates
+# sharingMode = maximum, most conservative approach to sharing information across genes to reduce variability of the dispersion estimates
+counts.ds <- estimateDispersions(counts.ds, method="pooled", modelFrame=covars[,1:3], sharingMode="maximum", fitType="parametric")
+counts.norm <- counts(counts.ds, normalized=TRUE)
+```
+
+### "Sanity" checks for dispersion results, (from DESeq vignette)
+- plot dispersion estimates versus empirical values for different expression levels 
+  - black dots are empirical values and the red line is the fitted values
+- viewed the dispersions values used in subsequent testing and verified that disp_pooled contains the maximum of the two value vectors
+
+
+```{r plotdispersions, cache=FALSE, fig.cap=""}
+plotDispEsts(counts.ds)
+#head(fData(counts.ds))
+#str(fitInfo(counts.ds))
+```
+**Figure 1 - Empirical and fitted dispersion values plotted against mean expression strength**
+
+
+## QC
+### Replicate based
+#### Scatter plots and linear regressions
+- linear regression equation is on each plot
+- blue line = linear regression predicted values
+- red line = perfect correlation values
+
+```{r replicate_scatterplots, fig.width=18, fig.height=18, cache=FALSE, fig.cap=""}
+pd <- pData(counts.ds)
+counts.norm.melt <- melt(counts.norm)
+counts.norm.melt$replicate <- pd$replicate[match(counts.norm.melt$X2, row.names(pd))]
+counts.norm.melt$replicate <- paste("rep", counts.norm.melt$replicate, sep=".")
+counts.norm.melt$setname <- pd$replicate.setname[match(counts.norm.melt$X2, row.names(pd))]
+counts.norm.melt.rep <- cast(counts.norm.melt, X1+ setname ~ replicate)
+counts.norm.melt.rep$rep.1 <- log10(counts.norm.melt.rep$rep.1)
+counts.norm.melt.rep$rep.2 <- log10(counts.norm.melt.rep$rep.2)
+## subset data to the finite counts
+counts.norm.melt.rep.finite <- subset(counts.norm.melt.rep,is.finite(rep.1) & is.finite(rep.2))
+## calculate the linear regression equations
+labeldata <- ddply(counts.norm.melt.rep.finite, .(setname), lm_eqn)
+p <- ggplot(counts.norm.melt.rep.finite, aes(x=rep.1,y=rep.2)) + geom_point(size=1, alpha=0.2) +
+  geom_smooth(method="lm")  +
+  xlab("replicate1 - log10(counts)") + 
+  ylab("replicate2 - log10(counts)") +
+  geom_abline(intercept=0, color="red",alpha=0.2,slope=1 ) + 
+  facet_wrap(~setname, ncol=3) +
+  geom_text(data=labeldata, aes(x=1, y=5,label=V1), parse=TRUE, size=4)
+print(p)
+```
+
+**Figure 2 - Scatterplots and linear regressions of replicate counts**
+
+---
+
+### Replicate M-A plots
+- values outside the orange lines show more than 2 fold changes in expression between replicates
+- "M" axis is the log 2 fold change between replicates and the "A" axis is the average log 2 normalized counts in the two samples
+
+
+```{r MvA_plots, fig.width=18, fig.height=18, cache=FALSE, fig.cap=""}
+mean.counts.norm.melt <- aggregate(data=counts.norm.melt ,value ~ setname + X1, function(n) 0.5*(log2(n[1])+log2(n[2])))
+fc.counts.norm.melt <- aggregate(data=counts.norm.melt ,value ~ setname + X1, function(n) log2(n[1])-log2(n[2]))
+replicate.counts.norm.melt <- merge(mean.counts.norm.melt, fc.counts.norm.melt, by.x=c("X1", "setname"), by.y=c("X1", "setname"))
+names(replicate.counts.norm.melt) <- c("gene", "set", "mean", "fc")
+ggplot(data=replicate.counts.norm.melt, aes(x=mean, y=fc)) + geom_point(size=1, alpha=0.1) +facet_wrap(~set, ncol=3) + ylab("M") + xlab("A") +geom_hline(yintercept=c(2,-2), color="orange", alpha=0.4)
+```
+**Figure 3 - M-A plots of replicate counts**
+
+## ANALYSES
+- it is not possible to work with the entire dataset to calculate the library size adjustments and dispersions and then perform pairwise comparisons between samples as DESeq cannot transition between a multivariate, multisample mode to a pairwise mode
+- instead, for each pairwise analysis, I took the appropriate subset of the raw data and recalculated the size adjustments and dispersions for this subset
+- using this data, I performed independent filtering to eliminate genes that have no, or little chance of showing signicant evidence
+  - this should result in increased detection power, in terms of false discovery rate.
+  - filtering was based on the sum of counts from all samples as below a certain number of samples, it is not possible to get a pvalue below a desired cutoff 
+    - here I discarded the genes in the bottom 40% of the distribution
+
+```{r subset_pairwise_comparisons, cache=FALSE}
+setnames <- list(c("TNTTRAP-Band-TRAP", "TNTTRAP-Sham-TRAP"),c("TNTTRAP-Band-input", "TNTTRAP-Sham-input"), c("TNTTRAP-Sham-input","CAGTRAP-NoOp-input"), c("TNTTRAP-Band-input", "noTRAP-Band-input"), c("TNTTRAP-Sham-TRAP", "CAGTRAP-NoOp-TRAP"), c("CAGTRAP-NoOp-input", "CAGTRAP-NoOp-TRAP"))
+sig.results <- llply(setnames, function(n) {
+  n <- unlist(n)
+  ## subset data, 
+  counts.ds.subset <- newCountDataSet(counts(counts.ds[,pData(counts.ds)$replicate.setname %in% n]), pData(counts.ds)$replicate.setname[pd$replicate.setname %in% n])
+  ## recalculate sizeFactors and Dispersions
+  counts.ds.subset <- estimateSizeFactors(counts.ds.subset)
+  counts.ds.subset <- estimateDispersions(counts.ds.subset)
+  ## independent filtering - drop lowest counted genes to improve multiple test correction
+  ## get sum of counts for all samples for each gene
+  rowcounts <- rowSums(counts(counts.ds.subset))
+  ## filter the data based on the minimal row sum 
+  use <- (rowcounts > quantile(rowcounts, 0.4))
+  counts.ds.subset.filtered <- counts.ds.subset[use,]
+  ## perform significance testing
+  res.filtered <- nbinomTest(counts.ds.subset.filtered, n[1], n[2])
+  ## get normalized counts for significant hits, relabel samples with condition rather than sampleID
+  results.1 <- counts(counts.ds.subset.filtered,normalize=TRUE)[which(res.filtered$padj<pvalcutoff),]
+  dimnames(results.1)[[2]] <- pData(counts.ds.subset)$condition
+  results.1 <- results.1[,order(dimnames(results.1)[[2]])]
+  ## get means and pvalues for significant hits and put together with counts
+  results.2 <- res.filtered[which(res.filtered$padj<pvalcutoff),]
+  results <- cbind(results.1, results.2)
+  results <- results[,-grep("id", names(results))]
+  ## output some plots
+    qqplots <- qq(res.filtered[,c("pval", "padj")], pvalcutoff, paste(n[1], "v", n[2]) )
+    DEplots <- plotDE(res.filtered, pvalcutoff, paste(n[1], "v", n[2]))
+  return(list(results=results,  qqplots=qqplots, DEplots=DEplots))
+})     
+```
+
+**6 pairwise comparisons in total**
+- the titles for each comparison show the: 
+  - mouse genotype (wildtype (noTRAP), cardiomyocyte specific TRAP transgene (TNTTRAP) and non tissue-specific TRAP transgene (CAGTRAP))
+  - treatment (band or Sham operation/No operation)
+  - RNA type (translating (TRAP) or whole RNA (input))
+  
+- for each of these comparisons, significant genes which passed a 10% false discovery rate are highlighted
+- for each comparison, there are 3 ways to visualize these significant results
+  - QQplot, with significantly varying transcripts shaded in red
+  - MA-plot, with significantly varying transcripts shaded in red
+  - table of transcripts with significantly different expression levels 
+
+---
+
+### TNTTRAP, band vs. Sham, Trap
+- experimental
+- cardiomyocyte specifc translating trancript level changes in response to banding
+- positive log2FoldChange values signify increased levels in the sham operation samples  
+
+```{r out1, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[1]]$qqplots
+sig.results[[1]]$DEplots
+```
+**Figure 4 - QQ and M-A plots highlighting changes in cardiomyocyte translating transcript levels after stress**  
+  
+  
+**Table 1 - Cardiomyocyte-specific translating transcripts showing significant (FDR<0.1) differences after stress** 
+```{r tables1, results='asis', cache=FALSE}
+out1 <- xtable(sig.results[[1]]$results)
+print(out1, type='html',include.rownames=TRUE)
+```
+
+---
+
+### TNTTRAP, band vs. Sham, input
+- experimental
+- whole RNA trancript level changes in response to banding
+- positive log2FoldChange values signify increased levels in the shame operation samples  
+
+
+```{r out2, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[2]]$qqplots
+sig.results[[2]]$DEplots
+```
+**Figure 5 - QQ and M-A plots highlighting changes in  whole RNA transcript levels after stress**  
+  
+  
+**Table 2 - Transcripts showing significant (FDR<0.1) differences after stress**
+```{r tables2, results='asis', cache=FALSE}
+out2 <- xtable(sig.results[[2]]$results)
+print(out2, type='html',include.rownames=TRUE)
+```
+
+---
+
+### TNTTRAP vs. CAGTRAP, Sham/NoOp, input
+- negative control
+- cardiomyocyte specifc TRAP genotype vs. non.specific TRAP genotype whole RNA trancript changes in absence of banding
+  - assumes that Sham and NoOp are comparable
+  - TRAP transgenes not expected to have any effect on transcript levels
+- positive log2FoldChange values signify increased levels in the CAGTRAP genotype samples 
+
+```{r out3, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[3]]$qqplots
+sig.results[[3]]$DEplots
+```
+**Figure 6 - QQ and M-A plots highlighting differences in transgene effects on whole RNA transcript levels**  
+  
+  
+**Table 3 - Transcripts showing significant (FDR<0.1) differences in response to transgene type**
+```{r tables3, results='asis', cache=FALSE}
+out3 <- xtable(sig.results[[3]]$results)
+print(out3, type='html',include.rownames=TRUE)
+```
+
+---
+
+### TNTTRAP vs. noTRAP, Band, input
+- negative control
+- cardiomyocyte specifc TRAP genotype vs. wildtype  whole RNA trancript changes in presence of banding
+  - TNTTRAP transgene not expected to have any effect on whole RNA transcript levels
+- positive log2FoldChange values signify increased levels in the noTRAP genotype samples 
+
+```{r out4, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[4]]$qqplots
+sig.results[[4]]$DEplots
+```
+**Figure 7 - QQ and M-A plots highlighting differences in transgene presence on whole RNA transcript levels**  
+  
+  
+**Table 4 - Transcripts showing significant (FDR<0.1) differences in response to presence of transgene**
+```{r tables4, results='asis', cache=FALSE}
+out4 <- xtable(sig.results[[4]]$results)
+print(out4, type='html',include.rownames=TRUE)
+```
+
+---
+
+### TNTTRAP vs. CAGTRAP, Sham/NoOp, TRAP
+- should identify cardiomyocyte specific translating RNAs
+- positive log2FoldChange values signify increased levels in the non-cardiomyocyte (CAGTRAP) samples
+
+```{r out5, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[5]]$qqplots
+sig.results[[5]]$DEplots
+```
+**Figure 8 - QQ and M-A plots highlighting cardiomyocyte specific translating RNA transcripts**  
+  
+  
+**Table 5 - Translating transcripts showing significant (FDR<0.1) differences in cardiomyocytes as compared to all tissues**
+```{r tables5, results='asis', cache=FALSE}
+out5 <- xtable(sig.results[[5]]$results)
+print(out5, type='html',include.rownames=TRUE)
+```
+
+---
+
+### CAGTRAP, NoOp, input vs. TRAP
+- should identify cardiomyocyte specific translationally regulated RNAs
+  - expect to find noncoding RNAs
+- positive log2FoldChange values signify increased levels of translating RNAs
+
+```{r out6, fig.width=11, fig.height=6, out.width='.45\\textwidth', cache=FALSE}
+sig.results[[6]]$qqplots
+sig.results[[6]]$DEplots
+```
+**Figure 8 - QQ and M-A plots highlighting non-translated transcripts**  
+  
+  
+**Table 6 - Transcripts showing significant (FDR<0.1) differences in their translating and non-translating levels**
+```{r tables6, results='asis', cache=FALSE}
+out6 <- xtable(sig.results[[6]]$results)
+print(out6, type='html',include.rownames=TRUE)
+```
+
+- note that Malat1 and Neat1 are both highly transcribed large noncoding RNAs

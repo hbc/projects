@@ -1,0 +1,538 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE)
+## setup report details
+clientname="Owen Tamplin"
+clientemail="otamplin@enders.tch.harvard.edu"
+labPI="Zon"
+lablocation="Enders/HSCI"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+---
+
+## Methods summary
+All ZebGene 1.0 ST arrays were processed using the 'oligo' [BioConductor package][1], quality-controlled with [arrayQualityMetrics][2] and [RMA normalized][3]. Differentially expressed genes were identified using [limma][4].
+
+---
+
+## Workflow
+The sections below provide descriptions of the included results and include code to reproduce them. 
+
+---
+
+## Bioconductor and R libraries used to process and visualize the data
+- also miscellaneous convenience functions
+
+```{r libraries, echo=TRUE}
+library(oligo)
+library(arrayQualityMetrics)
+library(limma)
+library(pheatmap)
+library(RColorBrewer)
+library(googleVis)
+library(Biobase)
+library(pd.zebgene.1.0.st)
+library(plyr)
+library(ggplot2)
+library(biomaRt)
+
+
+rownames2col <- function(df) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- "ID"
+  return(output)
+}
+```
+
+---
+
+## Variables
+
+```{r VARIABLES, echo=TRUE}
+## Setup Data and Results directory variables
+if(file.exists("/n/home08/jhutchin/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/lz_HSC_niche_effects/"
+  } else if (file.exists("/Volumes/ody/")){
+  baseDir="/Volumes/ody/projects/lz_HSC_niche_effects/"
+}
+metaDir=file.path(baseDir, "meta")
+dataDir=file.path(baseDir, "data")
+resultsDir=file.path(baseDir, "results")
+covarsfilename="Owen_2013_array_list.tab" # do not use full path
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+ensemblidentifier="ENSDAR"
+pvalcutoff=0.25
+logFCcutoff=1
+```
+
+---
+
+## Load the raw data
+- load phenotypes and array names from metadata file
+  - this file also contains the file names and descriptions of the CEL files
+
+```{r dataload, results='hide', cache=TRUE}
+celFiles <- list.celfiles(dataDir, full.names=TRUE)
+affyRaw <- read.celfiles(celFiles)
+## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
+#subsequent columns
+covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
+covars <- covars[order(row.names(covars)),]
+identical(basename(celFiles), row.names(covars)) ## sanity check
+pData(affyRaw) <- covars 
+validObject(affyRaw) ## sanity check
+````
+
+## Sample metadata
+
+```{r covars, results='asis'}
+## Sample information table
+pd <- pData(affyRaw)
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
+print(pd.gvis, "chart")
+```
+
+## QA/QC - 1 
+- using arrayQualityMetrics library
+- raw data
+- group by cell type, treatment and batch
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("celltype", "treatment", "Batch"))
+```
+
+[raw data QC report](./results/report_raw/index.html)
+
+- the arrays look pretty good overall, there is decent clustering by cell type, especially for the endothelial cells versus the other cell types
+
+- array #12 (3PR.012413.CEL, replicate 1 PGE2	Runx1:GFP+ HSC sort	3PR) looks like it has very low signal, was also run on a different day than other arrays
+  - excluded before normalization 
+- array #18 (4PF.040212.CEL, replicate 2, PGE2	flk1:DsRed2+ endothelial sort	4PF) looks OK, but was run on a different day than all the othe arrays
+  - exclude as cautionary measure
+- array #23 looks potentially overloaded
+    - see how it is affected by normalization
+
+```{r drop_arrays, results='hide', cache=TRUE}
+celFiles <- list.celfiles(dataDir, full.names=TRUE)
+celFiles <- celFiles[-(grep("3PR|4PF", celFiles))]
+affyRaw <- read.celfiles(celFiles)
+## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
+#subsequent columns
+covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
+covars <- covars[-(grep("3PR|4PF", covars$array_name)),]
+covars <- covars[order(row.names(covars)),]
+identical(basename(celFiles), row.names(covars)) ## sanity check
+pData(affyRaw) <- covars 
+validObject(affyRaw) ## sanity check
+```
+
+## Background correct and normalize
+The data was normalized for differential gene expression analysis using Robust Multichip Average ([RMA][5]) in the oligo BioConductor package. Here, RMA normalizes the intensity values at the probe level, and  collapses probes into "core" transcripts based on annotations provided by Affymetrix
+
+```{r normalize, results='hide', cache=TRUE}
+affyNorm <- rma(affyRaw, target="core", background=T, normalize=T)
+pd <- pData(affyNorm)
+pd$samplelabel <- paste(pd$celltype, pd$treatment, pd$replicate, sep="_")
+pData(affyNorm) <- pd
+```
+
+## QA/QC - 2 
+- using arrayQualityMetrics library
+- normalized data
+
+```{r normQC,  eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm, outdir=file.path(resultsDir, 'report_rma.core'), force=TRUE, do.logtransform=FALSE,intgroup=c("celltype", "treatment", "Batch"))
+```
+
+[normalized data QC report](./results/report_rma.core/index.html)
+
+- all the samples look fine after normalization, 
+  - the single array tagged as an outlier is only just over the threshold, so I decided to keep it in
+
+## QA/QC - 3
+	
+### Basic Clustering
+```{r basic_clustering, fig.height=12, fig.width=12}
+eset.core <- exprs(affyNorm)
+colnames(eset.core) <- pData(affyNorm)$samplelabel
+myDist <- dist(t(eset.core))
+myTree <- hclust(myDist)
+plot(myTree)
+```
+
+The endothelial cells are clustering together well. There is some, but less separation between the HSC and negative cells. There is no obvious clustering based on treatment. There appears to possibly be some clustering based on replicate (the number at the end of each label is the replicate #). 
+Samples were run on at least two separate days, will try to batch correct and see what effect that has.
+
+## QA/QC - 4
+
+### Primary Componenet Analysis Clustering
+- the goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself
+- in basic terms, we are checking whether the samples cluster by sample type
+  - its a good sign if they do
+
+```{r pca, fig.width=12, fig.height=12}
+eset.core <- exprs(affyNorm) 
+colnames(eset.core) <- pData(affyNorm)$samplelabel
+myPca.core <- prcomp(t(eset.core))
+tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+## All samples
+## by cell type
+colors <- cbPalette[factor(pData(affyNorm)$celltype)]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm)$celltype)))
+pairs(tmpPCAData.core, bg=colors, col="black", cex=2,pch=21, main="All samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+## by treatment
+colors <- cbPalette[factor(pData(affyNorm)$treatment)]
+shapes=c(21,22)[factor(pData(affyNorm)$Batch)]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm)$treatment)))
+pairs(tmpPCAData.core, bg=colors, col="black", cex=2,pch=shapes, main="All samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+## each cell type, by treatment
+plots <- lapply(unique(pData(affyNorm)$celltype), function(n) {
+  pd.sub <- pData(affyNorm)[grep(n, pData(affyNorm)$celltype),]
+  eset.core.sub <- eset.core[,grep(n, dimnames(eset.core)[[2]])]
+  myPca.core.sub <- prcomp(t(eset.core.sub))
+  tmpPCAData.core.sub <- as.data.frame(myPca.core.sub$x[,1:4])
+  colors <- cbPalette[factor(pd.sub$treatment)]
+  legend_values=unique(cbind(colors, as.character(pd.sub$treatment)))
+  name=as.character(n)
+    shapes=c(21,22,23)[factor(pd.sub$Batch)]
+ return(list(legend_values=legend_values, tmpPCAData.core.sub=tmpPCAData.core.sub, colors=colors, name=name, shapes=shapes))
+  })
+               
+pairs(plots[[1]]$tmpPCAData.core.sub, bg=plots[[1]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[1]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[1]]$legend_values[,1], pt.cex=1.5, legend=plots[[1]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+pairs(plots[[2]]$tmpPCAData.core.sub, bg=plots[[2]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[2]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[2]]$legend_values[,1], pt.cex=1.5, legend=plots[[2]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+pairs(plots[[3]]$tmpPCAData.core.sub, bg=plots[[3]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[3]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[3]]$legend_values[,1], pt.cex=1.5, legend=plots[[3]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+
+rm(tmpPCAData.core, myPca.core, colors, legend_values, plots) ## cleanup
+```
+
+**Principal Component Analysis Figure**
+The figure shows a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color. Each replicate number is represented by a different shape. For the first plot, the sample types represent cell types. In the second plot, the sample types represent the three treatments. Each of the last three plots is for a single cell type, and the sample groups (colors) represent treatments.
+
+Principal component analysis is a dimension reduction and visualisation technique that is here used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays.
+
+You can use this plot to explore if the arrays cluster, and whether this is according to an intended experimental factor or according to unintended causes (eg. batch effects). 
+
+- from this plot it appears that the samples cluster fairly well by cell type, but not as well by drug treatment
+  - subsetting th PCA analysis to the individual cell types doesn't do much to improve this, suggesting that effects of the drug treatments may be hard to discern 
+
+## BATCH CORRECTION
+
+Correct for batch effects with ComBat from the [sva][6] package:
+
+```{r batchcorrect, cache=TRUE}
+library(sva)
+# Create model with cell type as factor variable
+mod <- model.matrix(~as.factor(treatment)*as.factor(celltype), data=covars)
+batch <- pData(affyNorm)$Batch
+# Modify expression matrix
+eset.core <- exprs(affyNorm)
+combat_edata <- ComBat(dat=eset.core,
+                       batch=batch,
+                       mod=mod,
+                       numCovs=NULL,
+                       par.prior=TRUE, 
+                       prior.plots=TRUE)
+affyNorm.batch <- affyNorm
+exprs(affyNorm.batch) <- combat_edata
+eset.batch <- exprs(affyNorm.batch)
+colnames(eset.batch) <- pData(affyNorm.batch)$samplelabel
+pd <- pData(affyNorm.batch)
+```
+
+## QA/QC - 5
+### Post Batch correction basic clustering
+
+```{r batch.basic_clustering, fig.height=12, fig.width=12}
+myDist <- dist(t(eset.batch))
+myTree <- hclust(myDist)
+plot(myTree)
+```
+
+### Post Batch correction PCA
+
+```{r pca.batch, fig.width=12, fig.height=12}
+myPca.core <- prcomp(t(eset.batch))
+tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+## All samples
+## by cell type
+colors <- cbPalette[factor(pData(affyNorm.batch)$celltype)]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm.batch)$celltype)))
+pairs(tmpPCAData.core, bg=colors, col="black", cex=2,pch=21, main="All samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+## by treatment
+colors <- cbPalette[factor(pData(affyNorm.batch)$treatment)]
+shapes=c(21,22,23)[factor(pData(affyNorm.batch)$Batch)]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm.batch)$treatment)))
+pairs(tmpPCAData.core, bg=colors, col="black", cex=2,pch=shapes, main="All samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+## each cell type, by treatment
+plots <- lapply(unique(pData(affyNorm.batch)$celltype), function(n) {
+  pd.sub <- pData(affyNorm.batch)[grep(n, pData(affyNorm.batch)$celltype),]
+  eset.batch.sub <- eset.batch[,grep(n, dimnames(eset.batch)[[2]])]
+  myPca.core.sub <- prcomp(t(eset.batch.sub))
+  tmpPCAData.core.sub <- as.data.frame(myPca.core.sub$x[,1:4])
+  colors <- cbPalette[factor(pd.sub$treatment)]
+  legend_values=unique(cbind(colors, as.character(pd.sub$treatment)))
+  name=as.character(n)
+    shapes=c(21,22,23)[factor(pd.sub$Batch)]
+ return(list(legend_values=legend_values, tmpPCAData.core.sub=tmpPCAData.core.sub, colors=colors, name=name, shapes=shapes))
+  })
+               
+pairs(plots[[1]]$tmpPCAData.core.sub, bg=plots[[1]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[1]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[1]]$legend_values[,1], pt.cex=1.5, legend=plots[[1]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+pairs(plots[[2]]$tmpPCAData.core.sub, bg=plots[[2]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[2]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[2]]$legend_values[,1], pt.cex=1.5, legend=plots[[2]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+pairs(plots[[3]]$tmpPCAData.core.sub, bg=plots[[3]]$colors, col="black", cex=2,pch=plots[[1]]$shapes, main=plots[[3]]$name, oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=plots[[3]]$legend_values[,1], pt.cex=1.5, legend=plots[[3]]$legend_values[,2],  pch=21, bty="n", x.intersp=1)
+
+rm(tmpPCAData.core, myPca.core, colors, legend_values, plots) ## cleanup
+```
+
+Clear improvement in cell type separation after batch correction.
+Possible slight improvement of treatment clustering after batch correction.
+
+
+## Annotations
+- add in feature data, i.e. the gene symbols that correspond to each probeset group on the array
+
+```{r features, results='hide'}
+# retrieve NetAffx Biological Annotation
+featureData(affyNorm.batch) <- getNetAffx(affyNorm.batch, "transcript")
+                        
+# Extract the 'gene assignment' annotation
+annot <- pData(featureData(affyNorm.batch)[, c('geneassignment')])
+categories <- pData(featureData(affyNorm.batch)[, c('category')])
+
+# Generate a list of gene symbols and ensembl transcript ids from the gene assignment
+desc <- annot[, 1]
+
+symbols <- unlist(lapply(desc, function(x) strsplit(x, ' // ')[[1]][2]))
+entrezIDs <- unlist(lapply(desc, function(x) {
+  end.index <- length(strsplit(x, " // ")[[1]])
+  entrezID <- strsplit(x, " // ")[[1]][end.index]
+  return(entrezID)
+  }))
+probeids=row.names(annot)
+gene.annots<-cbind(cbind(probeids, categories), cbind(symbols, entrezIDs))
+
+gene.annots=gene.annots[order(gene.annots[, "probeids"]),]
+gene.annots=as.data.frame(gene.annots)
+
+# check to make sure data is correct
+identical(length(featureData(affyNorm.batch)$probesetid), length(symbols)) # sanity check, sane=TRUE
+identical(as.character(gene.annots$probeids), probeids) # sanity check, sane=TRUE
+head(gene.annots$symbols[!is.na(gene.annots$symbols)]) # sanity check, sane=>see gene ids
+```
+
+## Analyses
+### Limma - Cell types
+A linear model for microarray data analysis (Limma) was performed on the samples to identify differentially expressed genes between pair-wise comparisons of sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we constructed two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Design matrix 
+- make a matrix with arrays as rows, treatment groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
+- in this case it looks like this, where 1-25 are the 25 microarrays remaining after removing the two arrays earlier.
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0+factor(paste(pd$celltype, pd$treatment, sep="_")))
+# make sure the headings match
+colnames(design) <- sub("factor.paste.pd.celltype, pd.treatment, sep . .....", "", colnames(design))
+
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design), 2, as.character)), options=list(width=960))  
+print(design.gvis, "chart")
+```
+
+#### Contrast matrix
+- to perform specified pairwise comparisons
+ - can also setup more complex comparisons, such as to look for genes that change in HSC cells upon PGE2 treatment but not in negative cells
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  generally speaking, a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+**Comparisons**
+  **Differences between cell types**
+  - differences between HSC and ENDO cell types from negative, after DMSO treatment (ENDO.celltype  and HSC.celltype)
+  **Effect of drugs on individual cell types**
+  - changes in HSC ("HSC.PGE2" and "HSC.Lyc") cells after drug treatments
+  - changes in ENDO  ("ENDO.PGE2" and "ENDO.Lyc") cells after drug treatments
+  **Differences in how cell types respond to drug treatment**
+    - "interaction terms"
+    - differences in how HSC cells respond to drugs as compared to NEG (Diff.PGE2.HSC.Neg and Diff.Lyc.HSC.Neg) cells
+    - differences in how ENDO cells respond to drugs as compared to NEG (Diff.PGE2.ENDO.Neg and Diff.Lyc.ENDO.Neg) cells
+
+(As a sidenote, I can setup more comparisons, for instance, differences in how HSC cells respond to drugs as compared to ENDO cells. I stopped with these because the number of comparisons was getting very unwieldy, and I thought I'd run these past you first)
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(ENDO.celltype=ENDO_DMSO - NEG_DMSO, HSC.celltype=HSC_DMSO - NEG_DMSO, 
+                                 ENDO.PGE2=ENDO_PGE2 - ENDO_DMSO, ENDO.Lyc=ENDO_Lycorine - ENDO_DMSO, 
+                                 HSC.PGE2=HSC_PGE2 - HSC_DMSO, HSC.Lyc=HSC_Lycorine - HSC_DMSO, 
+                                 Diff.PGE2.HSC.Neg = (HSC_PGE2 - HSC_DMSO) - (NEG_PGE2 - NEG_DMSO),
+                                 Diff.PGE2.ENDO.Neg = (ENDO_PGE2 - ENDO_DMSO) - (NEG_PGE2 - NEG_DMSO),
+                                 Diff.Lyc.HSC.Neg = (HSC_Lycorine - HSC_DMSO) - (NEG_Lycorine - NEG_DMSO),
+                                 Diff.Lyc.ENDO.Neg = (ENDO_Lycorine - ENDO_DMSO) - (NEG_Lycorine - NEG_DMSO),
+                                 levels=c("ENDO_DMSO", "ENDO_Lycorine","ENDO_PGE2","HSC_DMSO","HSC_Lycorine","HSC_PGE2","NEG_DMSO","NEG_Lycorine","NEG_PGE2"))
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix), 2, as.character)), options=list(width=960,height=320 ))  
+print(contrast.gvis, "chart")
+```
+
+
+####Linear model
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix 
+  - for each gene based on the given series of arrays
+
+```{r linearmodel}
+fit.core <- lmFit(eset.batch, design) 
+```
+
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+- compute moderated t-statistics and log-odds of differential expression 
+  - by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+## Differential Expression Results
+### Volcanoplot to visualize relationship between fold change and signifcance of changes in expression between groups
+- genes outside the two vertical orange lines show more than 2-fold changes in expression between groups
+- genes which pass an FDR  (false discovery rate) multiple testing correction of `r pvalcutoff` (`r pvalcutoff*100`% FDR) and show at least a `r 2^logFCcutoff`-fold change in expression are colored blue
+- the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
+
+```{r volcanoplot, fig.cap="", fig.width=12, fig.height=12, results='hide', cache=TRUE}
+all.stats <- llply(seq(1,14,1), function(n) {
+  contrast <- dimnames(fit2.core$contrasts)$Contrasts[n]
+  stats.core <- topTable(fit2.core, coef=n, sort.by="B",number=length(symbols), genelist=cbind(gene.annots, fit2.core$genes))
+  stats.core$Passes.FDR.threshold  <-  as.factor(stats.core$adj.P.Val<pvalcutoff & abs(stats.core$logFC)>logFCcutoff)
+  g <- ggplot(data=stats.core, aes(x=logFC, y=-log10(P.Value), color=Passes.FDR.threshold, size=B)) +
+    geom_point(alpha=0.5) +
+    geom_vline(xintercept=c(-1,1), color="orange", alpha=0.7, lwd=1.25) +
+    xlab("log2 fold change") + ylab("-log10 p-value") +
+    labs(title=contrast)
+  return(list(g=g, stats.core=stats.core, contrast=contrast))
+  })
+lapply(all.stats, function(x) {
+  print(x$g)
+  })
+```
+
+### Obtain top results
+- generate list of top 200 differentially expressed genes as sorted by "B", the log-odds that a gene is differentially expressed
+- removed probes without a gene annotation  
+
+#### The summary table contains the following information: 
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 9 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+```{r toptable}
+top.stats <- lapply(seq(1,14,1), function(n) {
+  contrast <- dimnames(fit2.core$contrasts)$Contrasts[n]
+  if (length(which(all.stats[[n]]$stats.core$adj.P.Val<pvalcutoff & all.stats[[n]]$stats.core$logFC<logFCcutoff))>=200) {
+    print(paste(contrast, "has at least 200 probes with an ajusted p.value of at least", pvalcutoff,  "and a log fold change of at least", logFCcutoff, sep=" "))
+    stats.top.core <- topTable(fit2.core, coef=n, adjust="fdr", p.value=0.01, lfc=1, sort.by="B", number=nrow(gene.annots), genelist=gene.annots)
+    stats.top.core <- stats.top.core[!is.na(stats.top.core$symbol),]
+    } else {
+      stats.top.core <- topTable(fit2.core, coef=n, adjust="fdr", sort.by="B", number=nrow(gene.annots), genelist=gene.annots)
+      stats.top.core <- stats.top.core[!is.na(stats.top.core$symbol),]
+      }
+  if (nrow(stats.top.core)>=200){
+    stats.top.core <- stats.top.core[1:200,]
+    } 
+  # incorporate expression levels for these genes in all samples
+  if(nrow(stats.top.core)>0) {
+    eset.top.core  <-  exprs(affyNorm.batch[stats.top.core[, "probeids"], ]) 
+    colnames(eset.top.core)  <-  pData(affyNorm.batch)[,"samplelabel"]
+    eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
+    } else { eset.stats.top.core<-"NA"}
+  return(list(eset.stats.top.core=eset.stats.top.core, contrast=contrast))
+  })
+```
+
+#### Output statistics and expression levels for these genes to Excel files
+
+```{r output_top}
+lapply(top.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.top.core, file=file.path(resultsDir, paste("top200.stats", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+##########
+[Links to Excel files with results for genes in top 200 log-odds of differential expression in 
+`r top.stats[[1]]$contrast`
+ comparison](./results/$
+`r paste("top200.stats", top.stats[[1]]$contrast, "xls",sep=".")`
+
+[Links to Excel files with results for genes in top 200 log-odds of differential expression in 
+`r top.stats[[1]]$contrast`
+ comparison](./results/
+`r paste("top200.stats", top.stats[[1]]$contrast, "xls",sep=".")`
+
+[Links to Excel files with results for genes in top 200 log-odds of differential expression in 
+`r top.stats[[1]]$contrast`
+ comparison](./results/
+`r paste("top200.stats", top.stats[[1]]$contrast, "xls",sep=".")`
+
+
+
+
+
+
+
+
+
+
+
+```{r all_exprs_stats}
+lapply(all.stats, function(x) {
+  contrast <- x$contrast
+  stats.core <- x$stats.core
+  eset.all <- exprs(affyNorm.batch)[stats.core$probeids,]
+  colnames(eset.all) <- pData(affyNorm.batch)$samplelabel
+  eset.stats.all <- cbind(stats.core, eset.all)  
+  return(eset.stats.all=eset.stats.all, contrast=contrast )
+  })
+```
+
+lapply(all.stats, function(x) {
+  contrast=x$contrast
+  write.table(x$stats.core, file=file.path(resultsDir, paste("all.genes.stats", contrast, "xls",sep=".")), sep="\t", row.names=F, col.names=T)
+  })
+
+
+
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[3]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+[5]: http://bmbolstad.com/misc/ComputeRMAFAQ/ComputeRMAFAQ.html (RMA)
+[6]: http://www.bioconductor.org/packages/release/bioc/html/sva.html (sva)
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[3]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+[5]: http://bmbolstad.com/misc/ComputeRMAFAQ/ComputeRMAFAQ.html (RMA)
+[6]: http://www.bioconductor.org/packages/release/bioc/html/sva.html (sva)
