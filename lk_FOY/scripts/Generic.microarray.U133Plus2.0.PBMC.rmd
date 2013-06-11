@@ -290,15 +290,15 @@ lapply(top.stats, function(n) {
   output <- n$data
   symbols <- unlist(mget(output$ID, hgu133plus2SYMBOL, ifnotfound=NA))
   output <- cbind(symbols, output)
-    write.table(output, file.path(resultsDir, "PBMC", paste("U133_2.0Plus.top100.DE.probesets", contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+    write.xlsx(output, file=file.path(resultsDir, "PBMC", paste("U133_2.0Plus.top100.DE.probesets", contrast, "xlsx", sep=".")), row.names=F)
   })
 ```
 
 #### Excel files with statistics and normalized sample intensities for the top 100 differentially expressed probesets for each comparison
 
-[Adult vs. Child](./results/PBMC/U133_2.0Plus.top100.DE.probesets.adult-child.xls)
-[Adult vs. Neonate](./results/PBMC/U133_2.0Plus.top100.DE.probesets.adult-neonate.xls)
-[Neonate vs. Child](./results/PBMC/U133_2.0Plus.top100.DE.probesets.neonate-child.xls)
+[Adult vs. Child](./results/PBMC/U133_2.0Plus.top100.DE.probesets.adult-child.xlsx)
+[Adult vs. Neonate](./results/PBMC/U133_2.0Plus.top100.DE.probesets.adult-neonate.xlsx)
+[Neonate vs. Child](./results/PBMC/U133_2.0Plus.top100.DE.probesets.neonate-child.xlsx)
 
 ### Heatmaps of top 100 differentially expressed genes for each pairwise comparison
 - there are three heatmaps for each comparison
