@@ -182,7 +182,7 @@ arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "P
 
 - renormalize data
 
-```{r drop_outliers, eval=FALSE, results='asis'}
+```{r drop_outliers, results='asis'}
 mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204")))]
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0" ))
@@ -332,11 +332,11 @@ for(n in 1:3){
   heatmap.annots$ID <- NULL
   # heatmap annotation colors
   study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
-  names(study_colors) <- unique(unlist(pd$study))
-  stage_colors <- c("white", "darkgrey", "black")
-  names(stage_colors) <- unique(unlist(pd$stage))
-  gender_colors <- c("cyan", "pink")
-  names(gender_colors) <- unique(unlist(pd$gender))
+  names(study_colors) <- unique(unlist(sample.pd$study))
+  stage_colors <- c("white", "black")
+  names(stage_colors) <- unique(unlist(sample.pd$stage))
+  gender_colors <- c("pink", "cyan")
+  names(gender_colors) <- unique(unlist(sample.pd$gender))
   ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
   ## Heatmaps
   # ALL genders 
@@ -373,7 +373,7 @@ study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
-gender_colors <- c("cyan", "pink")
+gender_colors <- c("pink", "cyan")
 names(gender_colors) <- unique(unlist(pd$gender))
 ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
 ## Heatmaps
@@ -391,7 +391,7 @@ pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gende
 ```{r save, echo=FALSE}
 # passing on data to the barcode analyses
 rm(adult.age.range, ann_colors, child.age.range, contrast, contrast.gvis, contrast.matrix, covars, covartemplate.file, design, design.gvis, exprs.norm, fit2.exprs, fit.exprs, gender_colors, heatmap.annots, mapCdfName, n, neonate.age.range, pd, pd.gvis, sample.indices, metaDir, baseDir,  sample.pd, covartemplate, dataDir, stage_colors, stages, top.exprs.contrast, top.exprs.contrast.female, top.exprs.contrast.male, top.exprs.union, top.exprs.union.female, top.exprs.union.male, top.IDs, study_colors, cbPalette, age, CELfileloc, CELFTP, CELregex, covartemxplate.file, ethnicity, gender, refined.metadata, sampleID, study, temp, U133.Plus2.data)
-save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.topstats.U133Plus2.0"))
+save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.topstats.PBMC.U133Plus2.0"))
 ```
 
 

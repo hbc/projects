@@ -23,3 +23,14 @@ combat_edata = ComBat(dat=edata, batch=batch, mod=mod, numCovs=NULL, par.prior=T
 mic.norm.combat <- mic.norm
 exprs(mic.norm.combat) <- combat_edata
 PCAplot(mic.norm.combat, categories="study", colorpalette=cbPalette)
+
+
+
+edata <- exprs(temp)
+pd <- pData(temp)
+batch <- unlist(pd$study)
+mod = model.matrix(~as.factor(stage), data=pd)
+combat_edata = ComBat(dat=edata, batch=batch, mod=mod, numCovs=NULL, par.prior=TRUE, prior.plots=FALSE)
+mic.norm.combat <- temp
+exprs(mic.norm.combat) <- combat_edata
+PCAplot(mic.norm.combat, categories="study", colorpalette=cbPalette)

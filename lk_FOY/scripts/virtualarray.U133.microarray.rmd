@@ -66,8 +66,8 @@ library(pheatmap)
 library(hgu133plus2.db) 
 library(hgu133a2.db)
 library(hgu133a.db)
-library(illuminaHumanv3.db)
-library(illuminaHumanv4.db)
+
+library(sva)
 ```
 
 ## Functions
@@ -244,9 +244,15 @@ for (n in names(filter_IDs)){
 for (n in names(GPL.groups)){
   mic.raw <- mic.raw <- get(paste("mic.raw", n, sep="."))
   mic.raw.eset <- rma(mic.raw, verbose=F, normalize=F, background=T)
+  mic.norm.eset <- rma(mic.raw, verbose=F, normalize=T, background=T)
   sampleNames(mic.raw.eset) <- as.vector(unlist(pData(mic.raw.eset)$ID))
   assign(paste("mic.raw.eset", n, sep="."), mic.raw.eset)
+  
+  sampleNames(mic.norm.eset) <- as.vector(unlist(pData(mic.norm.eset)$ID))
+  assign(paste("mic.norm.eset", n, sep="."), mic.norm.eset)
+  
   density(mic.raw.eset)
+  density(mic.norm.eset)
   rm(mic.raw, mic.raw.eset)
   }
 
