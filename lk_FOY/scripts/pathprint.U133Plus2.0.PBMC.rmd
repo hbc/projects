@@ -3,7 +3,7 @@ opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=
 options(width=200)
 ```
 
-# PATHPRINT ANALYSES OF U133PLUS2.0 STUDIES
+# PATHPRINT ANALYSES OF U133PLUS2.0 STUDIES OF PBMC SAMPLES
 
 ---
 
@@ -51,15 +51,12 @@ if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
-
-## these are the arrays that showed problems in the raw data QC
-exclude.IDs <-  c("GSM493776","GSM493778","GSM493779","GSM493780","GSM493788","GSM493790","GSM493794","GSM493798","GSM493799","GSM493802","GSM493815","GSM647538","GSM647539","GSM647566","GSM648632","GSM648694","T1D_C3_3","T1D_C2_3","T1D_C2_5","T1D_C2_6","T1D_C2_4","T1D_C3_2","T1D_C3_5","T1D_C1_5","T1D_C3_1","T1D_C3_4","GSM565090","GSM647608","GSM648630","GSM648631","GSM648691","GSM648692","GSM648693","T1D_C1_4","T1D_C1_1","T1D_C1_2","T1D_C1_3","T1D_C2_2","T1D_C2_1","GSM270838","GSM401075","GSM401110","GSM401130","GSM402322","GSM402328","GSM468380","GSM468381","GSM468390","GSM468391","GSM468392","GSM468397","GSM912849","GSM912841","GSM912838","HPBT105","HPBT101","HPBT108","HPBT106","HPBT107","HPBT102","HPBT103","HPBT104","153579hp133a11")
 ````
 
 ## Load in raw and RMA normalized  microarray data from generic microarray [analysis][1]
 
 ```{r load_affybatch, echo=FALSE}
-load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0"))
+load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0"))
 pd <- pData(mic.norm.eset)
 ```
 
@@ -87,6 +84,7 @@ dimnames(mic.f.default)[[2]] <- pData(mic.norm.eset)$ID
 ```
 
 ```{r nexus, echo=FALSE}
+pd <- pData(mic.norm.eset)
 Nexus <- function (matrixname, file, dataType = "discrete") {
   mat <- t(matrixname)
   manb <- dim(mat)[2]
@@ -150,7 +148,7 @@ colnames(mic.f.default.adult) <- paste("adult", colnames(mic.f.default.adult), s
 mic.f.default.child <- mic.f.default[,unlist(pd$ID[which(pd$stage=="child")])]
 colnames(mic.f.default.child) <- paste("child", colnames(mic.f.default.child), sep="_")
 mic.f.default.adult.child <- cbind(mic.f.default.adult, mic.f.default.child)
-Nexus((mic.f.default.adult.child+1), file.path(resultsDir, "fingerprints.adult.child.nxs"))
+Nexus((mic.f.default.adult.child+1), file.path(resultsDir, "fingerprints.adult.child.PBMC.nxs"))
 ```
 
 ### Default Pathway Differentiation
@@ -160,9 +158,8 @@ i.e. minimize intra-group variation while maximizing inter-group variation.
 
 ```{r pathwaydiff_vars}
 # cutoffs used to filter the data
-fisherpval.cutoff=1e-5
-ttest.cutoff=1e-6
-sd.cutoff=0.6
+ttest.cutoff=1e-2
+sd.cutoff=0.5
 ```
 
 For this, I set two filtering criteria:
@@ -188,7 +185,7 @@ contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels
 
 ```{r heatmap_colors}
 # annotation colors
-study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
+study_colors <- c( cbPalette[1:6] )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
@@ -231,20 +228,10 @@ for (n in 1:3) {
   row.names(heatmap.annots) <- heatmap.annots$ID
   heatmap.annots$ID <- NULL
   # both genders
-  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  
-
-  mic.f.default.contrast.sub.female <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-
-  mic.f.default.contrast.sub.male <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="MALE")]
-  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-
-}
-
-
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - unclustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  }
 ```
-
 
 
 

@@ -141,6 +141,7 @@ covars$age <- as.numeric(covars$age)
 # label samples with their stage as determined by age
 # don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
 covars$stage <- ifelse(covars$age<max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", "adult")) 
+covars <- covars[order(covars$stage),]
 ```
 
 ### Load CEL files
@@ -344,13 +345,13 @@ for(n in 1:3){
   ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
   ## Heatmaps
   # ALL genders 
-  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), cluster_cols = FALSE,main=contrast, show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
   # FEMALE gender  
   top.exprs.contrast.female <- top.exprs.contrast[,which(sample.pd$gender=="FEMALE")]
-  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE)", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE)", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
   # MALE gender  
   top.exprs.contrast.male <- top.exprs.contrast[,which(sample.pd$gender=="MALE")]
-  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE)", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE)", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors)  
   }
 ```
 
@@ -382,13 +383,13 @@ names(gender_colors) <- unique(unlist(pd$gender))
 ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
 ## Heatmaps
 # Both genders
-pheatmap(as.matrix(top.exprs.union), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)  
+pheatmap(as.matrix(top.exprs.union), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), cluster_cols = FALSE, main="All Comparisons, All Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)  
 # Female gender
 top.exprs.union.female <- top.exprs.union[,which(pd$gender=="FEMALE")]
-pheatmap(as.matrix(top.exprs.union.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Female Samples", show_colnames=F,fontsize=24, fontsize_row=8,annotation_colors=ann_colors)  
+pheatmap(as.matrix(top.exprs.union.female), annotation=subset(heatmap.annots,gender=="FEMALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Female Samples", show_colnames=F,fontsize=24, fontsize_row=8,annotation_colors=ann_colors)  
 # Male gender
 top.exprs.union.male <- top.exprs.union[,which(pd$gender=="MALE")]
-pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gender=="MALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All male Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)   
+pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gender=="MALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All male Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)   
 ```
 
 

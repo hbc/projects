@@ -199,13 +199,13 @@ for(n in 1:3) {
   heatmap.annots$ID <- NULL
   ## Heatmaps
   # both genders
-  pheatmap(as.matrix(top.barcodes.contrast), color=c("blue", "red"), annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=contrast, show_colnames=F, fontsize=18, fontsize_row=10, cluster_cols=T, cluster_rows=T) 
+  pheatmap(as.matrix(top.barcodes.contrast), color=c("blue", "red"), annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=contrast, show_colnames=F, fontsize=18, fontsize_row=10, cluster_cols=FALSE, cluster_rows=T) 
   # female gender
   top.barcodes.contrast.female <- top.barcodes.contrast[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(as.matrix(top.barcodes.contrast.female), color=c("blue", "red"), annotation=subset(heatmap.annots, gender=="FEMALE"), main=paste(contrast, "(FEMALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10,legend_breaks=c(0,1), annotation_colors=ann_colors, cluster_cols=T, cluster_rows=T) 
+  pheatmap(as.matrix(top.barcodes.contrast.female), color=c("blue", "red"), annotation=subset(heatmap.annots, gender=="FEMALE"), main=paste(contrast, "(FEMALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10,legend_breaks=c(0,1), annotation_colors=ann_colors, cluster_cols=FALSE, cluster_rows=T) 
   # male gender
   top.barcodes.contrast.male <- top.barcodes.contrast[,which(pData.contrast$gender=="MALE")]
-  pheatmap(as.matrix(top.barcodes.contrast.male), color=c("blue", "red"), annotation=subset(heatmap.annots,gender=="MALE"), main=paste(contrast, "(MALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10, annotation_colors=ann_colors, legend_breaks=c(0,1), cluster_cols=T, cluster_rows=T) 
+  pheatmap(as.matrix(top.barcodes.contrast.male), color=c("blue", "red"), annotation=subset(heatmap.annots,gender=="MALE"), main=paste(contrast, "(MALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10, annotation_colors=ann_colors, legend_breaks=c(0,1), cluster_cols=FALSE, cluster_rows=T) 
   }
 # cleanup
 rm(n, contrast, stages, sample.indices, pData.contrast, heatmap.annots, gender_colors, stage_colors, study_colors, top.IDs.contrast, top.barcodes.contrast, top.barcodes.contrast.female, top.barcodes.contrast.male)
@@ -294,13 +294,13 @@ for (n in 1:3) {
   # decide if you are going to show row labels in heatamp
   if(nrow(bc.contrast.sub)>100){showrownames_var <-  FALSE}else{showrownames_var <- TRUE}
   # both genders
-  pheatmap(bc.contrast.sub, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=TRUE, show_colnames=F, show_rownames=showrownames_var, fontsize=18, fontsize_row=10, annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison",  sep=""))
+  pheatmap(bc.contrast.sub, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=FALSE, show_colnames=F, show_rownames=showrownames_var, fontsize=18, fontsize_row=10, annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison",  sep=""))
   # female only
   bc.contrast.sub.female <- bc.contrast.sub[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(bc.contrast.sub.female, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=TRUE, show_colnames=F, show_rownames=showrownames_var, annotation=subset(heatmap.annots, gender=="FEMALE"), legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison (FEMALE)",  sep=""), fontsize=18, fontsize_row=8, annotation_colors=ann_colors)
+  pheatmap(bc.contrast.sub.female, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=FALSE, show_colnames=F, show_rownames=showrownames_var, annotation=subset(heatmap.annots, gender=="FEMALE"), legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison (FEMALE)",  sep=""), fontsize=18, fontsize_row=8, annotation_colors=ann_colors)
   # male only
   bc.contrast.sub.male <- bc.contrast.sub[,which(pData.contrast$gender=="MALE")]
-  pheatmap(bc.contrast.sub.male, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=TRUE, show_colnames=F, show_rownames=showrownames_var,annotation=subset(heatmap.annots, gender=="MALE"), legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison (MALE)",  sep=""), fontsize=18, fontsize_row=8, annotation_colors=ann_colors)
+  pheatmap(bc.contrast.sub.male, color=c("blue", "red"), cluster_rows=TRUE, cluster_cols=FALSE, show_colnames=F, show_rownames=showrownames_var,annotation=subset(heatmap.annots, gender=="MALE"), legend_breaks=c(0,1), main=paste("Barcoded Intensities for ", contrast, " comparison (MALE)",  sep=""), fontsize=18, fontsize_row=8, annotation_colors=ann_colors)
   }
 ```
 
