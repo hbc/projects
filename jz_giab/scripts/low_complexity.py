@@ -16,7 +16,7 @@ import yaml
 def main(config_file):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
-    for input in ["calls", "orig_calls", "array"]:
+    for input in ["calls", "array", "orig_calls"]:
         identify_low_complexity(input, config[input], config["regions"])
 
 def identify_low_complexity(name, in_vcf, in_bed):

@@ -7,4 +7,4 @@ ref:
   GRCh37: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
   hg19: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
 bcbio.variation: /n/home05/bchapman/bio/bcbio.variation/target/bcbio.variation-0.1.0-SNAPSHOT-standalone.jar
-tmpdir: /scratch/illumina_prep
+#tmpdir: /scratch/illumina_prep

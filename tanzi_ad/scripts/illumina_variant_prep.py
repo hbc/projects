@@ -23,16 +23,18 @@ def main(config_file, cores):
     idremap = read_remap_file(config["idmapping"])
     samples = list(get_input_samples(config["inputs"], idremap))
     problem = [x for x in samples if x["id"] is None]
+    if len(problem) > 0:
+        print "Problem identifiers"
+        for p in problem:
+            print p["illuminaid"], os.path.basename(p["dir"])
+        raise NotImplementedError
     if cores > 1:
         pool = futures.ProcessPoolExecutor(cores)
-        it = pool.map(run_illumina_prep, [(s, config) for s in samples if x["id"] is not None])
+        it = pool.map(run_illumina_prep, [(s, config) for s in samples if s["id"] is not None])
     else:
-        it = map(run_illumina_prep, [(s, config) for s in samples if x["id"] is not None])
+        it = map(run_illumina_prep, [(s, config) for s in samples if s["id"] is not None])
     for x in it:
-        print x
-    print "Problem identifiers"
-    for p in problem:
-        print p["illuminaid"], os.path.basename(p["dir"])
+        pass
 
 def run_illumina_prep(args):
     sample, config = args
