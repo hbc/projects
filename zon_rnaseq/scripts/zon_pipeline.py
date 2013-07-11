@@ -9,9 +9,9 @@ from bipy.log import setup_logging, logger
 from bcbio.utils import safe_makedir, file_exists
 import csv
 import os
-from bipy.utils import append_stem
+from bipy.utils import append_stem, prepare_ref_file, replace_suffix
 from bipy.toolbox import (fastqc, sickle, cutadapt_tool, tophat, htseq_count,
-                           deseq, annotate, rseqc, sam)
+                          deseq, annotate, rseqc, sam)
 from itertools import product
 import glob
 from bcbio.broad import BroadRunner, picardrun
@@ -119,7 +119,7 @@ def main(config_file):
         if stage == "coverage":
             logger.info("Calculating RNASeq metrics on %s." % (curr_files))
             nrun = len(curr_files)
-            ref = blastn.prepare_ref_file(config["stage"][stage]["ref"],
+            ref = prepare_ref_file(config["stage"][stage]["ref"],
                                           config)
             ribo = config["stage"][stage]["ribo"]
             picard = BroadRunner(config["program"]["picard"])
@@ -171,7 +171,7 @@ def main(config_file):
                 logger.info("Running deseq on %s with conditions %s "
                             "and writing to %s" % (combined_out,
                                                    conditions,
-                                                   out_file))
+                                                   deseq_out))
                 view.map(deseq.run, [combined_out], [deseq_conds], [deseq_out])
                 annotated_file = view.map(annotate.annotate_table_with_biomart,
                                           [deseq_out],

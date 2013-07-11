@@ -1,0 +1,10 @@
+inputs:
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601438_NA5K5CG1/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601452_NA5K5CH8/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/dell-wgs/LP*
+idmapping: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/NIMH_Patient.Rutgers.ID_Translation.txt
+ref:
+  GRCh37: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  hg19: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
+bcbio.variation: /n/home05/bchapman/bio/bcbio.variation/target/bcbio.variation-0.1.0-SNAPSHOT-standalone.jar
+#tmpdir: /scratch/illumina_prep

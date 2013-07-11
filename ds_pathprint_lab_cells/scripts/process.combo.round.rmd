@@ -1,0 +1,289 @@
+##TODO
+- rewrite compare function
+- fix heatmap output to fit page 
+- fix pathprint code
+- do you need to specify plyr or can knitr pull from .Rprofile?
+
+##General notes
+
+- Store and run this script in the base directory of the consult 
+- The script requires all .cel files to be in the same directory as the covars.desc (metadata) file
+- An example covars.desc file might have columns with the original sample name ("Sample"), the new sample name ("Sample_new"), the group to which the sample belongs ("Group") and the Batch number in separate columns. The first column must have the .cel file names 
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=TRUE, highlight=TRUE, figalign="center", message=FALSE, warning=FALSE, fig.height=11, fig.width=11)
+```
+
+# R PACKAGES
+
+```{r libraries, echo=TRUE, message=FALSE, warnings=FALSE}
+library(affy)
+library(arrayQualityMetrics)
+library(RColorBrewer)
+library(simpleaffy)
+library(limma)
+library(mouse430a2.db)
+library(pheatmap)
+library(pathprint)
+library(GMAfunctions)
+library(ape)
+```
+
+# VARIABLES
+- get base directory for analyses
+- specify data and results directories
+- specify column headers used in covars.desc
+
+```{r directories, echo=FALSE}
+baseDir=getwd()
+dataDir=paste(baseDir, "/data", sep="")
+resultsDir=paste(baseDir, "/results", sep="")
+sampleid_column_header="Sample_new"
+groupid_column_header="Group"
+```
+
+# DATALOAD
+## load in phenotype Data and CEL files
+  
+```{r loadcels}
+mic.data <- read.affy('covars.desc', path=dataDir, verbose=T)
+```
+
+# ## QC on raw data 
+# 
+# ```{r QC_raw, echo=FALSE}
+# arrayQualityMetrics(expressionset=mic.data,
+#                     outdir='./results/report_raw',
+#                     force=TRUE,
+#                     do.logtransform=TRUE)
+# ```
+# 
+# [Raw QC](./results/report_raw/index.html)
+
+# Background Correct and Normalize
+- using RMA normalization
+
+```{r normalize, echo=FALSE}
+mic.edata <- call.exprs(mic.data, "rma")
+```
+
+# ## QC on normalized data 
+# 
+# ```{r QC_RMA, echo=FALSE}
+# arrayQualityMetrics(expressionset=mic.data,
+#                     outdir='./results/report_RMA',
+#                     force=TRUE,
+#                     do.logtransform=TRUE)
+# ```
+# 
+# [Normalized QC](./results/report_RMA/index.html)
+
+# ANALYSIS
+## Primary Clustering 
+- are the samples clustering by sample type?
+
+```{r expressionvalues, echo=FALSE}
+### Extract expression values
+###from normalized "Affybatch" object into a separate matrix
+allData <- exprs(mic.edata) 
+colnames(allData) <- pData(mic.edata)[,sampleid_column_header]
+```
+
+### Calculate the PCA
+
+```{r calculate_PCA, echo=FALSE}
+myPca <- prcomp(t(allData))
+```
+
+### Plot the SD of components
+- this plot gives you an idea of how well a given number of primary components (plotted here as PCA on the x-axis) explains the variability (plotted here as stddev on the y-axis) in the data  
+
+```{r plot_PCA_SDs, echo=FALSE}
+plot(myPca$sdev, xlab="PCA", ylab="sddev")
+```
+
+### Plot all pairwise combinations of the first 5 primary components for the samples
+- the more similar the samples are, the closer they will cluster in these plots
+- sample groups are coded by color and letter
+
+```{r plot_PCA, tidy=TRUE, echo=FALSE}
+tmpPCAData <- as.data.frame(myPca$x[,1:5])
+colors <- rainbow(length(unique(pData(mic.edata)$Group)))[factor(pData(mic.edata)$Group)]
+plot(tmpPCAData, col=colors, pch=row.names(myPca$x))
+```
+
+
+# Pathprint
+- how do these samples differ in terms of pathways?
+- can we find any cell types in the GEO datasets that match subset of these samples well? 
+
+### specify pathprint settings
+- platform, species and sample names
+
+```{r pathprint_settings, echo=FALSE}
+mic.data.platform <- "GPL8321"
+mic.data.species <- "mouse"
+mic.data.names <- pData(mic.edata)$Sample_new
+eset <- exprs(mic.edata)
+dimnames(eset)[[2]] <- mic.data.names
+````
+
+### fingerprint all samples
+```{r pathprint_exprs, echo=FALSE}
+mic.data.fingerprint <- exprs2fingerprint(exprs = eset, platform = mic.data.platform, species = mic.data.species, progressBar = FALSE)
+```
+
+## HEATMAPs
+- heatmap of top <100 pathways that vary the most across all samples
+
+```{r pathprint_heatmap, echo=FALSE}
+n=0.1
+while (length(which(apply(mic.data.fingerprint, 1, sd) > n))>100) {
+  n=n+0.1
+  } 
+pheatmap(mic.data.fingerprint[apply(mic.data.fingerprint, 1, sd) > n, ], labCol = mic.data.names, mar = c(10,10), col = c("blue", "white", "red"))
+```
+
+
+# ### Find the subset of varying pathways which are consistent within individual sample groups and make heatmap
+# 
+# ```{r}
+# groups <- unique(pData(mic.edata)$Group)
+# # get indices of samples within each group
+# indices <- sapply(groups, function(group) {
+#   grep(paste(group, "$", sep=""), pData(mic.edata)$Group)
+# })
+# agree.intra.grp <- mic.data.fingerprint[apply(mic.data.fingerprint, 1, function(x) {
+#   x=as.vector(unlist(x))
+#   all(as.vector(unlist(lapply(indices, function(y) {
+#       y=as.vector(unlist(y))
+#       compare(x[y])
+#   }))))
+# }),]
+# pheatmap(agree.intra.grp[apply(agree.intra.grp, 1, sd) > 0.05, ], labCol = mic.data.names, mar = c(10,10), col = c("blue", "white", "red"), cellheight=10, cellwidth=20)
+# ```
+# 
+# ##Find similar cell types within the GEOdatasets
+# 
+# ### first make consensus fingerprints for each sample group
+# 
+# ```{r consensus_fingerprint}
+# mic.data.consensus.fingerprint <- t(ldply(indices, function(y) {
+#   if (length(y)>1){
+#     consensusFingerprint(mic.data.fingerprint[,y], threshold=0.9)
+#   }
+#   else {
+#    mic.data.fingerprint[,y]
+#   }
+# }))
+# dimnames(mic.data.consensus.fingerprint)[[2]] <- as.vector(unlist(mic.data.consensus.fingerprint[1,]))
+# mic.data.consensus.fingerprint <- mic.data.consensus.fingerprint[-1,]
+# class(mic.data.consensus.fingerprint) <- "numeric"
+# ```
+# 
+# ###get similar geodata for each sample group
+# 
+# ```{r similar_geo}
+# similar.GEO.data <- lapply(indices, function(y) {
+#   if (length(y)>1){
+#     consensus=consensusFingerprint(mic.data.fingerprint[,y], threshold=0.9)
+#     geo.consensus.distance=consensusDistance(consensus, GEO.fingerprint.matrix)
+#     table(GEO.metadata.matrix[match(head(row.names(geo.consensus.distance),50), GEO.metadata.matrix$GSM),"Source"])
+#   }
+#   else {
+#     geo.consensus.distance=consensusDistance(mic.data.fingerprint[,y], GEO.fingerprint.matrix)
+#     table(GEO.metadata.matrix[match(head(row.names(geo.consensus.distance),50), GEO.metadata.matrix$GSM),"Source"])
+#   }
+# })
+# ```
+# 
+# 
+# ##Tree building and informative pathways for nodes
+# 
+# ###find node pathways, output heatmap of their values  
+# ```{r treebuilding}
+# mic.data.dist <- dist(t(mic.data.fingerprint))
+# mic.data.nj <- nj(mic.data.dist)
+# mic.data.nj$node.label = letters[1:mic.data.nj$Nnode]
+# plot(mic.data.nj, show.node.label = TRUE)
+# mic.data.node.pathways <- nodePathways(tree = mic.data.nj, matrix = mic.data.fingerprint, threshold = 1.25)
+# heatmap(mic.data.fingerprint[ mic.data.node.pathways[["InformPathways"]]$b, unlist(mic.data.node.pathways[["BranchTipNames"]]$a) ], scale = "none", col = c("blue", "white", "red"), mar = c(5,15), cexRow = 0.8, cexCol = 1)
+# ```
+# 
+# ```{r treebuilding_nodes}
+# ##tree building and informative pathways for nodes, using consensus fingerprints
+# mic.data.dist <- dist(t(mic.data.consensus.fingerprint))
+# mic.data.nj <- nj(mic.data.dist)
+# mic.data.nj$node.label = letters[1:mic.data.nj$Nnode]
+# plot(mic.data.nj, show.node.label = TRUE)
+# mic.data.node.pathways <- nodePathways(tree = mic.data.nj, matrix = mic.data.consensus.fingerprint, threshold = 1.2)
+# heatmap(mic.data.consensus.fingerprint[ mic.data.node.pathways[["InformPathways"]]$d, unlist(mic.data.node.pathways[["BranchTipNames"]]$a) ], scale = "none", col = c("blue", "white", "red"), mar = c(5,15), cexRow = 0.8, cexCol = 1)
+# ```
+# 
+# 
+# 
+# ######
+# #looking at 3 genes in topaz (top ) and mCherry (mCH) cells
+# sub.mic.edata <- mic.edata
+# exprs(sub.mic.edata) <- data.sub <- allData[,1:7]
+# pData(sub.mic.edata) <- pData(mic.edata)[1:7,]
+# 
+# # limma
+# design.pairs <- function(levels) {
+#   n <- length(levels)
+#   design <- matrix(0, n, choose(n, 2))
+#   rownames(design) <- levels
+#   colnames(design) <- 1:choose(n, 2)
+#   k <- 0
+#   for (i in 1:(n - 1))
+#     for (j in (i + 1):n) {
+#       k <- k+1
+#       design[i, k] <- 1
+#       design[j, k] <- -1
+#       colnames(design)[k] <- paste(levels[i], "-", levels[j], sep="")
+#     }
+#   design
+# }
+# 
+# # Create appropriate design matrix
+# design.grp <- model.matrix(~ -1+factor(pData(sub.mic.edata)$Group))
+# #!!!make sure the headings match!
+# colnames(design.grp) <- sub("factor\\(pData\\(sub.mic.edata\\)\\$Group\\)","", colnames(design.grp))
+# # Fits a linear model for each gene based on the given series of arrays
+# sub.eset <- as.data.frame(exprs(sub.mic.edata))
+# dimnames(eset)[[2]] <- pData(sub.mic.edata)$Sample
+# fit.grp <- lmFit(sub.eset, design.grp) 
+# # Creates appropriate contrast matrix to perform all pairwise comparisons
+# contrast.matrix.grp <- design.pairs(levels(as.factor(pData(sub.mic.edata)$Group)))
+# # Computes estimated coefficients and standard errors for contrasts
+# fit2.grp <- contrasts.fit(fit.grp, contrast.matrix.grp) 
+# # Computes moderated t-statistics and log-odds of differential expression 
+# # by empirical Bayes shrinkage of the standard errors towards a common value.
+# fit2.grp <- eBayes(fit2.grp) 
+# 
+# ###RESULTS
+# sub.eset$Symbol <- unlist(mget(row.names(sub.eset),mouse430a2SYMBOL, ifnotfound=NA))
+# sub.eset$GeneName <- unlist(mget(row.names(sub.eset),mouse430a2GENENAME, ifnotfound=NA))
+# 
+# ##stat tests and top results
+# top.grp <- topTable(fit2.grp, coef=1, adjust="fdr", sort.by="B", p.value=1,  number=nrow(eset), genelist=fit2.grp$genes) 
+# results <- decideTests(fit2.grp)
+# 
+# ##targets
+# #activin A receptor,
+# #BTK (Bruton tyrosine kinase) 
+# #sclerostin
+# target.IDs <- row.names(sub.eset)[c(grep("activin A", sub.eset$GeneName),grep("Btk", sub.eset$Symbol), grep("Sost$", sub.eset$Symbol))]
+# 
+# target.pvalues <- top.grp[top.grp$ID %in% target.IDs,]
+# target.pvalues$Symbol <- unlist(mget(target.pvalues$ID,mouse430a2SYMBOL, ifnotfound=NA))
+# target.pvalues$GeneName <- unlist(mget(target.pvalues$ID,mouse430a2GENENAME, ifnotfound=NA))
+# 
+# 
+# target.sub.eset <- sub.eset[target.IDs,]
+# target.sub.eset$ID <- row.names(target.sub.eset)
+# row.names(target.sub.eset)=paste(row.names(target.sub.eset)," (", target.sub.eset$Symbol, ")", sep="")
+# 
+# pheatmap(target.sub.eset[,1:7], main=colnames(fit2.grp$coefficients)[2], color=brewer.pal(11, "RdBu"), fontsize_row=6,filename="./results/Topaz.v.mCherry.targetgenes.heatmap.pdf", cellheight=6, cellwidth=12)
+# 
+# write.table(merge(target.pvalues, target.sub.eset), file="./results/Topaz.v.mCherry.targetgenes.pvalues.and.expression.levels.xls", sep="\t", row.names=F, col.names=T)

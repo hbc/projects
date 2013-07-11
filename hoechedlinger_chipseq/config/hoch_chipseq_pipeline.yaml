@@ -1,13 +1,12 @@
-# configuration to run data analysis on tuberous sclerosis files
 cluster:
   name: odyssey
   profile: lsf
   cores: 12
   timeout: 10000
-  delay: 10
+  delay: 20
 
 dir:
-  results: results
+  results: results/test
   doc: doc
   ref: ref
   data: data
@@ -41,7 +40,7 @@ stage:
   cutadapt:
     program: cutadapt
     chemistry: [truseq]
-    trim_polya: True
+    trim_polya: False
     options:
       error-rate: 0.1
       quality-cutoff: 20
@@ -83,7 +82,13 @@ stage:
     name: rseqc
 
   bowtie:
-    n: 2
+    options:
+      v: 2
+      e: 40
+      m: 1
+      best: True
+      sam: True
+      phred33-quals: True
 
 run:
   [fastqc, cutadapt, fastqc, bowtie, coverage]

@@ -1,5 +1,6 @@
-scripts/cache
-scripts/figure
+scripts/*.txt
 scripts/*.md
-data/
 scripts/*.html
+scripts/cache/
+scripts/figure/
+scripts/*.pdf

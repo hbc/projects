@@ -1,0 +1,275 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE)
+## setup report details
+clientname="Ashwin Ananthakrishnan"
+clientemail="AANANTHAKRISHNAN@PARTNERS.ORG"
+lablocation="MGH"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+---
+
+## Methods summary
+All Illumina HT12 arrays were processed using the 'lumi' [BioConductor package][1], quality-controlled with [?][2] and [RMA normalized][3]. Differentially expressed genes were identified using [limma][4].
+
+---
+
+## Workflow
+The sections below provide descriptions of the included results and include code to reproduce them. 
+
+---
+# SETUP
+
+## Bioconductor and R libraries 
+- used to process and visualize the data
+- also miscellaneous convenience functions
+
+```{r libraries}
+library(IDATreader)
+library(lumi)
+library(plyr)
+
+library(RankProd)
+
+library(illuminaHumanv3.db)
+library(illuminaHumanv4.db)
+
+library(lumiHumanAll.db)
+library(lumiHumanIDMapping)
+library(annotate)
+library(pheatmap)
+```
+
+## Variables
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/home08/jhutchin/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/kclarke_colon_biopsies/"
+  } else if (file.exists("/Volumes/ody/")){
+  baseDir="/Volumes/ody/projects/kclarke_colon_biopsies/"
+}
+metaDir=file.path(baseDir, "meta")
+dataDir=file.path(baseDir, "data")
+resultsDir=file.path(baseDir, "results")
+
+# locations of IDAT files
+idat.locs.file <- file.path(metaDir, "IDAT.locs.csv")
+
+
+```
+
+
+```{r IDATreader}
+# The CodesBinData and IllumicodeBinData fields are equivalent to the
+# ProbeID that you encounter in the text version of the summary data.
+# 
+# You can use either of the MeanBinData columns as your measure of
+# expression.  I believe the TrimmedMeanBinData is the result of the
+# outlier removal that Illumina perform as standard, so if you want
+# consistency with GenomeStudio then go for that one.  You could also
+# use the MedianBinData if you prefer.
+# 
+# The data here is what we call "bead summary" data.  That means the
+# foreground and background intensities for all beads of a particular
+# type have been calculated, and each gets a final intensity of
+# foreground minus background.  Any that fall outside of three median
+# absolute deviations from the mean are then discarded, which is the
+# outlier removal step mentioned above.  Those that remain are then
+# averaged to get the final intensity for that bead type.  They have not
+# been normalized relative to other arrays, nor background corrected in
+# the sense of negative controls are used to find a baseline.
+idat.locs <- read.csv(idat.locs.file,  header=T)
+idats <- alply(idat.locs, 1, function(n) {
+  sample <- as.character(unlist(n[1]))
+  idat <- readIDAT(file = file.path(dataDir, n$Sentrix_ID , paste(n$Sentrix_ID, n$Sentrix_Position, "Grn.idat", sep="_")))
+  idat <- idat[,c(7,2)]
+  row.names(idat) <- idat$CodesBinData
+  idat$CodesBinData <- NULL
+  names(idat) <- sample
+  return(idat)
+  })
+idats <- do.call(cbind, idats)
+
+
+
+
+
+mel.lumi <- lumiR.batch(fileName, 
+                        sampleInfoFile=covdesc,
+                        lib.mapping='lumiHumanIDMapping',
+                        convertNuID=T)
+
+# Quick sanity check, what's the predicted chip type?
+if (require(lumiHumanIDMapping))
+  {getChipInfo(mel.lumi, species='Human')}
+   
+# Summary of data, QC Info
+mel.lumi
+summary(mel.lumi, 'QC')  
+pData(mel.lumi)
+
+# Preprocessing and quality control after normalization
+mel.N.V <- lumiExpresso(mel.lumi, QC.evaluation=TRUE,
+                        variance.stabilize=F,
+                        normalize.param=list(method='vsn'))
+
+# Summary of quality control info after processing
+summary(mel.N.V, 'QC')
+
+# Export preprocessed data for later
+write.exprs(mel.N.V, file='processedMelanomaData_vsn.txt')
+
+# Alternative probe / gene expression file using quantile normalization;
+# use for now
+mel.N.Q <- lumiExpresso(mel.lumi, QC.evaluation=TRUE, 
+                        normalize.param=list(method='quantile'))        
+summary(mel.N.Q, 'QC')
+write.exprs(mel.N.Q, file='processedMelanomaData_quantiles.txt')
+
+# QC plots
+par(mfrow=c(1,1))
+pdf('qc_density.pdf')
+plot(mel.N.Q, what='density')
+dev.off()
+
+pdf('qc_densityCDF.pdf')
+plotCDF(mel.N.Q, reverse=T)
+dev.off()
+
+pdf('qc_pairs.pdf')
+pairs(mel.N.Q, smoothScatter=T, cex.labels=1)
+dev.off()
+
+pdf('qc_relations.pdf')
+plot(mel.N.Q, what='sampleRelation')
+dev.off()
+
+# Check general sample relations; should be prettifed by
+# using pData labels
+pdf('qc_mdsRelations.pdf')
+plot(mel.N.Q, what='sampleRelation', method='mds',
+     color=c(1, 2, 1, 1, 2, 2, 1, 2))
+dev.off()
+
+#
+# Get expression matrix and probe names, quantile version
+#
+dataMatrix <- exprs(mel.N.Q)
+probes <- rownames(dataMatrix)
+length(probes)
+
+# Filtering based on probes being present
+presentCount <- detectionCall(mel.lumi)
+selDataMatrix <- dataMatrix[presentCount > 0, ]
+selProbes <- rownames(selDataMatrix)
+length(selProbes)
+
+#
+# Export for GSEA
+#
+symbols <- getSYMBOL(probes, 'lumiHumanAll.db')
+export <- dataMatrix
+rownames(export) <- symbols
+export <- aggregate(export, list(rownames(export)), mean)
+write.table(export, file='processedMelanomaData_quantiles_Symbol.txt',
+            quote=F)
+
+#
+# Repeat (just the export) for VSN normalized data
+#
+dataMatrixVSN <- exprs(mel.N.V)
+probesVSN <- rownames(dataMatrixVSN)
+symbolsVSN <- getSYMBOL(probesVSN, 'lumiHumanAll.db')
+exportVSN <- dataMatrixVSN
+rownames(exportVSN) <- symbolsVSN
+exportVSN <- aggregate(exportVSN, list(rownames(exportVSN)), mean)
+write.table(exportVSN, file='processedMelanomaData_vsn_Symbol.txt',
+            quote=F)
+
+#                                        
+# RankProd
+#
+# Comparison slow vs regular cells. Treat each cell line as coming
+# from a different origin
+stainCl <- c(1, 0, 1, 1, 0, 0, 1, 0)
+stainOrigin <- c(1, 1, 2, 3, 3, 2, 4, 4)
+stainExp.adv.out <- RPadvance(dataMatrix, stainCl,
+                              stainOrigin, num.perm=100,
+                              logged=T, rand=123);
+
+# Scatter plot
+pdf("stain_vs_unstained_rp.pdf");
+plotRP(stainExp.adv.out, cutoff=0.1);
+dev.off();
+                                                          
+# Limit by FDR 0.1
+stainExp.genes <- topGene(stainExp.adv.out, cutoff=0.1,
+                          method="pfp", logged=T,
+                          logbase=2,
+                          gene.names=unlist(lookUp(probes,
+                          'lumiHumanAll.db', 'SYMBOL')))
+stainExp.genes$Table1
+
+write.table(stainExp.genes$Table1,
+            file='stain_0.1_rp_upregulated.txt', sep="\t");
+write.table(stainExp.genes$Table2,
+            file='stain_0.1_rp_downregulated.txt', sep="\t");
+
+# Again for the probe subset
+stainExpSel.adv.out <- RPadvance(selDataMatrix, stainCl,
+                              stainOrigin, num.perm=100,
+                              logged=T, rand=123);                              
+
+pdf("stain_vs_unstained_sel_rp.pdf");
+plotRP(stainExpSel.adv.out, cutoff=0.1);
+dev.off();                              
+
+stainExpSel.genes <- topGene(stainExpSel.adv.out, cutoff=0.1,
+                          method="pfp", logged=T,
+                          logbase=2,
+                          gene.names=unlist(lookUp(selProbes,
+                          'lumiHumanAll.db', 'SYMBOL')))
+                              
+stainExpSel.genes$Table2
+
+write.table(stainExpSel.genes$Table1,
+            file='stain_0.1_sel_rp_upregulated.txt', sep="\t");
+write.table(stainExpSel.genes$Table2,
+            file='stain_0.1__sel_rp_downregulated.txt', sep="\t");                              
+
+# Test visualization
+library(pheatmap)                              
+                            
+# Merge up/down regulated genes
+finalGenes <- topGene(stainExpSel.adv.out, cutoff=0.1,
+                      method="pfp", logged=T,
+                      logbase=2,
+                      gene.names=selProbes)
+finalGenesComb <- rbind(finalGenes$Table1, finalGenes$Table2)                              
+
+
+m <- as.matrix(selDataMatrix[rownames(selDataMatrix) %in% rownames(finalGenesComb), ])
+rownames(m) <- getSYMBOL(rownames(m), 'lumiHumanAll.db')
+
+# Re-order samples in a meaningful away
+colOrder <- c("LM34_Dil_unst", "LM42_Dil_unst", "LM44_Dil_unst", "LM28_Dil_unst",
+              "LM34_Dil_stain", "LM42_Dil_stain", "LM44_Dil_stain", "LM28_Dil_stain")
+mS <- m[, colOrder]       
+
+# Difference in log intensities
+mSF <- mS[, 1:4] - mS[, 5:8]                              
+colnames(mSF) <- c('LM34', 'LM42', 'LM44', 'LM28')                               
+                                                      
+pdf('heatmap_0.1.pdf')                              
+pheatmap(mSF, 
+         cluster_cols=F,
+         scale='column',
+         fontsize=12)
+dev.off()   
+

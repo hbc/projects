@@ -9,7 +9,6 @@ def main(coordinate_file, vcf_file, chunk_size):
 
     with open(coordinate_file) as coordinate_handle:
         for chunk in chunks(coordinate_handle, chunk_size):
-            print chunk
             #for line in coordinate_handle:
             tabix_lines = _lookup_chunk(tabix, chunk)
             for line in tabix_lines:

@@ -240,7 +240,7 @@ def main(config_file):
                                        [novoalign_config] * len(curr_files),
                                        [config] * len(curr_files))
             # convert sam to bam, sort and index
-            picard = BroadRunner(config["program"]["picard"])
+            picard = BroadRunner(config["program"]["picard"], None, {})
             bamfiles = view.map(picardrun.picard_formatconverter,
                                 [picard] * len(aligned_outputs),
                                 aligned_outputs)
@@ -270,7 +270,7 @@ def main(config_file):
             ref = blastn.prepare_ref_file(config["stage"][stage]["ref"],
                                           config)
             ribo = config["stage"][stage]["ribo"]
-            picard = BroadRunner(config["program"]["picard"])
+            picard = BroadRunner(config["program"]["picard"], None, {})
             out_dir = os.path.join(results_dir, "new_coverage")
             safe_makedir(out_dir)
             out_files = [replace_suffix(os.path.basename(x),
