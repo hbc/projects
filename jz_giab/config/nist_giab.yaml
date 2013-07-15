@@ -1,0 +1,5 @@
+calls: NISTIntegratedCalls_12datasets_130517_HetHomVarPASS_VQSRv2.15.vcf
+orig_calls: nist_NA12878_called.vcf
+array: Omni25_genotypes_NA12878.b37_SNPs.vcf
+regions: union12callableMQonlymerged_addcert_nouncert_excludesimplerep_excludesegdups_excludedecoy_noCNVs_v2.15b.bed
+        

@@ -12,6 +12,10 @@ import subprocess
 import sys
 
 import yaml
+try:
+    from concurrent import futures
+except ImportError:
+    import futures
 
 def main(config_file, cores):
     with open(config_file) as in_handle:
@@ -19,24 +23,37 @@ def main(config_file, cores):
     idremap = read_remap_file(config["idmapping"])
     samples = list(get_input_samples(config["inputs"], idremap))
     problem = [x for x in samples if x["id"] is None]
+    if len(problem) > 0:
+        print "Problem identifiers"
+        for p in problem:
+            print p["illuminaid"], os.path.basename(p["dir"])
+        raise NotImplementedError
     if cores > 1:
-        pool = multiprocessing.Pool(cores)
-        pool.map(run_illumina_prep, [(s, config) for s in samples if x["id"] is not None])
+        pool = futures.ProcessPoolExecutor(cores)
+        it = pool.map(run_illumina_prep, [(s, config) for s in samples if s["id"] is not None])
     else:
-        map(run_illumina_prep, [(s, config) for s in samples if x["id"] is not None])
-    print "Problem identifiers"
-    for p in problem:
-        print p["illuminaid"], os.path.basename(p["dir"])
+        it = map(run_illumina_prep, [(s, config) for s in samples if s["id"] is not None])
+    for x in it:
+        pass
 
 def run_illumina_prep(args):
     sample, config = args
+    tmp_dir = config.get("tmpdir", os.getcwd())
+    if not os.path.exists(tmp_dir):
+        try:
+            os.makedirs(tmp_dir)
+        except OSError:
+            assert os.path.exists(tmp_dir)
     out_file = os.path.join(os.getcwd(), "%s.vcf" % sample["id"])
     if not os.path.exists(out_file):
         print sample["id"], sample["dir"], out_file
         subprocess.check_call(["java", "-Xms1g", "-Xmx2g", "-jar", config["bcbio.variation"],
                                "variant-utils", "illumina", sample["dir"],
                                sample["id"], config["ref"]["GRCh37"],
-                               config["ref"]["hg19"], os.getcwd()])
+                               config["ref"]["hg19"],
+                               "--outdir", os.getcwd(),
+                               "--tmpdir", tmp_dir])
+    return sample["id"]
 
 def dir_to_sample(dname, idremap):
     vcf_file = os.path.join(dname, "Variations", "SNPs.vcf")
