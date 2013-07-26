@@ -28,12 +28,14 @@ library(extrafont)
 font_import(pattern="Gill Sans", prompt=FALSE)
 #project_dir = '/n/home05/kirchner/cache/projects/kobzik_influenza'
 #data_dir = file.path(project_dir, 'data')
+disease_type = 'rabbit_fever'
+num_samples = 6
 project_dir = '/Users/rory/cache/projects/kobzik_influenza'
 data_dir = file.path(project_dir, 'raw_data')
-results_dir = file.path(project_dir, 'results', 'anthrax')
-wd = file.path(project_dir, 'scripts', 'anthrax')
+results_dir = file.path(project_dir, 'results', disease_type)
+wd = file.path(project_dir, 'scripts', disease_type)
 setwd(wd)
-in_file = file.path(data_dir, 'anthrax', '55KhMAC-BC14 anthracis.csv')
+in_file = file.path(data_dir, disease_type, 'mf_55K_THP1.csv')
 #load(file.path(data_dir, 'pathways.Hs.RData'))
 FDR_CUTOFF = 0.10
 ensembl_gene = 'hsapiens_gene_ensembl'
@@ -44,37 +46,41 @@ dir.create(results_dir, showWarnings=FALSE)
 
 # Data cleaning and sanity checking
 
-The column names are awful, with lots of trailing mess in the names, some empty columns,
-and just some general ugliness.
+The initial data needs to be reformatted in a way we can use it:
 ```{r}
 counts = read.table(in_file, header=TRUE, sep=",", comment.char="", stringsAsFactors=FALSE)
 colnames(counts)
 ```
 
-Ouch. Let's fix that.
-
 ```{r}
-refseq_id = unlist(lapply(counts$info, function(x) strsplit(x, "|", fixed=TRUE)[[1]][2]))
+refseq_id = unlist(lapply(counts$Info, function(x) strsplit(x, "|", fixed=TRUE)[[1]][2]))
 refseq_id = unlist(lapply(refseq_id, function(x) strsplit(x, ".", fixed=TRUE)[[1]][1]))
 # use these symbols, excel ruins he formatting of the symbol. column
 # (for example Sept8 -> September 8. Nice)
-symbols = unlist(lapply(counts$label, function(x) strsplit(x, "|", fixed=TRUE)[[1]][1]))
+symbols = unlist(lapply(counts$Label, function(x) strsplit(x, "|", fixed=TRUE)[[1]][1]))
+head(symbols)
+```
+There are some errors in the formatting of the file, the label column is not always
+consistent, we might have to fix the symbols column later using the Refseq ids.
+```{r}
 counts$refseq_id = refseq_id
-counts$symbol = symbol
-counts = counts[,c("label", "shRNA.", "gene.", "symbol", "refseq_id",
-    "LK15.1_norm", "LK15.2_norm", "LK15.3_norm", "C.2_norm", "C.6_norm",
-    "C.2_repeat_norm", "C.5_norm")]
+counts$symbol = symbols
+counts = counts[,c("Label", "shRNA_N", "Gene_N", "symbol", "refseq_id",
+    "THP1_Contr_norm", "THP1_Contr_2_norm", "THP1_Contr_3_norm", "THP1_Ftular_norm",
+    "THP1_Ftular_2_norm", "THP1_Ftular_3_norm")]
 colnames(counts) = c("id", "shRNA_id", "gene_id", "symbol", "refseq_id",
-    "anthrax_1", "anthrax_2", "anthrax_3", "control_2", "control_6", "control_2a",
-    "control_5")
+    "control_1", "control_2", "control_3", "rf_1", "rf_2", "rf_3")
 head(counts)
 ```
 
-Much nicer. I am not sure what the plasmid and plasmid_norm columns are for, and they
-don't appear in all of the other disease data sets, so
-I left them out. I also left out the non-normalized columns because one of the datasets
-only has the normalized columns, so we'll use the normalized column for the analysis
-across the board.
+Much nicer. It is not all of the way there yet, though, the numeric columns have
+been read in as strings, so we need to change that:
+```{r}
+for(col in c("control_1", "control_2", "control_3", "rf_1", "rf_2", "rf_3")) {
+  counts[,col] = as.numeric(str_replace(counts[,col], ',', ''))
+}
+
+```
 
 From Lester's description of the project it seems like this dataset should have only
 ~ 4000 unique genes but it seems like there are about 7000
@@ -133,8 +139,8 @@ plotmatrix(casted[2:8]) + theme(text=element_text(family="Gill Sans"))
 
 And in correlation form:
 ```{r}
-row_ids = colnames(casted[2:8])
-cor_df = cor(casted[2:8])
+row_ids = colnames(casted[2:7])
+cor_df = cor(casted[2:7])
 colnames(cor_df) = row_ids
 rownames(cor_df) = row_ids
 qplot(X1, X2, data=melt(cor_df), fill=value, geom="tile") +
@@ -150,40 +156,27 @@ with low (zero) counts in the anthrax samples that are not in the control sample
     theme(text=element_text(family="Gill Sans"))
 ```
 
-Just for curiosities sake for the time being, what are those genes?
-```{r}
-anthrax_cols = c("anthrax_1", "anthrax_2", "anthrax_3")
-control_cols = c("control_2", "control_2a", "control_6", "control_5")
-in_anthrax = subset(melted, (sample %in% anthrax_cols & count == 0))$symbol
-in_control = subset(melted, (sample %in% control_cols & count == 0))$symbol
-```
-## Genes with a zero count shRNA in any control sample
-```{r results='asis'}
-print(gvisTable(data.frame(table(in_control))), "chart")
-```
-## Genes with a zero count shRNA in any anthrax sample
-```{r results='asis'}
-print(gvisTable(data.frame(table(in_anthrax))), "chart")
-```
-
 # differential shRNA expression
 ```{r construct-edger-dataframe, results='asis'}
-edger_df = counts[, 6:12]
+edger_df = counts[, 6:11]
 rownames(edger_df) = counts$id
 group = factor(unlist(lapply(colnames(edger_df),
                 function(x) strsplit(x, "_", fixed=TRUE)[[1]][1])))
 dge = DGEList(edger_df, group=group)
 ```
-The MDS of the counts shows that the control samples cluster nicely together, but the anthrax samples are all over the place; they are almost just as different than each other in the first and and second components as they are the control samples.
-
+The MDS of the counts shows that the control samples cluster nicely together,
+the rabbit fever infected samples are not clustered to each other but they are
+separated from the control samples along the first principal component. They are more
+similar to each other than to the control samples which is good for our ability to detect
+differential expression.
 ```{r}
 mds = function(counts, condition) {
         nprobes <- nrow(counts)
         nsamples <- ncol(counts)
         counts = cpm(counts)
 	distances = dist(t(counts))
-	fit = cmdscale(distances, eig=TRUE, k=6)
-	colnames(fit$points) = c("one", "two", "three", "four", "five", "six")
+	fit = cmdscale(distances, eig=TRUE, k=5)
+	colnames(fit$points) = c("one", "two", "three", "four", "five")
 	df = as.data.frame(fit$points)
 	df$label = rownames(df)
         df$condition = condition
@@ -206,7 +199,6 @@ print(gvisTable(dge$samples, options=list(width=900)), "chart")
 We fit a model of this form to the data:
 
 ```{r model}
-mds(dge, group)
 design = model.matrix(~0+group)
 design
 ```
@@ -253,19 +245,42 @@ differential_test = function(dge, pair) {
 	et_table$FDR = p.adjust(et_table$PValue, method="BH")
 	return(et_table)
 }
-et_table = differential_test(dge, c("control", "anthrax"))
+et_table = differential_test(dge, c("control", "rf"))
 ```
 Differential expression shows `r table(et_table$FDR < 0.10)["TRUE"]` shRNA that
-are differentially expressed between the anthrax samples and control samples.
-Only a few genes have multiple shRNA that hit them that are DE:
+are quote a few differentiall expressed between the rabbit fever samples and
+control samples.
 ```{r, results='asis'}
 de_counts = merge(counts, et_table, by.x="id", by.y=0)
-multiple_hits = subset(data.frame(table(subset(de_counts, FDR < 0.10)$refseq_id)), Freq > 1)
-colnames(multiple_hits) = c("refseq_id", "freq")
-print(gvisTable(multiple_hits), "chart")
-de_counts$multiple_hits = de_counts$refseq_id %in% multiple_hits$refseq_id
+#multiple_hits = subset(data.frame(table(subset(de_counts, FDR < 0.10)$refseq_id)), Freq > 1)
+mhits = data.frame(table(subset(de_counts, FDR < 0.10)$refseq_id))
+colnames(mhits) = c("refseq_id", "multiple_hits")
+de_counts = merge(de_counts, mhits, by="refseq_id")
+#print(gvisTable(multiple_hits), "chart")
+#de_counts$multiple_hits = de_counts$refseq_id %in% multiple_hits$refseq_id
 ```
+In addition there are numerous genes with very many shRNA as hits:
 
+```{r}
+table(de_counts$multiple_hits)
+```
+Since there are so many, to priorize hits we will add another column displaying the
+number of downregulated and upregulated shRNA in each gene.
+```{r}
+mhits_up = data.frame(table(subset(de_counts, FDR < 0.10 & DE == 1)$refseq_id))
+colnames(mhits_up) = c("refseq_id", "mhits_up")
+de_counts = merge(de_counts, mhits_up, by="refseq_id")
+mhits_down = data.frame(table(subset(de_counts, FDR < 0.10 & DE == -1)$refseq_id))
+colnames(mhits_down) = c("refseq_id", "mhits_down")
+de_counts = merge(de_counts, mhits_down, by="refseq_id")
+table(de_counts$mhits_up)
+table(de_counts$mhits_down)
+```
+A reasonable approach to reducing how many genes we have to look at is to focus on the
+genes with many hits in one direction:
+  ```{r}
+table(de_counts$mhits_up - de_counts$mhits_down)
+```
 Annotate the input set of counts with metadata about the genes.
 ```{r}
 ensembl_gene = "hsapiens_gene_ensembl"
