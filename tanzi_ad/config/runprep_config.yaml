@@ -1,6 +1,9 @@
 base_dir: /home/bradc/data/tanzi_ad
 idmapping: gwas/NIMH_Patient.Rutgers.ID_Translation.txt
-priority: gwas/WGS_NIMH_family_Prioritization_01-14-13_Raj.csv
+priority: gwas/AD-Master-v2.csv
 out: config/tanzi-alz-p1.yaml
+params:
+  priority: 1
+  max_samples: 31
 inputs:
   - /mnt/lustre/stripe-4M/harvard-illumina/LP*

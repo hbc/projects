@@ -5,6 +5,7 @@ Groups into family based calling for high priority variants.
 """
 import collections
 import csv
+import datetime
 import glob
 import os
 import sys
@@ -16,10 +17,58 @@ def main(config_file):
         config = _add_base_dir(yaml.load(in_handle))
     idremap = read_remap_file(config["idmapping"])
     baminfo = get_bam_files(config["inputs"], idremap)
-    famsamples = priority_by_family(config["priority"], 1)
-    for family, samples in famsamples.iteritems():
-        print family, samples
-    print sum([len(x) for x in famsamples.itervalues()])
+    famsamples = priority_by_family(config["priority"], config["params"]["priority"])
+    g1, g2 = split_families(famsamples, config["params"]["max_samples"])
+    for name, g in [("g1", g1), ("g2", g2)]:
+        write_config(g, baminfo, name, config["params"]["priority"], config["out"])
+
+# ## Write output configurations
+
+def write_config(g, baminfo, name, priority, outbase):
+    outdir = os.path.dirname(outbase)
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    base, ext = os.path.splitext(outbase)
+    outfile = "%s-%s%s" % (base, name, ext)
+    out = {"upload": {"dir": "../final"},
+           "fc_date": datetime.datetime.now().strftime("%Y-%m-%d"),
+           "fc_name": "alz-p%s-%s" % (priority, name),
+           "details": []}
+    for family, samples in g:
+        for sample in samples:
+            cur = {"algorithm": {"aligner": "bwa",
+                                 "variantcaller": "gatk-haplotype",
+                                 "quality_format": "Standard",
+                                 "coverage_interval": "genome",
+                                 "coverage_depth": "high"},
+                   "analysis": "variant2",
+                   "genome_build": "GRCh37",
+                   "metadata": {"batch": str(family)},
+                   "description": str(sample),
+                   "files": [baminfo[sample]["bam"]]}
+            out["details"].append(cur)
+    with open(outfile, "w") as out_handle:
+        yaml.dump(out, out_handle, allow_unicode=False, default_flow_style=False)
+    return outfile
+
+def split_families(famsamples, max_samples):
+    """Split families into groups that fit for processing.
+    """
+    famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
+    for f, s in famsamples:
+        print f, s
+    group1 = []
+    group2 = []
+    cur_size = 0
+    for f, s in famsamples:
+        if cur_size + len(s) <= max_samples:
+            cur_size += len(s)
+            group1.append((f, s))
+        else:
+            group2.append((f, s))
+    for name, xs in [("total", famsamples), ("g1", group1), ("g2", group2)]:
+        print name, sum([len(x) for _, x in xs])
+    return group1, group2
 
 # ## Priority file
 
@@ -29,9 +78,11 @@ def priority_by_family(in_file, target_priority):
     samples = collections.defaultdict(list)
     with open(in_file) as in_handle:
         reader = csv.reader(in_handle)
-        reader.next() # header
-        for _, fam_id, sample_id, priority in reader:
-            if int(priority) == target_priority:
+        header = reader.next() # header
+        for parts in reader:
+            fam_id, sample_id, priority = parts[1:4]
+            status_flag = parts[16]
+            if status_flag != "Exclude" and priority and int(priority) == target_priority:
                 samples[fam_id].append(sample_id)
     return dict(samples)
 
