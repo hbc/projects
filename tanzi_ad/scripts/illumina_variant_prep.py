@@ -4,6 +4,7 @@
 Usage:
   illumina_variant_prep.py <in config> <cores>
 """
+import csv
 import glob
 import multiprocessing
 import pprint
@@ -23,6 +24,7 @@ def main(config_file, cores):
     with open(config_file) as in_handle:
         config = yaml.load(in_handle)
     idremap = read_remap_file(config["idmapping"])
+    exclude = read_priority_file(config["array"]["priority"], idremap)
     samples = list(get_input_samples(config["inputs"], idremap))
     problem = [x for x in samples if x["id"] is None]
     if len(problem) > 0:
@@ -34,12 +36,16 @@ def main(config_file, cores):
 
     config["algorithm"] = {"num_cores": cores}
     out_files = [outf for outf in joblib.Parallel(cores)(joblib.delayed(run_illumina_prep)(s, config)
-                                                         for s in samples if s["id"] is not None)]
+                                                         for s in samples if s["id"] is not None
+                                                         and s["id"] not in exclude)]
     merge_file = merge_vcf_files(out_files, cores, config)
     effects_file = effects.snpeff_effects({"vrn_file": merge_file,
                                            "genome_build": "GRCh37",
                                            "config": config})
-    gemini_db = population.prep_gemini_db([effects_file], "casava",
+    noexclude_file = "%s-noexclude%s" % os.path.splitext(effects_file)
+    noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
+                                              config["ref"]["GRCh37"], config)
+    gemini_db = population.prep_gemini_db([noexclude_file], "casava",
                                           [{"config": config, "work_bam": "yes", "genome_build": "GRCh37"}],
                                           {"config": config})[0][1]["db"]
     print gemini_db
@@ -47,7 +53,7 @@ def main(config_file, cores):
 def merge_vcf_files(sample_files, cores, config):
     out_file = config["outputs"]["merge"]
     config["algorithm"] = {}
-    run_parallel = parallel_runner({"type": "local", "cores": min(cores, 7)}, {}, config)
+    run_parallel = parallel_runner({"type": "local", "cores": min(cores, 8)}, {}, config)
     vcfutils.parallel_combine_variants(sample_files, out_file, config["ref"]["GRCh37"],
                                        config, run_parallel)
     return out_file
@@ -66,6 +72,29 @@ def check_fam(samples, fam_file):
     with open("missing_fam_sample_ids.txt", "w") as out_handle:
         for x in sorted(missing_ids):
             out_handle.write("%s\n" % x)
+
+def read_priority_file(in_file, idremap):
+    """Read priority and failed information from input files.
+    """
+    exclude = []
+    with open(in_file) as in_handle:
+        reader = csv.reader(in_handle)
+        header = reader.next()
+        #for i, h in enumerate(header):
+        #    print i, h
+        for parts in reader:
+            rutgers_id = parts[0]
+            subject_id = parts[2]
+            status_flag = parts[16]
+            remap_s_id = idremap.get(rutgers_id)
+            if status_flag == "Exclude":
+                # if remap_s_id != subject_id:
+                #     print rutgers_id, remap_s_id, subject_id
+                #     print parts
+                exclude.append(subject_id)
+            else:
+                assert status_flag in ["Use", "QC"], status_flag
+    return set(exclude)
 
 def run_illumina_prep(sample, config):
     tmp_dir = config.get("tmpdir", os.getcwd())

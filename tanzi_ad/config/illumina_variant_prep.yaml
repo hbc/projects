@@ -16,6 +16,7 @@ illumina:
 array:
   comparison: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_variants/nimh.affy6_na31.CAU_CLEAN-cmp.csv
   fam: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/WGS_NIMH.fam
+  priority: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/AD-Master-v2.csv
 
 resources:
   gatk:
