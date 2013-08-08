@@ -16,6 +16,7 @@ import yaml
 
 import joblib
 
+from bcbio import broad, utils
 from bcbio.variation import effects, population, vcfutils
 from bcbio.distributed.messaging import parallel_runner
 
@@ -45,9 +46,13 @@ def main(config_file, cores):
     noexclude_file = "%s-noexclude%s" % os.path.splitext(effects_file)
     noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
                                               config["ref"]["GRCh37"], config)
-    gemini_db = population.prep_gemini_db([noexclude_file], "casava",
+    config["algorithm"]["num_cores"] = cores
+    data = {"config": config, "dirs": {"work": os.getcwd()}, "name": [""]}
+    prepare_plink(noexclude_file, config)
+    gemini_db = population.prep_gemini_db([noexclude_file],
+                                          [os.path.splitext(config["outputs"]["merge"])[0], "casava"],
                                           [{"config": config, "work_bam": "yes", "genome_build": "GRCh37"}],
-                                          {"config": config})[0][1]["db"]
+                                          data)[0][1]["db"]
     print gemini_db
 
 def merge_vcf_files(sample_files, cores, config):
@@ -57,6 +62,42 @@ def merge_vcf_files(sample_files, cores, config):
     vcfutils.parallel_combine_variants(sample_files, out_file, config["ref"]["GRCh37"],
                                        config, run_parallel)
     return out_file
+
+def _remove_plink_problems(in_vcf):
+    """Remove lines which cause issues feeding into plink.
+    """
+    out_vcf = "%s-plinkready%s" % os.path.splitext(in_vcf)
+    support_chrs = set(["G", "A", "T", "C", ","])
+    if not utils.file_exists(out_vcf):
+        with open(in_vcf) as in_handle:
+            with open(out_vcf, "w") as out_handle:
+                for line in in_handle:
+                    # Mitochondrial calls are not called with
+                    # same reference, causing plink conversion errors
+                    if line.startswith("MT"):
+                        line = None
+                    elif not line.startswith("#"):
+                        for to_check in line.split("\t", 5)[3:5]:
+                            if len(set(to_check) - support_chrs) > 0:
+                                line = None
+                                break
+
+                    if line:
+                        out_handle.write(line)
+    return out_vcf
+
+def prepare_plink(in_vcf, config):
+    """Prepare binary PED files for input to plink.
+    """
+    clean_vcf = _remove_plink_problems(in_vcf)
+    runner = broad.runner_from_config(config)
+    out_base = os.path.join(os.path.dirname(in_vcf), config["outputs"]["plink"])
+    args = ["-T", "VariantsToBinaryPed", "-R", config["ref"]["GRCh37"],
+            "--variant", clean_vcf, "--minGenotypeQuality", "0",
+            "--metaData", config["array"]["fam"],
+            "--bed", out_base + ".bed", "--bim", out_base + ".bim", "--fam", out_base + ".fam"]
+    runner.run_gatk(args)
+    print out_base
 
 def check_fam(samples, fam_file):
     """Ensure identifiers are present in PLINK fam file.
