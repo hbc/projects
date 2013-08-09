@@ -1,4 +1,4 @@
-```{r setup, echo=FALSE}
+```{r PBMCsetup, echo=FALSE}
 opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
 options(width=200)
 ```
@@ -7,7 +7,7 @@ options(width=200)
 
 ---
 
-Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
+Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. PBMC Samples.
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
@@ -21,7 +21,7 @@ The sections below provide code to reproduce the included results and plots.
 
 ## General purpose R libraries necessary for analysis
 
-```{r general_libraries}
+```{r PBMCgeneral_libraries}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
@@ -34,7 +34,7 @@ options(java.parameters = "-Xmx1024m")
 
 ## Locations of directories for data, metadata and results
 
-```{r general_directories}
+```{r PBMCgeneral_directories}
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
   baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
@@ -51,13 +51,13 @@ metaDir <- file.path(baseDir, "meta")
 
 # Microarray Analysis
 - currently only looking at the HG-U133-2.0 Plus arrays, so subsetted the unified metadata file to this array (GPL570 for GEO studies, A-AFFY-44 for Array Express studies)
-- subsetted to samples for which we gender, age and raw data
+- subsetted to samples for which we know gender, age and have raw data
 
-```{r subset_data}
+```{r PBMCsubset_data}
 refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.PBMC.tab"))
 U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & !is.na(refined.metadata$gender) & !is.na(refined.metadata$CEL_regex) & grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
 write.table(U133.Plus2.data, file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.tab"), quote=F, sep="\t", row.names=F, col.names=T)
-write.xlsx(U133.Plus2.data, file=file.path(metaDir, "unified.metadata.redined.PBMC.U133Plus2.0.xls"), row.names=F)
+write.xlsx(U133.Plus2.data, file=file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.xls"), row.names=F)
 ```
 
 That metadata file is [here](./meta/unified.metadata.refined.PBMC.U133Plus2.0.xlsx)
@@ -66,7 +66,7 @@ That metadata file is [here](./meta/unified.metadata.refined.PBMC.U133Plus2.0.xl
 
 ### Load [Bioconductor][1] libraries for the microarray analysis 
 
-```{r microarray_analysis_libraries}
+```{r PBMCmicroarray_analysis_libraries}
 # to parse the CEL files and work with intensity values
 library(affy) 
 # for QC reports
@@ -86,7 +86,7 @@ library(hgu133plus2.db)
   - child = 5-10 years
   - adult = 18-40 years
 
-```{r microarray_analysis_variables}
+```{r PBMCmicroarray_analysis_variables}
 # colorblind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # age ranges to compare
@@ -102,7 +102,7 @@ Purpose: to make a covariate table that allows you to load the CEL files using t
 
 - also limit samples to those wihtin the age ranges described above and label each with their "stage"
 
-```{r covariatedataframe}
+```{r PBMCcovariatedataframe}
 # U1332.0Plus only for now
 covartemplate.file <- "unified.metadata.refined.PBMC.U133Plus2.0.tab" 
 covartemplate <- read.table(file.path(metaDir,covartemplate.file ), header=T, colClasses="character", sep="\t")
@@ -143,20 +143,20 @@ covars$age <- as.numeric(covars$age)
 # label samples with their stage as determined by age
 # don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
 covars$stage <- ifelse(covars$age<max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", "adult")) 
+covars <- covars[order(covars$stage),]
 ```
 
 ### Load CEL files
 
-```{r load_data}
+```{r PBMCload_data}
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars) 
 ```
-
 
 ## Quality Control and Normalization
 
 ### Array QC checks on raw data with [ArrayQualityMetrics][3]
 
-```{r rawQC, eval=FALSE}
+```{r PBMCrawQC, eval=FALSE}
 arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "PBMC", "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
 ````
 
@@ -164,25 +164,25 @@ arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "PBMC", 
 
 ### Normalize all arrays using [RMA][4]
 
-```{r normalize_RMA}
+```{r PBMCnormalize_RMA}
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 ```
 
 ### Array QC checks on normalized data with ArrayQualityMetrics
 
-```{r normQC, eval=FALSE}
+```{r PBMCnormQC, eval=FALSE}
 arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "PBMC", "QCreport_norm"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
 ```
 
-[Normalized Data QC Report](./results/QCreport_norm/index.html)
+[Normalized Data QC Report](./results/PBMC/QCreport_norm/index.html)
 
 ### Remove outlier studies
-- removed GSM844204, failed RLE in raw, and still outlier after normalization
-- slope for RNA degradation plots for GSE14642 is very different (flat) and mulitple arrays are outliers for MA plots
+- removed GSM844204, failed RLE in raw QC  hecks, and is still an outlier after normalization
+- slope for RNA degradation plots for GSE14642 is very different (flat) and mulitple arrays are outliers for MA plots, kept in for now but worth keeping an eye on it
 
 - renormalize data
 
-```{r drop_outliers, results='asis'}
+```{r PBMCdrop_outliers, results='asis'}
 mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204")))]
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0" ))
@@ -190,7 +190,7 @@ save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.
 
 ### Array QC checks on normalized data after outlier removal with ArrayQualityMetrics
 
-```{r wo.outliers.normQC, eval=FALSE}
+```{r PBMCwo.outliers.normQC, eval=FALSE}
 arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "PBMC", "QCreport_norm.wo.outliers"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
 ```
 
@@ -198,9 +198,9 @@ arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "P
 
 ### Metadata for remaining U133Plus2.0 studies
 
-```{r print_metadata, results='asis'}
+```{r PBMCprint_metadata, results='asis'}
 pd <- pData(mic.norm.eset)
-pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=640))  
 print(pd.gvis, "chart")
 ```
 
@@ -216,7 +216,7 @@ To perform limma, we construct two matrices. The design matrix provides a repres
 - make a matrix with arrays as rows, sample groups as columns
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
 
-```{r design, results="asis"}
+```{r PBMCdesign, results="asis"}
 design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
 # make sure the headings match
 colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
@@ -229,7 +229,7 @@ print(design.gvis, "chart")
 - in this table, columns are contrasts/comparisons and rows are sample groups
 -  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
 
-```{r contrastmatrix, results='asis'}
+```{r PBMCcontrastmatrix, results='asis'}
 contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
 contrast.gvis <- gvisTable(as.data.frame(apply(contrast.matrix, 2, as.character)), options=list(width=240, height=120))  
 print(contrast.gvis, "chart")
@@ -244,7 +244,7 @@ These matrices are used to fit a linear model to the data. The linear model is a
 #### Fit a linear model
 - for each gene based on the given series of arrays
 
-```{r linearmodel}
+```{r PBMClinearmodel}
 exprs.norm <- exprs(mic.norm.eset)
 dimnames(exprs.norm)[[2]] <- as.character(pData(mic.norm.eset)$ID)
 fit.exprs <- lmFit(exprs.norm, design) 
@@ -252,14 +252,14 @@ fit.exprs <- lmFit(exprs.norm, design)
 
 #### Compute estimated coefficients and standard errors for contrasts
 
-```{r contrastfit}
+```{r PBMCcontrastfit}
 fit2.exprs <- contrasts.fit(fit.exprs, contrast.matrix) 
 ```
 
 #### Compute moderated t-statistics and log-odds of differential expression 
 - by empirical Bayes shrinkage of the standard errors towards a common value
 
-```{r bayes}
+```{r PBMCbayes}
 fit2.exprs <- eBayes(fit2.exprs) 
 ```
 
@@ -273,7 +273,7 @@ fit2.exprs <- eBayes(fit2.exprs)
 - the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
 - the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
 
-```{r toptable, results='hide'}
+```{r PBMCtoptable, results='hide'}
 top.stats <- lapply(seq(1,3,1), function(n) {
   contrast <- dimnames(fit2.exprs$contrasts)$Contrasts[n]
   stats.top <- topTable(fit2.exprs, coef=n, adjust="fdr", sort.by="p", p.value=0.1, lfc=1, number=100, genelist=row.names(exprs.norm)) 
@@ -308,7 +308,7 @@ lapply(top.stats, function(n) {
 
 *note that the differentially expressed genes clustered in these heatmaps are based on comparisons that include both genders* 
 
-```{r heatmaps, fig.width=24, fig.height=24}
+```{r PBMCheatmaps, fig.width=18, fig.height=36}
 for(n in 1:3){
   # get the names of the stages that are being compared in this comparison
   contrast <- top.stats[[n]]$contrast
@@ -340,13 +340,13 @@ for(n in 1:3){
   ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
   ## Heatmaps
   # ALL genders 
-  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors, cluster_cols=F)  
   # FEMALE gender  
   top.exprs.contrast.female <- top.exprs.contrast[,which(sample.pd$gender=="FEMALE")]
-  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE)", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE)", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors, cluster_cols=F)  
   # MALE gender  
   top.exprs.contrast.male <- top.exprs.contrast[,which(sample.pd$gender=="MALE")]
-  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE)", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE)", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors, cluster_cols=F)  
   }
 ```
 
@@ -354,7 +354,7 @@ for(n in 1:3){
 - wanted to see if patterns were consistent across all the age groups
 - combined the top hits from all three comparisons, and looked at their expression patterns in all samples
 
-```{r heatmaps_all_samples, fig.width=24, fig.height=36}
+```{r PBMCheatmaps_all_samples, fig.width=18, fig.height=36}
 top.IDs <- unique(unlist(lapply(top.stats, function(n) n$data$ID)))
 top.exprs.union <- exprs.norm[top.IDs,]
 # remove any AFFY control probes
@@ -378,17 +378,19 @@ names(gender_colors) <- unique(unlist(pd$gender))
 ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
 ## Heatmaps
 # Both genders
-pheatmap(as.matrix(top.exprs.union), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)  
+pheatmap(as.matrix(top.exprs.union), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors, cluster_cols=F)  
 # Female gender
 top.exprs.union.female <- top.exprs.union[,which(pd$gender=="FEMALE")]
-pheatmap(as.matrix(top.exprs.union.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Female Samples", show_colnames=F,fontsize=24, fontsize_row=8,annotation_colors=ann_colors)  
+pheatmap(as.matrix(top.exprs.union.female), annotation=subset(heatmap.annots,gender=="FEMALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Female Samples", show_colnames=F,fontsize=24, fontsize_row=8,annotation_colors=ann_colors, cluster_cols=F)  
 # Male gender
 top.exprs.union.male <- top.exprs.union[,which(pd$gender=="MALE")]
-pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gender=="MALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All male Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)   
+pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gender=="MALE"), color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All male Samples", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors, cluster_cols=F)   
 ```
 
+##SessionInfo
 
-```{r save, echo=FALSE}
+```{r PBMCsave, echo=FALSE}
+sessionInfo()
 # passing on data to the barcode analyses
 rm(adult.age.range, ann_colors, child.age.range, contrast, contrast.gvis, contrast.matrix, covars, covartemplate.file, design, design.gvis, exprs.norm, fit2.exprs, fit.exprs, gender_colors, heatmap.annots, mapCdfName, n, neonate.age.range, pd, pd.gvis, sample.indices, metaDir, baseDir,  sample.pd, covartemplate, dataDir, stage_colors, stages, top.exprs.contrast, top.exprs.contrast.female, top.exprs.contrast.male, top.exprs.union, top.exprs.union.female, top.exprs.union.male, top.IDs, study_colors, cbPalette, age, CELfileloc, CELFTP, CELregex, covartemxplate.file, ethnicity, gender, refined.metadata, sampleID, study, temp, U133.Plus2.data)
 save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.topstats.PBMC.U133Plus2.0"))
