@@ -1,0 +1,108 @@
+---
+# Example file for specifying run information to bcbio_nextgen.py
+# In a fully Galaxy automated setup this information can be retrieved
+# from the Galaxy server based on user inputs. This allows you to
+# run the automated pipeline separately or from other external programs
+
+# If your folder naming is not standard Truseq style
+# (110729_SN728_0036_A81UJUABXX) you should specify the date and a unique name
+# to use for naming the output files.
+# control_rep1.fastq  control_rep2.fastq  let-7a_rep1.fastq  let-7a_rep2.fastq  miR-34a_rep1.fastq  miR-34a_rep2.fastq  miR-522_rep1.fastq  miR-522_rep2.fastq
+fc_date: '110812'
+fc_name: mynn
+# Directory to upload final results to. It also supports galaxy and S3 upload.
+upload:
+  dir: ../final
+# For each flowcell, you specify either the lane if the files follow standard
+# naming conventions (1_110729_A81UJUABXX) or the names of the files if they
+# are differently named. Can specify either one file for single end or two for
+# paired.
+details:
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/miR-522_rep2.fastq]
+    description: 'miR-522_rep2'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: miR-522
+      replicate: 2
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/miR-522_rep1.fastq]
+    description: 'miR-522_rep1'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: miR-522
+      replicate: 1
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/miR-34a_rep2.fastq]
+    description: 'miR-34a_rep2'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: miR-34a
+      replicate: 2
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/miR-34a_rep1.fastq]
+    description: 'miR-34a_rep1'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: miR-34a
+      replicate: 1
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/let-7a_rep2.fastq]
+    description: 'let-7a_rep2'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: let-7a
+      replicate: 2
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/let-7a_rep1.fastq]
+    description: 'let-7a_rep1'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: let-7a
+      replicate: 1
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/control_rep1.fastq]
+    description: 'Control_rep1'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: control
+      replicate: 1
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
+  - files: [/n/home05/kirchner/hsph/projects/lieberman_mirna/data/illumina_impact/data/control_rep2.fastq]
+    description: 'Control_rep2'
+    genome_build: GRCh37
+    analysis: RNA-seq
+    metadata:
+      condition: control
+      replicate: 2
+    algorithm:
+         quality_format: Standard
+         trim_reads: read_through
+         adapters: [truseq, polya]
