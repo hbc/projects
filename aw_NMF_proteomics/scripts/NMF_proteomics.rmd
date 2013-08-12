@@ -6,8 +6,11 @@ options(width=200)
 # NMF ANALYSES OF PROTEOMIC DATA
 
 ---
+## Summary 
 
 Analysis of proteomic data for [Leo Wang](mailto:LKOBZIK@hsph.harvard.edu) in the Wager's group at the Joslin.
+
+Nonnegative matrix factorization (NMF) analysis was conducted on the samples to explore sample similarity and to identify proteins/genes that might be characteristic for individual isolated cell types. NMF tries to identify 'factors' (or metagenes, a weighted list of genes) that best describe individual samples. This is useful to not only identify how similar the samples are, but also in which way they are similar.
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.x
 
@@ -15,16 +18,22 @@ The most recent update of this html document occurred: `r date()`
 
 The sections below provide code to reproduce the included results and plots.
 
-## Libraries
+---
+
+## Setup
+
+### Libraries 
 
 ```{r libraries}
 library(NMF)
-library(xlsx) # library for outputting Excel files
-options(java.parameters = "-Xmx1024m")
-
 library(genefilter)
 library(ggdendro)
 library(ggplot2)
+```
+
+### Functions
+
+```{r functions}
 PCAplot.df <- function(df=NULL, meta.df=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1, numcomponents=6){
   alpha <- sprintf("%x", ceiling(alpha*255))
   colorpalette <- paste(colorpalette, alpha, sep="")
@@ -57,9 +66,27 @@ row2colnames <- function(x, rowid){
   return(x)
 }
 as.num <- function(x){as.numeric(as.character(unlist(x)))}
+
+plot_dendro <- function(x, meta.x, title="", metadata.colname.identifier="columnid", labels.colname="group_short") {
+  myDist <- dist(t(x))
+  myTree <-hclust(myDist)
+  dhc <- as.dendrogram(myTree)
+  ddata <- dendro_data(dhc, type="rectangle")
+  ddata$labels <- merge(ddata$labels, meta.x, by.x="label", by.y=metadata.colname.identifier)
+  ggplot(segment(ddata)) +
+    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+    theme_dendro() +
+    geom_text(data=label(ddata), aes(x=x, y=y, label=group_short, color=group_short, hjust=-0.1), size=6) +
+    coord_flip() + scale_y_reverse(expand=c(0.2, 50)) +
+    theme(axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank()) +
+    ggtitle(title)
+  }
 ```
 
-## Variables
+### Variables
 
 ```{r variables}
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/aw_NMF_proteomics/")) {
@@ -78,18 +105,22 @@ TRAIN=50
 RUN=200
 ```
 
-## Load in Data
+---
 
-- log transform to stabilize variance
+## Data preparation and exploration
+
+### Load in Data
+
+Both the summed counts and the "normalized" counts were initially analysed in tandem to assess which method led to better results. All counts were log transformed to stabilize the variance.
 
 ```{r dataload}
-data <- read.xlsx(file.path(dataDir, "michael.xls"), sheetIndex=3)
-metadata <- read.xlsx(file.path(metaDir, "metadata.xls"), sheetIndex=1) 
+data <- read.delim(file.path(dataDir, "data.txt"))
+metadata <- read.delim(file.path(metaDir, "metadata.txt")) 
 
 annot <- data[,which(metadata$datatype=="descriptor")]
 
 data.sum <- data[,which(metadata$datatype=="sum")]
-data.sum <- log2(data.sum)res
+data.sum <- log2(data.sum)
 metadata.sum <- subset(metadata, datatype=="sum")
 metadata.sum <- col2rownames(metadata.sum, "columnid", FALSE)
 eset.sum <- ExpressionSet(assayData=as.matrix(data.sum), phenoData=new("AnnotatedDataFrame", data = metadata.sum), featureData=new("AnnotatedDataFrame", data=annot))
@@ -101,32 +132,18 @@ metadata.norm <- col2rownames(metadata.norm, "columnid", FALSE)
 eset.norm <- ExpressionSet(assayData=as.matrix(data.norm), phenoData=new("AnnotatedDataFrame", data = metadata.norm), featureData=new("AnnotatedDataFrame", data=annot))
 ```
 
-## Initial Clustering
+### Initial Clustering
+
+Initial hierarchical clustering based on the euclidian distance of individual samples.
 
 ```{r clustering}
-plot_dendro <- function(x, meta.x, title="", metadata.colname.identifier="columnid", labels.colname="group_short") {
-  myDist <- dist(t(x))
-  myTree <-hclust(myDist)
-  dhc <- as.dendrogram(myTree)
-  ddata <- dendro_data(dhc, type="rectangle")
-  ddata$labels <- merge(ddata$labels, meta.x, by.x="label", by.y=metadata.colname.identifier)
-  ggplot(segment(ddata)) +
-    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
-    theme_dendro() +
-    geom_text(data=label(ddata), aes(x=x, y=y, label=group_short, color=group_short, hjust=-0.1), size=6) +
-    coord_flip() + scale_y_reverse(expand=c(0.2, 50)) +
-    theme(axis.text.x=element_blank(),
-          axis.text.y=element_blank(),
-          axis.title.x=element_blank(),
-          axis.title.y=element_blank()) +
-    ggtitle(title)
-  }
-
 plot_dendro(data.sum, metadata.sum, title="Summed Data")
 plot_dendro(data.norm, metadata.norm, title="Normalized Data")
 ```
 
-## Principle Component Analyses
+The dendrograms look promising, particularly for the approach without any "normalization", BMM and LSC cell types cluster separately, with the RBM and PM cell types appearing to comprise a subgroup that can be further subdivided into the two separate cell types.
+
+### Principle Component Analyses
 
 ```{r PCA}
 PCAplot.sd.df(data.sum, metadata.sum,  title="Proportion of Variance Explained by Components  - Summed Data")
@@ -135,11 +152,15 @@ PCAplot.sd.df(data.norm, metadata.norm,  title="Proportion of Variance Explained
 PCAplot.df(data.norm, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
 ```
 
-Looks promising, though it would be nice to see the BMM and LSC samples clustering together more tightly.
+The first four components explain ~75% of the sample differences, and when compared pairwise, the different combinations of these components can separate out the various combinations of the cell types.
 
-## Remove proteins with low variance between samples
+### Remove proteins with low variance between samples
 
-- run clustering again
+To speed up the computationally intensive NMF clustering the `r nrow(data.sum))`  proteins were filtered to retain only those proteins exhibiting a median absolute deviation from the median (mad) of more than 0.5 across all samples.
+
+Note that this is not a test for differential protein levels. Instead, filtering out proteins exhibiting very little variance across all samples removes proteins that are unlikely to distinguish between cell types.
+
+To assess the effects of the filtering, I ran the clustering again.
 
 ```{r lowvarremove}
 rowMads.sum <- apply(data.sum, 1, mad)
@@ -163,15 +184,19 @@ PCAplot.sd.df(data.norm.sub, metadata.norm,  title="Proportion of Variance Expla
 PCAplot.df(data.norm.sub, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
 ```
 
-It appears that the samples cluster better by type after simple summing of counts, without attempting to normalize. Going forward, worked with the summed counts only.
+This variance filter reduced the number of probesets to a final set of `r nrow(data.sum.sub)`.
+
+Hierarchical clustering of cell types based on the expressed probes with a mad variance above 0.5 matches the initial clustering.  
+
+As it appears that the samples cluster better by type after simple summing of counts, going forward I worked with the summed counts only.
 
 ## NMF
 
-### Estimate factoriation rank
+### Estimating the factorization rank
 
->A critical parameter in NMF is the factorization rank r. It denes the number of metagenes used
+>A critical parameter in NMF is the factorization rank r. It determines the number of metagenes used
 to approximate the target matrix. Given a NMF method and the target matrix, a common way of
-deciding on r is to try dierent values, compute some quality measure of the results, and choose
+deciding on r is to try different values, compute some quality measure of the results, and choose
 the best value according to this quality criteria.
 
 #### Using metrics:
@@ -182,17 +207,17 @@ in the RSS is lower than the decrease of the RSS obtained from random data.
 
 ```{r estimatefactoriziationrank, results='hide', cache=TRUE}
 groups.sum <-  as.factor(eset.sum$group_short)
-estim.sum <- nmfEstimateRank(eset.sum, range=2:7, nrun=TRAIN)
+estim.sum <- nmf(eset.sum, 2:7, nrun = TRAIN)
 plot(estim.sum)
 
 # shuffle original data to look for overfitting
 eset.sum.rand <- randomize(eset.sum)
 # estimate quality measures from the shuffled data (use default NMF algorithm)
-estim.sum.rand <- nmf(eset.sum.rand, 2:8, nrun = TRAIN)
+estim.sum.rand <- nmf(eset.sum.rand, 2:7, nrun = TRAIN)
 # plot measures on same graph
 plot(estim.sum, estim.sum.rand)
 ```
-harvest
+
 #### Qualitative assessment
 
 Examining heatmaps of the consensus matrix for each value of the rank is useful to see if the clusters obtained correspond to known classes.
@@ -208,11 +233,13 @@ Going forward, I only looked at factorization ranks of 3 to 5.
 ### Comparing algorithms
 
 ```{r comparealgs, cache=TRUE}
-res.multi.method.3 <- nmf(eset.sum, 3, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
-res.multi.method.4 <- nmf(eset.sum, 4, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
-res.multi.method.5 <- nmf(eset.sum, 5, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
-                      
-save.image(file.path(resultsDir,  "RDATA"))
+res.multi.method.3 <- nmf(eset.sum, 3, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+res.multi.method.4 <- nmf(eset.sum, 4, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+res.multi.method.5 <- nmf(eset.sum, 5, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+
+plot(res.multi.method.3)                     
+plot(res.multi.method.4)
+plot(res.multi.method.5)
 ```
 
 #basismap(bestFit, subsetRow=TRUE)
