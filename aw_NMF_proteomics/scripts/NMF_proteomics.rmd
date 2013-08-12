@@ -1,0 +1,219 @@
+```{r PBMCsetup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# NMF ANALYSES OF PROTEOMIC DATA
+
+---
+
+Analysis of proteomic data for [Leo Wang](mailto:LKOBZIK@hsph.harvard.edu) in the Wager's group at the Joslin.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.x
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots.
+
+## Libraries
+
+```{r libraries}
+library(NMF)
+library(xlsx) # library for outputting Excel files
+options(java.parameters = "-Xmx1024m")
+
+library(genefilter)
+library(ggdendro)
+library(ggplot2)
+PCAplot.df <- function(df=NULL, meta.df=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1, numcomponents=6){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  myPca.core <- prcomp(t(df))
+  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:numcomponents])
+  # SD of components
+  colors <- colorpalette[factor(as.character(unlist(meta.df[,categories])))]
+  legend_values=unique(cbind(colors, as.character(meta.df[,categories])))
+  pairs(tmpPCAData.core, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+}
+PCAplot.sd.df <- function(df=NULL, meta.df=NULL, title=NULL){
+  myPca.core <- prcomp(t(df))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+  }
+source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
+
+row2colnames <- function(x, rowid){
+  dimnames(x)[[2]] <- x[rowid,]
+  x <- x[-(grep(rowid, row.names(x))),]
+  return(x)
+}
+as.num <- function(x){as.numeric(as.character(unlist(x)))}
+```
+
+## Variables
+
+```{r variables}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/aw_NMF_proteomics/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/aw_NMF_proteomics/"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/aw_NMF_proteomics/")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/aw_NMF_proteomics"
+    } else {
+      baseDir <- "/Volumes/ody/consults/aw_NMF_proteomics"
+      }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+
+TRAIN=50
+RUN=200
+```
+
+## Load in Data
+
+- log transform to stabilize variance
+
+```{r dataload}
+data <- read.xlsx(file.path(dataDir, "michael.xls"), sheetIndex=3)
+metadata <- read.xlsx(file.path(metaDir, "metadata.xls"), sheetIndex=1) 
+
+annot <- data[,which(metadata$datatype=="descriptor")]
+
+data.sum <- data[,which(metadata$datatype=="sum")]
+data.sum <- log2(data.sum)res
+metadata.sum <- subset(metadata, datatype=="sum")
+metadata.sum <- col2rownames(metadata.sum, "columnid", FALSE)
+eset.sum <- ExpressionSet(assayData=as.matrix(data.sum), phenoData=new("AnnotatedDataFrame", data = metadata.sum), featureData=new("AnnotatedDataFrame", data=annot))
+
+data.norm <- data[,which(metadata$datatype=="norm")]
+data.norm <- log2(data.norm)
+metadata.norm <- subset(metadata, datatype=="norm")
+metadata.norm <- col2rownames(metadata.norm, "columnid", FALSE)
+eset.norm <- ExpressionSet(assayData=as.matrix(data.norm), phenoData=new("AnnotatedDataFrame", data = metadata.norm), featureData=new("AnnotatedDataFrame", data=annot))
+```
+
+## Initial Clustering
+
+```{r clustering}
+plot_dendro <- function(x, meta.x, title="", metadata.colname.identifier="columnid", labels.colname="group_short") {
+  myDist <- dist(t(x))
+  myTree <-hclust(myDist)
+  dhc <- as.dendrogram(myTree)
+  ddata <- dendro_data(dhc, type="rectangle")
+  ddata$labels <- merge(ddata$labels, meta.x, by.x="label", by.y=metadata.colname.identifier)
+  ggplot(segment(ddata)) +
+    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+    theme_dendro() +
+    geom_text(data=label(ddata), aes(x=x, y=y, label=group_short, color=group_short, hjust=-0.1), size=6) +
+    coord_flip() + scale_y_reverse(expand=c(0.2, 50)) +
+    theme(axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank()) +
+    ggtitle(title)
+  }
+
+plot_dendro(data.sum, metadata.sum, title="Summed Data")
+plot_dendro(data.norm, metadata.norm, title="Normalized Data")
+```
+
+## Principle Component Analyses
+
+```{r PCA}
+PCAplot.sd.df(data.sum, metadata.sum,  title="Proportion of Variance Explained by Components  - Summed Data")
+PCAplot.df(data.sum, metadata.sum, categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
+PCAplot.sd.df(data.norm, metadata.norm,  title="Proportion of Variance Explained by Components - Normalized Data")
+PCAplot.df(data.norm, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
+```
+
+Looks promising, though it would be nice to see the BMM and LSC samples clustering together more tightly.
+
+## Remove proteins with low variance between samples
+
+- run clustering again
+
+```{r lowvarremove}
+rowMads.sum <- apply(data.sum, 1, mad)
+ggplot(as.data.frame(rowMads.sum), aes(x=rowMads.sum))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Summed Data")
+rowMads.norm <- apply(data.norm, 1, mad)
+ggplot(as.data.frame(rowMads.norm), aes(x=rowMads.norm))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Normed Data")
+
+data.sum.sub <- data.sum[which(rowMads.sum>0.5),]
+annot.sum.sub <- annot[which(rowMads.sum>0.5),]
+
+data.norm.sub <- data.norm[which(rowMads.norm>0.5),]
+annot.norm.sub <- annot[which(rowMads.norm>0.5),]
+
+## dendrograms
+plot_dendro(data.sum.sub, metadata.sum, title="Summed Data")
+plot_dendro(data.norm.sub, metadata.norm, title="Normalized Data")
+## PCA plots
+PCAplot.sd.df(data.sum.sub, metadata.sum,  title="Proportion of Variance Explained by Components  - Summed Data")
+PCAplot.df(data.sum.sub, metadata.sum, categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
+PCAplot.sd.df(data.norm.sub, metadata.norm,  title="Proportion of Variance Explained by Components - Normalized Data")
+PCAplot.df(data.norm.sub, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
+```
+
+It appears that the samples cluster better by type after simple summing of counts, without attempting to normalize. Going forward, worked with the summed counts only.
+
+## NMF
+
+### Estimate factoriation rank
+
+>A critical parameter in NMF is the factorization rank r. It denes the number of metagenes used
+to approximate the target matrix. Given a NMF method and the target matrix, a common way of
+deciding on r is to try dierent values, compute some quality measure of the results, and choose
+the best value according to this quality criteria.
+
+#### Using metrics:
+>(Brunet et al. 2004) proposed to take the first value of r for which the cophenetic coefficient starts
+decreasing, (Hutchins et al. 2008) suggested to choose the first value where the RSS curve presents
+an inflection point, and (Frigyesi et al. 2008) considered the smallest value at which the decrease
+in the RSS is lower than the decrease of the RSS obtained from random data.
+
+```{r estimatefactoriziationrank, results='hide', cache=TRUE}
+groups.sum <-  as.factor(eset.sum$group_short)
+estim.sum <- nmfEstimateRank(eset.sum, range=2:7, nrun=TRAIN)
+plot(estim.sum)
+
+# shuffle original data to look for overfitting
+eset.sum.rand <- randomize(eset.sum)
+# estimate quality measures from the shuffled data (use default NMF algorithm)
+estim.sum.rand <- nmf(eset.sum.rand, 2:8, nrun = TRAIN)
+# plot measures on same graph
+plot(estim.sum, estim.sum.rand)
+```
+harvest
+#### Qualitative assessment
+
+Examining heatmaps of the consensus matrix for each value of the rank is useful to see if the clusters obtained correspond to known classes.
+
+```{r estimatefactoriziationrank2, results='hide'}
+consensusmap(estim.sum,  annCol=as.character(unlist(eset.sum$group_short )),  labCol=groups.sum, labRow=groups.sum)
+```
+
+It appears that there are 3-5 components that can be used to divide the samples. At a low stringency level, with only 3 components (or metagenes), we can separately classify the LSC and BMM  samples, but not the PM and RBM samples. Increasing the stringency, with 5 components we can classify the PM and RBM samples, though the BMM samples classify separately at this level. This suggests a model where LSC and BMM samples are largely unique while PM and RBM samples are subgroups of a larger group.
+
+Going forward, I only looked at factorization ranks of 3 to 5. 
+
+### Comparing algorithms
+
+```{r comparealgs, cache=TRUE}
+res.multi.method.3 <- nmf(eset.sum, 3, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
+res.multi.method.4 <- nmf(eset.sum, 4, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
+res.multi.method.5 <- nmf(eset.sum, 5, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = list("t", "v"))
+                      
+save.image(file.path(resultsDir,  "RDATA"))
+```
+
+#basismap(bestFit, subsetRow=TRUE)
+#coefmap(bestFit, labCol=groups.sum)
