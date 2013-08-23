@@ -1,4 +1,4 @@
-```{r PBMCsetup, echo=FALSE}
+```{r setup, echo=FALSE}
 opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
 options(width=200)
 ```
@@ -7,7 +7,7 @@ options(width=200)
 
 ---
 
-Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. PBMC.samples.
+Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
@@ -21,7 +21,7 @@ The sections below provide code to reproduce the included results and plots.
 
 ## General purpose R libraries necessary for analysis
 
-```{r PBMCgeneral_libraries}
+```{r general_libraries}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
@@ -35,7 +35,7 @@ options(java.parameters = "-Xmx1024m")
 ## Locations of directories for data, metadata and results
 - also misc. variables
 
-```{r PBMCgeneral_directories}
+```{r general_directories}
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
   baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
@@ -50,9 +50,20 @@ metaDir <- file.path(baseDir, "meta")
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 ````
 
+Load in normalized data from virtualarray?
+
+- need to combine the GPL96 and GPL97 samples from GSE8650 at some point, or just drop the GPL97 (U133B) arrays
+
+
+
+
 ## Load in raw and [RMA][1] normalized AffyBatch microarray data, as well as the top differentially expressed genes from the [limma][2]  [analysis][6]
 
-```{r PBMCload_affybatch, echo=FALSE}
+
+
+
+
+```{r load_affybatch, echo=FALSE}
 load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.topstats.PBMC.U133Plus2.0"))
 ```
 
@@ -67,11 +78,13 @@ From their site, [The Gene Expression Barcode][3]
 
 ## Load in necessary [Bioconductor][4] libraries
 
-```{r PBMCbarcode_libraries}
+```{r barcode_libraries}
 # frozen RMA and barcoding library
 library(frma) 
 # previously analyzed dataset from same array
 library(hgu133plus2frmavecs)
+library(hgu133afrmavecs)
+library(hugene.1.0.st.v1frmavecs)
 # for pretty dendrograms
 library(ggdendro)
 # for contrast matrix
@@ -88,7 +101,7 @@ Using the [frma][5] Bioconductor libraray. As described in *McCall MN, Bolstad B
 
 Used the same samples as the previous limma analysis.
 
-```{r PBMCfrma_run, cache=TRUE}
+```{r frma_run, cache=TRUE}
 mic.frma <- frma(mic.raw, summarize="random_effect")
 save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
 bc <- barcode(mic.frma) 
@@ -99,7 +112,7 @@ dimnames(bc)[[2]] <- as.vector(unlist(pd[which(row.names(pd) %in% dimnames(bc)[[
 ## Compare hierarchal clustering  before and after barcoding
 - very little change
 
-```{r PBMCbarcode_clustering, fig.width=12, fig.height=12}
+```{r barcode_clustering, fig.width=12, fig.height=12}
 rma.exprs <- exprs(mic.norm.eset)
 colnames(rma.exprs) <- pData(mic.frma)$stage
 myDist.pre <- dist(t(rma.exprs))
@@ -149,25 +162,25 @@ rm(p.pre, p.bc, ddata.bc, dhc.bc, myTree.bc, myDist.bc, ddata.pre, dhc.pre, myTr
 
 #### Setup design and contrast matrices 
 
-Same setup as for the previous limma analysis.
+Same setup as for the previous limma [analysis][6]
 
-```{r PBMCdesign}
+```{r design}
 design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
 # make sure the headings match
 colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
 ```
 
-```{r PBMCcontrastmatrix}
+```{r contrastmatrix}
 contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
 ```
 
 ## Heatmaps of barcoded expression data
 
-### Top 100 differentially expressed genes from the previous standard non-barcoded, RMA normalized, limma  data
+### Top 100 differentially expressed genes from the [previous][6] standard non-barcoded, RMA normalized, limma  data
 - for comparison 
 - again for both genders together, and separate plots for female and male genders
 
-```{r PBMCheatmap_annotation_colors}
+```{r heatmap_annotation_colors}
    # annotation colors
   study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
   names(study_colors) <- unique(unlist(pd$study))
@@ -180,7 +193,7 @@ contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels
 
 - heatmaps
 
-```{r PBMCbarcode_heatmaps, fig.height=18, fig.width=18}
+```{r barcode_heatmaps, fig.height=18, fig.width=18}
 for(n in 1:3) {
   # get stages involved in this comparison, their sample ids, and barcode data
   contrast <- dimnames(contrast.matrix)$Contrasts[n]
@@ -203,20 +216,20 @@ for(n in 1:3) {
   heatmap.annots$ID <- NULL
   ## Heatmaps
   # both genders
-  pheatmap(as.matrix(top.barcodes.contrast), color=c("blue", "red"), annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=contrast, show_colnames=F, fontsize=18, fontsize_row=10, cluster_cols=FALSE, cluster_rows=TRUE) 
+  pheatmap(as.matrix(top.barcodes.contrast), color=c("blue", "red"), annotation=heatmap.annots, annotation_colors=ann_colors, legend_breaks=c(0,1), main=contrast, show_colnames=F, fontsize=18, fontsize_row=10, cluster_cols=FALSE, cluster_rows=T) 
   # female gender
   top.barcodes.contrast.female <- top.barcodes.contrast[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(as.matrix(top.barcodes.contrast.female), color=c("blue", "red"), annotation=subset(heatmap.annots, gender=="FEMALE"), main=paste(contrast, "(FEMALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10,legend_breaks=c(0,1), annotation_colors=ann_colors, cluster_cols=FALSE, cluster_rows=TRUE) 
+  pheatmap(as.matrix(top.barcodes.contrast.female), color=c("blue", "red"), annotation=subset(heatmap.annots, gender=="FEMALE"), main=paste(contrast, "(FEMALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10,legend_breaks=c(0,1), annotation_colors=ann_colors, cluster_cols=F, cluster_rows=T) 
   # male gender
   top.barcodes.contrast.male <- top.barcodes.contrast[,which(pData.contrast$gender=="MALE")]
-  pheatmap(as.matrix(top.barcodes.contrast.male), color=c("blue", "red"), annotation=subset(heatmap.annots,gender=="MALE"), main=paste(contrast, "(MALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10, annotation_colors=ann_colors, legend_breaks=c(0,1), cluster_cols=FALSE, cluster_rows=TRUE) 
+  pheatmap(as.matrix(top.barcodes.contrast.male), color=c("blue", "red"), annotation=subset(heatmap.annots,gender=="MALE"), main=paste(contrast, "(MALE)", sep=" "),show_colnames=F, fontsize=18, fontsize_row=10, annotation_colors=ann_colors, legend_breaks=c(0,1), cluster_cols=F, cluster_rows=T) 
   }
 # cleanup
 rm(n, contrast, stages, sample.indices, pData.contrast, heatmap.annots, gender_colors, stage_colors, study_colors, top.IDs.contrast, top.barcodes.contrast, top.barcodes.contrast.female, top.barcodes.contrast.male)
 ```
 
 
-As with the whole blood analyses, there are some genes that cluster well by age group, but also many that are homogenous across age groups. In cases that cluster by age group, it is difficult to separate study specific effects from age group effects.
+Once again, there are some genes that cluster well by age group, but also many that are homogenous across age groups. In cases that cluster gy age group, it is difficult to separate study specific effects from age group effects.
 
 Once again, independent analyses of the barcoded data should allow the barcoding process to better adjust for batch effects.
 
@@ -226,7 +239,7 @@ We can try to identify probes with consistent differences between the cohorts by
 
 ### The function to calculate binary entropy
 
-```{r PBMCbinary_entropy_function}
+```{r binary_entropy_function}
 binaryEntropy <- function(v) {
   # Proportion of probes found to be expressed
   p <- sum(v) / length(v)
@@ -244,7 +257,7 @@ In the first passs I allowd relatively more intra-group entropy (<0.3), while al
   
 You can see in these heatmaps that there are still some fairly strong study specific effects, so more stringent intra-group entropy cutoffs may be necessary.
 
-```{r PBMCfilters1}
+```{r filters1}
 intra.entropycutoff <- 0.3
 
 inter.entropycutoff <- 0.3
@@ -254,7 +267,7 @@ all(colnames(bc)==pData(mic.frma)$ID)
 ```
 
 
-```{r PBMCbarcode_diff_heatmap0.3, fig.width=18, fig.height=18}
+```{r barcode_diff_heatmap0.3, fig.width=18, fig.height=18}
 # filter and output heatmap for each contrast
 for (n in 1:3) {
   contrast <- dimnames(contrast.matrix)$Contrasts[n]
@@ -288,7 +301,7 @@ for (n in 1:3) {
   output.entropies.contrast <- entropies.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff]
   output <- cbind(probeID, cbind(symbol, cbind(output.entropies.stage, cbind(output.entropies.contrast, output))))
   names(output)[3:5] <- c(paste("intra", c(stage.1,stage.2), "entropy", sep="_" ), "overall_entropy")
-  write.table(output, file.path(resultsDir, "PBMC", paste("U133_2.0Plus.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+  write.table(output, file.path(resultsDir, paste("U133_2.0Plus.PBMC.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
   ## Heatmaps
   # annotations for heatmaps
   heatmap.annots <- pData.contrast[,c("ID", "study", "stage", "gender")]
@@ -312,28 +325,28 @@ for (n in 1:3) {
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
-[Adult vs. Child](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.3.adult-child.xls)  
-[Adult vs. Neonate](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.3.adult-neonate.xls)  
-[Neonate vs. Child](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.3.neonate-child.xls) 
+[Adult vs. Child](./results/U133_2.0Plus.PBMC.barcode.entropy.cutoff.0.3.adult-child.xls)  
+[Adult vs. Neonate](./results/U133_2.0Plus.PBMC.barcode.entropy.cutoff.0.3.adult-neonate.xls)  
+[Neonate vs. Child](./results/U133_2.0Plus.PBMC.barcode.entropy.cutoff.0.3.neonate-child.xls) 
 
 For the second pass, I imposed stricter criteria for intra-group entropy (<0.275) and let the entropy across both groups be higher (>0.3) than this value.
 - this is the actually about the lowest you can set the intra-group entropy and still get any results with higher entropy across the groups
 
-You can see from the heatmaps that there are fewer study specific effects. The tradeoff is that you get fewer genes to work with.
+You can see from the heatmaps that there are fewer study specific effects. As you can see, the tradeoff is that you get fewer genes to work with.
 
-```{r PBMCfilters2}
+```{r filters2}
 intra.entropycutoff <- 0.275
 inter.entropycutoff <- 0.3
 ```
 
-```{r PBMCbarcode_diff_heatmap0.25, ref.label='PBMCbarcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```{r barcode_diff_heatmap0.25, ref.label='barcode_diff_heatmap0.3', fig.width=18, fig.height=18}
 ```
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
-[Adult vs. Child](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-child.xls)  
-[Adult vs. Neonate](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-neonate.xls)  
-[Neonate vs. Child](./results/PBMC/U133_2.0Plus.barcode.entropy.cutoff.0.275.neonate-child.xls)
+[Adult vs. Child](./results/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-child.xls)  
+[Adult vs. Neonate](./results/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-neonate.xls)  
+[Neonate vs. Child](./results/U133_2.0Plus.barcode.entropy.cutoff.0.275.neonate-child.xls)
 
 [1]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
 [2]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
