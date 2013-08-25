@@ -3,9 +3,11 @@ import yaml
 import glob
 import os
 import difflib
-from bcbio.utils import safe_makedir
+from bcbio.utils import safe_makedir, flatten
 import subprocess
 from bcbio.distributed.transaction import file_transaction
+from bcbio.bam.fastq import (filter_reads_by_length,
+                             filter_single_reads_by_length)
 
 
 def main(config_file, fastq_dir):
@@ -35,7 +37,17 @@ def main(config_file, fastq_dir):
                % (to_trim[0], pair[0]))
         out_dir = os.path.join(cutadapt_dir, os.path.basename(pair[0]))
         out_files.append(_trim_from_front(pair[0], to_trim[0]))
-
+        if len(pair) > 1:
+            print ("Trimming off %s and any bases before it from %s."
+                   % (to_trim[1], pair[1]))
+            out_files.append(_trim_from_front(pair[1], to_trim[1]))
+    out_files = list(flatten(out_files))
+    out_files = combine_pairs(out_files)
+    for pair in out_files:
+        if len(pair) > 1:
+            filter_reads_by_length(pair[0], pair[1], "fastq-sanger")
+        else:
+            filter_single_reads_by_length(pair[0], "fastq-sanger")
 
 def _is_barcode_known(barcode, config):
     barcodes = config["barcodes"].keys()
@@ -58,7 +70,7 @@ def _trim_from_front(fq, sequence):
         tx_trimmed = tx_files[1]
         tx_untrimmed = tx_files[0]
         tx_info = tx_files[2]
-        cmd = ("cutadapt -m 30 --front={sequence} --overlap=10 --output={tx_trimmed} "
+        cmd = ("cutadapt --front={sequence} --overlap=10 --output={tx_trimmed} "
                "--untrimmed={tx_untrimmed} {fq} > {tx_info}")
         print ("Trimming %s with cutadapt using the command "
                "%s." % (fq, cmd.format(**locals())))

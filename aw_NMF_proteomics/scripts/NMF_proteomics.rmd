@@ -1,18 +1,19 @@
 ```{r PBMCsetup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev='CairoSVG')
 options(width=200)
 ```
 
 # NMF ANALYSES OF PROTEOMIC DATA
 
 ---
-## Summary 
 
-Analysis of proteomic data for [Leo Wang](mailto:LKOBZIK@hsph.harvard.edu) in the Wager's group at the Joslin.
+## Summary  
 
-Nonnegative matrix factorization (NMF) analysis was conducted on the samples to explore sample similarity and to identify proteins/genes that might be characteristic for individual isolated cell types. NMF tries to identify 'factors' (or metagenes, a weighted list of genes) that best describe individual samples. This is useful to not only identify how similar the samples are, but also in which way they are similar.
+Analysis of proteomic data for [Leo Wang](mailto:Leo.Wang@childrens.harvard.edu) in the Wager's group at the Joslin.
 
-Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.x
+Nonnegative matrix factorization [(NMF)][1] analysis was conducted on the samples to explore sample similarity and to identify proteins/genes that might be characteristic for individual isolated cell types. NMF tries to identify 'factors' (or metagenes, a weighted list of genes) that best describe individual samples. This is useful to not only identify how similar the samples are, but also in which way they are similar.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
 The most recent update of this html document occurred: `r date()`
 
@@ -29,46 +30,25 @@ library(NMF)
 library(genefilter)
 library(ggdendro)
 library(ggplot2)
+library(GOstats)
+library(biomaRt)
+library(AnnotationForge)
+library(plyr)
+library(googleVis)
+
+ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl")
+attributes <- listAttributes(ensembl)
+filters <- listFilters(ensembl)
 ```
 
 ### Functions
 
 ```{r functions}
-PCAplot.df <- function(df=NULL, meta.df=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1, numcomponents=6){
-  alpha <- sprintf("%x", ceiling(alpha*255))
-  colorpalette <- paste(colorpalette, alpha, sep="")
-  myPca.core <- prcomp(t(df))
-  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:numcomponents])
-  # SD of components
-  colors <- colorpalette[factor(as.character(unlist(meta.df[,categories])))]
-  legend_values=unique(cbind(colors, as.character(meta.df[,categories])))
-  pairs(tmpPCAData.core, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
-  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
-}
-PCAplot.sd.df <- function(df=NULL, meta.df=NULL, title=NULL){
-  myPca.core <- prcomp(t(df))
-  # SD of components
-  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
-  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
-  sdevdf$cum <- cumsum(sdevdf$prop)
-  ggplot(sdevdf, aes(x=X2, y=prop)) + 
-    geom_point(size=4, color="red") + 
-    scale_x_continuous('Component') + 
-    scale_y_continuous('Standard Deviation') +
-    ggtitle(title) +
-    geom_line(data=sdevdf, aes(x=X2, y=cum))
-  }
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 
-row2colnames <- function(x, rowid){
-  dimnames(x)[[2]] <- x[rowid,]
-  x <- x[-(grep(rowid, row.names(x))),]
-  return(x)
-}
-as.num <- function(x){as.numeric(as.character(unlist(x)))}
-
-plot_dendro <- function(x, meta.x, title="", metadata.colname.identifier="columnid", labels.colname="group_short") {
-  myDist <- dist(t(x))
+plot_dendro <- function(x, title="", metadata.colname.identifier="columnid", labels.colname="group_short") {
+  meta.x <- pData(x)
+  myDist <- dist(t(exprs(x)))
   myTree <-hclust(myDist)
   dhc <- as.dendrogram(myTree)
   ddata <- dendro_data(dhc, type="rectangle")
@@ -102,7 +82,8 @@ metaDir <- file.path(baseDir, "meta")
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 
 TRAIN=50
-RUN=200
+RUN=1000
+mad.cutoff=0.5
 ```
 
 ---
@@ -111,88 +92,101 @@ RUN=200
 
 ### Load in Data
 
-Both the summed counts and the "normalized" counts were initially analysed in tandem to assess which method led to better results. All counts were log transformed to stabilize the variance.
+Both the summed counts and the "normalized" counts were initially analysed in tandem to assess which method led to better results. All counts  log transformed to stabilize variance.
 
 ```{r dataload}
 data <- read.delim(file.path(dataDir, "data.txt"))
 metadata <- read.delim(file.path(metaDir, "metadata.txt")) 
 
+# some very hacky text manipulations occur here to label the results, not sure how to handle rows with the same protein annotations, ended up just pasting the rownumber onto the first gene in the GeneName column
+data$GeneName <- lapply(data$GeneName, function(x) gsub(", ", "/", x))
+row.names(data) <- paste(row.names(data), annot$GeneName, sep="_")
+
+# grab the annotation columns
 annot <- data[,which(metadata$datatype=="descriptor")]
 
+# grab the columns with summed data and log transform, stuff into an ExpressionSet object
 data.sum <- data[,which(metadata$datatype=="sum")]
 data.sum <- log2(data.sum)
 metadata.sum <- subset(metadata, datatype=="sum")
 metadata.sum <- col2rownames(metadata.sum, "columnid", FALSE)
 eset.sum <- ExpressionSet(assayData=as.matrix(data.sum), phenoData=new("AnnotatedDataFrame", data = metadata.sum), featureData=new("AnnotatedDataFrame", data=annot))
 
+# grab the columns with "normed" data and log transform, stuff into an ExpressionSet object
 data.norm <- data[,which(metadata$datatype=="norm")]
 data.norm <- log2(data.norm)
 metadata.norm <- subset(metadata, datatype=="norm")
 metadata.norm <- col2rownames(metadata.norm, "columnid", FALSE)
 eset.norm <- ExpressionSet(assayData=as.matrix(data.norm), phenoData=new("AnnotatedDataFrame", data = metadata.norm), featureData=new("AnnotatedDataFrame", data=annot))
+
+rm(data.sum, metadata.sum, data.norm, metadata.norm)
 ```
 
 ### Initial Clustering
 
 Initial hierarchical clustering based on the euclidian distance of individual samples.
 
-```{r clustering}
-plot_dendro(data.sum, metadata.sum, title="Summed Data")
-plot_dendro(data.norm, metadata.norm, title="Normalized Data")
+```{r clustering, fig.show='hold', out.width = '50%'}
+plot_dendro(eset.sum,  title="Summed Data")
+plot_dendro(eset.norm, title="Normalized Data")
 ```
 
 The dendrograms look promising, particularly for the approach without any "normalization", BMM and LSC cell types cluster separately, with the RBM and PM cell types appearing to comprise a subgroup that can be further subdivided into the two separate cell types.
 
 ### Principle Component Analyses
 
-```{r PCA}
-PCAplot.sd.df(data.sum, metadata.sum,  title="Proportion of Variance Explained by Components  - Summed Data")
-PCAplot.df(data.sum, metadata.sum, categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
-PCAplot.sd.df(data.norm, metadata.norm,  title="Proportion of Variance Explained by Components - Normalized Data")
-PCAplot.df(data.norm, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
+```{r PCA, out.width='50%', fig.show='hold'}
+PCAplot.sd(eset.sum,   title="Proportion of Variance Explained by Components  - Summed Data")
+PCAplot(eset.sum,  categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
+PCAplot.sd(eset.norm,   title="Proportion of Variance Explained by Components - Normalized Data")
+PCAplot(eset.norm,  categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
 ```
 
-The first four components explain ~75% of the sample differences, and when compared pairwise, the different combinations of these components can separate out the various combinations of the cell types.
+The first four components explain ~75% of the sample differences for both approaches to the data, and when compared pairwise, the different combinations of these components can separate out the various combinations of the cell types.
 
 ### Remove proteins with low variance between samples
 
-To speed up the computationally intensive NMF clustering the `r nrow(data.sum))`  proteins were filtered to retain only those proteins exhibiting a median absolute deviation from the median (mad) of more than 0.5 across all samples.
+To speed up the computationally intensive NMF clustering, the `r nrow(exprs(eset.sum))`  proteins were filtered to retain only those proteins exhibiting a median absolute deviation from the median (mad) of more than `r mad.cutoff` across all samples.
 
-Note that this is not a test for differential protein levels. Instead, filtering out proteins exhibiting very little variance across all samples removes proteins that are unlikely to distinguish between cell types.
+Note that this is not a test for differential protein levels. Instead, filtering out proteins exhibiting very little variance across all samples removes those that are unlikely to distinguish between cell types.
+
+In the density plots below, the red line represents the mad cutoff used. I experimented with lower cutoffs, but they resulted in  mixing of sample types in the subsequent dendrograms (though paradoxically, a cutoff of zero (i.e. unfiltered data) does  not).
+
+```{r lowvarremove, out.width='50%', fig.show='hold'}
+rowMads.sum <- apply(exprs(eset.sum), 1, mad)
+ggplot(as.data.frame(rowMads.sum), aes(x=rowMads.sum))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Summed Data")+geom_vline(x=mad.cutoff, col="red", lwd=0.2)
+rowMads.norm <- apply(exprs(eset.norm), 1, mad)
+ggplot(as.data.frame(rowMads.norm), aes(x=rowMads.norm))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Normed Data")+geom_vline(x=mad.cutoff, col="red", lwd=0.2)
+
+eset.sum.sub <- eset.sum[which(rowMads.sum>mad.cutoff),]
+eset.norm.sub <- eset.norm[which(rowMads.norm>mad.cutoff),]
+```
+
+This variance filter reduced the number of probesets to a final set of `r nrow(exprs(eset.sum.sub))`.
 
 To assess the effects of the filtering, I ran the clustering again.
 
-```{r lowvarremove}
-rowMads.sum <- apply(data.sum, 1, mad)
-ggplot(as.data.frame(rowMads.sum), aes(x=rowMads.sum))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Summed Data")
-rowMads.norm <- apply(data.norm, 1, mad)
-ggplot(as.data.frame(rowMads.norm), aes(x=rowMads.norm))+geom_density()+xlab("Mean Average Deviation")+ggtitle("Protein Signal Variation in Normed Data")
-
-data.sum.sub <- data.sum[which(rowMads.sum>0.5),]
-annot.sum.sub <- annot[which(rowMads.sum>0.5),]
-
-data.norm.sub <- data.norm[which(rowMads.norm>0.5),]
-annot.norm.sub <- annot[which(rowMads.norm>0.5),]
-
+```{r lowvarclusteringplots, out.width='50%', fig.show='hold'}
 ## dendrograms
-plot_dendro(data.sum.sub, metadata.sum, title="Summed Data")
-plot_dendro(data.norm.sub, metadata.norm, title="Normalized Data")
+plot_dendro(eset.sum.sub,  title="Summed Data")
+plot_dendro(eset.norm.sub, title="Normalized Data")
 ## PCA plots
-PCAplot.sd.df(data.sum.sub, metadata.sum,  title="Proportion of Variance Explained by Components  - Summed Data")
-PCAplot.df(data.sum.sub, metadata.sum, categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
-PCAplot.sd.df(data.norm.sub, metadata.norm,  title="Proportion of Variance Explained by Components - Normalized Data")
-PCAplot.df(data.norm.sub, metadata.norm, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
+PCAplot.sd(eset.sum.sub,   title="Proportion of Variance Explained by Components  - Summed Data")
+PCAplot(eset.sum.sub,  categories="group_short", title="PCA - Summed Data", colorpalette=cbPalette, numcomponents=4)
+PCAplot.sd(eset.norm.sub,   title="Proportion of Variance Explained by Components - Normalized Data")
+PCAplot(eset.norm.sub, categories="group_short", title="PCA - Normalized Data", colorpalette=cbPalette, numcomponents=4)
 ```
 
-This variance filter reduced the number of probesets to a final set of `r nrow(data.sum.sub)`.
-
-Hierarchical clustering of cell types based on the expressed probes with a mad variance above 0.5 matches the initial clustering.  
+Hierarchical clustering of cell types based on the expressed probes with a mad variance above `r mad.cutoff` matches the initial clustering.  
 
 As it appears that the samples cluster better by type after simple summing of counts, going forward I worked with the summed counts only.
 
-## NMF
+---
+
+## NMF Preparation
 
 ### Estimating the factorization rank
+From ["An introduction to NMF package"][2]
 
 >A critical parameter in NMF is the factorization rank r. It determines the number of metagenes used
 to approximate the target matrix. Given a NMF method and the target matrix, a common way of
@@ -200,47 +194,272 @@ deciding on r is to try different values, compute some quality measure of the re
 the best value according to this quality criteria.
 
 #### Using metrics:
+
+From ["An introduction to NMF package"][2]
+
 >(Brunet et al. 2004) proposed to take the first value of r for which the cophenetic coefficient starts
 decreasing, (Hutchins et al. 2008) suggested to choose the first value where the RSS curve presents
 an inflection point, and (Frigyesi et al. 2008) considered the smallest value at which the decrease
 in the RSS is lower than the decrease of the RSS obtained from random data.
 
-```{r estimatefactoriziationrank, results='hide', cache=TRUE}
-groups.sum <-  as.factor(eset.sum$group_short)
-estim.sum <- nmf(eset.sum, 2:7, nrun = TRAIN)
-plot(estim.sum)
-
-# shuffle original data to look for overfitting
-eset.sum.rand <- randomize(eset.sum)
-# estimate quality measures from the shuffled data (use default NMF algorithm)
-estim.sum.rand <- nmf(eset.sum.rand, 2:7, nrun = TRAIN)
-# plot measures on same graph
-plot(estim.sum, estim.sum.rand)
+```{r estimatefactoriziationrank, results='hide', cache=TRUE, fig.height=8, fig.width=16, out.width='100%'}
+groups.sum.sub <-  as.factor(eset.sum.sub$group_short)
+estim.sum.sub <- nmf(eset.sum.sub, 2:7, nrun = TRAIN, seed = 123456)
+plot(estim.sum.sub)
 ```
+
+These results suggest there are at least 3-5 metagenes as :
+1) the cophenetic curve starts decreasing at the 5th factorization rank
+2) the largest inflection point of the rss curve occurs at the 3rd factorization rank
+
+Even for random data, increasing factorization ranks lead to more variables to fit the data, possibly leading to overfitting the data. Too assess this, we can run the same metrics after randomly permuting the data, and comparing the performance of the original and randomized datasets. 
+
+```{r overfitcheck, results='hide',cache=TRUE, fig.height=8, fig.width=16, out.width='100%' }
+# shuffle original data to look for overfitting
+eset.sum.sub.rand <- randomize(eset.sum.sub)
+# estimate quality measures from the shuffled data (use default NMF algorithm)
+estim.sum.sub.rand <- nmf(eset.sum.sub.rand, 2:7, nrun = TRAIN, seed = 123456)
+# plot measures on same graph
+plot(estim.sum.sub, estim.sum.sub.rand)
+```
+
+In the plots above, the blue (and green) lines represent the actual data while the red (and pink) lines represent the same data after random shuffling by permuting the rows of each column, using a different permutation each time. These results show that overfitting is not an issue.
 
 #### Qualitative assessment
 
-Examining heatmaps of the consensus matrix for each value of the rank is useful to see if the clusters obtained correspond to known classes.
+We can also examine heatmaps of the consensus matrix for each value of the factorization rank to see if the clusters (or consensus blocks) obtained correspond to the known cell types.
 
-```{r estimatefactoriziationrank2, results='hide'}
-consensusmap(estim.sum,  annCol=as.character(unlist(eset.sum$group_short )),  labCol=groups.sum, labRow=groups.sum)
+```{r estimatefactoriziationrank.qualitative, results='hide', fig.width=16, fig.height=10, out.width='100%', fig.show='hold', fig.keep='last'}
+consensusmap(estim.sum.sub, annCol=as.character(unlist(eset.sum.sub$group_short )),labCol=groups.sum.sub, labRow=groups.sum.sub)
 ```
 
-It appears that there are 3-5 components that can be used to divide the samples. At a low stringency level, with only 3 components (or metagenes), we can separately classify the LSC and BMM  samples, but not the PM and RBM samples. Increasing the stringency, with 5 components we can classify the PM and RBM samples, though the BMM samples classify separately at this level. This suggests a model where LSC and BMM samples are largely unique while PM and RBM samples are subgroups of a larger group.
+It appears that there are 3-5 factors that can be used to divide the samples. At rank 3 , we can separately classify the LSC  samples , but not the BMM, PM and RBM samples. Increasing the stringency, at rank 4 we can  classify the  RBM samples ; the PM samples can be classified to some extent at rank 5. The BMM samples do not cluster to any extent at any level. 
 
-Going forward, I only looked at factorization ranks of 3 to 5. 
+This suggests a model where LSC samples are largely unique while PM and RBM samples are subgroups of a larger group. The BMM samples, while largely different from the other samples, also appear to be different from each other.
 
-### Comparing algorithms
+Going forward, I only looked at factorization ranks of 3 and 5.
 
-```{r comparealgs, cache=TRUE}
-res.multi.method.3 <- nmf(eset.sum, 3, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
-res.multi.method.4 <- nmf(eset.sum, 4, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
-res.multi.method.5 <- nmf(eset.sum, 5, list("brunet", "KL", "lee", "Frobenius", "offset", "nsNMF", "ls-nmf", "pe-nmf", "snmf/r", "snmf/l", "siNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+### Choosing an algorithm
 
-plot(res.multi.method.3)                     
-plot(res.multi.method.4)
-plot(res.multi.method.5)
+To this point, I have been using the default (*brunet*) algorithm for the gross tuning of NMF; we can further fine tune NMF by choosing an alternate algorithm.
+ 
+To do so, I ran NMF on the data using four of the most popular algorithms (with error tracking enabled), and compared the error plots. In these error plots, each track is normalized so that its first value equals one, and stops at the iteration where the method's convergence criterion was fulfilled; algorithms that converge at lower objective values are optimal.
+
+```{r comparealgs, cache=TRUE, results="hide", fig.show='hold', out.width='50%'}
+res.multi.method.3 <- nmf(eset.sum.sub, 3, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+res.multi.method.5 <- nmf(eset.sum.sub, 5, list("brunet", "KL", "lee",  "nsNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+
+plot(res.multi.method.3, main="NMF residuals - 3 metagenes")
+plot(res.multi.method.5, main="NMF residuals - 5 metagenes")
 ```
 
-#basismap(bestFit, subsetRow=TRUE)
-#coefmap(bestFit, labCol=groups.sum)
+Here, the *nsMMF* algorirthm works best for both 3 and 5 metagenes . The nsNMF approach has the slight benefit of creating 'sparse' metagenes which are easier to interpret functionally, so I proceeded with this algorithm.
+
+---
+
+## Complete NMF Algorithm
+
+The NMF analyses so far have used a low number of iterations (<50), here I ran NMF with `r RUN` iterations to get accurate a result as possible.
+
+```{r fullNMF, cache=TRUE}
+res.final.3 <- nmf(eset.sum.sub, 3, "nsNMF", nrun=RUN, .options = "t")
+res.final.5 <- nmf(eset.sum.sub, 5, "nsNMF", nrun=RUN, .options = "t")
+```
+
+---
+
+## NMF Metagene Feature Extraction
+
+We can extract the genes that comprise the metagenes that define our different classes.
+
+### Metagene features when using 3 Rank Factorization
+
+```{r rank3plots, fig.show='hold', out.width='33%'}
+consensusmap(res.final.3,  annCol=as.character(unlist(eset.sum.sub$group_short )),  labCol=groups.sum.sub, labRow=groups.sum.sub)
+coefmap(res.final.3, labCol=groups.sum.sub) # shows the individual genes in relation to metagenes and samples
+ basismap(res.final.3, subsetRow=TRUE) # shows metagnes in relation to samples
+bestfit3 <- fit(res.final.3) #extract the best fit NMf model
+fs3 <- featureScore(bestfit3) # get all the feature scores which measure specificity to which a gene contributes to a metagene
+f3 <- extractFeatures(bestfit3) # extract the features with the most specifciity for each of the metagenes
+## get unique annotations for genes (NMF returns number referenced IDs) in metagenes
+unique.metagenesymbols <- lapply(f3, function(x) {
+  genenames <- unique(unlist(fData(eset.sum.sub)[x,"GeneName"]))
+  return(genenames)
+  })
+## get number of unique genes in each metagene
+numgenes <- unlist(lapply(unique.metagenesymbols, length))
+```
+
+We can classify LSC cells by  clustering on three metagenes (of  `r numgenes[1]`,`r numgenes[2]` and `r numgenes[3]` genes respectively) with different weights for each sample. Looking at the coefficient plot, metagene 3 appears to best reflect LSC cells, metagene 2 a single BMM sample, and metagene 1 a mixture of PM, RBM and BMM samples. 
+
+We can extract the genes that make the strongest contribution to the different metagenes. The featurescore of each gene reflects the degree of specificity to which it contributes to a metagene.
+
+```{r rank3.metagenes}
+# dataframe to present the metagene features that includes both the metagene annotations and the featurescores
+metagene3.1 <- cbind(fData(eset.sum.sub)[f3[[1]],], fs3[f3[[1]]]) 
+names(metagene3.1)[4] <- "featurescore"
+metagene3.2 <- cbind(fData(eset.sum.sub)[f3[[2]],], fs3[f3[[2]]]) 
+names(metagene3.2)[4] <- "featurescore"
+metagene3.3 <- cbind(fData(eset.sum.sub)[f3[[3]],], fs3[f3[[3]]]) 
+names(metagene3.3)[4] <- "featurescore"
+
+write.table(as.matrix(metagene3.1), file=file.path(resultsDir, paste("Rank3.metagenes", 1, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene3.2), file=file.path(resultsDir, paste("Rank3.metagenes", 2, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene3.3), file=file.path(resultsDir, paste("Rank3.metagenes", 3, "xls", sep=".")), sep="\t", quote=F)
+```
+
+#### Rank 3 Metagene #3 features (LSC specific metagene)
+
+```{r LSC.metagene.print, results='asis', echo=FALSE}
+metagene3.3.gvis <- gvisTable(as.data.frame(apply(metagene3.3, 2, as.character)), options = list(width = 960, height=800))  
+print(metagene3.3.gvis, "chart")
+```
+
+[Excel file of Rank 3 metagene number 1 features](./results/Rank3.metagenes.1.xls) 
+
+[Excel file of Rank 3 metagene number 2 features](./results/Rank3.metagenes.2.xls)
+
+[Excel file of Rank 3 metagene number 3 features](./results/Rank3.metagenes.3.xls)
+
+##### Gene Ontology Analyses of LSC metagene features
+Looking for  functional enrichment (Biological Process ontologies) in the list of genes contained within the LSC metagene with the [GOstats][3]. (for a good intro to Gene Onotology see ([GO][4])) 
+
+```{r GOlsc, results='hide'}
+# extract only first gene listed, when multiple gene names found in a single annotation row 
+genes.of.interest.lsc <- unique(unlist(lapply(metagene3.3$GeneName, function(x) unlist(strsplit(x, split="/"))[1])))
+background.genes.lsc <- unique(unlist(lapply(fData(eset.sum.sub)[,"GeneName"], function(x) unlist(strsplit(x, split="/"))[1]))) # all the genes tested in the NMF analysis
+
+GO.results.lsc <- GOstats.genesymbols(genesymbols=genes.of.interest.lsc, background.genesymbols=background.genes.lsc, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" ) 
+# used the mouse4302 db here, best practices
+# but you need some sort of annotation database to link to the gene ontologies, and I at least know the microarray annotations work with GOstats
+```
+
+
+```{r GOlscprint, results='asis', echo=FALSE}
+GOresults.lsc.gvis <- gvisTable(as.data.frame(apply(GO.results.lsc, 2, as.character)))  
+print(GOresults.lsc.gvis, "chart")
+```
+
+*these GO results are likely pretty unreliable as the method 1) was originally designed to work with microarrays and 2) has no easy method to work with multi-hits in the data ie. for data points annotated with mulitple genes, I simply picked the first  gene from the annotations, an oversimplification as the mass spec data points could likely originate from multiple different genes with identical protein domains*
+
+---
+
+### Metagene features when using 5 Rank Factorization
+
+```{r rank5plots, fig.show='hold', out.width='33%'}
+consensusmap(res.final.5,  annCol=as.character(unlist(eset.sum.sub$group_short )),  labCol=groups.sum.sub, labRow=groups.sum.sub)
+coefmap(res.final.5, labCol=groups.sum.sub) # shows the individual genes in relation to metagenes and samples
+basismap(res.final.5, subsetRow=TRUE) # shows metagnes in relation to samples 
+
+bestfit5 <- fit(res.final.5) #extract the best fit NMf model
+fs5 <- featureScore(bestfit5) # get all the feature scores which measure specificity to which a gene contributes to a metagene
+f5 <- extractFeatures(bestfit5) # extract the features with the most specifciity for each of the metagenes
+## get annotations for genes (numbered) in metagenes
+unique.metagenesymbols <- lapply(f5, function(x) {
+  genenames <- unique(unlist(fData(eset.sum.sub)[x,"GeneName"]))
+  return(genenames)
+  })
+## get number of unique genes in each metagene
+numgenes <- unlist(lapply(unique.metagenesymbols, length))
+```
+
+To properly classify the RBM and PM cells, we have to use at least 5 metagenes. 
+Based on five metagenes (of  `r numgenes[1]`,`r numgenes[2]`, `r numgenes[3]` , `r numgenes[4]` and `r numgenes[5]` genes respectively) Metagene 3 & 5 reflect RBM  cells, while a combination of metagenes 4,  5 and NOT 3 best reflect PM cells. 
+
+Once again, we can extract the genes that make the strongest contribution to a metagene (here we are mainly interested in metagenes 3, 4 and 5).
+
+```{r rank5.metagenes}
+# dataframe to present the metagene features that includes annotations and the featurescores
+metagene5.1 <- cbind(fData(eset.sum.sub)[f5[[1]],], fs5[f5[[1]]]) 
+names(metagene5.1)[4] <- "featurescore"
+metagene5.2 <- cbind(fData(eset.sum.sub)[f5[[2]],], fs5[f5[[2]]]) 
+names(metagene5.2)[4] <- "featurescore"
+metagene5.3 <- cbind(fData(eset.sum.sub)[f5[[3]],], fs5[f5[[3]]]) 
+names(metagene5.3)[4] <- "featurescore"
+metagene5.4 <- cbind(fData(eset.sum.sub)[f5[[4]],], fs5[f5[[4]]]) 
+names(metagene5.4)[4] <- "featurescore"
+metagene5.5 <- cbind(fData(eset.sum.sub)[f5[[5]],], fs5[f5[[5]]]) 
+names(metagene5.5)[4] <- "featurescore"
+
+write.table(as.matrix(metagene5.1), file=file.path(resultsDir, paste("Rank3.metagenes", 1, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene5.2), file=file.path(resultsDir, paste("Rank3.metagenes", 2, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene5.3), file=file.path(resultsDir, paste("Rank3.metagenes", 3, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene5.4), file=file.path(resultsDir, paste("Rank3.metagenes", 4, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene5.5), file=file.path(resultsDir, paste("Rank3.metagenes", 5, "xls", sep=".")), sep="\t", quote=F)
+save.image(file.path(resultsDir, "RDATA.partial"))
+```
+
+[link to Excel file of Rank 5 metagene number 1 features](./results/Rank5.metagenes.1.xls)
+
+[link to Excel file of Rank 5 metagene number 2 features](./results/Rank5.metagenes.2.xls)
+
+[link to Excel file of Rank 5 metagene number 3 features](./results/Rank5.metagenes.3.xls)
+
+[link to Excel file of Rank 5 metagene number 4 features](./results/Rank5.metagenes.4.xls)
+
+[link to Excel file of Rank 5 metagene number 5 features](./results/Rank5.metagenes.5.xls)
+
+#### RBM Metagenes features (Rank 5 metagenes #3 and #5)
+
+```{r Rank5.metagenes.3and5.print, echo=FALSE, results='asis'}
+metagene5.3and5 <- rbind(metagene5.3, metagene5.5)
+metagene5.3and5.gvis <- gvisTable(as.data.frame(apply(metagene5.3and5, 2, as.character)), options = list(width = 960, height=1600))  
+print(metagene5.3and5.gvis, "chart")
+```
+
+##### Gene Ontology Analyses of RBM metagenes' features
+
+Looking for functional enrichment (Biological Process ontologies) in the list of genes contained within this metagene combination.
+
+```{r GOrbm, results='hide'}
+# split up genes in list, when multiple genes
+genes.of.interest.rbm <- unique(unlist(lapply(metagene5.3and5$GeneName, function(x) unlist(strsplit(x, split="/")))))
+background.genes.rbm <- unique(unlist(lapply(fData(eset.sum.sub)[,"GeneName"], function(x) unlist(strsplit(x, split="/")))))
+GO.results.rbm <- GOstats.genesymbols(genesymbols=genes.of.interest.rbm, background.genesymbols=background.genes.rbm, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" )
+```
+
+```{r GOrbm.print, results='asis', echo=FALSE}
+GOresults.rbm.gvis <- gvisTable(as.data.frame(apply(GO.results.rbm, 2, as.character)))  
+print(GOresults.rbm.gvis, "chart")
+```
+
+*same caveats as above apply* 
+
+#### PM Metagenes features (Rank 5 metagenes #4 and #5)
+
+```{r Rank5.metagenes.4.5.print, results='asis', echo=FALSE}
+metagene5.4and5 <- rbind(metagene5.4, metagene5.5)
+metagene5.4and5.gvis <- gvisTable(as.data.frame(apply(metagene5.4and5, 2, as.character)), options = list(width = 960, height=1600))  
+print(metagene5.4and5.gvis, "chart")
+```
+
+#### Gene Ontology Analyses of metagene features
+Looking for  functional enrichment (Biological Process ontologies) in the list of genes contained within these metagene combinations.
+
+```{r GOpm, results='hide'}
+# split up genes in list, when multiple genes
+genes.of.interest.pm <- unique(unlist(lapply(metagene5.4and5$GeneName, function(x) unlist(strsplit(x, split="/")))))
+background.genes.pm <- unique(unlist(lapply(fData(eset.sum.sub)[,"GeneName"], function(x) unlist(strsplit(x, split="/")))))
+GO.results.pm <- GOstats.genesymbols(genesymbols=genes.of.interest.pm, background.genesymbols=background.genes.pm, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" )
+```
+
+```{r GOpm.print, results='asis', echo=FALSE}
+GOresults.pm.gvis <- gvisTable(as.data.frame(apply(GO.results.pm, 2, as.character)), options = list(width = 960, height=1600))  
+print(GOresults.pm.gvis, "chart")
+```
+
+*same caveats as above apply* 
+
+----
+
+## R Session Information Summary
+
+```{r savesession, echo=FALSE}
+sessionInfo()
+save.image(file.path(resultsDir, "RDATA.full"))
+```
+
+[1]: http://www.biomedcentral.com/1471-2105/11/367 (NMF)
+[2]: http://nmf.r-forge.r-project.org/vignettes/NMF-vignette.pdf (NMF vignette)
+[3]: http://www.bioconductor.org/packages/release/bioc/html/GOstats.html (GOstats)
+[4]: http://www.geneontology.org/GO.doc.shtml (GO)
