@@ -99,6 +99,8 @@ def _bgzip_vcf(in_vcf):
     out_file = "%s.gz" % in_vcf
     if not utils.file_exists(out_file):
         subprocess.check_call(["bgzip", in_vcf])
+        #with open(in_vcf, "w") as out_handle:
+        #    out_handle.write("Gzipped to %s" % out_file)
     return out_file
 
 def vcftools_vcf_to_tped(in_vcf, base_dir, chromosome, config):
