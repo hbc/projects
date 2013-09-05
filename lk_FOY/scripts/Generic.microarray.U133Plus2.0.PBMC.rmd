@@ -93,6 +93,7 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 child.age.range <- c(5,10)
 adult.age.range <- c(18,40)
 neonate.age.range <- c(0,4)
+# THESE CANNOT OVERLAP!
 ```
 
 ### Load and parse the unified, refined and subsetted metadata file 
@@ -142,7 +143,8 @@ covars <- as.data.frame(covars)
 covars$age <- as.numeric(covars$age)
 # label samples with their stage as determined by age
 # don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
-covars$stage <- ifelse(covars$age<max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", "adult")) 
+# was mislabelling 4 year old neonates as adults!
+covars$stage <- ifelse(covars$age<=max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", ifelse(covars$age>=min(adult.age.range) & covars$age<=max(adult.age.range), "adult", NA)))
 covars <- covars[order(covars$stage),]
 ```
 

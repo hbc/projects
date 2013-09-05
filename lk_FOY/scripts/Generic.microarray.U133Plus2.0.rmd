@@ -91,6 +91,7 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 child.age.range <- c(5,10)
 adult.age.range <- c(18,40)
 neonate.age.range <- c(0,4)
+# THESE CANNOT OVERLAP!
 ```
 
 ### Load and parse the unified, refined and subsetted metadata file 
@@ -141,13 +142,15 @@ covars$age <- as.numeric(covars$age)
 # label samples with their stage as determined by age
 # don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
 covars$stage <- ifelse(covars$age<max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", "adult")) 
+covars$stage <- ifelse(covars$age<=max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", ifelse(covars$age>=min(adult.age.range) & covars$age<=max(adult.age.range), "adult", NA)))
 covars <- covars[order(covars$stage),]
 ```
 
 ### Load CEL files
 
-```{r load_data, eval=FALSE}
-mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars) 
+```{r load_data}
+mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
+mic.raw <- mic.raw[,!is.na(pData(mic.raw)$stage)]
 ```
 
 
@@ -187,6 +190,12 @@ mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
 ```
 
+### Array QC checks on normalized data with ArrayQualityMetrics without outliers
+
+```{r normQCwooutliers, eval=FALSE}
+arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm.wo.outliers"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
+```
+
 [Normalized Data QC Report after removing outlier studies](./results/QCreport_norm.wo.outliers/index.html)
 
 ```{r load_affybatch, echo=FALSE}
@@ -222,9 +231,9 @@ To perform limma, we construct two matrices. The design matrix provides a repres
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
 
 ```{r design, results="asis"}
-design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
+design <- model.matrix(~ 0+stage, data=pData(mic.norm.eset))
 # make sure the headings match
-colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
+colnames(design) <- sub("stage", "", colnames(design))
 design.gvis <- gvisTable(as.data.frame(apply(design, 2, as.character)), options=list(width=240))  
 print(design.gvis, "chart")
 ```
@@ -317,6 +326,7 @@ lapply(top.stats, function(n) {
 for(n in 1:3){
   # get the names of the stages that are being compared in this comparison
   contrast <- top.stats[[n]]$contrast
+  
   stages <- names(which(abs(contrast.matrix[,contrast])>0))
   # subset the samples and the data to those in the stages compared in this comparison
   sample.indices <- which(design[,stages[1]]>0 | design[,stages[2]]>0)

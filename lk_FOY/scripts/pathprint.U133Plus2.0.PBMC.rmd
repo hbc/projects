@@ -75,7 +75,7 @@ library(hgu133plus2.db)
 
 ## Pathprint samples - default settings
 
-```{r pathprint, cache=TRUE}
+```{r pathprint}
 mic.platform <- "GPL570"
 mic.species <- "human"
 mic.names <- pData(mic.norm.eset)$ID
@@ -227,10 +227,20 @@ for (n in 1:3) {
   row.names(heatmap.annots) <- heatmap.annots$ID
   heatmap.annots$ID <- NULL
   # both genders
-  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - unclustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  
+# female only
+  mic.f.default.contrast.sub.female <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="FEMALE")]
+  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  # male only
+  mic.f.default.contrast.sub.male <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="MALE")]
+  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
   }
 ```
+
 
 
 [1]: https://dl.dropboxusercontent.com/u/4253254/Consults/lk_FOY/April.18.2013/barcode.microarray.U133Plus2.0.html (previous barcode analysis)

@@ -35,7 +35,7 @@ options(java.parameters = "-Xmx1024m")
 ## Locations of directories for data, metadata and results
 - also misc. variables
 
-```{r PBMCgeneral_directories}
+```{r PBMCgeneral_directories, cache=TRUE}
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
   baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
