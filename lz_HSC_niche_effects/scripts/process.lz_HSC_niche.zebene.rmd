@@ -13,10 +13,12 @@ analystemail="jhutchin@hsph.harvard.edu"
 
 Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
 
+Second analysis, using increased Lycorine concentration and matched control.
+
 ---
 
 ## Methods summary
-All ZebGene 1.0 ST arrays were processed using the 'oligo' [BioConductor package][1], quality-controlled with [arrayQualityMetrics][2] and [RMA normalized][3]. Differentially expressed genes were identified using [limma][4].
+All ZebGene 1.0 ST arrays were processed using the 'oligo' [BioConductor package][1], quality-controlled with [arrayQualityMetrics][2] and [RMA normalized][3]. Batch correction was performed with the [sva][4] package via the [ComBat][5] method. Differentially expressed genes were identified using [limma][6].
 
 ---
 
@@ -134,7 +136,7 @@ validObject(affyRaw) ## sanity check
 ```
 
 ## Background correct and normalize
-The data was normalized for differential gene expression analysis using Robust Multichip Average ([RMA][5]) in the oligo BioConductor package. Here, RMA normalizes the intensity values at the probe level, and  collapses probes into "core" transcripts based on annotations provided by Affymetrix
+The data was normalized for differential gene expression analysis using Robust Multichip Average ([RMA][3]) in the oligo BioConductor package. Here, RMA normalizes the intensity values at the probe level, and  collapses probes into "core" transcripts based on annotations provided by Affymetrix
 
 ```{r normalize, results='hide', cache=TRUE}
 affyNorm <- rma(affyRaw, target="core", background=T, normalize=T)
@@ -241,7 +243,7 @@ You can use this plot to explore if the arrays cluster, and whether this is acco
 
 ## BATCH CORRECTION
 
-Correct for batch effects with ComBat from the [sva][6] package:
+Correct for batch effects with ComBat from the [sva][8] package:
 
 ```{r batchcorrect, cache=TRUE}
 library(sva)
@@ -649,7 +651,8 @@ for(n in 1:ncol(contrast.matrix)){
 [1]: http://www.bioconductor.org (BioC)
 [2]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
 [3]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
-[4]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
-[5]: http://bmbolstad.com/misc/ComputeRMAFAQ/ComputeRMAFAQ.html (RMA)
-[6]: http://www.bioconductor.org/packages/release/bioc/html/sva.html (sva)
+[4]: http://www.bioconductor.org/packages/2.12/bioc/html/sva.html (sva)
+[5]: http://www.bu.edu/jlab/wp-assets/ComBat/Abstract.html (ComBat)
+[6]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+
 
