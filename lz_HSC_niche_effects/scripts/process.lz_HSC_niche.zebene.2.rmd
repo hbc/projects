@@ -1,5 +1,5 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="CairoSVG")
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="png")
 options(width=200)
 
 ## setup report details
@@ -19,21 +19,21 @@ Second analysis, using increased Lycorine concentration and matched control.
 
 ---
 
-## Methods summary
+## Methods Summary and Workflow
+
 All ZebGene 1.0 ST arrays were processed using the 'oligo' [BioConductor package][1], quality-controlled with [arrayQualityMetrics][2] and [RMA normalized][3]. Batch correction was performed with the [sva][4] package via the [ComBat][5] method. Differentially expressed genes were identified using [limma][6].
 
----
-
-## Workflow
 The sections below provide descriptions of the included results and include code to reproduce them. 
 
 ---
 
+# Setup 
+
 ## Libraries
-- Bioconductor and R libraries used to process and visualize the data
 
+Bioconductor and R libraries used to process and visualize the data
 
-```{r libraries, echo=TRUE}
+```{r libraries}
 library(oligo)
 library(arrayQualityMetrics)
 library(limma)
@@ -50,8 +50,8 @@ library(ggdendro)
 ```
 
 ## Functions
-- miscellaneous convenience functions
 
+Miscellaneous convenience functions
 
 ```{r functions}
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
@@ -59,7 +59,7 @@ source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 
 ## Variables
 
-```{r VARIABLES, echo=TRUE}
+```{r VARIABLES}
 ## Setup Data and Results directory variables
 if(file.exists("/n/home08/jhutchin/")){
   baseDir="/n/hsphS10/hsphfs1/chb/projects/lz_HSC_niche_effects/"
@@ -72,7 +72,7 @@ resultsDir=file.path(baseDir, "results", "hilyco")
 covarsfilename="Owen_2013_array_list.tab" # do not use full path
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 ensemblidentifier="ENSDAR"
-pvalcutoff=0.25
+pvalcutoff=0.1
 logFCcutoff=1
 exprfilter <- 2.5
 sdfilter <- 0.1
@@ -80,11 +80,11 @@ sdfilter <- 0.1
 
 ---
 
-## Load the raw data
+# Data Access
 
-Load phenotypes and array names from metadata file
+Load the metadata and use the  phenotypes and array names from the metadata to load in the raw data.
 
-```{r dataload, results='hide', cache=TRUE}
+```{r dataload, results='hide'}
 covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
 covars <- covars[order(covars$sample),]
 celFiles <- file.path(dataDir, row.names(covars))
@@ -96,28 +96,28 @@ pData(affyRaw) <- covars
 validObject(affyRaw) ## sanity check
 ````
 
-
-## Sample metadata
+The table below details the metadata for this analysis.
 
 ```{r covars, results='asis'}
 ## Sample information table
-pd.gvis <- gvisTable(as.data.frame(apply(pData(affyRaw), 2, as.character)), options=list(width=960))  
+pd.gvis <- gvisTable(as.data.frame(apply(rownames2col(pData(affyRaw), "CEL"),2, as.character)), options=list(width=960))  
 print(pd.gvis, "chart")
 ```
 
-## QA/QC - 1 
-- using arrayQualityMetrics library
-- raw data
-- group by cell type, treatment and batch
+---
+
+# Basic QA/QC 
+
+First, I used the arrayQualityMetrics library to examine the raw CEL file data. Here I grouped the samples by cell type, treatment and batch.
 
 ```{r rawQC, eval=FALSE}
 arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("celltype", "treatment", "Batch"))
 ```
 
-[raw data QC report](./results/hilyco/report_raw/index.html)
-(this time around the array# matches the sample#)
+[Raw data QC report](../results/hilyco/report_raw/index.html)
+*this time around the array# matches the sample#*
 
-The new arrays look fine. There is still good clustering by cell type. There doesn't appear to be too much clustering by batch (batch 5 are the new arrays).
+The new arrays look fine. There is still good clustering by cell type. There doesn't appear to be too much overall clustering by batch (batch 5 are the new arrays).
 
 As before:
 - array #8, (3PR.012413.CEL, replicate 1 PGE2	Runx1:GFP+ HSC sort	3PR) looks like it has very low signal, and was also run on a different day than other arrays
@@ -125,9 +125,9 @@ As before:
 - array #18 (4PF.040212.CEL, replicate 2, PGE2	flk1:DsRed2+ endothelial sort	4PF) looks OK, but was run on a different day than all the othe arrays
   - excluded as cautionary measure
     
-I kept the old lyrcorine samples in the analysis for now, to compare with the new samples.
+I kept the old lyrcorine samples in the dataset  for now, to compare with the new samples.
 
-```{r drop_arrays, results='hide', cache=TRUE}
+```{r drop_arrays, results='hide'}
 ## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
 #subsequent columns
 covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
@@ -142,7 +142,9 @@ pData(affyRaw) <- covars
 validObject(affyRaw) ## sanity check
 ```
 
-## Background correct and normalize
+---
+
+# Background Correct and Normalize
 The data was normalized for differential gene expression analysis using Robust Multichip Average ([RMA][3]) in the oligo BioConductor package. Here, RMA normalizes the intensity values at the probe level, and  collapses probes into "core" transcripts based on annotations provided by Affymetrix
 
 ```{r normalize, results='hide', cache=TRUE}
@@ -150,99 +152,39 @@ affyNorm <- rma(affyRaw, target="core", background=T, normalize=T)
 pData(affyNorm)$samplelabel <- paste(pData(affyNorm)$celltype, pData(affyNorm)$treatment, pData(affyNorm)$replicate, sep="_")
 ```
 
-## QA/QC - 2 
-- using arrayQualityMetrics library
-- normalized data
+---
+
+# Post-Normalization Data Exploration
 
 ```{r normQC, eval=FALSE}
 arrayQualityMetrics(expressionset=affyNorm, outdir=file.path(resultsDir, 'report_rma.core'), force=TRUE, do.logtransform=FALSE,intgroup=c("celltype", "treatment", "Batch"))
 ```
 
-[normalized data QC report](./results/hilyco/report_rma.core/index.html)
+[Normalized data QC report](../results/hilyco/report_rma.core/index.html)
 
 All the samples look fine after normalization, the two arrays tagged as outlier are only just over the threshold, so I decided to keep them.
 
-## QA/QC - 3
-	
-### Basic Clustering
+## Basic Clustering
 
-**Including old lycorine samples.**
+The new lycorine samples appear to cluster much better, though this may be a batch driven  (observe how the Negative control DMSO sample from the same batch (batch 5 here) clusters with the new Lycorine samples).
 
-*All Samples*
-```{r basic_clustering1, out.width='33%', fig.show='hold'}
-plot_dendro(affyNorm, labels.colname="celltype", colors.colname="treatment", title="Cell Types and Treatments, All Samples - All Lycorine Concentrations")
-```
-
-*Subset by Cell Type*
-```{r basic_clustering2, out.width='33%', fig.show='hold'}
+```{r basic_clustering2, out.width='50%', fig.show='hold',dev="CairoSVG"}
 plot_dendro(affyNorm[,affyNorm@phenoData$celltype=="NEG"], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, NEG Cells - All Lycorine Concentrations")
-plot_dendro(affyNorm[,affyNorm@phenoData$celltype=="ENDO"], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, ENDO Cells - All Lycorine Concentrations")
-plot_dendro(affyNorm[,affyNorm@phenoData$celltype=="HSC"], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, HSC Cells - All Lycorine Concentrations")
 ```
 
-**After exluding old lycorine samples.**
-*All Samples*
-```{r basic_clustering3, out.width='33%', fig.show='hold'}
-plot_dendro(affyNorm[,which(pData(affyNorm)$lycorine_conc!="LO")], labels.colname="celltype", colors.colname="treatment", title="Cell Types and Treatments, All Samples - High Lycorine Concentration")
-
-
-```
-
-*Subset by Cell Type*
-```{r basic_clustering4, out.width='33%', fig.show='hold'}
-plot_dendro(affyNorm[,which(affyNorm@phenoData$celltype=="NEG" & affyNorm@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, NEG Cells - High Lycorine Concentration")
-plot_dendro(affyNorm[,which(affyNorm@phenoData$celltype=="ENDO" & affyNorm@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, ENDO Cells - High Lycorine Concentration")
-plot_dendro(affyNorm[,which(affyNorm@phenoData$celltype=="HSC" & affyNorm@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, HSC Cells - High Lycorine Concentration")
-```
-
-The endothelial cells are clustering together well. There is still less separation between the HSC and negative cells. There is definite improvement of clustering based on treatment, if you exclude the old lycorine samples. There does not appear to be any overwhelming clustering based on batch (i.e. the samples do not mainly separate based on batch). There may be some effects as subgroups of celltypes do appear to form subgroups based on batch, but that may be based on the lycorine treatment instead of batch. In any case, we will batch correct. 
-
-Going forward, I excluded the lower concentration lycorine samples.
+In any case, going forward, I excluded the lower concentration lycorine samples.
 
 ```{r excludelolycorine}
 affyNorm <- affyNorm[,which(affyNorm@phenoData$lycorine_conc!="LO")]
 ```
 
-## QA/QC - 4
+---
 
-### Primary Componenet Analysis Clustering
-- the goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself
-- in basic terms, we are checking whether the samples cluster by sample type
-
-*All samples*
-```{r pca1, out.width='33%', fig.show='hold'}
-PCAplot(affyNorm, categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="All Samples - Cell Type")
-PCAplot(affyNorm, categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="All Samples - Treatment")
-```
-
-*Subset by Treatment*
-```{r pca2, out.width='33%', fig.show='hold'}
-PCAplot(affyNorm[,which(affyNorm@phenoData$treatment=="DMSO")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="DMSO Treatment - Cell Types")
-PCAplot(affyNorm[,which(affyNorm@phenoData$treatment=="PGE2")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="PGE2 Treatment - Cell Types")
-PCAplot(affyNorm[,which(affyNorm@phenoData$treatment=="Lycorine")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="Lycorine Treament - Cell Types")
-```
-
-*Subset by Cell Type*
-```{r pca3, out.width='33%', fig.show='hold'}
-PCAplot(affyNorm[,which(affyNorm@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="HSC Cells - Treatments")
-PCAplot(affyNorm[,which(affyNorm@phenoData$celltype=="ENDO")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="ENDO Cells - Treatments")
-PCAplot(affyNorm[,which(affyNorm@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="NEG Cells - Treatments")
-```
-
-**Principal Component Analysis Figures**
-The figures shows a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color.  For the first plot, the sample types represent cell types. In the second  plot, the sample types represent the three treatments. In the first set of three plots, each plot is  for a single treatment, and the sample groups (colors) represent cell types.In the second set of three plots, each plot is  for a cel type, and the sample groups (colors) represent treatments.
-
-Principal component analysis is a dimension reduction and visualisation technique that is here used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays.
-
-You can use these plots to explore if the arrays cluster, and whether this is according to an intended experimental factor or according to unintended causes (eg. batch effects). 
-
-Similar to the dendrogram results it appears that the samples cluster fairly well by cell type, and somewhat by drug treatment.   
-
-## BATCH CORRECTION
+# Batch Correction
 
 Correct for batch effects with ComBat from the [sva][4] package:
 
-```{r batchcorrect, cache=TRUE}
+```{r batchcorrect, cache=TRUE, fig.keep='none'}
 library(sva)
 # Create model with cell type as factor variable
 mod <- model.matrix(~treatment*celltype, data=pData(affyNorm))
@@ -259,49 +201,46 @@ affyNorm.batch <- affyNorm
 exprs(affyNorm.batch) <- combat_edata
 ```
 
-## QA/QC - 5
-### Post Batch correction basic clustering
+---
 
-*All Samples*
-```{r batch.basic_clustering1, out.width='33%', fig.show='hold'}
-plot_dendro(affyNorm.batch[,which(pData(affyNorm.batch)$lycorine_conc!="LO")], labels.colname="celltype", colors.colname="treatment", title="Cell Types and Treatments, Batch Corrected Samples - High Lycorine Concentration")
+# Post Batch Correction Data Exploration
+
+## Basic Clustering
+
+```{r batch.basic_clustering1, out.width='50%', fig.show='hold',dev="CairoSVG"}
+plot_dendro(affyNorm.batch[,which(pData(affyNorm.batch)$lycorine_conc!="LO")], labels.colname="celltype", colors.colname="treatment", title="Cell Types and Treatments, All Batch Corrected Samples - High Lycorine Concentration")
 ```
 
-*Subset by Cell Type*
-```{r batch.basic_clustering2, out.width='33%', fig.show='hold'}
-plot_dendro(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="NEG" & affyNorm.batch@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, NEG Cells - High Lycorine Concentration")
-plot_dendro(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="ENDO" & affyNorm.batch@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, ENDO Cells - High Lycorine Concentration")
-plot_dendro(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="HSC" & affyNorm.batch@phenoData$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="Batch", title="Treatments and Batches, HSC Cells - High Lycorine Concentration")
-```
+The endothelial cells cluster together well. There is still less separation between the HSC and negative cells. There is definite improvement of clustering based on treatment. 
 
-### Post Batch correction PCA
+## Principal Component Analyses
 
-*All samples*
-```{r pca.batch1, out.width='33%', fig.show='hold'}
+Principal component analysis is a dimension reduction and visualisation technique that is here used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself. In basic terms, we are checking whether the samples cluster by sample type. Due to the number of overlapping sample types to consider, I ran the PCA on the different subsets (cell type or treatment) of the data.
+
+```{r pca.batch1, out.width='50%', fig.show='hold',dev="CairoSVG"}
 PCAplot(affyNorm.batch, categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="All Samples - Cell Type")
 PCAplot(affyNorm.batch, categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="All Samples - Treatment")
 ```
 
-*Subset cell type*
-```{r pca.batch2, out.width='33%', fig.show='hold'}
+These figures shows a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color.  For the first plot, the sample types represent cell types. In the second  plot, the sample types represent the three treatments.
+
+The first thing you should notice, is that the samples separate into 3 distinct clusters better by cell type than by treatment. This suggests that the cell type has a more significant effect on phenotype than the drug treatment.
+
+To see the effect of the treatments, we can examine each cell type individually. In these plots, each plot is  for a single treatment, and the sample groups (colors) represent cell types.
+
+```{r pca.batch2, out.width='33%', fig.show='hold',dev="CairoSVG"}
 PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="HSC Cells - Treatments")
 PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="ENDO")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="ENDO Cells - Treatments")
 PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="NEG Cells - Treatments")
 ```
 
-*Subset by treatment*
-```{r pca.batch3, out.width='33%', fig.show='hold'}
-PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$treatment=="DMSO")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="DMSO Treatment - Cell Types")
-PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$treatment=="PGE2")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="PGE2 Treatment - Cell Types")
-PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$treatment=="Lycorine")], categories="celltype", colorpalette=cbPalette[1:3], alpha=0.8, title="Lycorine Treament - Cell Types")
-```
+For all three cell types, the higher concentration lycorine treatment seems to have the largest effect, with the PGE2 samples clustering more closely to the DMSO treated cells.
 
-Clear improvement in cell type separation after batch correction.
-Slight improvement of treatment clustering after batch correction.
+---
 
-## Pre-filtering
+# Pre-filtering
 
-Now that we're done normalizing, we can get rid of the control probes (nearly 2/3 of the probes on the array).
+Now that we're done normalizing and batch correcting, we can get rid of the control probes (nearly 2/3 of the probes on the array).
 
 We can also use the standard deviations and mean expression levels to filter out probes that are poorly expressed and/or don't vary much between samples. We're unlikely to to see significant differences for these genes and by using fewer probes in the [multiple test correction](http://en.wikipedia.org/wiki/Multiple_comparisons) of our statistical tests we increase our chances of seeing significant results.
 
@@ -320,8 +259,11 @@ affyNorm.batch <- affyNorm.batch[which(sds>sdfilter),]
 
 Here I filtered out probes that show a mean intensity level (after log transformation) of less than `r exprfilter` and a standard deviation of less than `r sdfilter`. After filtering in this manner reduced the number of probes from `r length(featureNames(affyNorm))` to `r length(featureNames(affyNorm.batch))`.
 
-## Annotations
-Parse the array feature data (i.e. information about the probes) to get the gene symbols that correspond to each probeset group on the array
+---
+
+# Translating Annotations
+
+Translate the array feature data (i.e. information about the probes) to gene symbols that correspond to each probeset group on the array.
 
 ```{r features, results='hide'}
 # Extract the 'gene assignment' annotation
@@ -345,37 +287,57 @@ identical(as.character(gene.annots$probeids), probeids) # sanity check, sane=TRU
 head(gene.annots$symbols[!is.na(gene.annots$symbols)]) # sanity check, sane=>see gene ids
 ```
 
-## Differential Expression Analyses
-### Limma
+---
+
+# Expression values for **ALL** genes in **ALL** samples
+
+```{r allexprs}
+#output all expression values for all samples
+eset.all <- exprs(affyNorm.batch)[stats.core$probeids,]
+colnames(eset.all) <- pData(affyNorm.batch)$samplelabel
+eset.all=merge(gene.annots,ownames2col(eset.all, "probeids"))
+write.table(x$eset.all, file=file.path(resultsDir, paste("all.exprs", "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+```
+
+[Link to Excel file with expression values for all genes and samples](../results/hilyco/all.exprs.xls)
+
+---
+
+# Differential Expression Analysis Methods
+
+## Limma
+
 A linear model for microarray data analysis (Limma) was performed on the samples to identify differentially expressed genes between pair-wise comparisons of sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
 
 To perform limma, we constructed two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
 
-#### Design matrix 
+### Design matrix 
 - make a matrix with arrays as rows, treatment groups as columns
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
-- in this case it looks like this, where 1-25 are the 25 microarrays remaining after removing the two arrays earlier.
 
 ```{r design, results="asis"}
 design <- model.matrix(~0+celltype:treatment, data=model.frame(pData(affyNorm.batch)))
 # make sure the headings match
 colnames(design) <- sub(":", "_", gsub("celltype|treatment|", "", colnames(design)))
-design.gvis <- gvisTable(as.data.frame(apply(design, 2, as.character)), options=list(width=960))  
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"id"), 2, as.character)), options=list(width=960))  
 print(design.gvis, "chart")
 ```
 
-#### Contrast matrix
+### Contrast matrix
 - to perform specified pairwise comparisons
  - can also setup more complex comparisons, such as to look for genes that change in HSC cells upon PGE2 treatment but not in negative cells
 - in this table, columns are contrasts/comparisons and rows are sample groups
 -  generally speaking, a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
 
-**Comparisons**
+### Comparisons
+
   **Differences between cell types**
   - differences between HSC and ENDO cell types from negative, after DMSO treatment (ENDO.celltype  and HSC.celltype)
+  
   **Effect of drugs on individual cell types**
   - changes in HSC ("HSC.PGE2" and "HSC.Lyc") cells after drug treatments
   - changes in ENDO  ("ENDO.PGE2" and "ENDO.Lyc") cells after drug treatments
+  
   **Differences in how cell types respond to drug treatment**
     - "interaction terms"
     - differences in how HSC cells respond to drugs as compared to NEG (Diff.PGE2.HSC.Neg and Diff.Lyc.HSC.Neg) cells
@@ -394,12 +356,12 @@ contrast.matrix <- makeContrasts(ENDO.celltype=ENDO_DMSO - NEG_DMSO,
                                  Diff.Lyc.HSC.Neg = (HSC_Lycorine - HSC_DMSO) - (NEG_Lycorine - NEG_DMSO),
                                  Diff.Lyc.ENDO.Neg = (ENDO_Lycorine - ENDO_DMSO) - (NEG_Lycorine - NEG_DMSO),
                                  levels=c("ENDO_DMSO", "HSC_DMSO", "NEG_DMSO", "ENDO_Lycorine", "HSC_Lycorine", "NEG_Lycorine", "ENDO_PGE2", "HSC_PGE2", "NEG_PGE2"))
-contrast.gvis <- gvisTable(as.data.frame(apply(contrast.matrix, 2, as.character)), options=list(width=960,height=320 ))  
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"class"), 2, as.character)), options=list(width=960,height=320 ))  
 print(contrast.gvis, "chart")
 ```
 
+### Linear model
 
-#### Linear model
 These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
 
 - first fit the linear model based on the design matrix 
@@ -423,22 +385,26 @@ fit2.core <- contrasts.fit(fit.core, contrast.matrix)
 fit2.core <- eBayes(fit2.core) 
 ```
 
+---
 
-### Volcanoplots
+# Differential Expression Analysis Results
+
+## Volcanoplots
+
 These plots help visualize relationship between fold change and signifcance of changes in expression between groups.
 
-- genes outside the two vertical orange lines show more than 2-fold changes in expression between groups
+- genes outside the two vertical orange lines show more than `r 2^logFCcutoff`-fold changes in expression between groups
 - genes which pass an FDR  (false discovery rate) multiple testing correction of `r pvalcutoff` (`r pvalcutoff*100`% FDR) and show at least a `r 2^logFCcutoff`-fold change in expression are colored blue
 - the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
 
-```{r volcanoplot, fig.cap="", fig.width=12, fig.height=12, out.width='100%', fig.show='hold', results='hide', cache=TRUE, dev='png'}
+```{r volcanoplot, fig.cap="", fig.width=12, fig.height=12, out.width='50%', fig.show='hold', results='hide', cache=TRUE, dev='png'}
 all.stats <- llply(seq(1,ncol(contrast.matrix),1), function(n) {
   contrast <- dimnames(fit2.core$contrasts)$Contrasts[n]
   stats.core <- topTable(fit2.core, coef=n, sort.by="B",number=length(symbols), genelist=cbind(gene.annots, fit2.core$genes))
   stats.core$Passes.FDR.threshold  <-  as.factor(stats.core$adj.P.Val<pvalcutoff & abs(stats.core$logFC)>logFCcutoff)
   g <- ggplot(data=stats.core, aes(x=logFC, y=-log10(P.Value), color=Passes.FDR.threshold, size=B)) +
     geom_point(alpha=0.5) +
-    geom_vline(xintercept=c(-1,1), color="orange", alpha=0.7, lwd=1.25) +
+    geom_vline(xintercept=c(-logFCcutoff,logFCcutoff), color="orange", alpha=0.7, lwd=1.25) +
     xlab("log2 fold change") + ylab("-log10 p-value") +
     labs(title=contrast)
   return(list(g=g, stats.core=stats.core, contrast=contrast))
@@ -448,7 +414,15 @@ lapply(all.stats, function(x) {
   })
 ```
 
-#### Statistics and expression levels for ALL genes (in Excel files)
+## Statistics and expression levels for ALL genes for each comparison
+
+These Excel files contain the following information:
+- logFC is the log2-fold change
+- the AveExpr is the average expression value across this the contrast's set of arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last columns contain the log-transformed normalized expression levels for these genes in the relevant samples 
 
 ```{r all_exprs_stats, results='hide'}
 all.exprs.stats <- lapply(all.stats, function(x) {
@@ -456,6 +430,7 @@ all.exprs.stats <- lapply(all.stats, function(x) {
   stats.core <- x$stats.core
   eset.all <- exprs(affyNorm.batch)[stats.core$probeids,]
   colnames(eset.all) <- pData(affyNorm.batch)$samplelabel
+  # parse the contrast matrix and design matrix to find the sample indices for the samples contained within this contrast and subset the eset to those samples
   eset.stats.all <- cbind(stats.core, eset.all)  
   return(list(eset.stats.all=eset.stats.all, contrast=contrast ))
   })
@@ -468,50 +443,43 @@ lapply(all.exprs.stats, function(x){
 
 `r index=1`
 
-[Links to Excel files with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel files with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+[Link to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
 
 ---
 
-### Top results
-The top 200 differentially expressed genes as sorted by "B", the log-odds that a gene is differentially expressed
+## Top results
 
-#### The summary table contains the following information:
-- logFC is the log2-fold change
-- the AveExpr is the average expression value accross all arrays
-- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
-- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
-- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
-- the last 9 columns contain the log-transformed normalized expression levels for these genes in each sample
+The top 200 differentially expressed genes as sorted by "B", the log-odds that a gene is differentially expressed
 
 ```{r toptable, cache=TRUE}
 top.stats <- lapply(seq(1,ncol(contrast.matrix),1), function(n) {
@@ -531,13 +499,15 @@ top.stats <- lapply(seq(1,ncol(contrast.matrix),1), function(n) {
   if(nrow(stats.top.core)>0) {
     eset.top.core  <-  exprs(affyNorm.batch[stats.top.core[, "probeids"], ]) 
     colnames(eset.top.core)  <-  pData(affyNorm.batch)[,"samplelabel"]
+    eset.top.core=eset.top.core[,apply(design[,colnames(design) %in% names(which(abs(contrast.matrix[,contrast])==1))]==1, 1, any)]
     eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
     } else { eset.stats.top.core<-"NA"}
   return(list(eset.stats.top.core=eset.stats.top.core, contrast=contrast))
   })
 ```
 
-#### Output statistics and expression levels for these genes to Excel files
+### Output statistics and expression levels for these genes to Excel files
+*these files contain the same information as the previous Excel files, and are merely subsetted to the top differentially expressed genes for each comparison*
 
 ```{r output_top, results='hide'}
 lapply(top.stats, function(x){
@@ -549,44 +519,44 @@ save.image(file.path(resultsDir, "RDATA"))
 
 `r index=1`
 
-[Links to Excel files with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel files with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 `r index=index+1`
 
-[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
+[Links to Excel file with results for genes in top 200 log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](../results/hilyco/`r paste("top200.stats", top.stats[[index]]$contrast, "xls",sep=".")`)
 
 ### Heatmaps
-- of Top 50 Results
+- of top 100 results for each comparison
 - as sorted by "B", the log-odds that a gene is differentially expressed
 - clustered for similarity by probe/gene and sample
 
-```{r heatmaps, fig.width=16, fig.height=16, eval=F}
+```{r heatmaps, fig.width=16, fig.height=16, fig.show='hold', out.width='50%', dev="CairoSVG"}
 for(n in 1:ncol(contrast.matrix)){
   # get the names of the stages that are being compared in this comparison
   contrast <- top.stats[[n]]$contrast
@@ -605,15 +575,15 @@ for(n in 1:ncol(contrast.matrix)){
   row.names(heatmap.annots) <- heatmap.annots$samplelabel
   heatmap.annots$samplelabel <- NULL
   # heatmap annotation colors
-  treatment_colors <- cbPalette[1:3]
-  names(treatment_colors) <- unique(unlist(pd$treatment))
-  celltype_colors <- c("white", "darkgrey", "black")
-  names(celltype_colors) <- unique(unlist(pd$celltype))
-  Batch_colors <- cbPalette[4:5]
-  names(Batch_colors) <- unique(unlist(pd$Batch))
+  treatment_colors <- cbPalette[5:7]
+  names(treatment_colors) <- unique(unlist(pData(affyNorm.batch)$treatment))
+  celltype_colors <- cbPalette[1:3]
+  names(celltype_colors) <- unique(unlist(pData(affyNorm.batch)$celltype))
+  Batch_colors <- cbPalette[c(4,6,9)]
+  names(Batch_colors) <- unique(unlist(pData(affyNorm.batch)$Batch))
   ann_colors = list(treatment = treatment_colors, celltype = celltype_colors, Batch=Batch_colors)
   ## Heatmaps
-  pheatmap(as.matrix(top.exprs.contrast[1:50,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=T, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast[1:100,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=T, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)  
   }
 ```
 
