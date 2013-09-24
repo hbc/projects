@@ -1,0 +1,527 @@
+details:
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: old1c_clone17
+  metadata:
+    batch: old3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone17.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone17.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: old1c_clone4
+  metadata:
+    batch: old3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone4.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone4.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: old1enu_clone2
+  metadata:
+    batch: old3
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1enu_clone2.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1enu_clone2.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: old1_tail
+  metadata:
+    batch: old3
+    treatment: tail
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1_tail.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1_tail.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: replig_fl110
+  metadata:
+    batch: wga
+    treatment: 10cl
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/replig_fl110.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/replig_fl110.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: replig_fl1
+  metadata:
+    batch: wga
+    treatment: 1cl
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/replig_fl1.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/replig_fl1.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_01_wt_nt_1
+  metadata:
+    batch: young1
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_01_wt_nt_1.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_01_wt_nt_1.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_02_wt_nt_2
+  metadata:
+    batch: young1
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_02_wt_nt_2.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_02_wt_nt_2.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_03_wt_enu_1
+  metadata:
+    batch: young1
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_03_wt_enu_1.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_03_wt_enu_1.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_04_wt_enu_2
+  metadata:
+    batch: young1
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_04_wt_enu_2.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_04_wt_enu_2.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_05_y2_nt_5
+  metadata:
+    batch: young2
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_05_y2_nt_5.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_05_y2_nt_5.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_06_y2_nt_6
+  metadata:
+    batch: young2
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_06_y2_nt_6.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_06_y2_nt_6.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_07_y2_tai
+  metadata:
+    batch: young2
+    treatment: tail
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_07_y2_tai.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_07_y2_tai.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_08_o1_nt_4
+  metadata:
+    batch: old1
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_08_o1_nt_4.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_08_o1_nt_4.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_09_o1_nt_14
+  metadata:
+    batch: old1
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_09_o1_nt_14.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_09_o1_nt_14.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_10_o1_enu_8
+  metadata:
+    batch: old1
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_10_o1_enu_8.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_10_o1_enu_8.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_11_o2_nt_18
+  metadata:
+    batch: old2
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_11_o2_nt_18.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_11_o2_nt_18.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_13_o2_nt_17
+  metadata:
+    batch: old2
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_13_o2_nt_17.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_13_o2_nt_17.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_14_o2_enu_1
+  metadata:
+    batch: old2
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_14_o2_enu_1.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_14_o2_enu_1.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_16_o2_tail
+  metadata:
+    batch: old2
+    treatment: tail
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_16_o2_tail.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_16_o2_tail.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_O10NT10
+  metadata:
+    batch: old1
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_O10NT10.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_O10NT10.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Sample_O1ENU4
+  metadata:
+    batch: old1
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_O1ENU4.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Sample_O1ENU4.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: Young3c_clone1
+  metadata:
+    batch: young3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Young3c_clone1.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Young3c_clone1.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3c_clone3
+  metadata:
+    batch: young3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone3.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone3.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3c_clone8
+  metadata:
+    batch: young3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone8.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone8.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3c_clone9
+  metadata:
+    batch: young3
+    treatment: nt
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone9.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3c_clone9.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3enu_clone3
+  metadata:
+    batch: young3
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3enu_clone3.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3enu_clone3.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3enu_clone8
+  metadata:
+    batch: young3
+    treatment: enu
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3enu_clone8.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3enu_clone8.R2.fastq
+  genome_build: mm10
+- algorithm:
+    aligner: bwa
+    coverage: exons
+    coverage_depth: high
+    coverage_interval: regional
+    platform: illumina
+    quality_format: Standard
+    merge_bamprep: false
+    variantcaller: gatk
+  analysis: variant2
+  description: young3_tail
+  metadata:
+    batch: young3
+    treatment: tail
+  files:
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3_tail.R1.fastq
+  - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/young3_tail.R2.fastq
+  genome_build: mm10
+fc_date: '130622'
+fc_name: drme
+upload:
+  dir: ../final

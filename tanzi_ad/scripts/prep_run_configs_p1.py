@@ -1,7 +1,7 @@
 #/usr/bin/env python
-"""Prepare input configuration files for priority 1 variants.
+"""Prepare input configuration files for variants by priority or family.
 
-Groups into family based calling for high priority variants.
+Groups into family based calling.
 """
 import collections
 import csv
@@ -17,36 +17,47 @@ def main(config_file):
         config = _add_base_dir(yaml.load(in_handle))
     idremap = read_remap_file(config["idmapping"])
     baminfo = get_bam_files(config["inputs"], idremap)
-    famsamples = priority_by_family(config["priority"], config["params"]["priority"])
-    g1, g2 = split_families(famsamples, config["params"]["max_samples"])
-    for name, g in [("g1", g1), ("g2", g2)]:
-        write_config(g, baminfo, name, config["params"]["priority"], config["out"])
+    famsamples = get_families(config["priority"], config["params"])
+    famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
+    write_config(famsamples, baminfo, None, config["params"]["name"], config["out"],
+                 config)
+    #g1, g2 = split_families(famsamples, config["params"]["max_samples"])
+    #for name, g in [("g1", g1), ("g2", g2)]:
+    #    write_config(g, baminfo, name, config["params"]["priority"], config["out"],
+    #                 config)
 
 # ## Write output configurations
 
-def write_config(g, baminfo, name, priority, outbase):
+def write_config(g, baminfo, name, group_name, outbase, config):
     outdir = os.path.dirname(outbase)
-    if not os.path.exists(outdir):
+    if outdir and not os.path.exists(outdir):
         os.makedirs(outdir)
-    base, ext = os.path.splitext(outbase)
-    outfile = "%s-%s%s" % (base, name, ext)
+    if name:
+        base, ext = os.path.splitext(outbase)
+        outfile = "%s-%s%s" % (base, name, ext)
+    else:
+        outfile = outbase
     out = {"upload": {"dir": "../final"},
            "fc_date": datetime.datetime.now().strftime("%Y-%m-%d"),
-           "fc_name": "alz-p%s-%s" % (priority, name),
+           "fc_name": "alz-%s%s" % (group_name, "-%s" % name if name else ""),
            "details": []}
     for family, samples in g:
         for sample in samples:
-            cur = {"algorithm": {"aligner": "bwa",
-                                 "variantcaller": "gatk-haplotype",
-                                 "quality_format": "Standard",
-                                 "coverage_interval": "genome",
-                                 "coverage_depth": "high"},
-                   "analysis": "variant2",
-                   "genome_build": "GRCh37",
-                   "metadata": {"batch": str(family)},
-                   "description": str(sample),
-                   "files": [baminfo[sample]["bam"]]}
-            out["details"].append(cur)
+            if sample in baminfo:
+                cur = {"algorithm": {"aligner": "bwa",
+                                     "variantcaller": "gatk",
+                                     "quality_format": "Standard",
+                                     "coverage": config["coverage"],
+                                     "coverage_interval": "genome",
+                                     "coverage_depth": "high"},
+                       "analysis": "variant2",
+                       "genome_build": "GRCh37",
+                       "metadata": {"batch": str(family)},
+                       "description": str(sample),
+                       "files": [baminfo[sample]["bam"]]}
+                out["details"].append(cur)
+            else:
+                print("BAM file missing for %s" % sample)
     with open(outfile, "w") as out_handle:
         yaml.dump(out, out_handle, allow_unicode=False, default_flow_style=False)
     return outfile
@@ -72,8 +83,17 @@ def split_families(famsamples, max_samples):
 
 # ## Priority file
 
-def priority_by_family(in_file, target_priority):
-    """Retrieve samples of a given priority, grouped by family.
+def _check_sample(fam_id, priority, params):
+    if params.get("priority") is not None:
+        if priority and int(priority) == params["priority"]:
+            return True
+    elif params.get("families"):
+        if fam_id in params["families"]:
+            return True
+    return False
+
+def get_families(in_file, params):
+    """Retrieve samples in specific priorities or families, grouped by family.
     """
     samples = collections.defaultdict(list)
     with open(in_file) as in_handle:
@@ -82,8 +102,10 @@ def priority_by_family(in_file, target_priority):
         for parts in reader:
             fam_id, sample_id, priority = parts[1:4]
             status_flag = parts[16]
-            if status_flag != "Exclude" and priority and int(priority) == target_priority:
-                samples[fam_id].append(sample_id)
+            if status_flag != "Exclude":
+                if _check_sample(fam_id, priority, params):
+                    if sample_id not in samples[fam_id]:
+                        samples[fam_id].append(sample_id)
     return dict(samples)
 
 # ## Directory and name remapping
@@ -98,7 +120,7 @@ def dir_to_sample(dname, idremap):
                 illumina_id = line.split("\t")[-1].replace("_POLY", "").rstrip()
                 return {"id": idremap.get(illumina_id), "dir": dname,
                         "illuminaid": illumina_id,
-                        "bam": bam_file} 
+                        "bam": bam_file}
     raise ValueError("Did not find sample information in %s" % vcf_file)
 
 def get_bam_files(fpats, idremap):
@@ -122,7 +144,7 @@ def read_remap_file(in_file):
 # ## Utils
 
 def _add_base_dir(config):
-    for k in ["idmapping", "priority", "out"]:
+    for k in ["idmapping", "priority", "coverage"]:
         config[k] = os.path.join(config["base_dir"], config[k])
     return config
 
