@@ -231,7 +231,7 @@ To see the effect of the treatments, we can examine each cell type individually.
 ```{r pca.batch2, out.width='33%', fig.show='hold',dev="CairoSVG"}
 PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="HSC Cells - Treatments")
 PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="ENDO")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="ENDO Cells - Treatments")
-PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="HSC")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="NEG Cells - Treatments")
+PCAplot(affyNorm.batch[,which(affyNorm.batch@phenoData$celltype=="NEG")], categories="treatment", colorpalette=cbPalette[5:7], alpha=0.8, title="NEG Cells - Treatments")
 ```
 
 For all three cell types, the higher concentration lycorine treatment seems to have the largest effect, with the PGE2 samples clustering more closely to the DMSO treated cells.
@@ -332,7 +332,7 @@ print(design.gvis, "chart")
 ### Comparisons
 
   **Differences between cell types**
-  - differences between HSC and ENDO cell types from negative, after DMSO treatment (ENDO.celltype  and HSC.celltype)
+  - differences between HSC and ENDO cell types from negative and from each other, after DMSO treatment (ENDO.celltype,  HSC.celltype and ENDO.HSC.celltype)
   
   **Effect of drugs on individual cell types**
   - changes in HSC ("HSC.PGE2" and "HSC.Lyc") cells after drug treatments
@@ -417,12 +417,12 @@ lapply(all.stats, function(x) {
 ## Statistics and expression levels for ALL genes for each comparison
 
 These Excel files contain the following information:
-- logFC is the log2-fold change
-- the AveExpr is the average expression value across this the contrast's set of arrays
-- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
-- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
-- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
-- the last columns contain the log-transformed normalized expression levels for these genes in the relevant samples 
+- logFC is the log2-fold change  
+- the AveExpr is the average expression value across this the contrast's set of arrays  
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value  
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR)  
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)  
+- the last columns contain the log-transformed normalized expression levels for these genes in the relevant samples   
 
 ```{r all_exprs_stats, results='hide'}
 all.exprs.stats <- lapply(all.stats, function(x) {
