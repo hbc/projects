@@ -192,14 +192,14 @@ all(colnames(bc)==pData(mic.frma)$ID)
 
 
 ```{r barcode_heatmap_annotation_colors}
-   # annotation colors
-  study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
-  names(study_colors) <- unique(unlist(pd$study))
-  stage_colors <- c("white", "darkgrey", "black")
-  names(stage_colors) <- unique(unlist(pd$stage))
-  gender_colors <- c("cyan", "pink")
-  names(gender_colors) <- unique(unlist(pd$gender))
-  ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+# annotation colors
+study_colors <- c("#FF0000","#00FF00", "#0000FF", "#992288", cbPalette )
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+gender_colors <- c("cyan", "pink")
+names(gender_colors) <- unique(unlist(pd$gender))
+ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
 ```
 
 

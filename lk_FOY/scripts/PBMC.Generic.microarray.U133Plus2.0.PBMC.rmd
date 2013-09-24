@@ -82,14 +82,14 @@ library(hgu133plus2.db)
 - color palette for plots
 - age ranges and names of the groups  
   - neonate = 0-4 years
-  - child = 5-10 years
+  - child = 5-12 years
   - adult = 18-40 years
 
 ```{r microarray_analysis_variables}
 # colorblind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # age ranges to compare
-child.age.range <- c(5,10)
+child.age.range <- c(5,12)
 adult.age.range <- c(18,40)
 neonate.age.range <- c(0,4)
 # THESE CANNOT OVERLAP!

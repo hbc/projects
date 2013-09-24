@@ -1,5 +1,5 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="../results/PBMC/U133Plus2/figure/pathprint-", cache.path="cache/PBMC-U133Plus2-pathprint-")
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/PBMC-U133Plus2-pathprint-", cache.path="cache/PBMC-U133Plus2-pathprint-")
 options(width=200)
 ```
 
@@ -187,7 +187,7 @@ contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels
 
 ```{r heatmap_colors}
 # annotation colors
-study_colors <- c( cbPalette[1:6] )
+study_colors <- c( cbPalette[1:7] )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
@@ -229,16 +229,14 @@ for (n in 1:3) {
   row.names(heatmap.annots) <- heatmap.annots$ID
   heatmap.annots$ID <- NULL
   # both genders
-  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+  pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
   
-# female only
+ #FEMALE
   mic.f.default.contrast.sub.female <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  # male only
+  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+ #MALE
   mic.f.default.contrast.sub.male <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="MALE")]
-  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - clustered - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "\ncomparison - unclustered - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  }
+  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+
+}
 ```

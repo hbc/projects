@@ -1,5 +1,4 @@
-
-## ----general_libraries---------------------------------------------------
+## @knitr general_libraries
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
@@ -9,7 +8,7 @@ library(googleVis) # library for presenting tables
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 
 
-## ----general_directories-------------------------------------------------
+## @knitr general_directories
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
   baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
@@ -22,14 +21,14 @@ resultsDir <- file.path(baseDir, "results", "PBMC", "U133Plus2")
 metaDir <- file.path(baseDir, "meta", "PBMC")
 
 
-## ----subset_data---------------------------------------------------------
+## @knitr subset_data
 refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.PBMC.tab"))
 U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & !is.na(refined.metadata$gender) & !is.na(refined.metadata$CEL_regex) & grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
 write.table(U133.Plus2.data, file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.tab"), quote=F, sep="\t", row.names=F, col.names=T)
 write.table(U133.Plus2.data, file=file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.xls"), sep="\t", row.names=F, col.names=T)
 
 
-## ----microarray_analysis_libraries---------------------------------------
+## @knitr microarray_analysis_libraries
 # to parse the CEL files and work with intensity values
 library(affy) 
 # for QC reports
@@ -42,17 +41,17 @@ library(pheatmap)
 library(hgu133plus2.db) 
 
 
-## ----microarray_analysis_variables---------------------------------------
+## @knitr microarray_analysis_variables
 # colorblind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # age ranges to compare
-child.age.range <- c(5,10)
+child.age.range <- c(5,12)
 adult.age.range <- c(18,40)
 neonate.age.range <- c(0,4)
 # THESE CANNOT OVERLAP!
 
 
-## ----covariatedataframe--------------------------------------------------
+## @knitr covariatedataframe
 # U1332.0Plus only for now
 covartemplate.file <- "unified.metadata.refined.PBMC.U133Plus2.0.tab" 
 covartemplate <- read.table(file.path(metaDir,covartemplate.file), header=T, colClasses="character", sep="\t")
@@ -99,28 +98,18 @@ covars <- covars[order(covars$stage),]
 covars <- covars[!is.na(covars$stage),]
 
 
-## ----load_data-----------------------------------------------------------
+## @knitr load_data
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars) 
 
 
-## ----rawQC, eval=FALSE---------------------------------------------------
- arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
+## @knitr rawQC, eval=FALSE
+arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
 
 
-## ----normalize_RMA-------------------------------------------------------
+## @knitr normalize_RMA
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 
 
-## ----normQC, eval=FALSE--------------------------------------------------
- arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
-
-
-## ----drop_outliers, results='asis'---------------------------------------
-mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204")))]
-mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0" ))
-
-
-## ----wo.outliers.normQC, eval=FALSE--------------------------------------
- arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm.wo.outliers"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
+## @knitr normQC, eval=FALSE
+arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
 q()

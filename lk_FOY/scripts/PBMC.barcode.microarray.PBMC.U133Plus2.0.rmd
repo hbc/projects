@@ -33,7 +33,7 @@ library(googleVis) # library for presenting tables
 ## Locations of directories for data, metadata and results
 - also misc. variables
 
-```{r general_directories, cache=TRUE}
+```{r general_directories}
 if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
   baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
@@ -115,7 +115,7 @@ ddata.bc <- dendro_data(dhc.bc, type="rectangle")
 p.pre <- ggplot(segment(ddata.pre)) +
   geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
   theme_dendro() + 
-  geom_text(data=label(ddata.pre), aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label, levels=c("adult", "neonate", "child")))) +
+  geom_text(data=ddata.pre$label, aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label, levels=c("adult", "neonate", "child")))) +
   coord_flip() + 
   scale_y_reverse(expand=c(0.2, 50)) +
   labs(title = "Original RMA Normalized Expression Data") +
@@ -128,7 +128,7 @@ p.pre <- ggplot(segment(ddata.pre)) +
 p.bc <- ggplot(segment(ddata.bc)) +
   geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
   theme_dendro() + 
-  geom_text(data=label(ddata.bc), aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label,levels=c("adult", "neonate", "child")))) +
+  geom_text(data=ddata.bc$label, aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label,levels=c("adult", "neonate", "child")))) +
   coord_flip() + 
   scale_y_reverse(expand=c(0.2, 50)) +
   labs(title = "fRMA Normalized and Barcoded Expression Data") +
@@ -274,7 +274,7 @@ intra.entropycutoff <- 0.275
 inter.entropycutoff <- 0.3
 ```
 
-```{r diff_heatmap0.25, ref.label='PBMCbarcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```{r diff_heatmap0.25, ref.label='diff_heatmap0.3', fig.width=18, fig.height=18}
 ```
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison

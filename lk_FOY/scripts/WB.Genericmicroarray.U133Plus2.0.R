@@ -1,4 +1,3 @@
-
 ## @knitr general_libraries
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
@@ -46,7 +45,7 @@ library(hgu133plus2.db)
 # colorblind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # age ranges to compare
-child.age.range <- c(5,10)
+child.age.range <- c(5,12)
 adult.age.range <- c(18,40)
 neonate.age.range <- c(0,4)
 # THESE CANNOT OVERLAP!
@@ -98,28 +97,19 @@ covars <- covars[order(covars$stage),]
 covars <- covars[!is.na(covars$stage),]
 
 
-## @knitr load_data, eval=TRUE
+## @knitr load_data, eval=FALSE
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
 
 
-## @knitr rawQC, eval=TRUE
-#arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
+## @knitr rawQC, eval=FALSE
+arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
 
 
-## @knitr normalize_RMA, eval=TRUE
+## @knitr normalize_RMA, eval=FALSE
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 
 
-## @knitr normQC, eval=TRUE
+## @knitr normQC, eval=FALSE
 arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
 
-
-## @knitr drop_outliers, eval=TRUE, results='asis'
-mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$study) %in% c("GSE18897", "MEXP-2917", "TABM-940", "TABM-666")))]
-mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
-
-
-## @knitr normQCwooutliers, eval=TRUE
-arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm.wo.outliers"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
-
+q()

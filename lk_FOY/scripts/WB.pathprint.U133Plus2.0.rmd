@@ -1,5 +1,5 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="../results/WB/U133Plus2/figure/pathprint-", cache.path="cache/WB-U133Plus2-pathprint-")
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/WB-U133Plus2-pathprint-", cache.path="cache/WB-U133Plus2-pathprint-")
 options(width=200)
 ```
 
@@ -187,7 +187,7 @@ contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels
 
 ```{r pathprint_heatmap_colors}
 # annotation colors
-study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
+study_colors <- c("#FF0000","#00FF00", "#0000FF", "#992288", cbPalette )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
