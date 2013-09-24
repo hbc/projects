@@ -76,7 +76,7 @@ if (file.exists("/n/hsphS10/hsphfs1/chb/projects/aw_NMF_proteomics/")) {
   }  else if (file.exists("/Volumes/home08/jhutchin/consults/aw_NMF_proteomics/")) {
     baseDir <- "/Volumes/home08/jhutchin/consults/aw_NMF_proteomics"
     } else {
-      baseDir <- "/Volumes/ody/consults/aw_NMF_proteomics"
+      baseDir <- "/Volumes/ody_new/consults/aw_NMF_proteomics"
       }
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
