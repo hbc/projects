@@ -113,11 +113,15 @@ def get_families(in_file, params):
 def dir_to_sample(dname, idremap):
     vcf_file = os.path.join(dname, "Variations", "SNPs.vcf")
     bam_file = os.path.join(dname, "Assembly", "genome", "bam", "%s.bam" % os.path.split(dname)[-1])
-    assert os.path.exists(bam_file)
+    if not os.path.exists(bam_file):
+        print "BAM file missing", bam_file
+        return None
     with open(vcf_file) as in_handle:
         for line in in_handle:
             if line.startswith("#CHROM"):
                 illumina_id = line.split("\t")[-1].replace("_POLY", "").rstrip()
+                if idremap.get(illumina_id) is None:
+                    print "Did not find remap", illumina_id
                 return {"id": idremap.get(illumina_id), "dir": dname,
                         "illuminaid": illumina_id,
                         "bam": bam_file}
@@ -129,7 +133,8 @@ def get_bam_files(fpats, idremap):
         for dname in glob.glob(fpat):
             if os.path.isdir(dname):
                 x = dir_to_sample(dname, idremap)
-                out[x["id"]] = x
+                if x:
+                    out[x["id"]] = x
     return out
 
 def read_remap_file(in_file):

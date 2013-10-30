@@ -7,13 +7,16 @@ Usage:
 """
 
 import os
+import glob
 import sys
 import sqlite3
 
-from gemini.ped import pedformat
+from gemini import ped
 
-def main(gemini_db, fam_file):
-    add_to_database(gemini_db, read_fam_file(fam_file))
+def main(gemini_db_file, fam_file):
+    fam_info = read_fam_file(fam_file)
+    for gemini_db in glob.glob(gemini_db_file):
+        add_to_database(gemini_db, fam_info)
 
 def add_to_database(db, fam_info):
     conn = sqlite3.connect(db)
@@ -24,19 +27,20 @@ def add_to_database(db, fam_info):
             f = fam_info[name]
             sql = ("UPDATE samples SET family_id = ?, paternal_id = ?, maternal_id = ?, "
                    "sex = ?, phenotype = ? WHERE sample_id = ?")
-            cursor.execute(sql, (f.family, f.paternal, f.maternal, f.sex, f.phenotype, row_id))
+            cursor.execute(sql, (f["family_id"], f["paternal_id"], f["maternal_id"], f["sex"], f["phenotype"], row_id))
     conn.commit()
     cursor.close()
 
 def read_fam_file(in_file):
     out = {}
+    header = ped.get_ped_fields(in_file)
     with open(in_file) as in_handle:
         for line in in_handle:
             if not line.startswith("#"):
                 field = line.split(None, 7)[:7]
                 if len(field) > 1:
-                    ped = pedformat(field)
-                    out[ped.name] = ped
+                    info = dict(zip(header, field))
+                    out[info["name"]] = info
     return out
 
 
