@@ -12,19 +12,23 @@ import sys
 
 import yaml
 
-def main(config_file):
+def main(config_file, env):
     with open(config_file) as in_handle:
-        config = _add_base_dir(yaml.load(in_handle))
+        config = yaml.load(in_handle)
+        config = _add_env_kvs(config, env)
+        config = _add_base_dir(config)
     idremap = read_remap_file(config["idmapping"])
-    baminfo = get_bam_files(config["inputs"], idremap)
     famsamples = get_families(config["priority"], config["params"])
     famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
-    write_config(famsamples, baminfo, None, config["params"]["name"], config["out"],
-                 config)
-    #g1, g2 = split_families(famsamples, config["params"]["max_samples"])
-    #for name, g in [("g1", g1), ("g2", g2)]:
-    #    write_config(g, baminfo, name, config["params"]["priority"], config["out"],
-    #                 config)
+    baminfo = get_bam_files(config["inputs"], idremap)
+    if config["params"]["max_samples"]:
+        for i, g in enumerate(split_families(famsamples, config["params"]["max_samples"])):
+            name = "g%s" % (i+1)
+            write_config(g, baminfo, name, config["params"]["name"], config["out"],
+                         config)
+    else:
+        write_config(famsamples, baminfo, None, config["params"]["name"], config["out"],
+                     config)
 
 # ## Write output configurations
 
@@ -45,7 +49,11 @@ def write_config(g, baminfo, name, group_name, outbase, config):
         for sample in samples:
             if sample in baminfo:
                 cur = {"algorithm": {"aligner": "bwa",
-                                     "variantcaller": "gatk",
+                                     "align_split_size": 20000000,
+                                     "variantcaller": "freebayes",
+                                     "mark_duplicates": "samtools",
+                                     "recalibrate": False,
+                                     "realign": False,
                                      "quality_format": "Standard",
                                      "coverage": config["coverage"],
                                      "coverage_interval": "genome",
@@ -65,21 +73,27 @@ def write_config(g, baminfo, name, group_name, outbase, config):
 def split_families(famsamples, max_samples):
     """Split families into groups that fit for processing.
     """
-    famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
+    orig_size = sum(len(s) for f, s in famsamples)
     for f, s in famsamples:
         print f, s
-    group1 = []
-    group2 = []
+    groups = []
+    cur_group = []
     cur_size = 0
-    for f, s in famsamples:
-        if cur_size + len(s) <= max_samples:
-            cur_size += len(s)
-            group1.append((f, s))
-        else:
-            group2.append((f, s))
-    for name, xs in [("total", famsamples), ("g1", group1), ("g2", group2)]:
-        print name, sum([len(x) for _, x in xs])
-    return group1, group2
+    while len(famsamples) > 0:
+        next_name, next_samples = famsamples.pop(0)
+        if cur_size + len(next_samples) > max_samples:
+            groups.append(cur_group)
+            cur_group = []
+            cur_size = 0
+        cur_group.append((next_name, next_samples))
+        cur_size += len(next_samples)
+    if len(cur_group) > 0:
+        groups.append(cur_group)
+    group_size = 0
+    for g in groups:
+        group_size += sum(len(s) for f, s in g)
+    assert orig_size == group_size, (orig_size, group_size)
+    return groups
 
 # ## Priority file
 
@@ -148,11 +162,18 @@ def read_remap_file(in_file):
 
 # ## Utils
 
+def _add_env_kvs(config, env):
+    """Add key values specific to the running environment.
+    """
+    for k, val in config[env].iteritems():
+        config[k] = val
+    return config
+
 def _add_base_dir(config):
     for k in ["idmapping", "priority", "coverage"]:
         config[k] = os.path.join(config["base_dir"], config[k])
     return config
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:])
 
