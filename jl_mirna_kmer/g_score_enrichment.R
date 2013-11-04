@@ -9,6 +9,8 @@ g_scores_fn = "human-canonical-gscores.txt"
 knowngene_refseq = "knowngene-to-refseq.txt"
 oday_fn = "oday-lin28-binding.csv"
 hefner_fn = "hefner-lin28-binding.csv"
+cho_fn = "lin28-cho.csv"
+tan_fn = "lin28-tan.csv"
 
 setwd(work_dir)
 
@@ -19,6 +21,16 @@ ensembl_transcript_id_to_refseq = function(d) {
       filters=c("ensembl_transcript_id"), values=d[,"id"],
       mart=ensembl)
 	m = merge(d, a, by.x='id', by.y="ensembl_transcript_id")
+	return(m)
+}
+
+entrez_id_to_refseq = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c("entrezgene", "refseq_mrna"),
+      filters=c("entrezgene"), values=d[,"EntrezID"],
+      mart=ensembl)
+	m = merge(d, a, by.x='EntrezID', by.y="entrezgene")
 	return(m)
 }
 
@@ -42,11 +54,25 @@ load_hfner_dataset = function(filename) {
     x = read.csv(filename, header=TRUE, sep=",")
     x$id = x$TranscriptID
     x = ensembl_transcript_id_to_refseq(x)
+    x = subset(x, "Sum.T.to.C.on.transcript" > 20)
     return(x[complete.cases(x),])
 }
 
-load_oday_dataset = function(filename) {
+load_day_dataset = function(filename) {
     x = read.csv(filename, header=TRUE, sep=",")
+    return(x[complete.cases(x),])
+}
+
+load_cho_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    x$id = x$Accession
+    return(x[complete.cases(x),])
+}
+
+load_tan_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    x = entrez_id_to_refseq(x)
+    x$id = x$refseq_mrna
     return(x[complete.cases(x),])
 }
 
@@ -62,10 +88,14 @@ load_kg_to_refseq = function(filename) {
 hfner = load_hfner_dataset(hefner_fn)
 oday = load_oday_dataset(oday_fn)
 kg_to_refseq = load_kg_to_refseq(knowngene_refseq)
+cho = load_cho_dataset(cho_fn)
+tan = load_tan_dataset(tan_fn)
 scores = load_scores_dataset(g_scores_fn)
 
 scores = merge(scores, kg_to_refseq, by.x="id", by.y="hg19.kgXref.kgID")
+scores$id = scores$hg19.kgXref.refseq
 scores = subset(scores, hg19.kgXref.refseq != "")
+
 
 ## oday analysis
 
@@ -121,3 +151,16 @@ p = ggplot(nonzero_scores,
     geom_smooth(method=lm)
 p
 ggsave("hfner.pdf")
+
+# cho analysis
+#in_cho = intersect(cho$id, scores$id)
+#not_in_cho = setdiff(scores$id, cho$id)
+#cho_scores = merge(cho, scores, by.x="id", by.y="id")
+
+# tan analysis
+in_tan = intersect(tan$id, scores$id)
+not_in_tan = setdiff(scores$id, tan$id)
+tan_scores = merge(tan, scores, by="id")
+not_in_tan_scores = subset(scores, id %in% not_in_tan)
+samples = replicate(10000, hfner_is_greater(tan_scores, not_in_tan_scores))
+p_value = 1 - sum(samples) / length(samples)
