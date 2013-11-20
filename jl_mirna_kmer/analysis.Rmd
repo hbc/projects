@@ -24,7 +24,7 @@ library(CHBUtils)
 ensembl_gene = "hsapiens_gene_ensembl"
 filter_type = "refseq_mrna"
 
-work_dir = "/Users/rory/cache/projects/jl_mirna_kmer"
+work_dir = "/n/home05/kirchner/hsph/projects/jl_mirna_kmer"
 g_scores_fn = "meta/human-canonical-gscores.txt"
 knowngene_refseq = "meta/knowngene-to-refseq.txt"
 oday_fn = "data/oday-lin28-binding.csv"
