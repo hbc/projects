@@ -1,0 +1,365 @@
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=FALSE, highlight=TRUE, fig.align='left', fig.show='hold', cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE,
+fig.cap='')
+```
+# Overview
+The hypothesis is that Lin28a binds sequences that have the G-quadraplex motif. For this
+analysis we are looking at a couple of things:
+
+1. Are transcripts bound by Lin28a more rich in G content when compared to the
+transcriptome?
+2. Are transcripts bound by Lin28a more rich in G-quadraplex motifs when compared
+to the transcriptome?
+
+Two main datasets are examined, a dataset from Hefner which is a set of CLIP-seq peaks
+and a dataset from O'day which is a pulldown experiment using Lin28a. 
+
+
+```{r initial-setup}
+library(biomaRt)
+library(ggplot2)
+library(CHBUtils)
+
+ensembl_gene = "hsapiens_gene_ensembl"
+filter_type = "refseq_mrna"
+
+work_dir = "/Users/rory/cache/projects/jl_mirna_kmer"
+g_scores_fn = "meta/human-canonical-gscores.txt"
+knowngene_refseq = "meta/knowngene-to-refseq.txt"
+oday_fn = "data/oday-lin28-binding.csv"
+hefner_fn = "data/hefner-lin28-binding.csv"
+cho_fn = "data/lin28-cho.csv"
+tan_fn = "data/lin28-tan.csv"
+
+setwd(work_dir)
+```
+
+```{r loading-functions}
+symbol_to_refseq = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c("hgnc_symbol", "refseq_mrna"),
+      filters=c("hgnc_symbol"),  values=d[,"id"],
+      mart=ensembl)
+	m = merge(d, a, by.x='id', by.y="hgnc_symbol")
+	return(m)
+}
+
+ensembl_transcript_id_to_refseq = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c("ensembl_transcript_id", "refseq_mrna"),
+      filters=c("ensembl_transcript_id"), values=d[,"id"],
+      mart=ensembl)
+	m = merge(d, a, by.x='id', by.y="ensembl_transcript_id")
+	return(m)
+}
+
+entrez_id_to_refseq = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c("entrezgene", "refseq_mrna"),
+      filters=c("entrezgene"), values=d[,"EntrezID"],
+      mart=ensembl)
+	m = merge(d, a, by.x='EntrezID', by.y="entrezgene")
+	return(m)
+}
+
+add_biotype = function(d) {
+    require(biomaRt)
+    ensembl = useMart('ensembl', dataset=ensembl_gene)
+    a = getBM(attributes=c("refseq_mrna", "gene_biotype"),
+        filters = c("refseq_mrna"), values=d[,"hg19.kgXref.refseq"],
+        mart=ensembl)
+    m = merge(d, a, by.x="hg19.kgXref.refseq", by.y="refseq_mrna")
+    return(m)
+}
+
+load_scores_dataset = function(filename) {
+    x = read.table(filename, header=TRUE, sep="\t")
+    x = x[complete.cases(x),]
+    return(x)
+}
+
+load_hfner_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    x$id = x$TranscriptID
+    x = ensembl_transcript_id_to_refseq(x)
+    x$id = x$refseq_mrna
+    return(x[complete.cases(x),])
+}
+
+load_oday_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    return(x[complete.cases(x),])
+}
+
+load_cho_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    x$id = x$Accession
+    return(x[complete.cases(x),])
+}
+
+load_tan_dataset = function(filename) {
+    x = read.csv(filename, header=TRUE, sep=",")
+    x = entrez_id_to_refseq(x)
+    x$id = x$refseq_mrna
+    return(x[complete.cases(x),])
+}
+
+load_kg_to_refseq = function(filename) {
+    x = read.table(filename, header=TRUE, sep="\t")
+    x = x[complete.cases(x),]
+    x = subset(x, hg19.kgXref.refseq != "")
+    x = add_biotype(x)
+    x = subset(x, gene_biotype == "protein_coding")
+    return(x)
+}
+```
+
+```{r data-load}
+hfner = load_hfner_dataset(hefner_fn)
+oday = load_oday_dataset(oday_fn)
+kg_to_refseq = load_kg_to_refseq(knowngene_refseq)
+cho = load_cho_dataset(cho_fn)
+tan = load_tan_dataset(tan_fn)
+scores = load_scores_dataset(g_scores_fn)
+
+scores = merge(scores, kg_to_refseq, by.x="id", by.y="hg19.kgXref.kgID")
+scores$id = scores$hg19.kgXref.refseq
+scores = subset(scores, hg19.kgXref.refseq != "")
+scores = subset(scores, !duplicated(scores$id))
+nonzero_scores = subset(scores, normalized_score > 0)
+```
+
+## Initial exploration of the transcriptome G content
+The mean of the G-content of transcripts is not-exactly normally distributed
+with a mean of `r mean(scores$G_percent)`.
+```{r transcriptome-g-content-qqplot, fig.cap="G-content is approximately normal"}
+ggplot(scores, aes(sample=G_percent)) + stat_qq()
+```
+
+```{r transcriptome-g-content, fig.cap="G-content is approximately normal"}
+ggplot(scores, aes(G_percent)) + geom_histogram()
+```
+
+The log of the transcript-length normalized G-quadraplex score for each transcript is also
+approximately normal:
+```{r transcripome-g-score}
+ggplot(nonzero_scores, aes(normalized_score)) + geom_histogram() + scale_x_log10()
+```
+
+The normalized number of G-runs per transcript is not, normal however:
+```{r transcriptome-G-runs}
+ggplot(nonzero_scores, aes(normalized_G_runs)) + geom_histogram() + scale_x_log10()
+```
+
+There is a very weak relationship between the G-quadraplex score and the
+number of G-runs:
+```{r transcriptome-g-quadraplex-vs-g-runs}
+ggplot(nonzero_scores, aes(normalized_score, normalized_G_runs)) + 
+    geom_point() +  scale_x_log10() + geom_smooth(method="lm", se=FALSE)
+```
+
+Using the same scoring calculation to score the G-runs in the entire transcript vs. just
+those in the G-quadraplex regions shows a better relationship:
+```{r transcriptome-g-quadraplex-vs-g-runs2}
+ggplot(nonzero_scores, aes(normalized_score, normalized_transcript_score)) + 
+    geom_point() +  scale_x_log10() + scale_y_log10() + geom_smooth(method="lm", se=FALSE)
+```
+
+
+## Analysis of the O'Day dataset
+
+Load in the data:
+    
+```{r oday-loading, echo=TRUE}
+oday = oday[, c("Gene.ID", "FoldChange", "WaldStat")]
+
+in_oday = intersect(oday$Gene.ID, scores$hg19.kgXref.refseq)
+not_in_oday = setdiff(scores$hg19.kgXref.refseq, oday$Gene.ID)
+
+oday_scores = merge(oday, scores, by.x="Gene.ID", by.y="hg19.kgXref.refseq")
+oday_scores = subset(oday_scores, !duplicated(oday_scores$Gene.ID))
+
+not_in_oday_scores = subset(scores, hg19.kgXref.refseq %in% not_in_oday)
+```
+
+We are left with `r length(rownames(oday))` data points in the O'day after loading.
+After merging with the G-scores table, that number dropped to `r length(rownames(oday_scores))`.
+This is an unfortunate fact of life when moving between identifiers.
+
+The percentage of G bases in the Lin28a bound transcripts in the O'Day dataset
+is significantly greater. I ran the Wilcoxon test for everything since the datasets
+do not look exactly normal.
+```{r oday-g-percent, echo=TRUE}
+wilcox.test(oday_scores$G_percent, not_in_oday_scores$G_percent, conf.int=TRUE)
+oday_ns = data.frame(G_percent = oday_scores$G_percent, dataset="oday",
+  normalized_g_quadraplex = oday_scores$normalized_score,
+  quadraplex_score = oday_scores$total_score)
+not_oday_ns = data.frame(G_percent = not_in_oday_scores$G_percent, dataset="not_oday",
+  normalized_g_quadraplex = not_in_oday_scores$normalized_score,
+  quadraplex_score = not_in_oday_scores$total_score)
+oday_df = rbind(oday_ns, not_oday_ns)
+ggplot(oday_df, aes(x=dataset, y=G_percent)) + geom_boxplot() + scale_y_log10()
+```
+
+Looking at the normalized number of G-runs and the overall score of G-runs in
+the entire transcript, the O'Day dataset has more G-runs and a higher score of
+G-runs overall:
+```{r oday-g-runs, echo=TRUE}
+wilcox.test(oday_scores$normalized_G_runs, not_in_oday_scores$normalized_G_runs,
+            conf.int=TRUE)
+wilcox.test(oday_scores$normalized_transcript_score,
+            not_in_oday_scores$normalized_transcript_score, conf.int=TRUE)
+```
+
+Looking at the G-quadraplex score of the O'Day transcripts compared to
+transcripts not in the O'Day dataset shows an enrichment for G-quadraplex
+containing motifs:
+```{r oday-g-quadraplex, echo=TRUE}
+wilcox.test(oday_scores$normalized_score, not_in_oday_scores$normalized_score,
+            conf.int=TRUE)
+```
+
+We can see this relationship looking at the ranks of the normalized scores for
+the transcripts pulled down by Lin28a and not pulled down by Lin28a:
+
+```{r qqplot-oday-quadraplex, echo=TRUE}
+g = qqplot2(log(not_in_oday_scores$normalized_score + 1), log(oday_scores$normalized_score + 1))
+g + xlab("score of transcripts not bound by Lin28a") +
+         ylab("score of transcripts bound by Lin28a") +
+    ggtitle("qqplot of O'Day G-quadraplex dataset")
+```
+
+
+There are `r table(oday_scores$normalized_score > 0)[2]` hits with non-zero G-quadraplex
+scores in the Oday dataset out of `r length(rownames(oday_scores))` total. 
+If we use the probability of selecting a transcript at random from the transcriptome and
+having it contain a G-quadraplex, we can calculate the probability of that occuring by
+chance:
+
+```{r oday-binomial-probability, echo=TRUE}
+x = table(oday_scores$normalized_score > 0)[2]
+n = length(rownames(oday_scores))
+x_pop = table(not_in_oday_scores$normalized_score > 0)[2] + x
+n_pop = n + length(rownames(not_in_oday_scores))
+p = x_pop / n_pop
+binom.test(x, n, p)
+
+```
+It is a little more appropriate to calculate the hypergeometric p-value: 
+`r 1 - phyper(x, x_pop, n_pop - x_pop, n)`
+
+The amount of transcript pulled down is not related to the G-quadraplex score
+in any meaningful way:
+```{r foldchange-vs-quadraplex, echo=TRUE}
+ggplot(oday_scores,
+    aes(normalized_score, FoldChange)) + geom_point() +
+    geom_smooth(method=lm, se=FALSE)
+```
+
+## Hefner dataset
+
+```{r hfner-loading, echo=TRUE}
+in_hfner = intersect(hfner$id, scores$id)
+not_in_hfner = setdiff(scores$id, hfner$id)
+
+hfner_scores = merge(hfner, scores, by.x="id", by.y="id")
+hfner_scores = subset(hfner_scores, !duplicated(hfner_scores$id))
+not_in_hfner_scores = subset(scores, id %in% not_in_hfner)
+```
+
+We are left with `r length(rownames(hfner))` data points in the Hefner
+ dataset after loading. After merging with the G-scores table, that number dropped
+to `r length(rownames(hfner_scores))`. The big drop is due to going from individual
+transcripts to just using the canonical gene and also from converting Ensembl to
+refseq mRNA.
+
+The percentage of G bases in the Lin28a bound transcripts in the Hefner dataset
+is significantly smaller, the opposite of the O'day dataset.
+
+```{r hfner-g-percent, echo=TRUE}
+wilcox.test(hfner_scores$G_percent, not_in_hfner_scores$G_percent, conf.int=TRUE)
+hfner_ns = data.frame(G_percent = hfner_scores$G_percent, dataset="hfner",
+  normalized_g_quadraplex = hfner_scores$normalized_score)
+not_hfner_ns = data.frame(G_percent = not_in_hfner_scores$G_percent, dataset="not_hfner",
+  normalized_g_quadraplex = not_in_hfner_scores$normalized_score)
+hfner_quadraplex = rbind(hfner_ns, not_hfner_ns)
+ggplot(hfner_quadraplex, aes(x=dataset, y=G_percent)) + geom_boxplot() + scale_y_log10()
+
+```
+
+oday_hfner = rbind(hfner_quadraplex, oday_df)
+ggplot(oday_hfner, aes(normalized_g_quadraplex + 1, x=dataset)) + geom_boxplot()
+
+
+
+This difference between the Hefner dataset and the O'Day dataset holds true
+for the normalized nummber of G-runs and the overall score of the G-runs:
+
+```{r hfner-g-runs, echo=TRUE}
+wilcox.test(hfner_scores$normalized_G_runs, not_in_hfner_scores$normalized_G_runs,
+            conf.int=TRUE)
+wilcox.test(hfner_scores$normalized_transcript_score,
+            not_in_hfner_scores$normalized_transcript_score, conf.int=TRUE)
+hfner_ns = data.frame(transcript_score = hfner_scores$normalized_transcript_score,
+    dataset="hfner")
+not_hfner_ns = data.frame(transcript_score = not_in_hfner_scores$normalized_transcript_score,
+    dataset="not_hfner")
+hfner_transcript_score = rbind(hfner_ns, not_hfner_ns)
+ggplot(hfner_transcript_score, aes(x=dataset, y=transcript_score)) + geom_boxplot() +
+scale_y_log10()
+```
+
+However looking at the G-quadraplex score of the Hefner dataset is a different
+story. There is an enrichment for in the Hefner dataset for G-quadraplexes
+over the whole transcriptome:
+
+```{r hfner-g-quadraplex, echo=TRUE}
+wilcox.test(hfner_scores$normalized_score, not_in_hfner_scores$normalized_score,
+            conf.int=TRUE)
+```
+
+Looking at this in graphical form:
+    
+```{r hfner-qqplot-quadraplex, echo=TRUE}  
+g = qqplot2(log(not_in_hfner_scores$normalized_score + 1), log(hfner_scores$normalized_score + 1))
+g + xlab("score of transcripts not bound by Lin28a") +
+         ylab("score of transcripts bound by Lin28a") +
+    ggtitle("qqplot of Hefner G-quadraplex dataset")
+```
+
+Boxplots aren't the best way to look at this data; it is too spread, and most of the
+G-quadraplex scores are zero, so logging the data gives the wrong impression. Instead,
+another way to look at this data is to ask if there are significantly more transcripts
+with G-quadraplex scores than you would expect by chance in the Hefner dataset.
+
+There are `r table(hfner_scores$normalized_score > 0)[2]` hits with non-zero G-quadraplex
+scores in the Hefner dataset out of `r length(rownames(hfner_scores))` total. 
+If we use the probability of selecting a transcript at random from the transcriptome and
+having it contain a G-quadraplex, we can calculate the probability of that occuring by
+chance:
+
+```{r hfner-binomial-probability, echo=TRUE}
+x = table(hfner_scores$normalized_score > 0)[2]
+n = length(rownames(hfner_scores))
+p = (table(not_in_hfner_scores$normalized_score > 0)[2] + x) / (n + length(rownames(not_in_hfner_scores)))
+x_pop = table(not_in_hfner_scores$normalized_score > 0)[2] + x
+n_pop = n + length(rownames(not_in_hfner_scores))
+p = x_pop / n_pop
+binom.test(x, n, p)
+```
+It is a little more appropriate to calculate the hypergeometric p-value: 
+`r 1 - phyper(x, x_pop, n_pop - x_pop, n)`
+
+## miRNA g-quadraplex scoring
+Since miRNA are smaller, we'll relax the C-score correction to the G-quadraplex score.
+Most miRNA do not score using the 3G-11N style G-quadraplex motif. 
+
+## Take home
+It looks like the argument that there are more G-rich regions in the
+Lin28a binding transcripts does not hold up for both datasets. The
+argument that Lin28a binding targets are enriched for G-quadraplex
+sequences is.
