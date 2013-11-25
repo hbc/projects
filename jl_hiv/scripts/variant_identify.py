@@ -7,7 +7,6 @@ Usage:
 import os
 import sys
 import csv
-import glob
 import copy
 import operator
 import subprocess
@@ -22,19 +21,18 @@ import numpy
 from Bio.SeqIO.QualityIO import (FastqGeneralIterator,
                                  _phred_to_sanger_quality_str)
 from Bio.Seq import Seq
-import rpy2.robjects as rpy
 
 from bcbio.utils import create_dirs, map_wrap, cpmap, file_exists, memoize_outfile
 from bcbio import broad
-from bcbio.fastq.barcode import demultiplex, convert_illumina_oldstyle
-from bcbio.fastq.unique import uniquify_reads
-from bcbio.fastq.trim import trim_fastq
-from bcbio.fastq.filter import kmer_filter, remove_ns
+from bcbio_hiv.fastq.barcode import demultiplex, convert_illumina_oldstyle
+from bcbio_hiv.fastq.unique import uniquify_reads
+from bcbio_hiv.fastq.trim import trim_fastq
+from bcbio_hiv.fastq.filter import kmer_filter, remove_ns
 from bcbio.ngsalign import novoalign
 from bcbio.variation.realign import gatk_realigner
 from bcbio.pipeline.alignment import sam_to_sort_bam
-from bcbio.varcall import mixed
-from bcbio.varcall.summarize import print_summary_counts
+from bcbio_hiv.varcall import mixed
+from bcbio_hiv.varcall.summarize import print_summary_counts
 
 def main(config_file):
     with open(config_file) as in_handle:
@@ -61,7 +59,7 @@ def fastq_to_process(config):
             fastqs = _assign_bc_files(cur, bc_files)
         else:
             cur["program"] = config["program"]
-            if not cur.has_key("algorithm"):
+            if "algorithm" not in cur:
                 cur["algorithm"] = config["algorithm"]
             fastqs = [cur]
         for fq in fastqs:
@@ -89,29 +87,30 @@ def process_fastq(curinfo, ref_index, config, config_file):
                                 config["dir"]["align"],
                                 curinfo)
     name = curinfo.get("description", curinfo.get("name", ""))
-    ref =  curinfo.get("ref", config.get("ref", None))
+    ref = curinfo.get("ref", config.get("ref", None))
+    names = {"rg": name, "sample": name, "pu": name, "pl": name}
     align_bam = sam_to_sort_bam(align_sam, ref, unique_file, None,
-                                name, name, name, config)
+                                names, config)
     if do_realignment == "gatk":
         align_bam = gatk_realigner(align_bam, ref, config, deep_coverage=True)
     picard.run_fn("picard_index", align_bam)
     # XXX Finish remainder of processing
     summarize_at_each_pos(align_bam, in_file, count_file, name, config)
-    return
-    if config["algorithm"].get("range_params", None):
-        call_analyze_multiple(align_bam, bc, in_file, config)
-    else:
-        call_bases_and_analyze(align_bam, bc, in_file, config)
+    # if config["algorithm"].get("range_params", None):
+    #     call_analyze_multiple(align_bam, bc, in_file, config)
+    # else:
+    #     call_bases_and_analyze(align_bam, bc, in_file, config)
 
 def _prepare_fastq(curinfo, config):
     """Gunzip fastq files if necessary and combine paired ends.
     """
     if len(curinfo["files"]) == 1:
         fname = curinfo["files"][0]
-        if fname.endswith(".gz"):
-            subprocess.check_call("gunzip {}".format(fname))
-            fname = os.path.splitext(fname)[0]
-        return fname
+        assert fname.endswith(".gz")
+        out = os.path.join(config["dir"]["align"], os.path.splitext(os.path.basename(fname))[0])
+        if not os.path.exists(out):
+            subprocess.check_call("gunzip -c %s > %s" % (fname, out), shell=True)
+        return out
     else:
         combined = os.path.join(config["dir"]["align"],
                                 os.path.basename(curinfo["files"][0]))
@@ -129,11 +128,12 @@ def _prepare_fastq(curinfo, config):
 
 @memoize_outfile("-coverage.pdf")
 def plot_coverage(align_bam, name, out_file):
+    import rpy2.robjects as rpy
     data = {"position": [],
             "count": []}
     with closing(pysam.Samfile(align_bam, 'rb')) as work_bam:
         for col in work_bam.pileup(stepper="all", max_depth=1000000000):
-            space = work_bam.getrname(col.tid)
+            #space = work_bam.getrname(col.tid)
             data["position"].append(col.pos)
             data["count"].append(col.n)
     df = {"position": rpy.FloatVector(data["position"]),
@@ -159,7 +159,7 @@ def _load_count_file(count_file):
 def summarize_at_each_pos(align_bam, read_file, count_file, name, config):
     """Provide detailed output on bases aligned at each position for variant calling.
     """
-    plot_coverage(align_bam, name)
+    #plot_coverage(align_bam, name)
     params = config["algorithm"]
     out_file = os.path.join(config["dir"]["vrn"],
                             "raw_{}.tsv".format(os.path.splitext(os.path.basename(align_bam))[0]))
@@ -405,7 +405,7 @@ def _read_surround_region(read, params, qual_map):
             qual = qual_map[read.alignment.qual[read.qpos]]
             align_score = [n for (t, n) in read.alignment.tags if t == "AS"][0]
             call = seq[pos]
-            kmer = seq[pos-extend:pos+extend+1]
+            kmer = seq[pos - extend:pos + extend + 1]
             # if reverse, return forward original read values for counting
             if read.alignment.is_reverse:
                 seq = str(Seq(seq).reverse_complement())

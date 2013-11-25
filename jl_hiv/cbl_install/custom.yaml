@@ -1,0 +1,6 @@
+---
+bio_nextgen:
+  analysis:
+    - picard
+  variant:
+    - gatk
