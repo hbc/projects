@@ -24,7 +24,7 @@ name: A5262
 algorithm:
   # current algorithm parameters
   allowed_ns: 0
-  min_unique_counts: 5
+  min_unique_counts: 1
   realignment: gatk
   kmer_size: 13
   cores: 1

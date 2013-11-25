@@ -7,7 +7,7 @@
   (:use [clojure.java.io]
         [clojure.string :only [split join]]
         [incanter.stats :only [median]])
-  (:require [fs.core :as fs]
+  (:require [me.raynes.fs :as fs]
             [clj-yaml.core :as yaml]
             [doric.core :as doric]))
 

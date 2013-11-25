@@ -2,7 +2,7 @@
   (:use [midje.sweet]
         [snp-assess.core :only [load-config]]
         [snp-assess.score])
-  (:require [fs.core :as fs]))
+  (:require [me.raynes.fs :as fs]))
 
 (let [config-file (str (fs/file "config" "classification.yaml"))
       config (load-config config-file)]

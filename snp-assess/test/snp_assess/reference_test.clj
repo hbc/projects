@@ -1,7 +1,7 @@
 (ns snp-assess.reference-test
   (:use [midje.sweet]
         [snp-assess.reference])
-  (:require [fs.core :as fs]))
+  (:require [me.raynes.fs :as fs]))
 
 (tabular
  (fact "Correctly generate reference bases at a position."

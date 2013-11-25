@@ -12,7 +12,7 @@
         [snp-assess.core :only [snpdata-from-hfs load-config
                                 parse-pos-line]])
   (:require [cascalog [ops :as ops]]
-            [fs.core :as fs])
+            [me.raynes.fs :as fs])
   (:gen-class))
 
 (defn off-target-freqs [snpdata no-var-positions minority-freq-fn]

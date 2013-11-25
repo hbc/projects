@@ -8,7 +8,7 @@
         [snp-assess.score :only [score-calc-cascalog]])
   (:require [cascalog [ops :as ops]]
             [clj-yaml.core :as yaml]
-            [fs.core :as fs]))
+            [me.raynes.fs :as fs]))
 
 ;; Summary statistics for positions of interest
 

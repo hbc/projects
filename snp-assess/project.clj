@@ -1,21 +1,12 @@
 (defproject snp-assess "0.0.1-SNAPSHOT"
   :description "Deep sequence variation assessment for populations."
-  :dependencies [[org.clojure/clojure "1.4.0"]
+  :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/algo.generic "0.1.0" :exclusions [org.clojure/clojure]]
                  [cascalog "1.8.5" :exclusions [org.clojure/clojure log4j]]
-                 [incanter/incanter-core "1.3.0" :exclusions [org.clojure/clojure
-                                                              org.clojure/math.combinatorics]]
-                 [incanter/incanter-charts "1.3.0" :exclusions [org.clojure/clojure clj-time]]
-                 [incanter/incanter-pdf "1.3.0" :exclusions [org.clojure/clojure]]
-                 [nz.ac.waikato.cms.weka/weka-stable "3.6.6"]
-                 [org.clojars.chapmanb/fast-random-forest "0.98"]
-                 [com.leadtune/clj-ml "0.2.4" :exclusions [lt/weka hr.irb/fastRandomForest
-                                                           org.clojure/clojure]]
-                 [fs "1.1.2" :exclusions [org.clojure/clojure]]
-                 [clj-yaml "0.3.1"]
-                 [ordered "1.3.2" :exclusions [org.clojure/clojure]]
-                 [doric "0.7.0-SNAPSHOT"]
-                 [bcbio.variation "0.0.1-SNAPSHOT"]]
+                 [incanter/incanter-core "1.5.1" :exclusions [org.clojure/clojure junit]]
+                 [incanter/incanter-charts "1.5.1" :exclusions [org.clojure/clojure junit]]
+                 [incanter/incanter-pdf "1.5.1" :exclusions [org.clojure/clojure junit]]
+                 [bcbio.variation "0.1.1"]]
   :profiles {:dev
              {:dependencies
               [[org.apache.hadoop/hadoop-core "0.20.2-dev" :exclusions [commons-logging org.slf4j/slf4j-api

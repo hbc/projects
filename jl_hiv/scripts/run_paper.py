@@ -8,6 +8,11 @@ work in the paper. Requires a minimal unix system with:
 - Java
 - Ruby
 - Git
+
+The script installs all other tools and data into the current local directory and runs the analysis.
+Launch with:
+
+  python run_paper.py
 """
 import os
 import subprocess
@@ -15,12 +20,14 @@ import sys
 
 def main():
     make_directory_structure()
-    config_file = get_data()
+    config_files = get_data()
     cmds = install_code()
-    run_analysis(cmds, config_file)
+    run_analysis(cmds, config_files)
 
-def run_analysis(cmds, config_file):
-    subprocess.check_call([cmds["python"], cmds["variant_script"], config_file])
+def run_analysis(cmds, config_files):
+    subprocess.check_call([cmds["python"], cmds["variant_script"], config_files["align"]])
+    subprocess.check_call(["java", "-jar", cmds["snpassess_jar"], "snp-call",
+                           config_files["variant"], config_files["classification"], os.getcwd()])
 
 def get_data():
     """Retrieve data and configuration files for running the analysis.
@@ -30,15 +37,23 @@ def get_data():
         fname = os.path.join("input", "%s-%s.fq.gz" % (pname, sample))
         if not os.path.exists(fname):
             raise NotImplementedError("Get from SRA when available: %s" % fname)
-    config_file = os.path.join(os.getcwd(), "config", "20120111-paper.yaml")
-    if not os.path.exists(config_file):
-        subprocess.check_call(["wget", "-O", config_file,
-                               "https://raw.github.com/hbc/projects/master/jl_hiv/config/20120111-paper.yaml"])
+    config_files = {"align": os.path.join(os.getcwd(), "config", "20120111-paper.yaml"),
+                    "variant": os.path.join(os.getcwd(), "config", "20120111-variant-paper.yaml"),
+                    "classification": os.path.join(os.getcwd(), "config", "20120111-classification.yaml")}
+    urls = {"align":
+            "https://raw.github.com/hbc/projects/master/jl_hiv/config/20120111-paper.yaml",
+            "variant":
+            "https://raw.github.com/hbc/projects/master/snp-assess/config/20120111-variant-paper.yaml",
+            "classification":
+            "https://raw.github.com/hbc/projects/master/snp-assess/config/20120111-classification.yaml"}
+    for kw in config_files:
+        if not os.path.exists(config_files[kw]):
+            subprocess.check_call(["wget", "-O", config_files[kw], urls[kw]])
     if not os.path.exists("refinfo"):
         subprocess.check_call(["wget", "https://s3.amazonaws.com/hbc_data/li_refinfo.tar.gz"])
         subprocess.check_call(["tar", "-xzvpf", "li_refinfo.tar.gz"])
         os.remove("li_refinfo.tar.gz")
-    return config_file
+    return config_files
 
 def install_code():
     """Install the required code for running the analysis.
@@ -65,7 +80,8 @@ def install_code():
     install_supporting(python_cmd, install_dir)
     os.chdir(orig_dir)
     return {"python": python_cmd,
-            "variant_script": os.path.join(os.getcwd(), "build", dirname, "scripts", "variant_identify.py")}
+            "variant_script": os.path.join(os.getcwd(), "build", dirname, "scripts", "variant_identify.py"),
+            "snpassess_jar": install_snpassess(install_dir)}
 
 def install_thirdparty(install_dir, flavor):
     """Install third party software needed by the pipeline.
@@ -85,6 +101,15 @@ def install_thirdparty(install_dir, flavor):
         sys.path.insert(0, cbl_dir)
         cbl_deploy = __import__("cloudbio.deploy", fromlist=["deploy"])
         cbl_deploy.deploy(s)
+
+def install_snpassess(install_dir):
+    out_jar = os.path.join(install_dir, "share", "java", "snp-assess",
+                           "snp-assess-0.0.1-SNAPSHOT-standalone.jar")
+    if not os.path.exists(out_jar):
+        if not os.path.exists(os.path.dirname(out_jar)):
+            os.makedirs(os.path.dirname(out_jar))
+        raise NotImplementedError("Get jar")
+    return out_jar
 
 def install_supporting(python_cmd, install_dir):
     """Install supporting scripts: bloom uniquification from @brentp

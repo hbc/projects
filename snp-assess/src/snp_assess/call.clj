@@ -11,7 +11,7 @@
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
         [snp-assess.protein.calc :only [prep-protein-map]]
         [snp-assess.protein.read :only [annotate-calls-w-aa]])
-  (:require [fs.core :as fs]
+  (:require [me.raynes.fs :as fs]
             [clj-yaml.core :as yaml]
             [bcbio.run.itx :as itx]))
 

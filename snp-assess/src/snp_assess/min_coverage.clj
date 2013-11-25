@@ -17,7 +17,7 @@
         [snp-assess.off-target :only [pos-from-hfs]]
         [snp-assess.classify :only [raw-data-frequencies]])
   (:require [cascalog [ops :as ops]]
-            [fs.core :as fs])
+            [me.raynes.fs :as fs])
   (:gen-class))
 
 ;; Coverage for minority variant detection

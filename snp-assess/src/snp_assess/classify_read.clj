@@ -7,7 +7,7 @@
         [snp-assess.core :only [load-config]]
         [snp-assess.features :only [metrics-to-features]]
         [snp-assess.classify :only [prepare-classifier get-dataset]])
-  (:require [fs.core :as fs]))
+  (:require [me.raynes.fs :as fs]))
 
 (defn classifier-score [classifier config]
   "Calculate read score using pre-built classifier."
