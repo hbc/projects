@@ -109,7 +109,9 @@ def install_snpassess(install_dir):
     if not os.path.exists(out_jar):
         if not os.path.exists(os.path.dirname(out_jar)):
             os.makedirs(os.path.dirname(out_jar))
-        raise NotImplementedError("Get jar")
+        subprocess.check_call(["wget", "-O", out_jar,
+                               "https://github.com/hbc/projects/releases/download/"
+                               "snp-assess-v%s/snp-assess-%s-standalone.jar" % (version, version)])
     return out_jar
 
 def install_supporting(python_cmd, install_dir):
