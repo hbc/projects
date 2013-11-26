@@ -103,8 +103,9 @@ def install_thirdparty(install_dir, flavor):
         cbl_deploy.deploy(s)
 
 def install_snpassess(install_dir):
+    version = "0.0.1"
     out_jar = os.path.join(install_dir, "share", "java", "snp-assess",
-                           "snp-assess-0.0.1-SNAPSHOT-standalone.jar")
+                           "snp-assess-%s-standalone.jar" % version)
     if not os.path.exists(out_jar):
         if not os.path.exists(os.path.dirname(out_jar)):
             os.makedirs(os.path.dirname(out_jar))

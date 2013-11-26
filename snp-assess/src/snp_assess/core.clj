@@ -92,5 +92,6 @@
         (#(assoc % :experiments (map (fn [x] (add-full-path x [:files :align :count]))
                                      (:experiments %)))))))
 
-(defn -main [data-dir pos-dir config-file]
-  (target-snpdata-stats data-dir pos-dir (load-config config-file)))
+(defn -main [& args]
+  (let [[data-dir pos-dir config-file] args]
+    (target-snpdata-stats data-dir pos-dir (load-config config-file))))
