@@ -1,0 +1,460 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE)
+```
+
+
+```{r VARIABLES, echo=FALSE}
+# setup report details
+clientname="Shailesh Gupta"
+clientemail="shailesh_gupta@harvard.edu"
+labPI="Lee Rubin"
+lablocation="SCRB"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/lr_motor_neurons/data/FACS_sorted_MNs_from_MNs-AKIs")){
+  dataDir="/n/hsphS10/hsphfs1/chb/projects/lr_motor_neurons/data/FACS_sorted_MNs_from_MNs-AKIs"
+  resultsDir="/n/hsphS10/hsphfs1/chb/projects/lr_motor_neurons/results/FACS_sorted_MNs_from_MNs-AKIs"
+} else if (file.exists("/Volumes/ody/projects/lr_motor_neurons/data/FACS_sorted_MNs_from_MNs-AKIs")){
+  dataDir="/Volumes/ody/projects/lr_motor_neurons/data/FACS_sorted_MNs_from_MNs-AKIs"
+  resultsDir="/Volumes/ody/projects/lr_motor_neurons/results/FACS_sorted_MNs_from_MNs-AKIs"
+}
+covarsfilename="covars.desc" # do not use full path, place file in dataDir
+```
+
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+---
+
+## Methods summary
+All MoGene 1.0 ST arrays were processed using the 'oligo' BioConductor package[^1], quality-controlled with arrayQualityMetrics[^2] and RMA normalized[^3]. Differentially expressed genes were identified using limma[^4].
+
+---
+
+## Workflow
+The sections below provide minimal code to reproduce the included results and plots. Libraries used to process and visualize data:
+
+---
+
+## Load Bioconductor and R libraries used to process and visualize the data
+
+```{r libraries_variables, echo=TRUE}
+library(oligo)
+library(arrayQualityMetrics)
+library(limma)
+library(pheatmap)
+library(RColorBrewer)
+library(pathprint)
+library(xtable)
+library(Biobase)
+library(plyr)
+library(ggplot2)
+library(venneuler)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+```
+
+## Load custom functions
+
+```{r functions, echo=TRUE}
+## function to find the chance of two gene lists overlapping
+## takes three lists of gene symbols, only counts each gene symbol once, even if present multiple times
+overlap.pval <- function(list1, list2, background) {
+	l1 <- length(unique(list1[!is.na(list1)]))
+	l2 <- length(unique(list2[!is.na(list2)]))
+	lb <- length(unique(background[!is.na(background)]))
+	overlap.obs <- length(intersect(list1, list2)) 
+	pval <- 1-phyper(overlap.obs, l2, lb-l2, l1)
+return(pval)
+	}
+source("http://faculty.ucr.edu/~tgirke/Documents/R_BioCond/My_R_Scripts/overLapper.R") 
+```	
+
+
+```{r aliases}
+len=length
+```
+
+## Load the data
+- load in phenotypes and array names from metadata file (covars.desc) in "data" directory
+  - this file contains the names and descriptions of CEL files contained in same directory 
+- use array names to load in arrays 
+
+```{r dataload, results='hide', cache=TRUE}
+covars <- read.delim(file.path(dataDir, covarsfilename), row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+celFiles <- file.path(dataDir, row.names(covars))
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+validObject(affyRaw)
+````
+
+## Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+pDataTable <- xtable(pData(affyRaw))
+print(pDataTable, type='html')
+```
+
+## QA/QC - 1 
+- using arrayQualityMetrics library
+- raw data
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("celltype", "treatment", "replicate"))
+```
+
+[raw data QC report - all samples](./results/FACS_sorted_MNs_from_MNs-AKIs/report_raw/index.html)
+
+## Removing failed arrays
+- exclude G93A_VX-680_2 (sampleID1=69) due to lack of signal on array
+- G93A_neg_1 (sampleID1=64) is questionable, but may be cleaned up after normalization
+
+```{r drop_outliers}
+affyRaw <- affyRaw[,c(1:14,16)]
+covars <- covars[-which(covars$sampleID1==69),]
+```
+
+## Background correct and normalize
+- using RMA
+- summarize probesets on the gene (`core`) level
+
+```{r normalize, results='hide', cache=TRUE}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+# cleanup
+rm(affyRaw)
+```
+
+## QA/QC - 2 
+- using arrayQualityMetrics library
+- normalized data
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, 'report_rma.core'), force=TRUE, do.logtransform=FALSE, intgroup=c("celltype", "treatment", "replicate"))
+```
+
+[normalized data QC report](./results/FACS_sorted_MNs_from_MNs-AKIs/report_rma.core/index.html)
+- appears that the Hb9 replicates cluster better than the G93A replicates
+ 
+## QA/QC - 3
+### Primary Clustering
+- the goal of this analysis is to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample categories
+- Principal Component Analysis  (PCA) is a dimension reduction and visualisation technique that is used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays.
+- in basic terms, we are checking whether the samples cluster by sample type; its a good sign if they do
+
+The plots show a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color. You can use these plots to explore if the arrays cluster, and whether this is according to an intended experimental factor or according to unintended causes such as batch effects. 
+
+**All Samples**
+
+```{r pca1, fig.cap="Primary Component Analysis of samples - all combinations of the 4 first primary components", fig.width=12, fig.height=12}
+eset.core <- exprs(affyNorm.core) 
+colnames(eset.core) <- pData(affyNorm.core)$Sample
+myPca.core <- prcomp(t(eset.core))
+tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+colors <- cbPalette[factor(pData(affyNorm.core)$group)]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm.core)$group)))
+##all samples
+pairs(tmpPCAData.core, bg=colors, col="black", cex=2,pch=21, main="All samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+```
+
+**Hb9 Samples**
+
+```{r pca2, fig.cap="Primary Component Analysis of Hb9 samples - all combinations of the 4 first primary components", fig.width=12, fig.height=12}
+indices=which(pData(affyNorm.core)$celltype=="Hb9")
+tmpPCAData.core.hb9 <- tmpPCAData.core[indices,]
+colors <- cbPalette[factor(pData(affyNorm.core)$group)[indices]]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm.core)$group[indices])))
+pairs(tmpPCAData.core.hb9, bg=colors, col="black", cex=2,pch=21, main="Hb9 samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+```
+
+**G93A Samples**
+
+```{r pca3, fig.cap="Primary Component Analysis of G93A samples - all combinations of the 4 first primary components", fig.width=12, fig.height=12}
+indices=which(pData(affyNorm.core)$celltype=="G93A")
+tmpPCAData.core.G93A <- tmpPCAData.core[indices,]
+colors <- cbPalette[factor(pData(affyNorm.core)$group)[indices]]
+legend_values=unique(cbind(colors, as.character(pData(affyNorm.core)$group[indices])))
+pairs(tmpPCAData.core.G93A, bg=colors, col="black", cex=2,pch=21, main="Hb9 samples", oma=c(8,5,5,14))
+legend("right", cex=0.7, col="black", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+# cleanup
+rm(tmpPCAData.core, tmpPCAData.core.G93A, tmpPCAData.core.hb9, legend_values, indices, colors, myPca.core)
+```
+
+## Annotations
+- load in metadata about the probesets on the array (feature data), gene symbols in particular
+
+```{r features, results='hide'}
+# retrieve NetAffx Biological Annotation
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript")
+# Extract the 'gene assignment' annotation
+annot <- pData(featureData(affyNorm.core)[, c('geneassignment')])
+categories <- pData(featureData(affyNorm.core)[, c('category')])
+# Generate a list of gene symbols from the gene assignment
+desc <- annot[, 1]
+symbols <- unlist(lapply(desc, function(x) strsplit(x, ' // ')[[1]][2]))
+# check to make sure data is correct
+identical(length(featureData(affyNorm.core)$probesetid), length(symbols))
+head(symbols[!is.na(symbols)])
+```
+
+## Analyses
+### Limma
+
+A linear model for microarray data analysis (Limma) was performed on the samples to identify differentially expressed genes between all pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Create appropriate design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+- in this case it looks like this, where 1-15 are the 15 non-outlier microarrays
+
+```{r design, results="asis"}
+design <- model.matrix(~ -1+factor(pData(affyNorm.core)$group))
+# make sure the headings match
+colnames(design) <- sub("factor\\(pData\\(affyNorm.core\\)\\$group\\)", "", colnames(design))
+
+designTable <- xtable(design)
+print(designTable, type='html')
+```
+
+#### Create contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(Hb9_GF-Hb9_neg,Hb9_VX680-Hb9_neg,Hb9_ZM447439-Hb9_neg, G93A_GF-G93A_neg,G93A_VX680-G93A_neg,G93A_ZM447439-G93A_neg, levels=dimnames(design)[[2]])
+
+contrastmatrixTable <- xtable(contrast.matrix)
+print(contrastmatrixTable, type='html')
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+#### Fit a linear model
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+eset.core <- exprs(affyNorm.core)
+dimnames(eset.core)[[2]] <- as.character(pData(affyNorm.core)$sampleID2)
+fit.core <- lmFit(eset.core, design) 
+```
+
+#### Compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+#### Compute moderated t-statistics and log-odds of differential expression 
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+## Results
+### Volcanoplots to visualize relationship between fold change and signifcance of changes in expression between groups
+- genes outside the two vertical orange lines show more than 2-fold changes in expression between groups
+- genes which pass an FDR  (false discovery rate) multiple testing correction of 0.1 (10% FDR) are colored blue
+- the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
+
+```{r volcanoplot, fig.cap="", results='hide', fig.width=12, fig.height=12}
+all.stats <- llply(seq(1,6,1), function(n) {
+    contrast <- gsub(" ", "", dimnames(fit2.core$contrasts)$Contrasts[n])
+    stats.core <- topTable(fit2.core, coef=n, sort.by="B",number=length(symbols), genelist=cbind(symbols, fit2.core$genes))
+    stats.core$Passes.0.1.FDR.threshold  <-  as.factor(stats.core$adj.P.Val<0.1)
+    g <- ggplot(data=stats.core, aes(x=logFC, y=-log10(P.Value), color=Passes.0.1.FDR.threshold, size=B)) +
+      geom_point(alpha=0.5) +
+      geom_vline(xintercept=c(-1,1), color="orange", alpha=0.6) +
+      xlab("log2 fold change") + ylab("-log10 p-value") +
+      labs(title=contrast)
+    return(list(g=g, stats.core=stats.core, contrast=contrast))
+    })
+lapply(all.stats, function(x) x$g)
+```
+
+- should interpret results from G93A_VX680-G93A_neg contrast with caution as there is only one G93A_VX680 replicate
+
+### Obtain top results
+- generate a list of top 200 differentially expressed genes with at least 2 fold changes in expression and an adjusted pvalue <0.1,  as sorted by "B", the log-odds that a gene is differentially expressed
+
+#### The summary table contains the following information: 
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+
+- usually one wants to base gene selection on the adjusted P-value rather than the t- or B-value, but there are no significant adjusted P-values
+- I avoided selection based on the logFC because the data is quite noisy and I was seeing a very high number of control intronic probes when sorting by logFC
+- the last 4 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+```{r toptable}
+top.stats <- lapply(seq(1,6,1), function(n) {
+  contrast <- gsub(" ", "", dimnames(fit2.core$contrasts)$Contrasts[n])
+  stats.top.core <- topTable(fit2.core, coef=n, adjust="fdr", sort.by="p", p.value=0.1, lfc=1, number=200, genelist=cbind(fit2.core$genes,symbols)) 
+  # expression levels for these genes in all samples
+  if(nrow(stats.top.core)>0) {
+    eset.top.core  <-  exprs(affyNorm.core[stats.top.core[, "ID"], ]) 
+    colnames(eset.top.core)  <-  pData(affyNorm.core)$sampleID2
+    eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
+    } else { eset.stats.top.core<-"NA"}
+  return(list(eset.stats.top.core=eset.stats.top.core, contrast=contrast))
+  })
+```
+
+### Output pvalues and expression levels to files
+
+```{r outputs, results='hide'}
+lapply(all.stats, function(x) {
+  contrast=x$contrast
+  write.table(x$stats.core, file=file.path(resultsDir, paste("all.genes.stats", contrast, "xls",sep=".")), row.names=F, col.names=T)
+  })
+lapply(top.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.top.core, file=file.path(resultsDir, paste("top200.genes.stats.expression", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+```{r allexpression_values}
+all.exprs=as.data.frame(eset.core)
+all.exprs$ID=row.names(all.exprs)
+all.exprs<-merge(all.stats[[1]]$stats.core, all.exprs, by="ID")
+all.exprs=all.exprs[,-(c(3,4,5,6,7,8,9))]
+write.table(all.exprs, file=file.path(resultsDir, "all.genes.exprs.xls"),  sep ="\t",, row.names=F, col.names=T)
+```
+
+
+
+###Links to Excel files with statistics for all genes
+
+[For Hb9_GF vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.Hb9_GF-Hb9_neg.xls)
+
+[For Hb9_VX680 vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.Hb9_VX680-Hb9_neg.xls)
+
+[For Hb9_ZM447439 vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.Hb9_ZM447439-Hb9_neg.xls)
+
+[or G93A_GF vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.G93A_GF-G93A_neg.xls)
+
+[For G93A_VX680 vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.G93A_VX680-G93A_neg.xls)
+
+[For G93A_ZM447439 vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/all.genes.stats.G93A_ZM447439-G93A_neg.xls)
+
+
+###Links to Excel files with statistics and expression levels for genes with top200 log-odds of differential expression
+
+[For Hb9_GF vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.Hb9_GF-Hb9_neg.xls)
+
+[or Hb9_VX680 vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.Hb9_VX680-Hb9_neg.xls)
+
+[For Hb9_ZM447439 vs. Hb9_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.Hb9_ZM447439-Hb9_neg.xls)
+
+[For G93A_GF vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.G93A_GF-G93A_neg.xls)
+
+[For G93A_VX680 vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.G93A_VX680-G93A_neg.xls)
+
+[For G93A_ZM447439 vs. G93A_neg](./results/FACS_sorted_MNs_from_MNs-AKIs/top200.genes.stats.expression.G93A_ZM447439-G93A_neg.xls)
+
+### Heatmaps of top results
+- the row names have the probeset and the gene symbol separated by a dash
+- some probes were removed, those with "NA" for the gene symbol are mainly control probes
+- only used top 50 genes (after removal of probes without gene assignment) here, to improve visibility
+
+```{r heatmaps, fig.cap="Top50 Differentially Expressed Genes - Annotated Heatmap", fig.width=12, fig.height=24}
+ for (n in 1:length(top.stats)) {
+ 	data.temp <- top.stats[[n]]$eset.stats.top.core
+ 	## drop probes without an assigned gene
+ 	data.temp <- subset(data.temp, !is.na(as.character(data.temp$symbol)))
+ 	## only plot top 100 genes/probesets
+ 	data.temp <- data.temp[1:50,]
+ 	contrast.temp <- top.stats[[n]]$contrast
+ 	## add in gene symbols for each Affy probe
+ 	row.names(data.temp) =  paste(data.temp$ID, data.temp$symbols, sep= "-")
+ 	# write out heatmaps
+ 	pheatmap(data.temp[,names(data.temp) %in% pData(affyNorm.core)$sampleID2], main=contrast.temp, color=brewer.pal(11, "RdBu"), fontsize_row=12, fontsize=12)
+ 	}
+```
+
+## Finding genes that are differentially expressed in common for the 3 different treatmetnts
+
+```{r unite}
+## run statistics on all pairwise comparison, 1=statistically significant
+tests=decideTests(fit2.core, method="separate", adjust.method="fdr", p.value=0.25, lfc=1)
+IDs.symbols <- cbind(fit2.core$genes, symbols)
+
+## intersect Hb9 differentially expressed gene sets
+Hb9.GF.IDs=names(which(tests[,1]==1))
+Hb9.GF.symbols=IDs.symbols[IDs.symbols$ID %in% Hb9.GF.IDs,]$symbols
+Hb9.GF.symbols=Hb9.GF.symbols[!is.na(Hb9.GF.symbols)]
+
+Hb9.VX.IDs=names(which(tests[,2]==1))
+Hb9.VX.symbols=IDs.symbols[IDs.symbols$ID %in% Hb9.VX.IDs,]$symbols
+Hb9.VX.symbols=Hb9.VX.symbols[!is.na(Hb9.VX.symbols)]
+
+Hb9.ZM.IDs=names(which(tests[,3]==1))
+Hb9.ZM.symbols=IDs.symbols[IDs.symbols$ID %in% Hb9.ZM.IDs,]$symbols
+Hb9.ZM.symbols=Hb9.ZM.symbols[!is.na(Hb9.ZM.symbols)]
+
+Hb9.united.IDs=names(which(tests[,1]==1 & tests[,2]==1 & tests[,3]==1))
+Hb9.united.symbols=IDs.symbols[IDs.symbols$ID %in% Hb9.united.IDs,]$symbols
+Hb9.united.symbols=Hb9.united.symbols[!is.na(Hb9.united.symbols)]
+
+setlist.Hb9=list(GF=Hb9.GF.symbols, VX680=Hb9.VX.symbols, ZM447439=Hb9.ZM.symbols)
+plot(venneuler(melt(setlist.Hb9)), main="Overlap between sets of differentially expressed genes in Hb9 cells", sub="All sets of differentially expressed genes are relative to GF deprived cells")
+
+Hb9.overlap.table <- as.data.frame(cbind(c("GFpos-GFneg", "VX680-GFneg", "ZM447439-GFneg", "(GFpos-GFneg) & (VX680-GFneg)", "(GFpos-GFneg) & (ZM447439-GFneg)", "(VX680-GFneg) & (ZM447439-GFneg)", "(GFpos-GFneg) & (VX680-GFneg) & (ZM447439-GFneg)"), c(length(unique(Hb9.GF.symbols)), length(unique(Hb9.VX.symbols)), length(unique(Hb9.ZM.symbols)), length(unique(intersect(Hb9.GF.symbols, Hb9.VX.symbols))), length(unique(intersect(Hb9.GF.symbols, Hb9.ZM.symbols))), length(unique(intersect(Hb9.VX.symbols, Hb9.ZM.symbols))),   length(unique(intersect(intersect(Hb9.VX.symbols, Hb9.ZM.symbols), Hb9.GF.symbols))))))
+names(Hb9.overlap.table) <- c("Comparison", "Number_genes")
+
+
+## intersect G93A differentially expressed gene sets
+G93A.GF.IDs=names(which(tests[,4]==1))
+G93A.GF.symbols=IDs.symbols[IDs.symbols$ID %in% G93A.GF.IDs,]$symbols
+G93A.GF.symbols=G93A.GF.symbols[!is.na(G93A.GF.symbols)]
+
+G93A.VX.IDs=names(which(tests[,5]==1))
+G93A.VX.symbols=IDs.symbols[IDs.symbols$ID %in% G93A.VX.IDs,]$symbols
+G93A.VX.symbols=G93A.VX.symbols[!is.na(G93A.VX.symbols)]
+
+G93A.ZM.IDs=names(which(tests[,6]==1))
+G93A.ZM.symbols=IDs.symbols[IDs.symbols$ID %in% G93A.ZM.IDs,]$symbols
+G93A.ZM.symbols=G93A.ZM.symbols[!is.na(G93A.ZM.symbols)]
+
+G93A.united.IDs=names(which(tests[,1]==1 & tests[,2]==1 & tests[,3]==1))
+G93A.united.symbols=IDs.symbols[IDs.symbols$ID %in% G93A.united.IDs,]$symbols
+G93A.united.symbols=G93A.united.symbols[!is.na(G93A.united.symbols)]
+
+setlist.G93A=list(GF=G93A.GF.symbols, VX680=G93A.VX.symbols, ZM447439=G93A.ZM.symbols)
+plot(venneuler(melt(setlist.G93A)), main="Overlap between sets of differentially expressed genes in G93A cells",sub="All sets of differentially expressed genes are relative to GF deprived cells")
+
+G93A.overlap.table <- as.data.frame(cbind(c("GFpos-GFneg", "VX680-GFneg", "ZM447439-GFneg", "(GFpos-GFneg) & (VX680-GFneg)", "(GFpos-GFneg) & (ZM447439-GFneg)", "(VX680-GFneg) & (ZM447439-GFneg)", "(GFpos-GFneg) & (VX680-GFneg) & (ZM447439-GFneg)"), c(length(unique(G93A.GF.symbols)), length(unique(G93A.VX.symbols)), length(unique(G93A.ZM.symbols)), length(unique(intersect(G93A.GF.symbols, G93A.VX.symbols))), length(unique(intersect(G93A.GF.symbols, G93A.ZM.symbols))), length(unique(intersect(G93A.VX.symbols, G93A.ZM.symbols))),   length(unique(intersect(intersect(G93A.VX.symbols, G93A.ZM.symbols), G93A.GF.symbols))))))
+names(G93A.overlap.table) <- c("Comparison", "Number_genes")
+
+
+## now intersect differentially expressed genes from both cell lines
+names(setlist.G93A) <- paste("G93A", names(setlist.G93A), sep="-")
+names(setlist.Hb9) <- paste("Hb9", names(setlist.Hb9), sep="-")
+setlist.all <- append(setlist.Hb9, setlist.G93A)
+
+plot(venneuler(melt(setlist.all)), main="Overlap between sets of differentially expressed genes in both cell types",sub="All sets of differentially expressed genes are relative to GF deprived cells")
+
+all.united.IDs=names(which(tests[,1]==1 & tests[,2]==1 & tests[,3]==1 & tests[,4]==1 & tests[,5]==1 & tests[,6]==1))
+all.united.symbols=IDs.symbols[IDs.symbols$ID %in% all.united.IDs,]$symbols
+all.united.symbols=all.united.symbols[!is.na(all.united.symbols)]
+```
+
+
+
+[^1]: [BioC](http://www.bioconductor.org)
+[^2]: [arrayQualityMetrics](http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html)
+[^3]: [RMA](http://bioinformatics.oxfordjournals.org/content/19/2/185)
+[^4]: [limma](http://www.bioconductor.org/packages/release/bioc/html/limma.html)
+

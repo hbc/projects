@@ -1,0 +1,108 @@
+#+title: analysis
+
+* Background
+The ultimate goal Dr. Jagesh was aiming for with this project is to have a
+readout of the transcriptome of the rat kangaroo and hopefully a first-order
+approximation at an annotation by comparison with the opossum annotation once
+the transcriptome is assembled. The raw data we are dealing with are reads taken
+from a rat kangaroo normalized cDNA library which had been cloned into a
+noti/ecorv vector with an average insert size of 1.4 kb, the sequence of the
+vector can be found [[../../data/pExpress-1.seq][here.]] The vector was fragmented and prepared for sequencing
+on an Illumina HiSeq machine using the Nextera kit. The reads are paired-end,
+100 base pair reads and sequenced in one lane on an Illumina HiSeq machine, with
+paired-end reads of length 100 bp. Approximately 200 million paired end reads
+were generated.
+
+* Challenges and methodology
+Since the vector was fragmented and sequenced wholesale and the vector is about
+3x as big as its average insert sequence, we can expect about 3/4 of the reads
+to be vector-contaminated in some fashion. An aggressive filtering strategy will
+have to be undertaken to remove the vector contaminants. After filtering the
+reads for vector and other common contaminants and trimming off trailing
+contaminant sequence, we will perform a digital normalization using [[http://ged.msu.edu/papers/2012-diginorm/][khmer]] and
+transcriptome assembly using [[http://www.ebi.ac.uk/~zerbino/oases/][Oases]]. khmer seems to cause Trinity to fragment
+transcripts so we cannot use Trinity if we want to use digital normalization.
+
+* Initial quality control
+Here are the results from the initial fastqc run of each end of the reads
+[[../../fastqc/120206Bha_D12-530_1_sequence_fastqc/fastqc_report.html][fastqc-1]] and [[../../fastqc/120206Bha_D12-530_2_sequence_fastqc/fastqc_report.html][fastqc-2]]. On the left is a list of the tests that fastqc runs and a
+check mark means a test passed, a yellow bang means something questionable is
+detected and an X means the test failed. These can generally be ignored for
+transcriptome data, however, as the filters to determine the pass/warning/fail
+status are tuned for doing genome assembly, so ignore them.
+
+Walking through each of the graphs we can see that sequence quality appears to
+be normal for the the forward read but the reverse read has quite a severe
+quality dropoff past cycle 60 or so. This is common on the reverse read of
+paired end RNA-seq data. Those low quality reads will have to be filtered out in
+our filtering step. 
+
+The next graph to look at is the per-base sequence content which shows some bias
+at the 5' end of the read for both ends; this is normal for libraries that at
+some point have gone through a random priming step, as the random priming is not
+exactly random. A paper describing this phenomenon can be looked at [[http://www.ncbi.nlm.nih.gov/pmc/articles/PMC2896536/][here]]. The
+per-base GC content is similarly skewed due to the non-random priming.
+
+The per-sequence GC content should not be as skewed as it is, though. This is
+the first evidence that something fishy is going on with the library, most
+likely due to the vector contamination. We also see high levels of duplication
+in the forward read meaning that there are sequences that are the same sequence
+represented repeatedly in the sample. This often occurs during transcriptome
+sequencing but is likely to be prevalent with this sample due to the vector
+contamination.  The duplication plot is generally confusing since you can have
+'duplication' that is over 100\% (and that is common with transcriptome data)
+but it can just be thought of as a rough measure of the amount of oversequencing
+you have in your library. I'm not concerned about this quality metric.
+
+Finally, the most useful part of the fastqc data for our purposes is the
+overrepresented sequences and the kmer content. We can see from this data that
+there are a ton of sequences that are overrepresented, and selecting a few of
+those at random and grepping for them in the vector FASTA file shows they are
+present in the vector.  So the take-home from the initial quality control is
+that there is severe vector contamination, which we expected, but other than
+that we have such a huge number of reads that don't seem to have any other
+problems, so it is possible we can filter the vector out and be left with enough
+reads to assemble the transcriptome. 
+
+* Filtering strategy
+First the poor quality ends of reads were trimmed off using [[https://github.com/najoshi/sickle][sickle]] and then we
+mapped the trimmed reads back to the vector using [[http://bio-bwa.sourceforge.net/][bwa]], discarding all reads that
+mapped to the vector. This step removes all reads that map purely to vector sequence
+but misses reads that are only contaminated with vector sequence at one end. We
+removed partially-contaminated reads using [[http://www.ncbi.nlm.nih.gov/pubmed/19737799][tagdust]], with the 100 bp upstream of
+the noti cut site and 100 bp downstream of the ecorv cut site as bait. tagdust
+uses a kmer matching algorithm of length 11, so any contaminants 10 bases or
+less will be missed by this method. To solve that problem we further trimmed the
+ends of reads using [[http://code.google.com/p/cutadapt/][cutadapt]], a tool for trimming contaminant sequences off of
+the end of reads. cutadapt was also used to trim the Nextera adaptor sequences
+from the end of reads as well, which could appear at the 3' end of sequences due
+to the 100 bp read reading through to the adaptor on the other end. After these
+filtering steps we looked at what overrepresented sequences were left and
+filtered those out using tagdust, iterating that process until the data looked
+clean.
+
+The first iteration of this process left a couple of contaminant sequences,
+which we filtered out with a second round of tagdust, using them as bait.
+The 3' ends of reads tended to have enrichment for poly-A sequences, so
+we filtered those out too using a second round of cutadapt.
+
+** Results of the filtering strategy
+The results of the filtering strategy can be looked at here: [[/Users/rory/Projects/hsph.marsupial/fastqc/120206Bha_D12-530_2_sequence.sort.novector.dusted.cut.dusted.sickled.nopolya_fastqc/fastqc_report.html][fastqc-filtered-1]]
+and [[/Users/rory/Projects/hsph.marsupial/fastqc/120206Bha_D12-530_1_sequence.sort.novector.dusted.cut.dusted.sickled.nopolya_fastqc/fastqc_report.html][fastqc-filtered-2]]. We have succesfully filtered out all of the large
+contaminating sequences and this has restored the per-sequence GC content to
+fitting the expected distribution, which is encouraging. We have left ourselves
+with quite a few reads, over 85 million reads, counting the forward and reverse
+read which is also encouraging.
+
+* Digital normalization
+For performing the normalization and assembly I combined the two cleaned FASTQ
+files into one since most of the paired end information is likely to be lost
+due to the extensive filtering and the relatively small insert sizes.
+
+* Relevant citations
+The pipeline was built using [[http://code.google.com/p/bpipe/][bpipe]], which can be cited [[http://bioinformatics.oxfordjournals.org/content/early/2012/04/11/bioinformatics.bts167.abstract][here]]. We ran the analyses
+on the Odyssey cluster, and they ask to be acknowledged in this [[http://rc.fas.harvard.edu/kb/high-performance-computing/acknowleging-time-on-odyssey/][format]]. To
+perform the overall quality checks we used [[http://www.bioinformatics.babraham.ac.uk/projects/fastqc/][fastqc]], which does not have
+a paper published.
+
+* Source code

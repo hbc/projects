@@ -1,0 +1,14 @@
+pom.xml
+*jar
+/lib/
+/classes/
+/target/
+.lein-deps-sum
+*.idx
+test/data/reference/*.fai
+test/data/reference/*.dict
+test/data/align/*.bai
+test/data/align/*.idx
+test/data/align/*-protein.vcf
+test/data/align/*-protein-annotate.vcf
+images/

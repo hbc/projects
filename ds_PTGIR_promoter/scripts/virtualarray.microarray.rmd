@@ -1,0 +1,263 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# COMBINED MICROARRAY ANALYSES OF LEUKOCYTE DEVELOPMENT SYSTEMS
+- HOXA9-ER induced time course
+- Prostacyclin induced paired analyses
+---
+
+Analysis of microarray datasets for transcriptional signatures for [David Sykes](mailto:DBSYKES@PARTNERS.ORG).
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUP
+
+## General purpose R libraries necessary for analysis
+
+```{r general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+```
+
+## Locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/ds_PTGIR_promoter/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/ds_PTGIR_promoter"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/ds_PTGIR_promoter")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/ds_PTGIR_promoter"
+    } else {
+      baseDir <- "/Volumes/ody/consults/ds_PTGIR_promoter"
+      }
+dataDir <- file.path(baseDir, "data")
+prostacylin_dataDir <- file.path(dataDir, "prostacylin_treated", "CEL_files")
+normDev_dataDir <- file.path(dataDir, "normal_devo", "CEL_files")
+extcontrol_dataDir <- file.path(dataDir, "extcontrol")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+prostacylin_metaDir <- file.path(metaDir, "prostacylin_treated")
+normDev_metaDir <- file.path(metaDir, "normal_devo")
+extcontrol_metaDir <- file.path(metaDir, "extcontrol")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+dataDirs <- list(prostacylin=prostacylin_dataDir, normDev=normDev_dataDir,extcontrol=extcontrol_dataDir)
+metaDirs <- list(prostacylin=prostacylin_metaDir, normDev=normDev_metaDir, extcontrol=extcontrol_metaDir)
+````
+
+----
+
+# Microarray Analysis
+
+## Load [Bioconductor][1] libraries for the microarray analysis 
+
+```{r microarray_analysis_libraries}
+library(virtualArray)
+# to parse the CEL files and work with intensity values
+library(affy) 
+# for QC reports
+library(arrayQualityMetrics)
+# library to do stats 
+library(limma) 
+# pretty heatmaps
+library(pheatmap) 
+# transcript clusters <-> probes for mogene arrays
+library(mogene10sttranscriptcluster.db)
+library(mouse4302.db)
+```
+
+## Functions
+
+```{r functions}
+PCAplot <- function(eset=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  eset.core <- exprs(eset) 
+  myPca.core <- prcomp(t(eset.core))
+  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:4])
+  pd <- pData(eset)
+  colors <- colorpalette[factor(as.character(unlist(pd[,categories])))]
+  legend_values=unique(cbind(colors, as.character(pd[,categories])))
+  pairs(tmpPCAData.core, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+  }
+rownames2col <- function(df, colname) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- colname
+  return(output)
+  }
+col2rownames <- function(df, colname, removecol=FALSE){
+  row.names(df) <- df[,colname]
+  if(removecol){df[,colname] <- NULL}
+  return(df)
+  }
+```
+
+## Data Import
+
+### Datasets
+
+#### HoxA9 Differentiated Time Course Dataset
+
+#### Remodulin/Prostacyclin treated cells
+
+#### External control dataset 
+- bring in another completely different sample type on the same platform as the HoxA9 "normal" development samples
+- want to be sure any differences we observe between the two datasets are real, and not just due to systematic differences between the arrays.
+
+Used a Scadden dataset from GEO, GSE45430
+Title:  Sox4 is a key oncogenic target in C/EBPα mutant Acute Myeloid Leukemia
+
+```{r raw_import}
+for(n in names(dataDirs)){
+  covarfilename <- file.path(metaDirs[[n]], "covars.desc")
+  covars <- read.delim(covarfilename)
+  CELfiles <- file.path(dataDirs[[n]], as.vector(unlist(covars$CELfile)))
+  mic.raw <- ReadAffy(filenames=CELfiles, phenoData=covars)
+  sampleNames(mic.raw) <- pData(mic.raw)$sampleID
+  assign(paste("mic.raw", n, sep="."), mic.raw)
+  rm(mic.raw)
+    }
+```
+
+## Raw Data QC
+
+Initial Array quality control with [ArrayQualityMetrics][2]
+
+### QC checks of raw data
+
+```{r QC1, eval=F}
+for(n in names(dataDirs)[1:2]){
+  mic.raw <- get(paste("mic.raw", n, sep="."), mic.raw)
+  arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw", n), force=TRUE, don.logtransform=TRUE, intgroup="cell_line")
+  rm(mic.raw)
+  }
+```
+
+[QC report for prostacyclin treatment arrays]("./results/QCreport_raw/prostacyclin/index.html")
+[QC report for HOXA9-ER arrays]("./results/QCreport_raw/normDev/index.html")
+
+**Remove low quality arrays:**
+*From prostacyclin data:*
+377-3_1830F.CEL  failed RLE and NUSE tests.
+*For HOXA9 normal development arrays:*
+15_36h_1630D.CEL    failed both the RLE and NUSE tests.
+15_4h_1630E.CEL failed 3 separate quality checks
+
+HoxA9ER_63_0h also failed RLE but I decided to keep it for now, as its one of the samples that ties the experiments  together.
+
+```{r filter_arrays}
+filter.arrays <- c("377-3_1830F.CEL", "15_36h_1630D.CEL","15_4h_1630E.CEL")
+for(n in names(dataDirs)[1:2]){
+  mic.raw <- get(paste("mic.raw", n, sep="."))
+  pd <- pData(mic.raw)
+  mic.raw <- mic.raw[,which(!pd$CELfile %in% filter.arrays)]
+  assign(paste("mic.raw", n, sep="."), mic.raw)
+  rm(mic.raw, pd)
+  }
+```
+
+## PCA Clustering - Raw Data, by study
+
+```{r PCA1}
+PCAplot(mic.raw.normDev, categories="cell_line", colorpalette=cbPalette[2:3], title="Raw Data - Normal Development - Cell lines")
+PCAplot(mic.raw.normDev, categories="time", colorpalette=cbPalette, title="Raw Data - Normal Development - Time Points")
+
+PCAplot(mic.raw.prostacylin, categories="cell_line", colorpalette=cbPalette[1:3], title="Raw Data - Remodulin Treatment - Cell lines")
+PCAplot(mic.raw.prostacylin, categories="Treatment", colorpalette=cbPalette[2:3], title="Raw Data - Remodulin Treatment - Treatment")
+```
+
+Data looks pretty good, with decent clustering by the categories you'd expect.
+
+Separately normalized data with RMA before continuing.
+
+```{r RMA, cache=TRUE}
+for(n in names(dataDirs)){
+  mic.raw <- get(paste("mic.raw", n, sep="."))
+  mic.RMA <- rma(mic.raw, normalize=T, background=T)
+  assign(paste("mic.RMA", n, sep="."), mic.RMA)
+  rm(mic.raw, mic.RMA)
+  }
+```
+
+## PCA Clustering - Intra study normalized Data, by study
+
+```{r PCA2}
+PCAplot(mic.RMA.normDev, categories="cell_line", colorpalette=cbPalette[2:3], title="Normalized Data - Normal Development - Cell lines")
+PCAplot(mic.RMA.normDev, categories="time", colorpalette=cbPalette, title="Normalized Data - Normal Development - Time Points")
+
+PCAplot(mic.RMA.prostacylin, categories="cell_line", colorpalette=cbPalette[1:3], title="Normalized Data - Remodulin Treatment - Cell lines")
+PCAplot(mic.RMA.prostacylin, categories="Treatment", colorpalette=cbPalette[2:3], title="Normalized Data - Remodulin Treatment - Treatment")
+```
+
+First we want to examine the levels of similarity between the gene expression values of the untreated samples for the HoxA9 time course and the Remodulin experiments. Ideally, the external control samples will be very different from the HoxA9 time course samples (which are on the same array) than the Remodulin experimental samples.
+
+Use virtualArray library to reduce measurements to the set of genes common between the arrays. This will also have the effect of quantile normalizing across the different studies.
+
+```{r virtualArray}
+annotation(mic.RMA.prostacylin) <- "mogene10sttranscriptcluster"
+esets <- paste("mic.RMA", names(dataDirs), sep=".")
+virtualArrays <- virtualArrayExpressionSets(all_expression_sets=esets,removeBatcheffect = T )
+# drop useless columns from pData
+pData(virtualArrays)$Array.name <- NULL
+pData(virtualArrays)$Covariate.1 <- NULL
+# virtualArray seems to mess up sometimes and include some genes that are not actually on both arrays 
+# remove these genes by finding and removing any rows that have NA's as expression values for any samples
+eset.temp <- exprs(virtualArrays)
+virtualArrays <- virtualArrays[which(!apply(eset.temp, 1, function(n) any(is.na(n)))),]
+eset.temp <- exprs(virtualArrays)
+eset.temp.m <- melt(eset.temp)
+# confirm quantile normalization
+ggplot(eset.temp.m, aes(x=value, color=X2)) + geom_density()
+
+# merge in the pData from the datasets that virtualArray left behind
+pd <- pData(virtualArrays)
+pd2 <- merge(pd, pData(mic.raw.normDev), by.x="Sample.name", by.y="sampleID", all.x=T, all.y=T, sort=F)
+pd3 <- merge(pd2, pData(mic.raw.prostacylin), by.x="Sample.name", by.y="sampleID", all.x=T, all.y=T, sort=F) 
+pd3$CELfile = ifelse(is.na(pd3$CELfile.x),as.character(pd3$CELfile.y),as.character(pd3$CELfile.x))
+pd3$CELfile.x <- NULL
+pd3$CELfile.y <- NULL
+pd3$cell_line = ifelse(is.na(pd3$cell_line.x),as.character(pd3$cell_line.y),as.character(pd3$cell_line.x))
+pd3$cell_line.x <- NULL
+pd3$cell_line.y <- NULL
+pd3 <- pd3[order(pd3$Sample.name),]
+virtualArrays <- virtualArrays[,order(pd$Sample.name)]
+identical(pd3$Sample.name, pData(virtualArrays)$Sample.name)
+pData(virtualArrays) <- pd3
+rm(pd, pd2, pd3)
+```
+
+## PCA Clustering - Virtualarray Data
+
+```{r PCA3}
+PCAplot(virtualArrays, categories="Batch", colorpalette=cbPalette, title="Virtualarray - Studies")
+PCAplot(virtualArrays[,which((pd$Treatment=="PBS" & pd$cell_line=="63HoxA9ER") | (pd$time==0 & pd$cell_line=="63HoxA9ER") | (pd$Batch=="mic.RMA.extcontrol" & grepl("Wildtype", pd$Sample.name)))], categories="Batch", colorpalette=cbPalette, title="Virtualarray - Studies")
+
+
+PCAplot(virtualArrays, categories="cell_line", colorpalette=cbPalette, title="Virtualarray - Cell lines")
+PCAplot(virtualArrays, categories="Treatment", colorpalette=cbPalette, title="Virtualarray - Remodulin Treatment")
+```
+
+PC1 v PC3 and PC1 v PC4 are concerning.
+PC2 v PC4 and PC3 v PC4 look more like what we hope to see.
+
+There are clear systematic platform differences in expression levels.
+
+We would need to do a batch correction based on the zero time point/untreated samples before proceeding.
+
+However, given that we only have a single replicates to use for the batch correction, this approach is not recommended.
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/release/bioc/html/affy.html (affy)
+[3]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+
+

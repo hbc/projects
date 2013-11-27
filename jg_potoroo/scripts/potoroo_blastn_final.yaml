@@ -1,0 +1,53 @@
+dir:
+  work: tmp
+  ref: ref
+  results: results/final_cdna_annotation
+  data: data
+
+log_dir: log
+
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 8
+
+# oases assembled transcripts
+#query: results/oases_51_99/oases_51_57Merged/transcripts.filt.fa
+
+# cdna clone sequences
+query: data/cdna_brad/cdna/Ptk2-cDNA-novector-cluster.fa
+
+min_identity:
+  - 0
+  - 25
+  - 50
+
+refs:
+  - name: opossum
+    ensembl_name: mdomestica_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/monodelphis_domestica/cdna/Monodelphis_domestica.BROADO5.67.cdna.all.fa.gz
+    file: ref/Monodelphis_domestica.BROADO5.67.cdna.all.fa
+
+  - name: mouse
+    ensembl_name: mmusculus_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/mus_musculus/cdna/Mus_musculus.NCBIM37.67.cdna.all.fa.gz
+    file: ref/Mus_musculus.NCBIM37.67.cdna.all.fa
+
+  - name: human
+    ensembl_name: hsapiens_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/homo_sapiens/cdna/Homo_sapiens.GRCh37.67.cdna.all.fa.gz
+    file: ref/Homo_sapiens.GRCh37.67.cdna.all.fa
+
+  - name: taz
+    ensembl_name: sharrisii_gene_ensembl
+    url: ftp://ftp.ensembl.org/pub/release-67/fasta/sarcophilus_harrisii/cdna/Sarcophilus_harrisii.DEVIL7.0.67.cdna.all.fa.gz
+    file: ref/Sarcophilus_harrisii.DEVIL7.0.67.cdna.all.fa
+
+
+stage:
+  blastn:
+    name: blastn_final
+    program: blastn
+
+run:
+  [blastn, annotate, combine]

@@ -1,0 +1,58 @@
+
+---
+## Methylkit QC
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE, echo=FALSE, highlight=TRUE, figalign="center", fig.height=8.5, fig.width=8.5, message=FALSE, error=FALSE, warnings=FALSE, fig.path=sampleID)
+```
+
+```{r libraries_vars}
+library(methylKit)
+options("max.print"=100)
+```
+
+### Sample Metadata
+
+Genome build - `r build`  
+Sample ID - `r sampleID`  
+Data Directory - `r dataDir`  
+Sample Alignment File Name - `r basename(samfilename)`  
+
+### Quantitate methylation at all CpGs covered by reads and save out results  
+
+CpG methylation quantitation directory - `r methquantDir`  
+minimum read coverage to call a methylation status for a base - `r minimumcoverage`  
+minimum phred quality score to call a methylation status for a base - `r minimumquality`
+
+- example results
+```{r quantmeth, message=TRUE}
+read.bismark(location=file.path(dataDir, basename(samfilename)), 
+	sample.id=sampleID, 
+	assembly=build, 
+	save.folder=methquantDir, 
+	save.context="CpG", 
+	read.context="CpG", 
+	nolap=FALSE, 
+	mincov=minimumcoverage, 
+	minqual=minimumquality, 
+	phred64=FALSE)
+```
+
+```{r load_quants}
+meth.quants <-read(location=file.path(methquantDir, paste(sampleID, "CpG.txt", sep="_")), sample.id=sampleID, assembly=build, context="CpG", pipeline="bismark", resolution="base")
+```
+
+### DESCRIPTIVE STATISTICS
+#### CpG coverage
+```{r CpGcoverage, fig.cap=""}
+getCoverageStats(meth.quants, plot=FALSE, labels=TRUE)
+getCoverageStats(meth.quants, plot=TRUE, labels=TRUE)
+```
+
+#### Percent methylation distribution
+```{r percent_meth_dist, fig.cap=""}
+getMethylationStats(meth.quants, plot=FALSE)
+getMethylationStats(meth.quants, plot=TRUE, labels=FALSE)
+```
+
+q()

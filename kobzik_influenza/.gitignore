@@ -1,0 +1,5 @@
+.DS*
+scripts/*
+!*.Rmd
+!*.py
+!*.sh

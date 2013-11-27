@@ -1,0 +1,98 @@
+# DEXSEQ ANALYSIS
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=TRUE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, message=FALSE, error=FALSE, warnings=FALSE)
+```
+
+## LIBRARIES
+- using [DEXSeq](http://www.bioconductor.org/packages/2.11/bioc/html/DEXSeq.html) package 
+- use [multicore](http://cran.r-project.org/web/packages/multicore/index.html) package to speed up dispersion estimates and differential expression calculations
+
+```{r libraries}
+library(DEXSeq)
+library(plyr)
+library(reshape)
+library(ggplot2)
+library(xtable)
+library(biomaRt)
+ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl")
+library(multicore)
+```
+
+## VARIABLES
+- using trimmed (11bp from 5' end) reads aligned with Tophat against the Ensembl iGenome genes.gtf gene annotation file
+- FDR of 0.25
+
+```{r variables}
+dataDir <- "/n/hsphS10/hsphfs1/chb/projects/JH/wp_rna_seq/data/"
+resultsDir <- "/n/hsphS10/hsphfs1/chb/projects/JH/wp_rna_seq/results/tophataligns/ensembl/trimmed/"
+annotations <-"/n/scratch00/hsph/biodata/genomes/Mmusculus/mm9/rnaseq/DEXSeq/DEXseq.prepared.genome.Ensembl37.gtf"
+
+covars <- read.table(paste(dataDir, "covars.desc", sep=""), header=T, row.names=5)
+cond <- factor(paste(covars[,1], covars[,2], covars[,3],sep="-")) # conditions vector must be factors
+covars$condition <- cond
+samples <- row.names(covars)
+files <- paste(resultsDir, samples, "/DEXSeq-counts.tab", sep="")
+pvalcutoff=0.25
+```
+
+## DATA IMPORT
+```{r dataimport, cache=TRUE}
+counts<-read.HTSeqCounts(countfiles=files, flattenedfile=annotations, design=cond) ##long step
+sampleNames(counts) <- samples
+```
+
+## NORMALIZATION AND DISPERSION ESTIMATION
+- adjust for read number differences between samples
+- estimate the variance of the data to distinguish normal technical and biological variation (noise) from real effects on exon expression due to different conditions
+
+```{r estimate_dispersions, cache=TRUE}
+counts <- estimateSizeFactors(counts)
+counts <- estimateDispersions(counts, nCores=multicore:::detectCores()/2)
+counts <- fitDispersionFunction(counts)
+```
+
+
+```{r dipsersion_plot, fig.cap="Plot of Exon Mean Expression Values versus Cox-Reid Dispersions"}
+meanvalues <- rowMeans(counts(counts))
+data.temp=cbind(meanvalues, fData(counts)$dispBeforeSharing)
+dimnames(data.temp)[[2]][2]="dispersions"
+x <- 0.01:max(meanvalues)
+y <- counts@dispFitCoefs[1] + counts@dispFitCoefs[2]/x
+ggplot(as.data.frame(data.temp), aes(x=meanvalues, y=dispersions)) + geom_point(alpha=0.2) + scale_x_log10() + scale_y_log10() + opts(title="mean vs CR dispersion")+ geom_line(aes(x=meanvalues, y=0.1179653 + 0.6430153/meanvalues, col = "red"))+ opts(legend.position="none")
+rm(data.temp, x, y, meanvalues)
+```
+
+## DIFFERENTIAL EXON USAGE
+- for each comparison, reimport subset of data to dataset, normalize, get dispersion estimates, run comparisons for all exons and calculate FDRs
+- only genes with between 10 to 70 exons are considered
+
+```{r diffexonusage, cache=TRUE}
+setnames <- list(c("TNTTRAP-Band-TRAP", "TNTTRAP-Sham-TRAP"),c("TNTTRAP-Band-input", "TNTTRAP-Sham-input"), c("TNTTRAP-Sham-input","CAGTRAP-NoOp-input"), c("TNTTRAP-Band-input", "noTRAP-Band-input"), c("TNTTRAP-Sham-TRAP", "CAGTRAP-NoOp-TRAP"), c("CAGTRAP-NoOp-input", "CAGTRAP-NoOp-TRAP"))
+sig.results <- vector("list", 6)
+for (n in 1:length(setnames)) {
+  setname=setnames[[n]]
+  print(setname)
+  samples.subset <- row.names(covars[covars$condition %in% setname, ])
+  files.subset <- paste(resultsDir, samples.subset, "/DEXSeq-counts.tab", sep = "")
+  covars.subset <- as.matrix(subset(covars, covars$condition %in% setname, drop = TRUE))
+  covars.subset <- as.data.frame(covars.subset)
+  ## load in subset of datafiles
+  counts.subset <- read.HTSeqCounts(countfiles = files.subset, flattenedfile = annotations, design = covars.subset)  ## long step
+  sampleNames(counts.subset) <- samples.subset
+  ## renormalize 
+  counts.subset <- estimateSizeFactors(counts.subset)
+  counts.subset <- estimateDispersions(counts.subset, nCores=multicore:::detectCores()/2) ## long step 
+  counts.subset <-  fitDispersionFunction(counts.subset) ## find differential expression of exons
+  counts.subset=testForDEU(counts.subset,nCores=multicore:::detectCores()/2)  #long step 
+  counts.subset=estimatelog2FoldChanges(counts.subset, nCores=multicore:::detectCores()/2) ##long step
+  ## calculuate statistics
+  res1=DEUresultTable(counts.subset)
+  sig.results[[n]]$results = res1
+  sig.results[[n]]$counts= counts.subset
+  sig.results[[n]]$comparison = paste(setname[1], setname[2], sep = "_vs_")
+  ## repeat entire analysis and output html results
+  makeCompleteDEUAnalysis(counts.subset, FDR = 0.2, nCores = multicore:::detectCores()/2, path = paste("./", paste(setname[1], setname[2], sep = "_vs_"), sep = ""))
+  }
+save.image()
+```

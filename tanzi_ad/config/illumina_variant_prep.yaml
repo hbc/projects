@@ -1,0 +1,32 @@
+inputs:
+  - /n/hsphS10/hsphfs2/tanzi/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601143_NA5JS5K1/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601438_NA5K5CG1/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601452_NA5K5CH8/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601486_NA5K5CEN/LP*
+  - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/700012_NA5K5CQF/LP*
+outputs:
+  plink: tanzi-alz-casava
+  merge: tanzi-alz-merge.vcf
+idmapping: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/NIMH_Patient.Rutgers.ID_Translation.txt
+ref:
+  GRCh37: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  hg19: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
+bcbio.variation: /n/home05/bchapman/bio/bcbio.variation/target/bcbio.variation-0.1.0-SNAPSHOT-standalone.jar
+#tmpdir: /scratch/illumina_prep
+illumina:
+  problem_report: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_shipinfo/problem_samples.txt
+array:
+  comparison: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_variants/nimh.affy6_na31.CAU_CLEAN-cmp.csv
+  fam: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/WGS_NIMH.fam
+  priority: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/AD-Master-v2.csv
+
+resources:
+  gatk:
+    jvm_opts: ["-Xms10g", "-Xmx20g"]
+    dir: /n/HSPH/local/share/java/gatk
+  picard:
+    dir: /n/HSPH/local/share/java/picard
+  snpEff:
+    jvm_opts: ["-Xms2g", "-Xmx10g"]
+    dir: /n/HSPH/local/share/java/snpeff

@@ -1,0 +1,16 @@
+---
+data_url: http://www.ebi.ac.uk/ena/data/view/reports/sra/fastq_files/ERP000591
+replicates: ['1']
+
+genome_build: mm9
+analysis: RNA-seq
+
+regions:
+  - space: chr3
+    start: 119600000
+    end: 129400000
+
+dir:
+  config: config
+  fastq: fastq
+  tx: tx_info

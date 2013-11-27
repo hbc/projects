@@ -1,0 +1,40 @@
+---
+# Adjustable filtering and analysis parameters
+# 
+# * kmer-range -> Range of values for kmers to normalize around. Lower
+#   kmer values are indicative of rare regions that are likely due to
+#   mutation.
+# * qual-range -> Range of read quality scores for normalization.
+# * map-score-range -> Range of aligner mapping scores.
+# * min-freq -> Bases below this frequency at a position are not
+#   called.
+# * allowed-freq-diff -> Difference allowed between expected and
+#   actual frequency to count as correct call.
+# * max-pos-pct -> Maximum minority variants to include in positive
+#   classification group.
+# * max-neg-pct -> Maximum minority variants to include in negative
+#   classification group.
+# * assess-bases -> Bases to perform assessment with a
+#   classifier. Set to nil to include all bases.
+# * algorithm -> Approach to use for classification. Choices:
+#   linear-regression (default), random-forest
+
+params:
+  kmer-range: [0.00001, 0.1]
+  qual-range: [2.0, 42.0]
+  map-score-range: [0.0, 250.0]
+  #min-score: 1.2
+  min-freq: 0.0035
+  allowed-freq-diff: 5.0
+  verbose: false
+  classification:
+    max-pos-pct: 10.0
+    max-neg-pct: 1.0
+    algorithm: random-forest
+    #algorithm: linear-regression
+    #naive-min-score: 0.7
+    #pass-thresh: 0.5
+    assess-bases: [789, 3756]
+    #train-bases: [789, 2300]
+    train-bases: [789, 1010]
+    #assess-bases: [2900, 3000]

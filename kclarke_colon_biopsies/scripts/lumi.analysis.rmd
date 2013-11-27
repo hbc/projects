@@ -1,0 +1,659 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=TRUE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE)
+## setup report details
+clientname="Ashwin Ananthakrishnan"
+clientemail="AANANTHAKRISHNAN@PARTNERS.ORG"
+lablocation="MGH"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`) at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+---
+
+## Methods summary
+Raw data was imported, normalized and differentially expressed genes identified with limma.
+
+---
+
+## [Bioconductor][1] and R libraries used to process and visualize the data
+- also miscellaneous convenience functions
+
+```{r libraries, echo=TRUE, results='hide'}
+library(limma)
+library(arrayQualityMetrics)
+library(lumi)
+library(pheatmap)
+library(RColorBrewer)
+library(googleVis)
+library(plyr)
+library(ggplot2)
+library(biomaRt)
+library(genefilter)
+library(lumiHumanAll.db)
+library(lumiHumanIDMapping)
+if (require(lumiHumanIDMapping))
+  {lumiHumanIDMapping()}
+rownames2col <- function(df) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- "ID"
+  return(output)
+}
+```
+
+## Functions
+
+```{r functions, echo=TRUE}
+PCAplot <- function(eset=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  pd <- pData(eset)
+  eset <- exprs(eset) 
+  myPca <- prcomp(t(eset))
+  tmpPCAData <- as.data.frame(myPca$x[,1:4])
+  colors <- colorpalette[factor(as.character(unlist(pd[,categories])))]
+  legend_values=unique(cbind(colors, as.character(pd[,categories])))
+  pairs(tmpPCAData, bg=colors, col="#606060", cex=2, pch=21, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+  }
+rownames2col <- function(df, colname) {
+  output <- cbind(row.names(df), df)
+  colnames(output)[1] <- colname
+  return(output)
+  }
+col2rownames <- function(df, colname, removecol=FALSE){
+  row.names(df) <- df[,colname]
+  if(removecol){df[,colname] <- NULL}
+  return(df)
+  }
+# pathway enrichment, adapted from Emmanuel Dimont and Rory Kirchner
+# usage: pathEnrich(your_gene_list_of_interest, your_background_gene_list)
+# gene lists should be a list of entrez ids
+# background_gene_list should be tailored to your experiment, so for example if
+# you are looking at RNA-seq data, your background should be all non-zero expressed genes,
+# not all genes
+pathEnrich = function (Genelist, geneset=pathways.Hs, bgGenelist)
+{
+    Nbackground = length(bgGenelist)
+    genelist = unique(Genelist[!is.na(Genelist)])
+    Nsig <- length(genelist)
+    hyper <- as.data.frame(matrix(nrow = length(geneset), ncol = 1))
+    colnames(hyper) <- c("p-value")
+  hyper[,1] = as.numeric(lapply(geneset,function(x)
+		{
+			if(length(intersect(genelist,x))<1) return(1)
+			else return(sum(dhyper(length(intersect(genelist,x)):Nsig,length(x), Nbackground - length(x), Nsig)))
+		}))
+    hyper[,2] <- p.adjust(hyper[, 1], method = "BH")
+	overlap = lapply(geneset,function(x)
+		{
+			return(as.list(intersect(genelist,x)))
+		})
+    hyper[,3] = as.numeric(lapply(overlap,function(x) return(length(x))))
+    hyper[,4] = as.numeric(lapply(geneset,function(x) return(length(x))))
+    hyper[,5] <- names(geneset)
+	genes = lapply(overlap, function(x) return(as.numeric(x)))
+	hyper$genes = I(genes)
+    colnames(hyper) <- c("p.value","FDR", "nGenes","nPathway","Name", "Genes")
+    hyper = hyper[with(hyper, order(FDR)),]
+    return(hyper)
+	}
+# load in pathways
+load("~/resources/pathways/pathways.Hs.RData")
+```
+
+---
+
+## Variables
+
+```{r variables, echo=TRUE}
+## Setup Data and Results directory variables
+if(file.exists("/n/home08/jhutchin/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/kclarke_colon_biopsies/"
+  } else if (file.exists("/Volumes/ody/")){
+  baseDir="/Volumes/ody/projects/kclarke_colon_biopsies/"
+}
+metaDir=file.path(baseDir, "meta")
+dataDir=file.path(baseDir, "data")
+resultsDir=file.path(baseDir, "results")
+
+# datafile
+rawDatafile <- file.path(dataDir, "1809Clarke_FinalReport.txt")
+# covariates
+covarfile <- file.path(metaDir, "covars.desc")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+pvalcutoff=0.25
+logFCcutoff=1
+exprfilter <- 2.5
+sdfilter <- 0.1
+numtopgenes <- 200
+```
+
+---
+
+## Load the raw data
+
+```{r dataload, results='hide', cache=TRUE}
+lumib.raw <- lumiR.batch(rawDatafile,sampleInfoFile=covarfile,lib.mapping='lumiHumanIDMapping',convertNuID=T)
+
+# Quick sanity check, what's the predicted chip type?
+if (require(lumiHumanIDMapping))
+  {getChipInfo(lumib.raw, species='Human')}
+````
+
+## Sample metadata
+- load phenotypes and sample names from metadata file
+  - this file also contains the arrayIDs
+
+```{r covars, results='asis'}
+## Sample information table
+pd <- pData(lumib.raw)
+pData(lumib.raw)$samplelabel <- paste(pd$Group,  pd$Replicate, sep="_")
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
+print(pd.gvis, "chart")
+```
+
+## QA/QC
+
+QC summary
+
+```{r QCsummary1, results='hide', eval=FALSE}
+# Summary of data, QC Info
+QC.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))
+print(QC.gvis, "chart")
+```
+
+QC analysis with [arrayQualityMetrics][2]
+
+```{r QCsummary2, results='hide', eval=FALSE}
+# Summary of data, QC Info
+QC.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))
+print(QC.gvis, "chart")
+
+
+arrayQualityMetrics(lumib.raw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("Group"))
+```
+
+[Raw data arrayQualityMetrics report](./results/report_raw/index.html)
+
+The arrays look pretty good overall, there is decent clustering by "inflamed"" versus "not inflamed" samples
+Filtered out two arrays due to quality concerns:
+- remove 7105_1809D due to low intensity levels
+- remove 7284_1809N due to outlying MA-pot (this is a conservative choice)
+
+```{r drop_arrays}
+filterarrays <- c("7105_1809D","7284_1809N")
+lumib.raw <- lumib.raw[,which(!pd$sampleID %in% filterarrays)]
+pd <- pData(lumib.raw)
+validObject(lumib.raw) ## sanity check
+```
+
+## Background correct and normalize
+The data was transformed for differential gene expression analysis using Variance Stablilizing transformation ([VST][3]) from the [lumi][4] BioConductor package. The general assumption of statistical tests to microarray data is that variance is independent of intensity. In reality, larger intensities tend to have larger variations. 
+Here, VST does a simple generalized log2 transformation of the data.
+
+Following this, arrays are normalized by Robust Spline Normalization [RSN][5]
+
+```{r normalize, results='hide'}
+lumib.norm <- lumiExpresso(lumib.raw, QC.evaluation=TRUE, bg.correct=TRUE, variance.stabilize=T, varianceStabilize.param=list(method='log2'), normalize.param=list(method='rsn'))
+```
+
+## QA/QC - 2 
+- using arrayQualityMetrics library
+- normalized data
+
+```{r normQC,  eval=FALSE}
+arrayQualityMetrics(lumib.norm, outdir=file.path(resultsDir, 'report_log2vst_rsn'), force=TRUE, do.logtransform=FALSE,intgroup=c("Group"))
+```
+
+[normalized data QC report](./results/report_log2vst_rsn/index.html)
+
+- all the samples look fine after normalization
+
+## QA/QC - 3
+
+### Primary Componenet Analysis Clustering
+- the goal of this analysis is to blindly evaluate the variability within the normalized data and determine whether this variability could predict the different sample categories by itself
+- in basic terms, we are checking whether the samples cluster by sample type
+  - its a good sign if they do
+
+```{r pca, fig.width=12, fig.height=12}
+PCAplot(lumib.norm, categories="Group", colorpalette=cbPalette, alpha=0.75, title="All samples")
+PCAplot(lumib.norm[,pd$Group!="NonInflamed"], categories="Group", colorpalette=cbPalette, alpha=0.75, title="Inflamed samples")
+```
+
+**Principal Component Analysis Figure**
+The figure shows a scatterplot of the arrays along all dual combinations of the first four principal components. Each sample group is represented by a separate color. Principal component analysis is a dimension reduction and visualisation technique that is here used to project the multivariate data vector of each array into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays.
+
+You can use these plots to explore if the arrays cluster, and whether this is according to an intended experimental factor or according to unintended causes (eg. batch effects). 
+
+- from these plots it appears that the samples do not cluster particularly well by group, though there is some separation between non-inflamed and inflamed group clusters for certain principal component combinations (ie. PC1 and PC2, or PC1 and PC4).
+
+## Pre-filtering
+
+Use the mean expression levels to filter out probes that are poorly expressed. We're unlikely to to see significant differences for these genes and by using fewer probes in the [multiple test correction](http://en.wikipedia.org/wiki/Multiple_comparisons) of our statistical tests we increase our chances of seeing significant results.
+
+Here I filtered out probes that show a mean intensity level (after log transformation) of less than `r exprfilter`.
+
+```{r genefilter}
+## remove probes with low expression levels 
+means <- rowMeans(exprs(lumib.norm))
+lumib.norm <- lumib.norm[which(means>exprfilter),]
+
+exprs.norm <- exprs(lumib.norm)
+pd <- pData(lumib.norm)
+```
+
+## Annotations
+Parse the array feature data (i.e. information about the probes) to get the gene symbols that correspond to each probeset group on the array
+
+```{r features, results='hide'}
+# Generate a dataframe of gene symbols, RefSeq and Entrez ids from the nuIDs
+if (require(lumiHumanIDMapping)) {
+    nuIDs <- featureNames(lumib.norm)
+    mappingInfo <- as.data.frame(nuID2RefSeqID(nuIDs, lib.mapping='lumiHumanIDMapping', returnAllInfo=T))
+}
+identical(nuIDs, row.names(mappingInfo)) # sanity check, sane=TRUE
+head(mappingInfo$Symbol[!is.na(mappingInfo$Symbol)]) # sanity check, sane=>see gene ids
+mappingInfo <- rownames2col(mappingInfo, "NuID")
+names(mappingInfo)[2:4] <- toupper(names(mappingInfo)[2:4])
+```
+
+## Differential Expression Analyses
+### Limma
+A linear model for microarray data analysis ([Limma][6]) was performed on the samples to identify differentially expressed genes between pair-wise comparisons of sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we constructed two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Design matrix 
+- make a matrix with arrays as rows, treatment groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
+- in this case it looks like this, where 1-26 are the 26 microarrays remaining after removing the two arrays earlier.
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0+factor(pd$Group))
+row.names(design) <- unlist(pd$samplelabel)
+# make sure the headings match
+colnames(design) <- sub("factor.pd.Group.", "", colnames(design))
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design, "samplelabel"), 2, as.character)), options=list(width=960))  
+print(design.gvis, "chart")
+```
+
+#### Contrast matrix
+- to perform pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  generally speaking, a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+**Comparisons**
+1. Differences between the NonInflamed and Inflamed samples (inflammation in resistant patients) 
+2. Differences between the NaivInflamed and Inflamed samples (non-resistant verus resistant)
+
+  
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(Inflamed.v.NonInflamed=Inflamed - NonInflamed, Inflamed.v.NaivInflamed=Inflamed - NaivInflamed, levels=c("Inflamed" ,"NaivInflamed","NonInflamed"))
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix, "category"), 2, as.character)), options=list(width=960, height=120))  
+print(contrast.gvis, "chart")
+```
+
+#### Linear model
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix 
+  - for each gene based on the given series of arrays
+
+```{r linearmodel}
+fit <- lmFit(lumib.norm, design) 
+```
+
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2 <- contrasts.fit(fit, contrast.matrix) 
+```
+
+- compute moderated t-statistics and log-odds of differential expression 
+  - by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2 <- eBayes(fit2) 
+```
+
+
+### Volcanoplots
+These plots help visualize relationship between fold change and signifcance of changes in expression between groups.
+
+- genes outside the two vertical orange lines show more than `r 2^logFCcutoff`-fold changes in expression between groups
+- genes which pass an FDR  (false discovery rate) multiple testing correction of `r pvalcutoff` (`r pvalcutoff*100`% FDR) and show at least a `r 2^logFCcutoff`-fold change in expression are colored blue
+- the larger the pointsize, the more likely there is significant expression change (B = log-odds of differential expression) between the sample groups
+
+```{r volcanoplot, fig.cap="", fig.width=12, fig.height=12, results='hide', cache=TRUE}
+all.stats <- llply(seq(1,ncol(contrast.matrix),1), function(n) {
+  contrast <- dimnames(fit2$contrasts)$Contrasts[n]
+  stats <- topTable(fit2, coef=n, sort.by="B"  ,number=nrow(fit2$genes), genelist=rownames2col(fit2$genes, "NuID"))
+  stats <- merge(stats, mappingInfo[,c("NuID", "ENTREZID")], by="NuID", sort=F)
+  stats <- col2rownames(stats, "NuID")
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalcutoff & abs(stats$logFC)>logFCcutoff)
+  g <- ggplot(data=stats, aes(x=logFC, y=-log10(P.Value), color=Passes.FDR.threshold, size=B)) +
+    geom_point(alpha=0.5) +
+    geom_vline(xintercept=c(-1,1), color="orange", alpha=0.7, lwd=1.25) +
+    xlab("log2 fold change") + ylab("-log10 p-value") +
+    labs(title=contrast)
+  return(list(g=g, stats=stats, contrast=contrast))
+  })
+lapply(all.stats, function(x) {
+  x$g
+  })
+```
+
+While there are some differentially expressed genes between the inflamed and non-inflamed samples, there appear to be none between the naiive and non-naiive inflamed samples after multiple test correction.  
+
+#### Statistics and expression levels for ALL genes (in Excel files)
+
+```{r all_exprs_stats, results='hide'}
+all.exprs.stats <- lapply(all.stats, function(x) {
+  contrast <- x$contrast
+  stats <- x$stats
+  eset.all <- exprs(lumib.norm)[row.names(stats),]
+  colnames(eset.all) <- pData(lumib.norm)$samplelabel
+  eset.stats.all <- cbind(stats, eset.all)  
+  return(list(eset.stats.all=eset.stats.all, contrast=contrast ))
+  })
+
+lapply(all.exprs.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.all, file=file.path(resultsDir, paste("all.stats", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+`r index=1`
+
+[Links to Excel files with results for genes in `r all.stats[[index]]$contrast` comparison](./results/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+`r index=index+1`
+
+[Links to Excel file with results for genes in `r all.stats[[index]]$contrast` comparison](./results/`r paste("all.stats", all.stats[[index]]$contrast, "xls",sep=".")`)
+
+---
+
+Regardless of whether individual genes show significant differential expression, looking at the most differentially expressed genes as a group can be illuminating.
+
+### Top results
+The top `r numtopgenes` differentially expressed genes as sorted by "B", the log-odds that a gene is differentially expressed
+
+#### The summary table contains the following information:
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last columns contain the log-transformed normalized expression levels for these genes in each sample
+
+```{r toptable, cache=TRUE}
+top.stats <- lapply(seq(1,ncol(contrast.matrix),1), function(n) {
+  contrast <- dimnames(fit2$contrasts)$Contrasts[n]
+  if (length(which(all.stats[[n]]$stats$adj.P.Val<pvalcutoff & abs(all.stats[[n]]$stats$logFC)>logFCcutoff))>=numtopgenes) {
+    print(paste(contrast, "has at least", numtopgenes, "probes with an ajusted p.value of at least", pvalcutoff,  "and a log fold change of at least", logFCcutoff, sep=" "))
+    stats.top <- topTable(fit2, coef=n, adjust="fdr", p.value=pvalcutoff, lfc=logFCcutoff, sort.by="B", number=nrow(fit2$genes), genelist=rownames2col(fit2$genes, "NuID"))
+    stats.top <- stats.top[!is.na(stats.top$SYMBOL),]
+    stats.top <- merge(stats.top, mappingInfo[,c("NuID", "ENTREZID")], by="NuID", sort=F)
+    stats.top <- col2rownames(stats.top, "NuID")
+    } else {
+      print(paste(contrast, "does NOT have at least", numtopgenes, "probes with an ajusted p.value of at least", pvalcutoff,  "and a log fold change of at least", logFCcutoff, sep=" "))
+      stats.top <- topTable(fit2, coef=n, adjust="fdr", sort.by="B", number=nrow(fit2$genes), genelist=rownames2col(fit2$genes, "NuID"))
+      stats.top <- stats.top[!is.na(stats.top$SYMBOL),]
+      stats.top <- merge(stats.top, mappingInfo[,c("NuID", "ENTREZID")], by="NuID", sort=F)
+      stats.top <- col2rownames(stats.top, "NuID")
+      }
+  if (nrow(stats.top)>=numtopgenes){
+    stats.top <- stats.top[1:numtopgenes,]
+    } 
+  # incorporate expression levels for these genes in all samples
+  if(nrow(stats.top)>0) {
+    eset.top  <-  exprs(lumib.norm)[row.names(stats.top),]
+    colnames(eset.top)  <-  pData(lumib.norm)$samplelabel
+    eset.stats.top <- cbind(stats.top, eset.top)
+    } else { eset.stats.top<-"NA"}
+  return(list(eset.stats.top=eset.stats.top, contrast=contrast))
+  })
+```
+
+#### Statistics and expression levels for these genes
+
+```{r output_top, results='hide'}
+lapply(top.stats, function(x){
+  contrast=x$contrast
+  write.table(x$eset.stats.top, file=file.path(resultsDir, paste("top", numtopgenes, "stats.exprs", contrast, "xls",sep=".")), row.names=F, col.names=T, sep='\t')
+  })
+```
+
+`r index=1`
+
+[Links to Excel files with results for genes in top `r numtopgenes` log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/`r paste("top", numtopgenes, "stats.exprs", top.stats[[index]]$contrast, "xls",sep=".")`)
+`r index=index+1`
+
+[Links to Excel files with results for genes in top `r numtopgenes` log-odds of differential expression in `r top.stats[[index]]$contrast` comparison](./results/`r paste("top", numtopgenes, "stats.exprs", top.stats[[index]]$contrast, "xls",sep=".")`)
+
+## Grouped Gene analyses
+
+### Heatmaps
+
+- can we cluster the samples by type for the most differentially expressed genes?
+- can we see any clear patterns of expression between the sample groups?
+
+- used the top 50 differentially expressed genes (this is an arbitrary cutoff that lets us see the name of the gene on the plot clearly)
+- as sorted by "B", the log-odds that a gene is differentially expressed
+- clustered for similarity by probe/gene and sample
+
+```{r heatmaps, fig.width=12, fig.height=12}
+for(n in 1:ncol(contrast.matrix)){
+  # get the names of the stages that are being compared in this comparison
+  contrast <- top.stats[[n]]$contrast
+  stages <- names(which(abs(contrast.matrix[,contrast])>0))
+  # subset the samples and the data to those in the stages compared in this comparison
+  sample.indices <- which(design[,stages[1]]>0 | design[,stages[2]]>0)
+  sample.pd <- pData(lumib.norm)[sample.indices,]
+  top.exprs.contrast <- top.stats[[n]]$eset.stats.top
+  # setup row names for the heatmap, paste probeset ID to gene symbol
+  row.names(top.exprs.contrast) <- paste(1:nrow(top.exprs.contrast), top.exprs.contrast$SYMBOL, sep="_")
+  # subset to relevant samples
+  top.exprs.contrast <- top.exprs.contrast[,unlist(sample.pd$samplelabel)]
+  # heatmap annotations
+  heatmap.annots <- as.data.frame(sample.pd[,c("samplelabel", "Group")])
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  heatmap.annots <- col2rownames(heatmap.annots, "samplelabel", T)
+  # heatmap annotation colors
+  group_colors <- cbPalette[1:2]
+  names(group_colors) <- unique(unlist(sample.pd$Group))
+  ann_colors = list(Group = group_colors)
+  ## Heatmaps
+  pheatmap(as.matrix(top.exprs.contrast[1:50,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=T, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)  
+  }
+```
+
+While the samples don't cluster perfectly by type, these 50 genes do appear to allow some level of classification of the sample groups.
+
+I took three approaches to looking for functional and pathway enrichment in the top differentially expressed genes for each comparison.
+
+### 1. Basic Pathway Enrichment
+- hypergeometric distribution based
+
+In this simple approach, we check to see if the top 100 differentially expressed genes are overrepresented among any of 490 curated pathways from [Netpath][7], [Reactome][8], [Wikipathways][9] and [KEGG][10] in addition to 143 pathways generated from statistical associations of genes (Static Modules). 
+
+#### `r colnames(contrast.matrix)[1]`
+
+```{r pathway1, results='asis'}
+pathway.enrichment <- pathEnrich(as.vector(unlist(top.stats[[1]]$eset.stats.top$ENTREZID[1:100])), pathways.Hs, all.exprs.stats[[1]]$eset.stats.all$ENTREZID)
+pathway.enrichment$Symbols <- lapply(pathway.enrichment$Genes, function(x) {
+  paste(as.character(droplevels(unique(mappingInfo$SYMBOL[which(mappingInfo$ENTREZID %in% as.vector(unlist(x)))]))), collapse=",")
+  })
+pathway.enrichment$Genes <- lapply(pathway.enrichment$Genes, function(x) {
+  paste(x, collapse=",")
+  })
+names(pathway.enrichment) <- sub("Genes", "EntrezID", names(pathway.enrichment))
+
+pathways.gvis <- gvisTable(as.data.frame(apply(pathway.enrichment, 2, function(n) as.character(n))), options=list(width=960), chartid="1")
+print(pathways.gvis, "chart")
+rm(pathway.enrichment, pathways.gvis)
+```
+
+
+#### `r colnames(contrast.matrix)[2]`
+
+
+```{r pathway2, results='asis'}
+pathway.enrichment <- pathEnrich(as.vector(unlist(top.stats[[2]]$eset.stats.top$ENTREZID[1:100])), pathways.Hs, all.exprs.stats[[2]]$eset.stats.all$ENTREZID)
+pathway.enrichment$Symbols <- lapply(pathway.enrichment$Genes, function(x) {
+  paste(as.character(droplevels(unique(mappingInfo$SYMBOL[which(mappingInfo$ENTREZID %in% as.vector(unlist(x)))]))), collapse=",")
+  })
+pathway.enrichment$Genes <- lapply(pathway.enrichment$Genes, function(x) {
+  paste(x, collapse=",")
+  })
+names(pathway.enrichment) <- sub("Genes", "EntrezID", names(pathway.enrichment))
+
+pathways.gvis2 <- gvisTable(as.data.frame(apply(pathway.enrichment, 2, function(n) as.character(n))), options=list(width=960), chartid="2")
+print(pathways.gvis2, "chart")
+```
+
+
+
+This approach shows no significantly enriched pathways after multiple testing correction. 
+One disadvantage of this approach is that all the top 100 differentially expressed genes have equal weight. An approach that actually took into account the level of differential expression or at least their rank would be more statistically sound.
+
+### 2. Gene Ontologies and Pathways
+
+This second approach uses [g:profiler][http://biit.cs.ut.ee/gprofiler/] to examine gene ontology and pathway enrichment while incorporating the rank of differential expression of the top 100 differentially expressed genes. 
+
+#### `r colnames(contrast.matrix)[1]`
+[Results](http://bit.ly/15o0ijC)
+As expected, these differentially expressed genes show strong enrichment for various inflammation related gene ontology categories.
+
+#### `r colnames(contrast.matrix)[2]`
+[Results](http://bit.ly/15o0ijC)
+
+There don't appear to be any enriched gene ontology categories in this set of differentially expressed genes. These genes do appear to show some slight enrichment of Pax-3 and STAT transcription factor binding sites. There is also some weak enrichment of a Reactome pathway for Transport of bile salts by ABCC4, though this is based on only two genes.
+
+### 3. Incorporating Additional Gene Interaction Data to Identify Networks and Gene Ontologies
+This approach can be particularly useful when there are few differentially expressed genes i.e. in the Naive-Inflamed.v.Inflamed comparison.
+
+This third approach uses networks based on knowledge of the likelihood of multiple gene interactions such as protein colocalization, physical interactions, pathways and shared protein domains interactions to a) identify ties between the differentially expressed genesin the set b) identify other genes that are likely to interact with the genes within the set c) add these interacting genes to the gene set and d)  examine the functional categories in this fortified set of genes.
+
+I did not include the likelihood of co-epxression as network to bring in genes, under the assumption that  they should show the same patterns of expression as the top differentially expressed genes i.e. if they are co-expressed with our gene set they should behave similarly to our gene set and be differentially expressed between the sample groups. 
+
+Once again using the top 100 differentially expressed genes, I used [GeneMANIA](http://www.genemania.org/) to search for functional enrichments after allowing varied amount of interacting genes into the set. We can be most confident of the enriched categories we find after we add the fewest interacting genes. As we increase the number of genes in the set, the enriched functional categories become based on weaker interactions.
+
+With just the additional gene set, GeneMANIA shows no functional enrichments.
+After allowing in 10 related genes to the gene set, some functional groups appear to be enriched. These are the categories in which we should have the most confidence.
+
+
+| Feature | FDR | Genes in network | Genes in genome |
+|---------|-----|------------------|-----------------|
+|bile acid and bile salt transport | 6.413852E-1 |	3 |	14|
+|organic acid transport | 6.413852E-1 | 6|142|
+|carboxylic acid transport |	6.413852E-1 |	6	|140|
+|endocytic vesicle |	6.605326E-1|	5 |	99|
+|MHC protein binding |	6.605326E-1|	3 |	21|
+
+The endocytic vesicle enrichment is derived from TAP2, APOA1, CORO1A and DPP4 after bringing in the TAP1 gene, which has connections (interactions) with multiple genes in original gene set, though does not look to be differentially expressed in this comparison.
+
+####Network with the endocytic vesicle genes highlighted.
+
+![network](./results/genemania_network.endo.svg)
+(the more lightly colored genes in this figure are those added on the basis of their interaction strength with the genes in the gene set)
+
+You can see that the network for MHC protein binding is also based off of TAP2 gene interactions.
+
+####Network with the MHC protein binding genes highlighted.
+
+![network](./results/genemania_network.MHC.svg)
+
+In contrast, the bile, organic and carboxylic acid networks look to be based off of a set of six genes, one of which, SLC10A2 was added on the basis of its interaction strength.
+The organic and carboxylic acid networks are actually identical and are composed of all six genes, while the bile acid network is based on a subnetwork based on the the FABP6, ABCC3 and SLC10A2 genes.
+
+####Network with the Carboxylic Acid Transport genes highlighted.
+
+![network](./results/genemania_network.acid.svg)
+
+Increasing the number of additional genes to 20, shows enrichment of the same (and related) categories.
+
+| Feature | FDR | Genes in network | Genes in genome | 
+|---|---|---|---|
+| MHC protein binding | 2.057076E-3 | 5 | 21 | 
+| bile acid and bile salt transport | 6.291324E-3 | 4 | 14 | 
+| MHC class I protein binding | 6.291324E-3 | 4 | 13 | 
+| organic acid transport | 6.790979E-2 | 7 | 142 | 
+| carboxylic acid transport | 6.790979E-2 | 7 | 140 | 
+| endocytic vesicle | 7.210695E-2 | 6 | 99 | 
+| activation of pro-apoptotic gene products | 7.828273E-2 | 4 | 31 | 
+| antigen binding | 7.828273E-2 | 4 | 32 | 
+| phagocytic vesicle | 7.88344E-2 | 4 | 33 | 
+| bile acid metabolic process | 1.007942E-1 | 4 | 36 |  
+
+
+Increasing the number of additional genes to 50, shows enrichment of many more categories, including many related to the previous categories. However, these are the categories in which we should have the least confidence.
+
+| Feature | FDR | Genes in network | Genes in genome | 
+|---|---|---|---|
+| MHC protein binding | 1.276223E-4 | 6 | 21 | 
+| MHC class I protein binding | 2.252251E-4 | 5 | 13 | 
+| triglyceride-rich lipoprotein particle remodeling | 4.116599E-3 | 4 | 11 | 
+| very-low-density lipoprotein particle remodeling | 4.116599E-3 | 4 | 11 | 
+| T cell receptor complex | 4.912036E-3 | 4 | 12 | 
+| bile acid and bile salt transport | 7.015317E-3 | 4 | 14 | 
+| high-density lipoprotein particle remodeling | 7.015317E-3 | 4 | 14 | 
+| T cell activation | 8.489885E-3 | 10 | 212 | 
+| reverse cholesterol transport | 9.809051E-3 | 4 | 16 | 
+| high-density lipoprotein particle | 1.14794E-2 | 4 | 17 | 
+| coreceptor activity | 2.088713E-2 | 4 | 20 | 
+| leukocyte migration | 2.284829E-2 | 9 | 197 | 
+| plasma lipoprotein particle remodeling | 2.293684E-2 | 4 | 23 | 
+| plasma lipoprotein particle | 2.293684E-2 | 4 | 22 | 
+| protein-lipid complex remodeling | 2.293684E-2 | 4 | 23 | 
+| protein-lipid complex | 2.293684E-2 | 4 | 22 | 
+| glycosaminoglycan biosynthetic process | 2.293684E-2 | 4 | 23 | 
+| macromolecular complex remodeling | 2.293684E-2 | 4 | 23 | 
+| aminoglycan biosynthetic process | 3.069376E-2 | 4 | 25 | 
+| lymphocyte activation | 3.787192E-2 | 10 | 283 | 
+| plasma lipoprotein particle organization | 3.787192E-2 | 4 | 27 | 
+| protein-lipid complex subunit organization | 3.787192E-2 | 4 | 27 | 
+| sterol esterification | 5.140694E-2 | 3 | 12 | 
+| steroid esterification | 5.140694E-2 | 3 | 12 | 
+| protein-lipid complex assembly | 5.140694E-2 | 3 | 12 | 
+| antigen binding | 5.140694E-2 | 4 | 32 | 
+| plasma lipoprotein particle assembly | 5.140694E-2 | 3 | 12 | 
+| cholesterol esterification | 5.140694E-2 | 3 | 12 | 
+| carboxylic acid transport | 5.140694E-2 | 7 | 140 | 
+| activation of pro-apoptotic gene products | 5.140694E-2 | 4 | 31 | 
+| organic acid transport | 5.140694E-2 | 7 | 142 | 
+| endocytic vesicle | 5.174197E-2 | 6 | 99 | 
+| phagocytic vesicle | 5.464338E-2 | 4 | 33 | 
+| glycosaminoglycan metabolic process | 6.710305E-2 | 4 | 35 | 
+| lipoprotein metabolic process | 7.047035E-2 | 5 | 67 | 
+| bile acid metabolic process | 7.089649E-2 | 4 | 36 | 
+| peptide antigen binding | 7.982805E-2 | 3 | 15 | 
+| triglyceride-rich lipoprotein particle | 7.982805E-2 | 3 | 15 | 
+| very-low-density lipoprotein particle | 7.982805E-2 | 3 | 15 | 
+| positive regulation of leukocyte activation | 8.729002E-2 | 7 | 162 | 
+| regulation of T cell activation | 8.729002E-2 | 7 | 162 | 
+| aminoglycan metabolic process | 9.218153E-2 | 4 | 40 | 
+| regulation of plasma lipoprotein particle levels | 9.377484E-2 | 4 | 41 | 
+| interspecies interaction between organisms | 9.377484E-2 | 5 | 75 | 
+| symbiosis, encompassing mutualism through parasitism | 9.377484E-2 | 5 | 75 | 
+| positive regulation of cell activation | 9.377484E-2 | 7 | 167 | 
+
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[3]: http://en.wikipedia.org/wiki/Variance-stabilizing_transformation (VST)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/lumi.html (lumi)
+[5]: http://www.biomedcentral.com/1471-2164/11/349#B17 (RSN)
+[6]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+[7]: http://www.netpath.org/ (Netpath)
+[8]: http://www.reactome.org/ReactomeGWT/entrypoint.html (Reactome)
+[9]: Wikipathways (Wikipathways)
+[10]: http://www.genome.jp/kegg/ (KEGG)
+
+
+
+

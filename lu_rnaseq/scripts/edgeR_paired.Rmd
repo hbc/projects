@@ -1,0 +1,186 @@
+<!-- EdgeR analysis using paired data
+-->
+
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, echo=TRUE, highlight=TRUE, figalign="center", fig.height=6, fig.width=6, message=FALSE, error=FALSE, warning=FALSE)
+```
+
+# Cassette exon differential expression
+
+## R libraries used
+```{r libraries, echo=FALSE}
+library("edgeR")
+library("googleVis")
+library("ggplot2")
+library("ggthemes")
+library("scales")
+library("reshape")
+```
+
+## Input variables
+```{r variables}
+wd = '/n/home05/kirchner/Dropbox/HSPH/lu_rnaseq'
+#wd = '/Users/rory/cache/projects/lu_rnaseq/'
+setwd(wd)
+infile = '/n/home05/kirchner/cache/projects/lu_rnaseq/results/exon_counts/htseq-count/combined.counts'
+#infile = paste(wd, 'local_data/combined.counts', sep="")
+gene_symbol = 'hgnc_symbol'
+ensembl_gene = 'hsapiens_gene_ensembl'
+filter_type = 'ensembl_gene_id'
+FDR_CUTOFF = 0.10
+```
+
+## Model setup
+We loaded up all of the counts for exons for all of the data files so we can
+analyze the entire experiment in one go. Each sample has some metadata
+attached to it. For the model design, the last factor will be the one that
+is differentially tested against by default. This will be important later on.
+```{r mode, results='asis'}
+data_info = new.env()
+ids = c("Pb8", "PbN5", "PbN11", "PbN2", "Pb2", "Pb21",
+    "Pb11", "PbN14", "PbN8", "PbN4", "Pb5", "Pb22")
+conditions = data.frame(id = ids,
+	   treatment = c("control", "control", "control", "control", "control",
+	   	   "control", "exposed", "exposed", "exposed", "exposed", "exposed",
+	  	    "exposed"),
+	   cell_type = c("nsc", "neuron", "neuron", "neuron", "nsc",
+	   "nsc", "nsc", "neuron", "neuron", "neuron", "nsc", "nsc"),
+	   trial = c("2", "N2", "N3", "N1", "1",
+	   "3", "2", "N3", "N2", "N1", "1", "3"))
+design = model.matrix(~trial+treatment, conditions)
+print(gvisTable(conditions), "chart")
+```
+
+Before we get going define a couple of utility functions we will need to work
+with the data.
+```{r annotate-df}
+annotate_df = function(d) {
+	require(biomaRt)
+	ensembl = useMart('ensembl', dataset = ensembl_gene)
+	a = getBM(attributes=c(filter_type, gene_symbol, "description"),
+		filters=c(filter_type), values=d[, 'id'],
+		mart=ensembl)
+	m = merge(d, a, by.x='id', by.y=filter_type)
+	#names(m)[which(names(m)=="Row.names")]= "id"
+	return(m)
+}
+```
+
+## Data overview
+The original column names are hard to work with; this rename will make it
+easier to look at. Displayed here so a human can make sure this rename
+is doing the right thing.
+
+```{r data-load, results='asis'}
+counts = read.table(infile, header=TRUE, row.names=1)
+col_rename_df = data.frame(original=colnames(counts))
+col_rename_df$renamed = ids
+print(gvisTable(col_rename_df), "chart")
+colnames(counts) = ids
+cds = DGEList(counts)
+```
+
+We want to only look at exons that are expressed in at least two libraries,
+so keep only exons that have at least 1 count per million reads sequenced
+in each library. Exons with low numbers of reads will not be able to be reliably
+tested and having a large amount of exons which cannot be tested will throw
+off the multiple hypothesis correction later on.
+
+```{r data-filtering, results='asis'}
+kept_table = data.frame(unfiltered=dim(cds)[1])
+keep = rowSums(cpm(cds) > 1) >= 2
+cds = cds[keep,]
+kept_table$filtered = dim(cds)[1]
+print(gvisTable(kept_table, options=list(width=300, height=50)), "chart")
+cds_counts = data.frame(id=rownames(cds$counts), cds$counts)
+print(gvisTable(head(cds_counts), options=list(width=900, height=50)), "chart")
+```
+
+Filtering for a minimum read coverage results in a over 90% reduction in the
+set of exons to test.
+
+To use edgeR there are a set of assumptions that must be met. This next section
+is looking at the data set we are planning to use to see if it meets those
+assumptions. We need to massage the data into a format that is nice to perform
+these kinds of plots.
+
+```{r data-massage, results='asis'}
+melted = melt(cds_counts, id="id")
+melted = ddply(melted, .(id), mutate,
+       treatment = subset(conditions, id == variable)$treatment,
+       cell_type = subset(conditions, id == variable)$cell_type,
+       trial=subset(conditions, id == variable)$trial)
+print(gvisTable(head(melted), options=list(width=900, height=50)), "chart")
+```
+
+## Normalization
+Two types of normalization are performed; the first is scaling the number of
+reads mapping to each gene by the total number of mappable reads. The second
+type of normalization is to ensure the RNA composition is similar across
+the lanes. If a small number of genes are very highly expressed in one sample
+but not another it can artificially cause more moderately expressed genes
+in that sample to be under-sampled.
+
+We do not correct for GC content at this time.
+
+```{r normalization, results='asis'}
+cds = calcNormFactors(cds)
+lib.size = data.frame(lane=colnames(counts), "Library size"=cds$samples$lib.size,
+	"Normalization factor"=cds$samples$norm.factors)
+print(gvisTable(lib.size, options=list(width=900)), "chart")
+```
+
+## Dispersion estimation
+edgeR fits a negative binomial to the read counts and for hypothesis testing
+a measurement of the deviance of the observed counts from the fit called
+the dispersion must be calculated. There are several different ways
+to estimate the dispersion. The first estimator is to assume all genes
+have the same dispersion from the fit; edgeR calls this the common dispersion.
+Another alternative is to make the assumption that all genes with the
+same expression level have the same variance; this is the assumption
+made in DESeq; edgeR calls this a trended dispersion. Both of the above
+assumptions are too strong.
+TODO Break down how the tagwise dispersion estimation works.
+
+This is a plot of the biological coefficient of variation; you can see that
+for low counts the dispersion is much higher. TODO break this down some more.
+```{r estimateDispersions}
+cds = estimateGLMTrendedDisp(cds, design)
+cds = estimateGLMTagwiseDisp(cds, design)
+plotBCV(cds)
+```
+
+## Principle component analysis
+```{r pca}
+plotMDS(cds)
+```
+
+## Differential expression
+TODO: flesh this out, add captions to the tables? (How to do that?)
+Differentially regulated genes. -1 is for downregulated in the treated sample,
++1 is upregulated in the treated sample.
+
+```{r de, results='asis'}
+fit = glmFit(cds, design)
+lrt = glmLRT(fit)
+de = decideTestsDGE(lrt)
+lrt_table = lrt$table
+lrt_table$DE = as.numeric(decideTestsDGE(lrt, p.value=FDR_CUTOFF))
+lrt_table$id=rownames(lrt_table)
+lrt_table = annotate_df(lrt_table)
+print(gvisTable(subset(lrt_table, DE == -1), options=list(width=900)), "chart")
+print(gvisTable(subset(lrt_table, DE == 1), options=list(width=900)), "chart")
+```
+
+The blue line incidcates 2-fold changes.
+```{r display_de}
+#detags = as.logical(lrt_table$DE)
+plotSmear(lrt, de.tags=lrt_table$DE)
+abline(h=c(-1, 1), col="blue")
+```
+
+```{r data_write}
+out_file = paste(infile, ".deseq.annotated.txt", sep="")
+write.table(annotated_res, out_file, quote=FALSE, row.names=FALSE, sep="\t")
+```

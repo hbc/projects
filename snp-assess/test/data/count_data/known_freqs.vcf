@@ -1,0 +1,6 @@
+##fileformat=VCFv4.1
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	
+HXB2	226	.	G	A	.	.	AF=0.389
+HXB2	227	.	C	A,G	.	.	AF=0.05,0.0010
+HXB2	228	.	T	.	.	.	.

@@ -1,0 +1,41 @@
+idmapping: gwas/NIMH_Patient.Rutgers.ID_Translation.txt
+priority: gwas/AD-Master-v2.csv
+coverage: inputs/alz-priority-regions.bed
+# -- Priority 2 full re-run
+out: tanzi-alz-p2f.yaml
+params:
+  name: p2f
+  priority: 2
+  max_samples: 65
+# -- Priority 3
+#out: tanzi-alz-p3.yaml
+#params:
+#  name: p3
+#  families: ['88xxxx']
+# -- Priorty 2 variants
+#out: tanzi-alz-p2.yaml
+#params:
+#  name: p2
+#  families: ['51137']
+# -- Priorty 1 family selection
+# out: config/tanzi-alz-p1.yaml
+# params:
+#   name: p1
+#   priority: 1
+#   max_samples: 65
+
+# -- SANGER
+sanger:
+  inputs:
+    - /mnt/lustre/stripe-4M/harvard-illumina/LP*
+  base_dir: /home/bradc/data/tanzi_ad
+# -- Odyssey
+odyssey:
+  base_dir: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data
+  inputs:
+    - /n/hsphS10/hsphfs2/tanzi/LP*
+    - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601143_NA5JS5K1/LP*
+    - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601438_NA5K5CG1/LP*
+    - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601452_NA5K5CH8/LP*
+    - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/601486_NA5K5CEN/LP*
+    - /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/wgs/700012_NA5K5CQF/LP*

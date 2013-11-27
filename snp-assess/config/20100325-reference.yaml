@@ -1,0 +1,5 @@
+# Convert input file of constant and variable regions into VCF control reference
+---
+method: variable
+constant: location_constant.tsv
+variable: location_variable.tsv

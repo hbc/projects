@@ -1,0 +1,33 @@
+experiments:
+  - files: variation/raw_A5262-Control-sort-realign.tsv
+    align: align/A5262-Control-sort-realign.bam
+    count: align/A5262-Control-unique-counts.yaml
+    classify: true
+    #evaluate: true
+  - files: variation/raw_A5262-S1-sort-realign.tsv
+    align: align/A5262-S1-sort-realign.bam
+    count: align/A5262-S1-unique-counts.yaml
+  - files: variation/raw_A5262-S2-sort-realign.tsv
+    align: align/A5262-S2-sort-realign.bam
+    count: align/A5262-S2-unique-counts.yaml 
+  - files: variation/raw_A5262-S3-sort-realign.tsv
+    align: align/A5262-S3-sort-realign.bam
+    count: align/A5262-S3-unique-counts.yaml 
+  - files: variation/raw_A5262-S4-sort-realign.tsv
+    align: align/A5262-S4-sort-realign.bam
+    count: align/A5262-S4-unique-counts.yaml 
+  - files: variation/raw_A5262-S5-sort-realign.tsv
+    align: align/A5262-S5-sort-realign.bam
+    count: align/A5262-S5-unique-counts.yaml 
+
+downsample:
+  replicates: 3
+  percents: [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0]
+  lod-percents: [0.2, 0.4, 0.6]
+
+ref:
+  files: refinfo/hxb2-ref.fa
+  known: refinfo/known_integrase_mutations.csv
+  control: refinfo/control_frequencies.vcf
+  frame-offset: 0
+  aa-offset: 49

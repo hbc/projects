@@ -1,0 +1,33 @@
+experiments:
+  - files: variation/raw_S6_GCCAAT_L003_R1-sort-realign.tsv
+    align: align/S6_GCCAAT_L003_R1-sort-realign.bam
+    count: align/S6_GCCAAT_L003_R1-unique-counts.yaml
+    classify: true
+    #evaluate: true
+  - files: variation/raw_S1_ATCACG_L003_R1-sort-realign.tsv
+    align: align/S1_ATCACG_L003_R1-sort-realign.bam
+    count: align/S1_ATCACG_L003_R1-unique-counts.yaml 
+  - files: variation/raw_S2_CGATGT_L003_R1-sort-realign.tsv
+    align: align/S2_CGATGT_L003_R1-sort-realign.bam
+    count: align/S2_CGATGT_L003_R1-unique-counts.yaml
+  - files: variation/raw_S3_TTAGGC_L003_R1-sort-realign.tsv
+    align: align/S3_TTAGGC_L003_R1-sort-realign.bam
+    count: align/S3_TTAGGC_L003_R1-unique-counts.yaml
+  - files: variation/raw_Jon_Li_4_NoIndex_L008_R1-sort-realign.tsv
+    align: align/Jon_Li_4_NoIndex_L008_R1-sort-realign.bam
+    count: align/Jon_Li_4_NoIndex_L008_R1-unique-counts.yaml
+  - files: variation/raw_S5_ACAGTG_L003_R1-sort-realign.tsv
+    align: align/S5_ACAGTG_L003_R1-sort-realign.bam
+    count: align/S5_ACAGTG_L003_R1-unique-counts.yaml
+
+downsample:
+  replicates: 3
+  percents: [0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0]
+  lod-percents: [0.2, 0.4, 0.6]
+
+ref:
+  files: refinfo/hxb2-ref.fa
+  known: refinfo/known_integrase_mutations.csv
+  control: refinfo/control_frequencies.vcf
+  frame-offset: 0
+  aa-offset: 49

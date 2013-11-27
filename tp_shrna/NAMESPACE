@@ -1,0 +1,8 @@
+export(callDifferentialExpression)
+export(downloadMartData)
+export(estimateVariance)
+export(loadByTarget)
+export(mergeGenes)
+export(plotSpreadDistribution)
+export(prepareByAccession)
+export(prepareByTarget)

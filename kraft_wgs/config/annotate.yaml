@@ -1,0 +1,64 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 50
+  timeout: 10000
+  delay: 10
+
+dir:
+  data: /n/hsphS10/hsphfs1/Kraft/DRIVE
+  results: results
+  log: log
+
+
+sample_file: /n/hsphS10/hsphfs1/chb/projects/breast_cancer_wgs/id_mapping/WGS_ID_Nov2012-mapping.csv
+
+# stuff needed for snpeff_effects
+#  snpEff: /n/HSPH/local/share/java/snpeff-2_0_5
+program:
+  snpEff: /n/HSPH/local/share/java/snpEff_3_1
+  bcbio.variation: /n/HSPH/local/share/java/bcbio.variation/
+  gemini: gemini
+  vep: /n/HSPH/local/bin/variant_effect_predictor.pl
+  tabix: tabix
+  samtools: samtools
+  picard: /n/HSPH/local/share/java/picard
+
+algorithm:
+  java_memory: 4g
+
+ref:
+  name: GRCh37
+  fasta: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  grc_file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  ucsc_file: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
+
+stage:
+
+  vep:
+    species: homo_sapiens
+    options:
+      cache: True
+      dir: /n/hsphS10/hsphfs1/chb/biodata/vep
+      terms: so
+      sift: b
+      poly: b
+      vcf: True
+      #fork: 4 # this is broken for now
+      offline: True
+      buffer_size: 10000
+      hgnc: True
+      numbers: True
+      fields: "Consequence,Codons,Amino_acids,Gene,HGNC,Feature,EXON,PolyPhen,SIFT"
+
+  snpeff:
+    name: snpeff
+
+  gemini:
+    name: gemini
+    type: VEP
+    db: kraft_bc_wgs.db
+    action: load
+
+run: [illumina_fixer, vep]
+final: [geminiloader]

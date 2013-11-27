@@ -1,0 +1,94 @@
+cluster:
+  name: odyssey
+  profile: lsf
+  cores: 12
+  timeout: 10000
+  delay: 20
+
+dir:
+  results: results/test
+  doc: doc
+  ref: ref
+  data: data
+
+log_dir: log
+id_file: "sample_ids.yaml"
+
+ref: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Sequence/BowtieIndex/genome
+ref_file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Sequence/BowtieIndex/genome
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+
+
+annotation:
+  name: mm9
+  file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/genes.gtf
+
+
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    program: cutadapt
+    chemistry: [truseq]
+    trim_polya: False
+    options:
+      error-rate: 0.1
+      quality-cutoff: 20
+
+  tophat:
+    name: tophat
+    program: tophat
+    max_errors: 2
+    quality_format: sanger
+
+  sickle:
+    name: sickle
+    program: sickle
+    quality_type: sanger
+    length_cutoff: 20
+    quality_cutoff: 20
+
+    rseqc:
+      name: rseqc
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: mm9
+      file: /n/home05/kirchner/hsph/biodata/genomes/Mmusculus/mm9/iGenomes/Ensembl/NCBIM37/Annotation/Genes/refFlat.txt
+    ribo: meta/mouse_rrna.bed
+
+  rseqc:
+    name: rseqc
+
+  bowtie:
+    options:
+      v: 2
+      e: 40
+      m: 1
+      best: True
+      sam: True
+      phred33-quals: True
+
+run:
+  [fastqc, cutadapt, fastqc, bowtie, coverage]

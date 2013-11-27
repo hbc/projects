@@ -1,0 +1,98 @@
+# configuration to run data analysis on tuberous sclerosis files
+cluster:
+  name: odyssey
+  profile: bigmem
+  cores: 4
+  timeout: 10000
+  delay: 10
+
+dir:
+  results: results
+  doc: doc
+  ref: ref
+  data: data
+
+log_dir: log
+
+input_dirs:
+  - N2_N4
+  - N5_N8
+  - sample_lane2
+
+sample_parse:
+  identifier: Pb*.fastq
+  delimiter: _
+  fields: [sample, condition, trial, barcode, read]
+
+ref: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Sequence/BowtieIndex/genome
+gtf: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
+
+annotation:
+  name: hg19
+  file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/genes.gtf
+
+
+program:
+  fastqc: fastqc
+  tophat: tophat
+  bowtie: bowtie
+  picard: /n/home05/kirchner/opt/lib/java/picard-tools-1.74
+
+stage:
+  fastqc:
+    name: fastqc
+    program: fastqc
+    options:
+      - [--noextract]
+
+  cutadapt:
+    program: cutadapt
+    platform: [illumina, polya]
+    options:
+      - [--error-rate, 0.1]
+      - [--quality-cutoff, 20]
+      - [--minimum-length, 20]
+
+  tophat:
+    name: tophat
+    program: tophat
+    max_errors: 2
+    quality_format: sanger
+
+  sickle:
+    name: sickle
+    program: sickle
+    quality_type: sanger
+    length_cutoff: 20
+    quality_cutoff: 20
+
+    rseqc:
+      name: rseqc
+
+  htseq-count:
+    name: htseq-count
+    program: htseq-count
+    options:
+      - [--stranded=no]
+      - [--type=exon]
+      - [--idattr=gene_id]
+      - [--mode=union]
+
+  coverage:
+    name: coverage
+    program: picard
+    ref:
+      name: human
+      file: /n/home05/kirchner/hsph/biodata/genomes/Hsapiens/hg19/iGenomes/Homo_sapiens/Ensembl/GRCh37/Annotation/Genes/refFlat.txt
+    ribo: meta/rrna_final.bed
+
+  deseq:
+    comparisons:
+      - [control, exposed]
+
+  rseqc:
+    name: rseqc
+
+run:
+  [fastqc, cutadapt, fastqc, tophat, coverage, rseqc, htseq-count, deseq]
