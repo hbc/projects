@@ -9,6 +9,7 @@ import datetime
 import glob
 import os
 import sys
+import subprocess
 
 import yaml
 
@@ -21,54 +22,35 @@ def main(config_file, env):
     famsamples = get_families(config["priority"], config["params"])
     famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
     baminfo = get_bam_files(config["inputs"], idremap)
-    if config["params"]["max_samples"]:
+    if config["params"].get("max_samples"):
         for i, g in enumerate(split_families(famsamples, config["params"]["max_samples"])):
-            name = "g%s" % (i+1)
-            write_config(g, baminfo, name, config["params"]["name"], config["out"],
-                         config)
+            write_config(g, baminfo, "%s-g%s" % (config["params"]["name"], (i + 1)), config)
     else:
-        write_config(famsamples, baminfo, None, config["params"]["name"], config["out"],
-                     config)
+        write_config(famsamples, baminfo, config["params"]["name"], config)
 
 # ## Write output configurations
 
-def write_config(g, baminfo, name, group_name, outbase, config):
-    outdir = os.path.dirname(outbase)
-    if outdir and not os.path.exists(outdir):
-        os.makedirs(outdir)
-    if name:
-        base, ext = os.path.splitext(outbase)
-        outfile = "%s-%s%s" % (base, name, ext)
-    else:
-        outfile = outbase
-    out = {"upload": {"dir": "../final"},
-           "fc_date": datetime.datetime.now().strftime("%Y-%m-%d"),
-           "fc_name": "alz-%s%s" % (group_name, "-%s" % name if name else ""),
-           "details": []}
-    for family, samples in g:
-        for sample in samples:
-            if sample in baminfo:
-                cur = {"algorithm": {"aligner": "bwa",
-                                     "align_split_size": 20000000,
-                                     "variantcaller": "freebayes",
-                                     "mark_duplicates": "samtools",
-                                     "recalibrate": False,
-                                     "realign": False,
-                                     "quality_format": "Standard",
-                                     "coverage": config["coverage"],
-                                     "coverage_interval": "genome",
-                                     "coverage_depth": "high"},
-                       "analysis": "variant2",
-                       "genome_build": "GRCh37",
-                       "metadata": {"batch": str(family)},
-                       "description": str(sample),
-                       "files": [baminfo[sample]["bam"]]}
-                out["details"].append(cur)
-            else:
-                print("BAM file missing for %s" % sample)
-    with open(outfile, "w") as out_handle:
-        yaml.dump(out, out_handle, allow_unicode=False, default_flow_style=False)
-    return outfile
+def write_config(g, baminfo, name, config):
+    config_dir = os.path.join(os.getcwd(), name, "config")
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
+    meta_file = os.path.join(config_dir, "%s.csv" % name)
+    bam_files = []
+    with open(meta_file, "w") as out_handle:
+        writer = csv.writer(out_handle)
+        writer.writerow(["samplename", "description", "batch", "align_split_size",
+                         "coverage_depth", "coverage_interval", "coverage"])
+        for family, samples in g:
+            for sample in samples:
+                if sample in baminfo:
+                    bamfile = baminfo[sample]["bam"]
+                    writer.writerow([os.path.basename(bamfile), str(sample), str(family), "20000000",
+                                     "high", "genome", config["coverage"]])
+                    bam_files.append(bamfile)
+                else:
+                    print("BAM file missing for %s" % sample)
+    subprocess.check_call(["bcbio_nextgen.py", "-w", "template", "freebayes-variant",
+                           meta_file] + bam_files)
 
 def split_families(famsamples, max_samples):
     """Split families into groups that fit for processing.
