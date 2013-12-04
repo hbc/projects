@@ -38,17 +38,17 @@ def write_config(g, baminfo, name, config):
     bam_files = []
     with open(meta_file, "w") as out_handle:
         writer = csv.writer(out_handle)
-        writer.writerow(["samplename", "description", "batch", "align_split_size",
+        writer.writerow(["samplename", "description", "batch", "sex", "align_split_size",
                          "coverage_depth", "coverage_interval", "coverage"])
         for family, samples in g:
-            for sample in samples:
-                if sample in baminfo:
-                    bamfile = baminfo[sample]["bam"]
-                    writer.writerow([os.path.basename(bamfile), str(sample), str(family), "20000000",
-                                     "high", "genome", config["coverage"]])
+            for info in samples:
+                if info["sample"] in baminfo:
+                    bamfile = baminfo[info["sample"]]["bam"]
+                    writer.writerow([os.path.basename(bamfile), str(info["sample"]), str(family), info["gender"],
+                                     "20000000", "high", "genome", config["coverage"]])
                     bam_files.append(bamfile)
                 else:
-                    print("BAM file missing for %s" % sample)
+                    print("BAM file missing for %s" % info["sample"])
     subprocess.check_call(["bcbio_nextgen.py", "-w", "template", "freebayes-variant",
                            meta_file] + bam_files)
 
@@ -88,6 +88,14 @@ def _check_sample(fam_id, priority, params):
             return True
     return False
 
+def _get_gender(gender):
+    if gender.lower() in ["m", "male", "1"]:
+        return "male"
+    elif gender.lower() in ["f", "female", "2"]:
+        return "female"
+    else:
+        return ""
+
 def get_families(in_file, params):
     """Retrieve samples in specific priorities or families, grouped by family.
     """
@@ -100,8 +108,9 @@ def get_families(in_file, params):
             status_flag = parts[16]
             if status_flag != "Exclude":
                 if _check_sample(fam_id, priority, params):
-                    if sample_id not in samples[fam_id]:
-                        samples[fam_id].append(sample_id)
+                    info = {"sample": sample_id, "gender": _get_gender(parts[12])}
+                    if info not in samples[fam_id]:
+                        samples[fam_id].append(info)
     return dict(samples)
 
 # ## Directory and name remapping

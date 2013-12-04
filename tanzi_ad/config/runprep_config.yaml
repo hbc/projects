@@ -7,10 +7,14 @@ coverage: inputs/alz-priority-regions.bed
 #  name: p2f
 #  priority: 2
 #  max_samples: 65
-# -- shmaman
+# -- gomez
 params:
-  name: alz-shmaman
-  families: ['shmaman']
+  name: alz-gomez
+  families: ['gomez']
+# -- shmaman
+#params:
+#  name: alz-shmaman
+#  families: ['shmaman']
 # -- Priority 3
 #out: tanzi-alz-p3.yaml
 #params:
