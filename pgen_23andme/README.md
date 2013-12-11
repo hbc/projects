@@ -1,6 +1,8 @@
 ## PGen 23andme response project
 
-Retrieve 23andme analysis results for PGen project. 
+Retrieve 23andme analysis results for PGen project into flat CSV file. Code from
+research project at Brigham and Women's Hospital, Harvard Medical School and
+Harvard School of Public Health.
 
 ### Setup
 
@@ -27,3 +29,9 @@ To retrieve results for a single user access token:
 Framework code taken from 23andMe's flask example:
 
 https://github.com/23andMe/api-example-flask
+
+# License
+
+The code is freely available under the [MIT license][l1].
+
+[l1]: http://www.opensource.org/licenses/mit-license.html
