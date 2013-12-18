@@ -11,9 +11,10 @@
         [snp-assess.reference :only [convert-to-vc write-vcf-calls]]
         [snp-assess.protein.calc :only [prep-protein-map]]
         [snp-assess.protein.read :only [annotate-calls-w-aa]])
-  (:require [fs.core :as fs]
+  (:require [me.raynes.fs :as fs]
             [clj-yaml.core :as yaml]
-            [bcbio.run.itx :as itx]))
+            [bcbio.run.itx :as itx])
+  (:gen-class))
 
 (defn vrns-by-pos
   "Lazy sequence of variation calls at each position."
@@ -38,7 +39,7 @@
                          out-file ref-file)))
     out-file))
 
-(defn -main [run-config-file param-config-file work-dir]
+(defn id-variants [run-config-file param-config-file work-dir]
   (let [{:keys [config run-config]} (prep-config-files run-config-file param-config-file work-dir)
         {:keys [c ref-file pos-file data-file]} (prep-classifier-info run-config config work-dir)
         prot-map (prep-protein-map (:ref run-config))]
@@ -48,3 +49,12 @@
             aa-call-file (annotate-calls-w-aa (:align x) mv-call-file ref-file prot-map
                                               (:kmer-size config) :count-file (:count x))]
         (add-mv-annotations aa-call-file (:align x) ref-file)))))
+
+(def ^{:doc "Mapping of command line arguments to main functions" :private true}
+  altmain-map
+  {:snp-call id-variants})
+
+(defn -main [& args]
+  (if-let [alt-fn (get altmain-map (keyword (first args)))]
+    (apply alt-fn (rest args))
+    (apply id-variants args)))

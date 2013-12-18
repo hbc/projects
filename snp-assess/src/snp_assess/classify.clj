@@ -17,7 +17,7 @@
                                          roc-summarize-assessment]]
         [snp-assess.reference :only [read-vcf-ref]])
   (:require [clojure.string :as string]
-            [fs.core :as fs]))
+            [me.raynes.fs :as fs]))
 
 ;; Prepare clasifier data: list of normalized parameters (quality,
 ;; kmer and mapping scores) and naive classifier based on simple

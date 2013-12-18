@@ -3,7 +3,7 @@
         [snp-assess.protein.calc]
         [snp-assess.protein.read]
         [snp-assess.annotate])
-  (:require [fs.core :as fs]
+  (:require [me.raynes.fs :as fs]
             [bcbio.run.itx :as itx]))
 
 (background

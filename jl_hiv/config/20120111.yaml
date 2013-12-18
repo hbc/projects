@@ -27,6 +27,8 @@ experiments:
     ref: refinfo/hxb2-ref.fa
     description: 'Control'
 
+name: A5262
+
 algorithm:
   # current algorithm parameters
   allowed_ns: 0

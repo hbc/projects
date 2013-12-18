@@ -1,0 +1,46 @@
+---
+experiments:
+  - files: [input/A5262-S1.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'S1'
+  - files: [input/A5262-S2.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'S2'
+  - files: [input/A5262-S3.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'S3'
+  - files: [input/A5262-S4.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'S4'
+  - files: [input/A5262-S5.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'S5'
+  - files: [input/A5262-Control.fq.gz]
+    ref: refinfo/hxb2-ref.fa
+    description: 'Control'
+
+name: A5262
+
+algorithm:
+  # current algorithm parameters
+  allowed_ns: 0
+  min_unique_counts: 5
+  realignment: gatk
+  kmer_size: 13
+  cores: 1
+  platform: illumina
+  java_memory: 12g
+  quality_format: Standard
+
+program:
+  barcode: barcode_sort_trim.py
+  uniquify: local/bin/fastq-unique-bloom.py
+  picard: local/share/java/picard
+  gatk: local/share/java/gatk
+
+dir:
+  tmp: tmp
+  align: align
+  vrn: variation
+  #stats: variation_stats
+  #calls: variation_calls

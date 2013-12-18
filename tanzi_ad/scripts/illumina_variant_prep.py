@@ -41,6 +41,7 @@ def main(config_file, cores):
                                                          and s["id"] not in exclude)]
     merge_file = merge_vcf_files(out_files, cores, config)
     effects_file = effects.snpeff_effects({"vrn_file": merge_file,
+                                           "genome_resources": {"aliases" : {"snpeff": "GRCh37"}},
                                            "genome_build": "GRCh37",
                                            "config": config})
     noexclude_file = "%s-noexclude%s" % os.path.splitext(effects_file)

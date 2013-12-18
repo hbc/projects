@@ -4,7 +4,7 @@
         [snp-assess.classify]
         [snp-assess.features :only [metrics-to-features]]
         [snp-assess.classify-eval :only [summarize-assessment roc-summarize-assessment]])
-  (:require [fs.core :as fs]))
+  (:require [me.raynes.fs :as fs]))
 
 ;; Top level definitions useful for all tests
 (background

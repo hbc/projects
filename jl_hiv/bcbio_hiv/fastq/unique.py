@@ -94,10 +94,11 @@ def generate_unique_counts(orig, unique, out_file):
     print "Generating unique counts, reading full file"
     with open(orig) as in_handle:
         for name, seq, qual in FastqGeneralIterator(in_handle):
-            if stats.has_key(seq):
+            if seq in stats:
                 stats[seq]["count"] += 1
                 #for i, q in enumerate(qual):
                 #    stats[seq]["qualities"][i][q] += 1
     final = map(_finalize_read_stats, stats.itervalues())
     with open(out_file, "w") as out_handle:
         yaml.dump(final, out_handle, allow_unicode=False)
+    return out_file

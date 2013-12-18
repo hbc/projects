@@ -3,8 +3,8 @@
    at a single amino acid as well as phasing between connected amino acids."
   (:import [net.sf.samtools SAMFileReader SAMFileReader$ValidationStringency]
            [org.biojava3.core.sequence DNASequence]
-           [org.broadinstitute.sting.utils.variantcontext VariantContextBuilder]
-           [org.broadinstitute.sting.utils.codecs.vcf
+           [org.broadinstitute.variant.variantcontext VariantContextBuilder]
+           [org.broadinstitute.variant.vcf
             VCFHeader VCFInfoHeaderLine VCFHeaderLineCount VCFHeaderLineType])
   (:use [clojure.java.io]
         [bcbio.run.broad :only [index-bam]]

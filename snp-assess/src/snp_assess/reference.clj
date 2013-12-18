@@ -3,11 +3,11 @@
   (:import [org.biojava3.core.sequence.io FastaReaderHelper FastaReader
             GenericFastaHeaderParser DNASequenceCreator]
            [org.biojava3.core.sequence.compound AmbiguityDNACompoundSet]
-           [org.broadinstitute.sting.utils.variantcontext Allele
+           [org.broadinstitute.variant.variantcontext Allele
             VariantContextBuilder]
-           [org.broadinstitute.sting.utils.codecs.vcf
+           [org.broadinstitute.variant.vcf
             VCFHeader VCFInfoHeaderLine VCFHeaderLineCount VCFHeaderLineType]
-           [org.broadinstitute.sting.utils.variantcontext.writer
+           [org.broadinstitute.variant.variantcontext.writer
             VariantContextWriterFactory Options]
            [net.sf.picard.reference ReferenceSequenceFileFactory]
            [net.sf.picard.sam CreateSequenceDictionary])
@@ -18,7 +18,7 @@
         [bcbio.variation.variantcontext :only [parse-vcf get-vcf-iterator]]
         [snp-assess.core :only [parse-pos-line]])
   (:require [clj-yaml.core :as yaml]
-            [fs.core :as fs]))
+            [me.raynes.fs :as fs]))
 
 ;; External file interaction
 

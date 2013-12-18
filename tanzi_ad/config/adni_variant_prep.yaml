@@ -1,0 +1,17 @@
+outputs:
+  merge: adni-alz-merge.vcf
+ref:
+  GRCh37: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  hg19: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
+bcbio.variation: /n/home05/kirchner/tmp/bcbio.variation-0.1.2-SNAPSHOT-standalone.jar
+ped: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/ADNI_VCFs/ADNI_Phenotype_Data_11.13.13.txt
+
+resources:
+  gatk:
+    jvm_opts: ["-Xms10g", "-Xmx20g"]
+    dir: /n/hsphS10/hsphfs1/chb/local/share/java/gatk
+  picard:
+    dir: /n/hsphS10/hsphfs1/chb/local/share/java/picard
+  snpEff:
+    jvm_opts: ["-Xms2g", "-Xmx10g"]
+    dir: /n/hsphS10/hsphfs1/chb/local/share/java/snpeff

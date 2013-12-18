@@ -1,17 +1,44 @@
-base_dir: /home/bradc/data/tanzi_ad
 idmapping: gwas/NIMH_Patient.Rutgers.ID_Translation.txt
 priority: gwas/AD-Master-v2.csv
 coverage: inputs/alz-priority-regions.bed
-# -- Priorty 2 variants
-out: tanzi-alz-p2.yaml
+# -- Priority 2 full re-run
+#out: tanzi-alz-p2f.yaml
+#params:
+#  name: p2f
+#  priority: 2
+#  max_samples: 65
+# -- gomez
 params:
-  name: p2
-  families: ['51137', '88xxxx']
-# -- Priorty family selection
+  name: alz-gomez
+  families: ['gomez']
+# -- shmaman
+#params:
+#  name: alz-shmaman
+#  families: ['shmaman']
+# -- Priority 3
+#out: tanzi-alz-p3.yaml
+#params:
+#  name: p3
+#  families: ['88xxxx']
+# -- Priorty 2 variants
+#out: tanzi-alz-p2.yaml
+#params:
+#  name: p2
+#  families: ['51137']
+# -- Priorty 1 family selection
 # out: config/tanzi-alz-p1.yaml
 # params:
 #   name: p1
 #   priority: 1
 #   max_samples: 65
-inputs:
-  - /mnt/lustre/stripe-4M/harvard-illumina/LP*
+
+# -- SANGER
+sanger:
+  inputs:
+    - /mnt/lustre/stripe-4M/harvard-illumina/LP*
+  base_dir: /home/bradc/data/tanzi_ad
+# -- Odyssey
+odyssey:
+  base_dir: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data
+  inputs:
+    - /n/hsphS10/hsphfs2/tanzi/LP*
