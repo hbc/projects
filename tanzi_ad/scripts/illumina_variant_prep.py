@@ -36,9 +36,10 @@ def main(config_file, cores):
     check_fam(samples, config["array"]["fam"])
 
     config["algorithm"] = {"num_cores": cores}
+    samples = [s for s in samples if s["id"] is not None and s["id"] not in exclude]
+    print "Processing %s samples" % len(samples)
     out_files = [outf for outf in joblib.Parallel(cores)(joblib.delayed(run_illumina_prep)(s, config)
-                                                         for s in samples if s["id"] is not None
-                                                         and s["id"] not in exclude)]
+                                                         for s in samples)]
     merge_file = merge_vcf_files(out_files, cores, config)
     effects_file = effects.snpeff_effects({"vrn_file": merge_file,
                                            "genome_resources": {"aliases" : {"snpeff": "GRCh37"}},
@@ -47,7 +48,6 @@ def main(config_file, cores):
     noexclude_file = "%s-noexclude%s" % os.path.splitext(effects_file)
     noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
                                               config["ref"]["GRCh37"], config)
-    config["algorithm"]["num_cores"] = cores
     data = {"config": config, "dirs": {"work": os.getcwd()}, "name": [""]}
     prepare_plink_vcftools(noexclude_file, config)
     gemini_db = population.prep_gemini_db([noexclude_file],
@@ -58,8 +58,7 @@ def main(config_file, cores):
 
 def merge_vcf_files(sample_files, cores, config):
     out_file = config["outputs"]["merge"]
-    config["algorithm"] = {}
-    run_parallel = parallel_runner({"type": "local", "cores": min(cores, 8)}, {}, config)
+    run_parallel = parallel_runner({"type": "local", "cores": cores}, {}, config)
     vcfutils.parallel_combine_variants(sample_files, out_file, config["ref"]["GRCh37"],
                                        config, run_parallel)
     return out_file
@@ -214,21 +213,19 @@ def read_priority_file(in_file, idremap):
     return set(exclude)
 
 def run_illumina_prep(sample, config):
-    tmp_dir = config.get("tmpdir", os.getcwd())
-    if not os.path.exists(tmp_dir):
-        try:
-            os.makedirs(tmp_dir)
-        except OSError:
-            assert os.path.exists(tmp_dir)
-    out_file = os.path.join(os.getcwd(), "%s.vcf" % sample["id"])
-    if not os.path.exists(out_file):
-        print sample["id"], sample["dir"], out_file
-        subprocess.check_call(["java", "-Xms1g", "-Xmx2g", "-jar", config["bcbio.variation"],
-                               "variant-utils", "illumina", sample["dir"],
-                               sample["id"], config["ref"]["GRCh37"],
-                               config["ref"]["hg19"],
-                               "--outdir", os.getcwd(),
-                               "--tmpdir", tmp_dir])
+    work_dir = utils.safe_makedir(os.path.join(os.getcwd(), "prep_casava_calls"))
+    with utils.chdir(work_dir):
+        out_file = os.path.join(os.getcwd(), "%s.vcf" % sample["id"])
+        if not os.path.exists(out_file) and not os.path.exists(out_file + ".gz"):
+            print sample["id"], sample["dir"], out_file
+            tmp_dir = utils.safe_makedir(config.get("tmpdir", os.getcwd()))
+            subprocess.check_call(["java", "-Xms1g", "-Xmx2g", "-jar", config["bcbio.variation"],
+                                   "variant-utils", "illumina", sample["dir"],
+                                   sample["id"], config["ref"]["GRCh37"],
+                                   config["ref"]["hg19"],
+                                   "--types", "snp,indel",
+                                   "--outdir", os.getcwd(),
+                                   "--tmpdir", tmp_dir])
     return out_file
 
 def dir_to_sample(dname, idremap):
