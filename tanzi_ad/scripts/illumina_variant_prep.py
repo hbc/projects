@@ -58,9 +58,12 @@ def main(config_file, cores):
 
 def merge_vcf_files(sample_files, cores, config):
     out_file = config["outputs"]["merge"]
-    run_parallel = parallel_runner({"type": "local", "cores": cores}, {}, config)
-    vcfutils.parallel_combine_variants(sample_files, out_file, config["ref"]["GRCh37"],
-                                       config, run_parallel)
+    sample_file_list = "merge-samples.txt"
+    with open(sample_file_list, "w") as out_handle:
+        for f in sample_files:
+            out_handle.write("%s\n" % f)
+    subprocess.check_call(["bcbio-variation-recall", "merge", out_file, config["ref"]["GRCh37"],
+                           sample_file_list, "-c", str(cores)])
     return out_file
 
 def _remove_plink_problems(in_vcf):
