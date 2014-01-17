@@ -6,6 +6,7 @@ Usage:
 """
 import csv
 import glob
+import gzip
 import pprint
 import os
 import shutil
@@ -20,12 +21,11 @@ from bcbio import broad, utils
 from bcbio.variation import effects, population, vcfutils
 from bcbio.distributed.messaging import parallel_runner
 
-def main(config_file, cores):
+def main(config_file, env, cores):
     cores = int(cores)
-    with open(config_file) as in_handle:
-        config = yaml.load(in_handle)
-    idremap = read_remap_file(config["idmapping"])
-    exclude = read_priority_file(config["array"]["priority"], idremap)
+    config = read_config(config_file, env)
+    idremap = read_remap_file(config["runinfo"]["idmapping"])
+    exclude = read_priority_file(config["runinfo"]["priority"], idremap)
     samples = list(get_input_samples(config["inputs"], idremap))
     problem = [x for x in samples if x["id"] is None]
     if len(problem) > 0:
@@ -33,7 +33,7 @@ def main(config_file, cores):
         for p in problem:
             print p["illuminaid"], os.path.basename(p["dir"])
         raise NotImplementedError
-    check_fam(samples, config["array"]["fam"])
+    check_fam(samples, config["runinfo"]["fam"])
 
     config["algorithm"] = {"num_cores": cores}
     samples = [s for s in samples if s["id"] is not None and s["id"] not in exclude]
@@ -42,17 +42,19 @@ def main(config_file, cores):
                                                          for s in samples)]
     merge_file = merge_vcf_files(out_files, cores, config)
     effects_file = effects.snpeff_effects({"vrn_file": merge_file,
-                                           "genome_resources": {"aliases" : {"snpeff": "GRCh37"}},
+                                           "sam_ref": config["ref"]["GRCh37"],
+                                           "genome_resources": {"aliases" : {"snpeff": "GRCh37.74"}},
                                            "genome_build": "GRCh37",
                                            "config": config})
-    noexclude_file = "%s-noexclude%s" % os.path.splitext(effects_file)
+    noexclude_file = "%s-noexclude%s" % utils.splitext_plus(effects_file)
     noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
                                               config["ref"]["GRCh37"], config)
     data = {"config": config, "dirs": {"work": os.getcwd()}, "name": [""]}
     prepare_plink_vcftools(noexclude_file, config)
     gemini_db = population.prep_gemini_db([noexclude_file],
-                                          [os.path.splitext(config["outputs"]["merge"])[0], "casava"],
-                                          [{"config": config, "work_bam": "yes", "genome_build": "GRCh37"}],
+                                          [utils.splitext_plus(config["outputs"]["merge"])[0], "casava"],
+                                          [{"config": config, "work_bam": "yes", "genome_build": "GRCh37",
+                                            "genome_resources": {"aliases": {"human": True}}}],
                                           data)[0][1]["db"]
     print gemini_db
 
@@ -62,18 +64,21 @@ def merge_vcf_files(sample_files, cores, config):
     with open(sample_file_list, "w") as out_handle:
         for f in sample_files:
             out_handle.write("%s\n" % f)
-    subprocess.check_call(["bcbio-variation-recall", "merge", out_file, config["ref"]["GRCh37"],
-                           sample_file_list, "-c", str(cores)])
+    if not utils.file_exists(out_file):
+        subprocess.check_call(["bcbio-variation-recall", "merge", out_file, config["ref"]["GRCh37"],
+                               sample_file_list, "-c", str(cores)])
     return out_file
 
-def _remove_plink_problems(in_vcf):
+def _remove_plink_problems(in_file):
     """Remove lines which cause issues feeding into plink.
     """
     chr_remap = {"X": "23", "Y": "24"}
-    out_vcf = "%s-plinkready%s" % os.path.splitext(in_vcf)
+    out_vcf = "%s-plinkready.vcf" % utils.splitext_plus(in_file)[0]
     support_chrs = set(["G", "A", "T", "C", ","])
+    if utils.file_exists(out_vcf + ".gz"):
+        out_vcf = out_vcf + ".gz"
     if not utils.file_exists(out_vcf):
-        with open(in_vcf) as in_handle:
+        with (gzip.open(in_file) if in_file.endswith(".gz") else open(in_file)) as in_handle:
             with open(out_vcf, "w") as out_handle:
                 for line in in_handle:
                     # Mitochondrial calls are not called with
@@ -98,14 +103,6 @@ def _remove_plink_problems(in_vcf):
                         out_handle.write(line)
     return out_vcf
 
-def _bgzip_vcf(in_vcf):
-    out_file = "%s.gz" % in_vcf
-    if not utils.file_exists(out_file):
-        subprocess.check_call(["bgzip", in_vcf])
-        #with open(in_vcf, "w") as out_handle:
-        #    out_handle.write("Gzipped to %s" % out_file)
-    return out_file
-
 def vcftools_vcf_to_tped(in_vcf, base_dir, chromosome, config):
     """Use VCFtools to convert a single chromosome into a tped file.
     """
@@ -126,14 +123,14 @@ def _merge_tped_tfam(fnames, out_base, config):
                 with open(fname) as in_handle:
                     for line in in_handle:
                         out_handle.write(line)
-    tfam_file = "%s.tfam" % os.path.splitext(tped_file)[0]
+    tfam_file = "%s.tfam" % utils.splitext_plus(tped_file)[0]
     if not utils.file_exists(tfam_file):
         fam_lines = {}
-        with open(config["array"]["fam"]) as in_handle:
+        with open(config["runinfo"]["fam"]) as in_handle:
             for line in in_handle:
                 fam_lines[line.split()[1]] = line
         with open(tfam_file, "w") as out_handle:
-            base_tfam = "%s.tfam" % os.path.splitext(fnames[0])[0]
+            base_tfam = "%s.tfam" % utils.splitext_plus(fnames[0])[0]
             with open(base_tfam) as in_handle:
                 for line in in_handle:
                     out_line = fam_lines[line.split()[1]]
@@ -153,7 +150,7 @@ def prepare_plink_vcftools(in_vcf, config):
     """Prepare binary PED files using vcftools and plink.
     """
     clean_vcf = _remove_plink_problems(in_vcf)
-    bgzip_vcf = _bgzip_vcf(clean_vcf)
+    bgzip_vcf = vcfutils.bgzip_and_index(clean_vcf, config)
     out_base = os.path.join(os.path.dirname(in_vcf), config["outputs"]["plink"])
     parts_dir = utils.safe_makedir(out_base + "-chromosomes")
     cores = config["algorithm"]["num_cores"]
@@ -255,6 +252,34 @@ def read_remap_file(in_file):
             patient_id, illumina_id = line.rstrip().split()
             out[illumina_id] = patient_id
     return out
+
+def read_config(config_file, env):
+    with open(config_file) as in_handle:
+        config = yaml.load(in_handle)
+        config = _add_env_kvs(config, env)
+        config = _add_base_dir(config, config["base_dir"], "runinfo")
+        config = _add_base_dir(config, config["ref_base_dir"], "ref")
+        config = _add_org_dir(config, config["app_dir"])
+    return config
+
+def _add_env_kvs(config, env):
+    """Add key values specific to the running environment.
+    """
+    for k, val in config[env].iteritems():
+        config[k] = val
+    return config
+
+def _add_base_dir(config, base_dir, top_key):
+    for k, v in config[top_key].iteritems():
+        config[top_key][k] = os.path.join(base_dir, v)
+    return config
+
+def _add_org_dir(config, base_dir):
+    for name, opts in config["resources"].iteritems():
+        for k, v in opts.iteritems():
+            if k == "dir":
+                config["resources"][name][k] = os.path.join(base_dir, v)
+    return config
 
 if __name__ == "__main__":
     main(*sys.argv[1:])

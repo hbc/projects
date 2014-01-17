@@ -19,7 +19,7 @@ def main(config_file, env):
         config = _add_env_kvs(config, env)
         config = _add_base_dir(config)
     idremap = read_remap_file(config["idmapping"])
-    famsamples = get_families(config["priority"], config["params"])
+    famsamples = get_families(config["priority"], config["fam"], config["params"])
     famsamples = sorted(famsamples.iteritems(), key=lambda xs: len(xs[1]), reverse=True)
     baminfo = get_bam_files(config["inputs"], idremap)
     if config["params"].get("max_samples"):
@@ -48,7 +48,7 @@ def write_config(g, baminfo, name, config):
                                      "20000000", "high", "genome", config["coverage"]])
                     bam_files.append(bamfile)
                 else:
-                    print("BAM file missing for %s" % info["sample"])
+                    print("BAM file missing for %s: %s" % (info["sample"], family))
     subprocess.check_call(["bcbio_nextgen.py", "-w", "template", "freebayes-variant",
                            meta_file] + bam_files)
 
@@ -57,7 +57,7 @@ def split_families(famsamples, max_samples):
     """
     orig_size = sum(len(s) for f, s in famsamples)
     for f, s in famsamples:
-        print f, s
+        print f, len(s)
     groups = []
     cur_group = []
     cur_size = 0
@@ -86,20 +86,30 @@ def _check_sample(fam_id, priority, params):
     elif params.get("families"):
         if fam_id in params["families"]:
             return True
+    elif params.get("excludefamilies"):
+        if fam_id not in params["excludefamilies"]:
+            return True
     return False
 
-def _get_gender(gender):
+def _get_gender(gender, gender_bak):
     if gender.lower() in ["m", "male", "1"]:
         return "male"
     elif gender.lower() in ["f", "female", "2"]:
         return "female"
+    elif gender_bak:
+        return _get_gender(gender_bak, None)
     else:
         return ""
 
-def get_families(in_file, params):
+def get_families(in_file, fam_file, params):
     """Retrieve samples in specific priorities or families, grouped by family.
     """
     samples = collections.defaultdict(list)
+    fam_genders = {}
+    with open(fam_file) as in_handle:
+        for line in in_handle:
+            _, sampleid, _, _, sex, _ = line.rstrip().split()
+            fam_genders[sampleid] = sex
     with open(in_file) as in_handle:
         reader = csv.reader(in_handle)
         header = reader.next() # header
@@ -108,7 +118,7 @@ def get_families(in_file, params):
             status_flag = parts[16]
             if status_flag != "Exclude":
                 if _check_sample(fam_id, priority, params):
-                    info = {"sample": sample_id, "gender": _get_gender(parts[12])}
+                    info = {"sample": sample_id, "gender": _get_gender(parts[12], fam_genders.get(sample_id))}
                     if info not in samples[fam_id]:
                         samples[fam_id].append(info)
     return dict(samples)
@@ -161,7 +171,7 @@ def _add_env_kvs(config, env):
     return config
 
 def _add_base_dir(config):
-    for k in ["idmapping", "priority", "coverage"]:
+    for k in ["idmapping", "priority", "coverage", "fam"]:
         config[k] = os.path.join(config["base_dir"], config[k])
     return config
 

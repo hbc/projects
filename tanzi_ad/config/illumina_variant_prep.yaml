@@ -1,27 +1,39 @@
-inputs:
-  - /n/hsphS10/hsphfs2/tanzi/LP*
 outputs:
   plink: tanzi-alz-casava
   merge: tanzi-alz-merge.vcf.gz
-idmapping: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/NIMH_Patient.Rutgers.ID_Translation.txt
 ref:
-  GRCh37: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
-  hg19: /n/hsphS10/hsphfs1/chb/biodata/genomes/Hsapiens/hg19/seq/hg19.fa
-bcbio.variation: /n/home05/bchapman/bio/bcbio.variation/target/bcbio.variation-0.1.3-SNAPSHOT-standalone.jar
-#tmpdir: /scratch/illumina_prep
-illumina:
-  problem_report: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_shipinfo/problem_samples.txt
-array:
-  comparison: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_variants/nimh.affy6_na31.CAU_CLEAN-cmp.csv
-  fam: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/WGS_NIMH.fam
-  priority: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/gwas/AD-Master-v2.csv
+  GRCh37: Hsapiens/GRCh37/seq/GRCh37.fa
+  hg19: Hsapiens/hg19/seq/hg19.fa
+runinfo:
+  idmapping: gwas/NIMH_Patient.Rutgers.ID_Translation.txt
+  fam: gwas/WGS_NIMH.fam
+  priority: gwas/AD-Master-v2.csv
+  #problem_report: illumina_shipinfo/problem_samples.txt
+  #comparison: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/illumina_variants/nimh.affy6_na31.CAU_CLEAN-cmp.csv
 
 resources:
   gatk:
     jvm_opts: ["-Xms10g", "-Xmx20g"]
-    dir: /n/hsphS10/hsphfs1/chb/local/share/java/gatk
+    dir: share/java/gatk
   picard:
-    dir: /n/hsphS10/hsphfs1/chb/local/share/java/picard
-  snpEff:
+    dir: share/java/picard
+  snpeff:
     jvm_opts: ["-Xms2g", "-Xmx10g"]
-    dir: /n/hsphS10/hsphfs1/chb/local/share/java/snpeff
+    dir: share/java/snpeff
+
+# -- SANGER
+sanger:
+  inputs:
+    - /mnt/lustre/stripe-4M/harvard-illumina-2/LP*
+  base_dir: /home/bradc/data/tanzi_ad
+  ref_base_dir: /cm/shared/apps/harvard/genomes
+  app_dir: /cm/shared/apps/harvard
+  bcbio.variation: /home/bradc/bio/bcbio.variation/target/bcbio.variation-0.1.3-SNAPSHOT-standalone.jar
+# -- Odyssey
+odyssey:
+  inputs:
+    - /n/hsphS10/hsphfs2/tanzi/LP*
+  base_dir: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data
+  ref_base_dir: /n/hsphS10/hsphfs1/chb/biodata/genomes
+  app_dir: /n/hsphS10/hsphfs1/chb/local
+  bcbio.variation: /n/home05/bchapman/bio/bcbio.variation/target/bcbio.variation-0.1.3-SNAPSHOT-standalone.jar
