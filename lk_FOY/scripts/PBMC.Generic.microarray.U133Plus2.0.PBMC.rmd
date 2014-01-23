@@ -23,11 +23,11 @@ The sections below provide code to reproduce the included results and plots.
 
 ```{r general_libraries}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
-library(xtable) # table generation for reports
-library(plyr) # library for iteratively working with data structures
-library(ggplot2) # library for plotting 
-library(RColorBrewer) # library for generating color palettes
-library(googleVis) # library for presenting tables
+require(xtable) # table generation for reports
+require(plyr) # library for iteratively working with data structures
+require(ggplot2) # library for plotting 
+require(RColorBrewer) # library for generating color palettes
+require(googleVis) # library for presenting tables
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 ```
 
@@ -167,7 +167,7 @@ arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCrepor
 
 ### Normalize all arrays using [RMA][4]
 
-```{r normalize_RMA}
+```{r normalize_RMA, eval=FALSE}
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 ```
 
@@ -180,24 +180,19 @@ arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "Q
 [Normalized Data QC Report](../results/PBMC/U133Plus2/QCreport_norm/index.html)
 
 ### Remove outlier studies
-- removed GSM844204, failed RLE in raw QC  hecks, and is still an outlier after normalization
-- slope for RNA degradation plots for GSE14642 is very different (flat) and mulitple arrays are outliers for MA plots, kept in for now but worth keeping an eye on it
+- removed GSM844204,GSM253697,GSM253700,GSM253707, GSM253708 failed RLE in raw QC. 
+- removed GSM253709 as it failed intensity, and MA check in raw QC
+- removed GSM253667 as it is an outlier in raw QC and post-normalized QC
+
+- slope for RNA degradation plots for GSE14642 is very different (flat), kept in but it's worth keeping an eye on it
 
 - renormalize data
 
-```{r drop_outliers, results='asis'}
-mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204")))]
+```{r drop_outliers}
+mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204","GSM253697","GSM253700","GSM253707", "GSM253708", "GSM253709","GSM253667" )))]
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
 save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0" ))
 ```
-
-### Array QC checks on normalized data after outlier removal with ArrayQualityMetrics
-
-```{r wo.outliers.normQC, eval=FALSE}
-arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm.wo.outliers"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
-```
-
-[Normalized Data QC Report after removing outlier studies](../results/PBMC/U133Plus2/QCreport_norm.wo.outliers/index.html)
 
 ### Metadata for remaining U133Plus2.0 studies
 

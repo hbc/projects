@@ -187,7 +187,7 @@ contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels
 
 ```{r heatmap_colors}
 # annotation colors
-study_colors <- c( cbPalette[1:7] )
+study_colors <- c( cbPalette[1:8] )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))

@@ -1,0 +1,215 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/sexclass-", cache.path="cache/sexclass-", dev="CairoSVG")
+options(width=200)
+```
+
+---
+
+Analysis of GSE10041 dataset for sex determination using a panel of genes for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. 
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included resulsts and plots. 
+
+----
+
+# GENERAL SETUP
+
+## General purpose R libraries necessary for analysis
+
+```{r general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
+library(pheatmap)
+```
+
+### Load [Bioconductor][1] libraries for the microarray analysis 
+
+```{r microarray_analysis_libraries}
+# to parse the CEL files and work with intensity values
+library(affy) 
+# annotations for the hgU1332.0Plus array
+library(hgu133plus2.db) 
+```
+
+## Locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY/"
+      }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results", "PBMC")
+metaDir <- file.path(baseDir, "meta", "PBMC")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+sexsp.genes <- c("XIST", "RPS4Y","KDM5D","DDX3Y","EIF1AY")
+
+````
+
+----
+
+## Obtaining metadata and data for study.
+In this section, I downloaded the metadata and data for all the study.
+I used the [Bioconductor][1] library [GEOQuery][2] to interface with the [Gene Expression Omnibus][3] database.
+
+```{r database_download_libraries}
+library(GEOquery)
+```
+
+## Study Id
+
+```{r GEOIDs}
+GSEid <- c("GSE10041")
+```
+
+### Data for GEO series was previously downloaded.
+
+```{r template}
+covartemplate.file <- "unified.metadata.refined.PBMC.tab" 
+covartemplate <- read.table(file.path(metaDir,covartemplate.file), header=T, colClasses="character", sep="\t")
+covartemplate <- subset(covartemplate, study=="GSE10041")
+covartemplate <- as.matrix(covartemplate)
+covars <- aaply(covartemplate, 1, function(n){
+  # pull out the info you need piece by piece
+  sampleID <- n[1] 
+  age <- n[3]
+  gender <- n[4]
+  ethnicity=n[5]
+  CELregex <- n[7]
+  CELFTP <- n[6]
+  study=n[9]
+  if(n[10]=="GEO"){
+    # for GEO studies, get the CEL file name from the FTP locaiton in the metadata file
+    CELfileloc <- file.path(dataDir,study, sub(".gz", "", basename(as.character(CELFTP)))) 
+  } else {
+    # for ArrayExpress studies, get the CEL file name directly from the CEL file regex in the metadata file
+    CELfileloc <- file.path(dataDir, study, CELregex) 
+    }
+  if(!file.exists(CELfileloc)){
+    # check if the CEL file is actually where its supposed to be, if not notify and move on
+    print(paste(CELfileloc, "does not exist", sep=" ")) 
+    break
+    } else {
+      # if CEL file is where its supposed to be, add location to covariate table
+      return(list(CELfileloc=CELfileloc, ID=sampleID, age=age, gender=gender, ethnicity=ethnicity, study=study)) 
+      }
+  })
+covars <- as.data.frame(covars)
+covars$age <- as.numeric(covars$age)
+```
+
+### Load CEL files
+
+```{r load_data, cache=TRUE}
+mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars) 
+```
+
+### Normalize all arrays using [RMA][4]
+
+```{r normalize_RMA, cache=TRUE}
+mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
+```
+
+
+### PCAplot - all probesets
+
+
+```{r PCAplot1, out.width='75%'}
+PCAplot(mic.norm.eset, categories="study", colorpalette=cbPalette)
+```
+
+### Subset dataset to sex-specific genes
+
+```{r sexsp.subset}
+sexsp.probes <- unlist(mget(sexsp.genes, hgu133plus2ALIAS2PROBE))
+mic.norm.eset.sexsp <- mic.norm.eset[which(featureNames(mic.norm.eset) %in% sexsp.probes),]
+```
+
+### PCAplot - Sex specific genes
+
+```{r PCAplot2, out.width='75%'}
+PCAplot(mic.norm.eset.sexsp, categories="study", colorpalette=cbPalette)
+```
+
+Samples split readily into two groups based on first component.
+
+```{r classify}
+PCAx <- function(eset=NULL, component=NULL){
+  eset.core <- exprs(eset) 
+  myPca.core <- prcomp(t(eset.core))
+  tmpPCAData.core <- as.data.frame(myPca.core$x)
+  return(tmpPCAData.core[,paste("PC", component, sep="")])
+}
+PCA1 <- PCAx(mic.norm.eset.sexsp,1)
+PC1 <- as.data.frame(cbind(as.vector(unlist(pData(mic.norm.eset.sexsp)$ID)), PCA1))
+PC1 <- col2rownames(PC1, "V1")
+PC1$PCA1 <- as.numeric(as.character(PC1$PCA1))
+PC1 <- PC1[order(PC1$PCA1),]
+PC1$group <- ifelse(PC1$PCA1>0, "A", "B")
+```
+
+But which group is which? Used XIST expression to assign gender to classes.
+
+```{r linkclasses, out.width='75%'}
+exprs.norm <- exprs(mic.norm.eset.sexsp)
+row.names(exprs.norm) <- paste(row.names(exprs.norm), unlist(mget(row.names(exprs.norm), hgu133plus2SYMBOL, ifnotfound=NA)), sep="_")
+colnames(exprs.norm) <- gsub(".CEL", "", colnames(exprs.norm))
+pheatmap(exprs.norm)
+```
+
+Looks like GSM253671 has high XIST levels, so is female.
+
+```{r assigngender}
+female.class <- PC1["GSM253671","group"]
+male.class <- setdiff(unique(PC1$group), female.class)
+females <- sort(row.names(subset(PC1, group==female.class)))
+males <- sort(row.names(subset(PC1, group==male.class)))
+
+les.males <- sort(c("GSM253664","GSM253667","GSM253669","GSM253674","GSM253675","GSM253676","GSM253677","GSM253678","GSM253679","GSM253680","GSM253682","GSM253685"))
+les.females <- sort(c("GSM253663","GSM253665","GSM253666","GSM253668","GSM253670","GSM253671","GSM253672","GSM253673","GSM253681","GSM253683","GSM253684"))
+
+```
+
+So, by this method we get the following sex classifications.
+**Females:**
+`r row.names(subset(PC1, group==female.class))`
+**Males:**
+`r row.names(subset(PC1, group==male.class))`
+
+## edit the metadata 
+
+```{r editunifiedmetadata}
+refined.metadata.file <- "unified.metadata.refined.PBMC.tab" 
+refined.metadata <- read.table(file.path(metaDir,refined.metadata.file), header=T, colClasses="character", sep="\t")
+unrefined.metadata.file <- "unified.metadata.unrefined.PBMC.tab"
+unrefined.metadata <- read.table(file.path(metaDir,unrefined.metadata.file), header=T, colClasses="character", sep="\t")
+
+refined.metadata$gender[refined.metadata$sampleID %in% males] <- "MALE"
+refined.metadata$gender[refined.metadata$sampleID %in% females] <- "FEMALE"
+
+unrefined.metadata$gender[unrefined.metadata$sampleID %in% males] <- "MALE"
+unrefined.metadata$gender[unrefined.metadata$sampleID %in% females] <- "FEMALE"
+
+refined.metadata$age[refined.metadata$study==GSEid] <- 38
+unrefined.metadata$age[unrefined.metadata$study==GSEid] <- 38
+
+write.table(refined.metadata, file=file.path(metaDir, refined.metadata.file), sep="\t", col.names=T, row.names=F)
+write.table(unrefined.metadata, file=file.path(metaDir, unrefined.metadata.file), sep="\t", col.names=T, row.names=F)
+
+```
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.11/bioc/html/GEOquery.html (GEOquery_BioC_library)
+[3]: http://www.ncbi.nlm.nih.gov/gds/ (GEO)
+[4]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+
+
+

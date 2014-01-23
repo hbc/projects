@@ -139,7 +139,7 @@ for (sheetnum in 1:12){
 ## Unifying the metadata into a single file
 The goal here was to obtain a metadata file that combined the downloaded metadata and the curated metadata, using the "columnID translator"" as a guide. 
 
-```{r unify_metadata, eval=TRUE}
+```{r unify_metadata, eval=FALSE}
 ## load in the columnID translator
 template <- read.table(file.path(metaDir, "columnid.translator.PBMC.tab"), header=T, colClasses="character", sep="\t") 
 ## setup list to receive results, each study will be an element in the list
@@ -214,6 +214,8 @@ output <- do.call(rbind, output.l)
 write.table(output, file.path(metaDir, "unified.metadata.unrefined.PBMC.tab"), quote=F, col.names=T, row.names=F, sep="\t")
 ```
 
+GSE10041 did not have any gender data, so samples were clusterd by 5 sex-specific genes and genders [assigned](./PBMC.sex.determination.html). Ages of 38 years were assigned to all these samples. This information was then incorporated into the unrefined and refined metadata files.
+
 The file with the unified (but not consistent) metadata can be found [here](../meta/PBMC/unified.metadata.unrefined.PBMC.tab)
 *(this is a tab-delimited file that can be opened in Excel)*
 The end goal is a file containing the metadata for all control samples in all studies. To generate a file that can be then be used to load in the metadata and its respective raw data later in the analysis, I also needed consistent labeling of gender, age, ethnicity, FTP location, and CEL file search terms etc. 
@@ -225,8 +227,7 @@ The unified, refined metadata file can be found [here](../meta/PBMC/unified.meta
 
 ---
 
-
-A separate [python script](./download.cels.py) was used to download all the GEO CEL files (using their ftp locations from the metadata file). 
+A separate [python script](./PBMC.download.cels.py) was used to download all the GEO CEL files (using their ftp locations from the metadata file). 
 
 [1]: http://www.bioconductor.org (BioC)
 [2]: http://www.ncbi.nlm.nih.gov/gds/ (GEO)
