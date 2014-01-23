@@ -10,7 +10,7 @@ library(arrayQualityMetrics)
 library(limma)
 library(mouse430a2.db)
 library(pheatmap)
-library(RColorBrewer)ar
+library(RColorBrewer)
 library(sva)
 
 
