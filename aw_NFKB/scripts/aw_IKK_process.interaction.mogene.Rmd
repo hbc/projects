@@ -297,7 +297,7 @@ I setup three contrasts, one to select genes that show a significant expression 
 ```{r contrastmatrix, results='asis'}
 contrast.matrix <- makeContrasts(WT.aging=WT_OLD-WT_YNG, 
                                  Mut.aging=MISR_OLD-WT_YNG,
-                                 Aging.differences=(WT_YNG-WT_OLD)-(WT_OLD-MISR_OLD), 
+                                 Aging.differences=(WT_OLD-WT_YNG)-(MISR_OLD-WT_YNG), 
                                  levels=colnames(design))
 
 dimnames(contrast.matrix)$Contrasts <- gsub(" " , "", dimnames(contrast.matrix)$Contrasts)
@@ -448,3 +448,22 @@ The samples cluster by group using these genes, which is a good sign. There are 
 ### Gene Ontologies
 
 Running the top 100 genes from the difference of differences comparison through gene ontology analysis using [g:profiler](http://goo.gl/0IScKw) reveals functional enrichment of genes involved such relevant processes as apoptosis and IL4 response. 
+
+#### Specific GO terms
+
+- are any of the genes from the interaction comparison involved in senescence?
+- working from Gene Ontology term for [cellular senescence](http://gowiki.tamu.edu/wiki/index.php/Category:GO:0090398_!_cellular_senescence), get all genes annotated with this term (and it's "child" terms)
+- get the differential expression ranks of genes (as determined by log-odds of differential expression measure "B") in the interaction term analysis
+
+```{r GOterms}
+library(biomaRt)
+ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl") #uses human ensembl annotations
+#gets gene symbol, transcript_id and go_id for all genes annotated with GO:0007507
+gene.data <- getBM(attributes=c('mgi_symbol', 'entrezgene', 'ensembl_transcript_id', 'go_id'),filters = 'go_id', values = c('GO:0090400','GO:0090402','GO:2000772','GO:2000773 ','GO:2000774','GO:0090398'), mart = ensembl)
+
+stats.eset <- all.results[[3]]$stats.eset
+ranks <- seq(1:nrow(stats.eset))
+stats.eset <- cbind(ranks, stats.eset)
+
+write.table(stats.eset[which(stats.eset$entrezID %in% as.character(unique(gene.data$entrezgene))),], file=file.path(resultsDir, "senescence.GO.genes.xls"), sep="\t", row.names=F, col.names=T) 
+stats.eset[which(stats.eset$entrezID %in% as.character(unique(gene.data$entrezgene))),]
