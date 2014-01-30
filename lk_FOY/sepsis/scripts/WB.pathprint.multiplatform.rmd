@@ -1,0 +1,224 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", 
+               echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, 
+               tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), 
+               fig.path="figure/WB-pathprint_multi-", 
+               cache.path="cache/WB-pathprint_multi-")
+options(width=200)
+```
+
+# PATHPRINT ANALYSES OF STUDIES ON MULTIPLE PLATFORMS
+- using GEO normalized data
+
+---
+
+Analysis of public datasets for differential gene expression signatures between
+adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of
+the DARPA 7-day Biodefense Program.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUP
+
+## General purpose R libraries necessary for analysis
+
+```{r general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
+
+
+# formula to count number of occurrences of each of the pathprint outcomes
+count_trinary_outcomes <- function(vector){
+  c(length(which(vector==-1)),length(which(vector==0)),length(which(vector==1)) )
+  }
+```
+
+## Locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/sepsis")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/sepsis"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY/sepsis"
+      }
+dataDir <- file.path(baseDir, "data", "WB")
+resultsDir <- file.path(baseDir, "results", "WB", "U133Plus2")
+metaDir <- file.path(baseDir, "meta", "WB")
+````
+
+----
+
+# Pathprint Analysis
+
+## Setup
+
+### Load libraries for Pathprint analysis and visualization
+
+```{r pathprint_libraries}
+library(GEOquery)
+library(pathprint)
+library(limma)
+library(ape)
+library(pheatmap)
+```
+
+### Setup some more variables for the  analyses
+
+```{r microarray_analysis_variables}
+# colorblind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+# age ranges to compare
+child.age.range <- c(5,12)
+adult.age.range <- c(18,50)
+neonate.age.range <- c(0,4)
+if (any(c(any(seq(adult.age.range[1], adult.age.range[2]) %in% seq(child.age.range[1], child.age.range[2])), 
+any(seq(adult.age.range[1], adult.age.range[2]) %in% seq(neonate.age.range[1], neonate.age.range[2])),
+any(seq(neonate.age.range[1], neonate.age.range[2]) %in% seq(child.age.range[1], child.age.range[2]))))) {
+  stop("age ranges cannot overlap")
+}
+```
+
+### Age ranges and names of the groups  
+  - neonate = `r neonate.age.range[1]`-`r neonate.age.range[2]` years
+  - child =`r child.age.range[1]`-`r child.age.range[2]` years
+  - adult = `r adult.age.range[1]`-`r adult.age.range[2]` years
+
+## Subset Data
+- subsetted the unified metadata file to this platforms that are actually covered by Pathprint
+- subsetted to samples for which we have ages
+
+```{r subset_data}
+refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.tab"))
+refined.metadata <- refined.metadata[!is.na(refined.metadata$age),]
+refined.metadata <- refined.metadata[refined.metadata$platform %in% names(platform.thresholds),]
+
+write.table(refined.metadata, 
+            file.path(metaDir, "unified.metadata.refined.pathprint_plaforms.tab"), 
+            quote=F, 
+            sep="\t", 
+            row.names=F, 
+            col.names=T)
+```
+
+That revised metadata file is [here](../meta/WB/unified.metadata.refined.pathprint_plaforms.tab)
+
+### Parse the unified, refined and subsetted metadata file 
+- to make a covariate table that allows you to download the data using the [GEOquery][2] Bioconductor library
+
+- also limit samples to those within the age ranges described above and label each with their "stage"
+
+```{r covariatedataframe}
+# U1332.0Plus only for now
+covars <- refined.metadata
+# convert character ages to numeric to allow numeric subsetting 
+covars$age <- as.numeric(as.character(covars$age))
+
+## limit samples to those within the described child, adult and neonate age ranges
+children.indices <- which(covars$age<=max(child.age.range) & 
+  covars$age>=min(child.age.range))
+neonate.indices <- which(covars$age<=max(neonate.age.range))
+adult.indices <- which(covars$age<=max(adult.age.range) & 
+  covars$age>=min(adult.age.range))
+sample.indices <- c(neonate.indices, children.indices, adult.indices)
+covars <- covars[sample.indices,]
+
+# label samples with their stage as determined by age
+# don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
+covars$stage <- ifelse(covars$age<=max(neonate.age.range), "neonate", 
+                       ifelse(covars$age>=min(child.age.range)
+                              & covars$age<=max(child.age.range), "child", 
+                              ifelse(covars$age>=min(adult.age.range)
+                                     & covars$age<=max(adult.age.range), "adult", NA)))
+covars <- covars[order(covars$stage),]
+#remove unclassified samples
+covars <- covars[!is.na(covars$stage),]
+
+write.table(covars, 
+            file.path(metaDir, "unified.metadata.refined.pathprint_plaforms.targetted.samples.tab"), 
+            quote=F, 
+            sep="\t", 
+            row.names=F, 
+            col.names=T)
+
+```
+
+That revised metadata file is [here](../meta/WB/"unified.metadata.refined.pathprint_plaforms.targetted.samples.tab)
+
+### Download Expression data from GEO
+- for each study
+  - pull down a study's expression data
+    - subset study's expression data to samples of interest (using covars)
+    - pathprint study
+- combine pathprinted data
+
+GSE13015 and GSE3284 have more than one platform per experiment, so need to handle those instances
+
+```{r load_data, eval=FALSE}
+pathprint.GPLs <- names(platform.thresholds)
+fingerprints.l <- lapply(unique(covars$study), function(GSE){
+  GEOdata <- getGEO(GSE, GSEMatrix=TRUE)
+  #GSE13015 and GSE3284 have more than one platform (GPL) per GSE, so need to handle those
+  # if more than one platform in GSE, subset to platform that is covered by pathprint
+  if (length(GEOdata)==1) {# only one GPL within the GSE
+    GEOdata <- GEOdata[[1]]
+    
+    } else { # more than one platform in the GSE
+      GPLs <-  sapply(GEOdata, function(study) annotation(study))
+      GPL.in.pathprint <- which(GPLs %in% pathprint.GPLs) 
+      
+      if(length(GPL.in.pathprint)==1){ # more than one platform in GSE but only one covered by pathprint
+        GEOdata <- GEOdata[[GPL.in.pathprint]]
+        
+        } else if (length(GPL.in.pathprint)==0) {
+          stop("no valid pathprint platforms in this study")
+          
+          } else { # more than one platform covered by pathprint in the GSE 
+            # which GSE indexes (platforms) have samples you want?
+            GPLS.with.samples <- which(unlist(lapply(GEOdata, function(study){
+              any(pData(study)$geo_accession %in% covars$arrayID)
+              })))
+            
+            if (length(GPLS.with.samples)>1){ # samples split across more than one pathprinted platform            
+              stop("more than one valid pathprinted platform found in this GSE that you want samples from; script can only handle one at a time")
+              } else { # samples are only on one platform
+                GEOdata <- GEOdata[[GPLS.with.samples]]
+                }
+            }
+      }
+  
+  # get intensity values
+  eset <- exprs(GEOdata)
+  # subset to our samples of interest
+  eset <- eset[,as.character(covars$arrayID[covars$study %in% GSE])]
+  # run pathprint on subsetted data
+  mic.platform <- annotation(GEOdata)
+  mic.species <- "human"
+  mic.names <- names(eset)
+  mic.f.default <- exprs2fingerprint(exprs = eset, platform = mic.platform, species = mic.species, progressBar = FALSE)
+  return(mic.f.default)
+  })
+fingerprints <- do.call(cbind, fingerprints.l)
+save.image(file.path(resultsDir, "pathprint.RData")
+```
+
+
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/2.11/bioc/html/GEOquery.html (GEOquery_BioC_library)
+
+[3]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[4]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+[5]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+
