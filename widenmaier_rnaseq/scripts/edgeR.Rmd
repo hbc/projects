@@ -10,6 +10,7 @@ library(HTSFilter)
 library(googleVis)
 library(extrafont)
 library(reshape)
+library(ggplot2)
 #x = font_import(pattern="Gill Sans", prompt=FALSE)
 ```
 
@@ -322,6 +323,20 @@ de_table$id = rownames(de_table)
 KO_vs_KO_chol = annotate_df(de_table)
 print(gvisTable(KO_vs_KO_chol), "chart", options=list(width=900))
 write.table(KO_vs_KO_chol, "KO_vs_KO_de.txt", quote=FALSE, row.names=FALSE,
+  sep="\t")
+```
+
+# WT control vs KO cholesterol treated
+```{r WT_Con_vs_KO_chol, results='asis'}
+et = exactTest(edgeR.dgelist, pair=c("WT_Con", "KO_Chol"))
+et = HTSFilter(et, DGEList=edgeR.dgelist, s.len=25, plot=FALSE)$filteredData
+et_table = et$table
+et_table$FDR = p.adjust(et_table$PValue, method="BH")
+de_table = subset(et_table, FDR < 0.10)
+de_table$id = rownames(de_table)
+WT_vs_KO_chol = annotate_df(de_table)
+print(gvisTable(WT_vs_KO_chol), "chart", options=list(width=900))
+write.table(WT_vs_KO_chol, "WT_vs_KO_chol_de.txt", quote=FALSE, row.names=FALSE,
   sep="\t")
 ```
 
