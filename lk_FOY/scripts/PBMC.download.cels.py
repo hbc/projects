@@ -4,8 +4,8 @@ import gzip
 import csv
 import requests
 
-dataDir = '/Volumes/ody/consults/lk_FOY/data/'
-dataFH = '/Volumes/ody/consults/lk_FOY/meta/unified.metadata.refined.PBMC.tab'
+dataDir = '/n/home08/jhutchin/consults/lk_FOY/data/'
+dataFH = '/n/home08/jhutchin/consults/lk_FOY/meta/PBMC/unified.metadata.refined.PBMC.tab'
 
 with open(dataFH, 'rb') as tabfile:
     # read tab delimited file in with csv library

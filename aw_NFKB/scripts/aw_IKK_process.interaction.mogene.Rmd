@@ -1,0 +1,469 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", 
+               echo=FALSE, warning=FALSE, error=FALSE, message=FALSE, 
+               tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), 
+               dev="CairoSVG",
+               fig.path="figure/allsamples-")
+
+options(width=200)
+
+clientname="Julie Oh"
+clientemail="juhyunoh@fas.harvard.edu)"
+labPI="Amy Wagers"
+lablocation="FAS"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+## Methods Summary
+All MoGene 2.0 ST arrays were processed using the 'oligo' BioConductor package, quality-controlled with arrayQualityMetrics and RMA normalized. Differentially expressed genes were identified using limma.
+
+---
+
+## General Setup
+
+### Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/aw_NFKB/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/aw_NFKB/"
+  } else if (file.exists("/Volumes/ody/projects/aw_NFKB/")){
+    baseDir="/Volumes/ody/projects/aw_NFKB/"
+    }
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.25
+
+```
+
+### Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables, echo=TRUE}
+library(oligo) # array utilities
+library(pd.mogene.2.0.st) # array layout annotation
+library(mogene20sttranscriptcluster.db) # array probe to gene annotations
+library(arrayQualityMetrics) # array quality control reports
+library(limma) # array statistical analyses
+library(pheatmap) # pretty heatmaps
+library(googleVis) # nice charts
+library(plyr) # data format utility
+library(reshape2) # data format utility
+library(devtools) # install libraries from github
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(genefilter) # for filtering out low variation genes 
+library(RColorBrewer)
+```
+
+---
+
+## Import Data and Metadata
+
+### Load Data
+
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- use array names to load in arrays 
+
+```{r dataload, results='hide'}
+covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1, sep="\t") # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+
+celFiles <- file.path(dataDir, row.names(covars))
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+sampleNames(affyRaw) <- pData(affyRaw)$sampleID
+validObject(affyRaw)
+rm(covars)
+```
+
+### Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+pd.gvis <- gvisTable(as.data.frame(apply(pData(affyRaw), 2, as.character)), options=list(width=640, height=240))  
+print(pd.gvis, "chart")
+```
+
+---
+
+## Processing 
+
+### Raw Data QC
+
+- using arrayQualityMetrics [library](http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html)
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype", "age"))
+```
+
+[Raw Data QC Report](../results/report_raw/index.html)
+
+The arrays look OK, and with the exception of the WT_YNG_2 sample,  cluster hierarchically by class (age and genotype). Clustering appears to be stronger by genotype than by age.
+
+### Background Correct and Normalize
+
+- using [RMA](http://bioinformatics.oxfordjournals.org/content/19/2/185)
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+```
+
+### Normalized Data QC
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("genotype", "age"))
+```
+
+[Normalized Data QC Report](../results/report_rma.core/index.html)
+ 
+Doesn't resolve the age group mixing, but no real reason to exclude any samples.
+
+---
+
+## Unsupervised Clustering
+
+### Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+Sample IDs are shown and genotypes highlighted in red and blue. 
+
+```{r cluster1, out.width='50%'}
+plot_dendro(affyNorm.core, title="Genotypes", labels.colname="sampleID", colors.colname="genotype")
+```
+
+Sample IDs are shown and ages highlighted in red and blue. 
+
+```{r cluster2, out.width='50%'}
+plot_dendro(affyNorm.core, title="Ages", labels.colname="sampleID", colors.colname="age")
+```
+
+### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. 
+
+```{r PCAsd, out.width='50%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, 5 dimensions explain about 75% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up 
+the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first four principal components. In the first plot, each sample group is represented by a separate color and in the second plot each sample is represented by a different color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. 
+
+```{r pca1, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='50%'}
+PCAplot.eset(affyNorm.core, categories="genotype", title="Genotypes", colorpalette=cbPalette, numcomponents=5)
+PCAplot.eset(affyNorm.core, categories="age", title="Ages", colorpalette=cbPalette, numcomponents=5)
+PCAplot.eset(affyNorm.core, categories="sampleID", title="Sample IDs", colorpalette=cbPalette, numcomponents=5)
+```
+
+There is some degree of clustering by sample class, but it is not complete. The young samples cluster well for all component pairs, the old sample clusters are more complex. For instance, for the PC1 vs. PC2 comparison, the MISR_OLD_1 sample clusters with the WT_OLD samples (and the WT_OLD_1 sample vice versa). 
+
+## Filter Outlier samples
+
+WT_OLD_1 consistently clusters with the young samples for all principal component comparisons, showing no variation from the young samples, and was removed. In contrast, MISR_OLD_3 clusters with the WT_OLD samples only  for the PC1 vs. PC2 comparison.
+
+```{r filter}
+affyNorm.core <- affyNorm.core[,which(pData(affyNorm.core)$sampleID!="WT_OLD_1")]
+```
+
+### Repeat PCA analyses
+
+```{r pca2, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='50%'}
+PCAplot.eset(affyNorm.core, categories="genotype", title="Genotypes - post outlier filtering", colorpalette=cbPalette, numcomponents=5)
+PCAplot.eset(affyNorm.core, categories="age", title="Ages - post outlier filtering", colorpalette=cbPalette, numcomponents=5)
+PCAplot.eset(affyNorm.core, categories="sampleID", title="Sample IDs - post outlier filtering", colorpalette=cbPalette[c(1:3,5:8)], numcomponents=5)
+```
+
+---
+
+## Annotate
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+```{r features, results='hide'}
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+```
+
+
+## Filter
+Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Start with `r `r nrow(fData(affyNorm.core))` probes remaining
+
+### By Annotation
+- remove the control probes
+
+```{r filter1}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$category=="main"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3, cache=TRUE}
+eset.core <- exprs(affyNorm.core)
+affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), 0.1)))),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+eset.core <- exprs(affyNorm.core)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+---
+## Statistical Analyses
+
+### Limma
+
+A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for all pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+#### Create appropriate design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+- in this case it looks like this, where 1-5 are the 5 non-outlier microarrays
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0 + group,  data=pData(affyNorm.core))
+# make sure the headings match
+colnames(design) <- sub("group", "", colnames(design))
+
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"ID"), 2, as.character)), options=list(width=640, height=180))  
+print(design.gvis, "chart")
+```
+
+#### Create contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+I setup three contrasts, one to select genes that show a significant expression change as wildtype mice age, one to select genes that show significant expression change as MISR mice age (assuming WT_YNG can stand in for MISR young mice) and finally,  one designed to find genes that differ in how they differ between these two comparisons, or the difference of differences. In stats terms, this final contrast is called an interaction term.
+
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(WT.aging=WT_OLD-WT_YNG, 
+                                 Mut.aging=MISR_OLD-WT_YNG,
+                                 Aging.differences=(WT_OLD-WT_YNG)-(MISR_OLD-WT_YNG), 
+                                 levels=colnames(design))
+
+dimnames(contrast.matrix)$Contrasts <- gsub(" " , "", dimnames(contrast.matrix)$Contrasts)
+
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"contrast"), 2, as.character)), options=list(width=640, height=100))  
+print(contrast.gvis, "chart")
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+#### Fit a linear model
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+eset.core <- exprs(affyNorm.core)
+
+fit.core <- lmFit(eset.core, design) 
+```
+
+#### Compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+#### Compute moderated t-statistics and log-odds of differential expression 
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+--- 
+
+## Results
+
+### Statistics
+
+```{r volcanoplot, fig.cap="", results='hide', dev="png", fig.height=12, fig.width=12, out.width='100%'}
+all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affyNorm.core)), genelist=fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")])
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+
+  eset <- exprs(affyNorm.core)
+  eset  <-  eset[match(stats$probesetid, row.names(eset)),]
+  stats.eset <- cbind(stats, eset)
+  return(list(contrast=contrast, stats.eset=stats.eset))
+  })
+```
+
+There are `r length(which(all.results[[3]]$stats.eset$Passes.FDR.threshold==TRUE))` gene(s) that pass an adjusted pvalue cutoff of `r pvalue.cutoff` in the difference of differnces interaction comparison.
+
+#### Output pvalues and expression levels to files
+
+- *note that for all these files, I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+```{r outputs, results='hide'}
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(all.results[[num]]$stats.eset)
+  write.table(out.stats, file=file.path(resultsDir, paste("all.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+#### Links to Excel files with statistics and expression levels of all genes for these comparisons
+
+`r x=1`
+[Wildtype mice aging changes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+1`
+[MISR mice aging changes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+1`
+[Aging differences between wildtype and MISR mice](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+**These summary tables contain the following information:**
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 8 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+### Top results
+- for visualization and gene ontologies
+
+Typically, you would want to base gene selection on the adjusted P-value and the logFC, but as you can see from above, there are few genes with significant adjusted P-values (FDR<`r pvalue.cutoff`), particularly when examining the difference of differences. Instead, we can select a maximum of 100 genes,  as sorted by "B", the log-odds that a gene is differentially expressed and on on the basis of whether the probe was mapped to a gene in the annotation i.e. drop all probesets that are not annotated against a gene. 
+
+We can use these to get an idea of the functions being affected (via gene ontologies) by looking significantly enriched functions in a largers, non-significant set of genes.
+
+```{r toptable}
+top.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)),  function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats.eset <- all.results[[num]]$stats.eset
+  top.stats.eset=stats.eset[!is.na(stats.eset$symbol),]
+  if(nrow(top.stats.eset)>100) {
+    top.stats.eset=top.stats.eset[1:100,]
+      }
+  return(list(contrast=contrast, top.stats.eset=top.stats.eset ))
+  })
+```
+
+### Heatmap
+- of 50 most differentially expressed genes
+
+```{r heatmap, results='hide',out.width='75%',  fig.height=12, fig.width=12}
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)),  function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  top.stats.eset <- top.results[[num]]$top.stats.eset
+  
+  row.names(top.stats.eset) <- paste(as.vector(unlist(top.stats.eset$symbol)), " (" ,as.vector(unlist(top.stats.eset$probesetid)),  ")", sep="")
+  # annotations
+  pd <- pData(affyNorm.core)
+  top.eset <- top.stats.eset[,as.character(pd$sampleID)]
+  
+  heatmap.annots <- pd[,c("sampleID", "genotype", "age")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  heatmap.annots <- col2rownames(heatmap.annots, "sampleID", removecol=TRUE)
+  
+  # annotation colors
+  genotype_colors <- c(cbPalette[1:2] )
+  names(genotype_colors) <- unique(unlist(pd$genotype))
+  age_colors <- c(cbPalette[3:4] )
+  names(age_colors) <- unique(unlist(pd$age))
+  
+  ann_colors = list(genotype = genotype_colors, age=age_colors)
+  ## Heatmaps
+  pheatmap(as.matrix(top.eset[1:50,]), 
+           annotation=heatmap.annots, 
+           color=rev(brewer.pal(11,"RdBu")), 
+           cluster_cols = TRUE, 
+           cluster_rows = TRUE,
+           main=paste(contrast, " - Clustered",sep=""), 
+           fontsize=12,
+           fontsize_row=10,
+           annotation_colors=ann_colors,
+           show_colnames=TRUE)
+  })
+
+```
+
+
+The samples cluster by group using these genes, which is a good sign. There are a few genes that don't fit the expected pattern, which should show MISR_OLd and WT_YNG with similar expression levels. some  examples of the expected pattern are Nr4a3, Noxred1 and Ccnd3. Examples of genes that don't fit this pattern are Nr4a1 and Hcn4 (all look the same) and Gm4861 and Hook1 (WT_YNG has lower expression than both old sample groups). Some of these only look like they arene't changing; when you look at the actual expression values you can see a change, just a smaller change than the color gradations on the heatmap can capture.
+
+### Gene Ontologies
+
+Running the top 100 genes from the difference of differences comparison through gene ontology analysis using [g:profiler](http://goo.gl/0IScKw) reveals functional enrichment of genes involved such relevant processes as apoptosis and IL4 response. 
+
+#### Specific GO terms
+
+- are any of the genes from the interaction comparison involved in senescence?
+- working from Gene Ontology term for [cellular senescence](http://gowiki.tamu.edu/wiki/index.php/Category:GO:0090398_!_cellular_senescence), get all genes annotated with this term (and it's "child" terms)
+- get the differential expression ranks of genes (as determined by log-odds of differential expression measure "B") in the interaction term analysis
+
+```{r GOterms}
+library(biomaRt)
+ensembl = useMart("ensembl",dataset="mmusculus_gene_ensembl") #uses human ensembl annotations
+#gets gene symbol, transcript_id and go_id for all genes annotated with GO:0007507
+gene.data <- getBM(attributes=c('mgi_symbol', 'entrezgene', 'ensembl_transcript_id', 'go_id'),filters = 'go_id', values = c('GO:0090400','GO:0090402','GO:2000772','GO:2000773 ','GO:2000774','GO:0090398'), mart = ensembl)
+
+stats.eset <- all.results[[3]]$stats.eset
+ranks <- seq(1:nrow(stats.eset))
+stats.eset <- cbind(ranks, stats.eset)
+
+write.table(stats.eset[which(stats.eset$entrezID %in% as.character(unique(gene.data$entrezgene))),], file=file.path(resultsDir, "senescence.GO.genes.xls"), sep="\t", row.names=F, col.names=T) 
+stats.eset[which(stats.eset$entrezID %in% as.character(unique(gene.data$entrezgene))),]

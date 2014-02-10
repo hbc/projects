@@ -11,7 +11,7 @@ analystemail="jhutchin@hsph.harvard.edu"
 ```
 ---
 
-RNAseq (edgeR) analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+RNAseq (DESeq) analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
 
 The most recent update of this html document occurred: `r date()`
 
@@ -70,11 +70,9 @@ ensembl_gene = 'mmusculus_gene_ensembl'
 filter_type = 'ensembl_gene_id'
 ```
 
-For this analysis, the cutoff for significant differential expression was an FDR (False Discovery Rate) of `r pvalcutoff` and a log2(foldchange) of expression of at least 'r logfoldcutoff`.  
+For this analysis, the cutoff for significant differential expression was an FDR (False Discovery Rate) of `r pvalcutoff` and a log2(foldchange) of expression of at least `r logfoldcutoff`.  
 
 ### Functions
-
-Various convenience functions for plotting results and annotating data.
 
 ```{r functions}
 
@@ -310,31 +308,33 @@ all.pair.combos <- combn(as.vector(unique(pData(cds)$condition)),2)
 vs.MEF.combos <- all.pair.combos[,which(all.pair.combos[2,]=="MEF")]
 
 # then run the comparisons
-sig.results <- alply(all.pair.combos, 2, function(combo) {
+nbinom.tests <- alply(all.pair.combos, 2, function(combo) {
   setname <- paste(combo[1], combo[2], sep="-vs-")
   print(setname)
   ## perform significance testing
-  res.filt <- nbinomTest(cds.filt, combo[1], combo[2])
+  allresults <- nbinomTest(cds.filt, combo[1], combo[2])
   ## get normalized counts for significant hits, relabel samples with condition rather than sampleID
-  results.1 <- counts(cds.filt, normalize=TRUE)[which(res.filt$padj<pvalcutoff & abs(res.filt$log2FoldChange)>logfoldcutoff),]
+  DEresults.counts <- counts(cds.filt, normalize=TRUE)[which(allresults$padj<pvalcutoff & abs(allresults$log2FoldChange)>logfoldcutoff),]
   ## get means and pvalues for significant hits and put together with counts
-  results.2 <- res.filt[which(res.filt$padj<pvalcutoff & abs(res.filt$log2FoldChange)>logfoldcutoff),]
-  results <- cbind(results.1, results.2)
-  results <- annotate_df(results)
-  results <- results[order(results$padj),]
+  DEresults.stats <- allresults[which(allresults$padj<pvalcutoff & abs(allresults$log2FoldChange)>logfoldcutoff),]
+  DEresults <- cbind(DEresults.counts, DEresults.stats)
+  DEresults <- annotate_df(DEresults)
+  DEresults <- DEresults[order(DEresults$padj),]
   ## output some plots
-  qqplots <- qq(res.filt[,c("pval", "padj")], pvalcutoff, setname)
-  DEplots <- plotDE(res.filt, pvalcutoff, setname)
-  return(list(cond1=combo[1], cond2=combo[2], setname=setname, res.filt=res.filt, results=results,  qqplots=qqplots, DEplots=DEplots))
+  qqplots <- qq(allresults[,c("pval", "padj")], pvalcutoff, setname)
+  DEplots <- plotDE(allresults, pvalcutoff, setname)
+  return(list(cond1=combo[1], cond2=combo[2], setname=setname, allresults=allresults, DEresults=DEresults,  qqplots=qqplots, DEplots=DEplots))
 })  
 
-sig.results.unfilt <- alply(all.pair.combos, 2, function(combo) {
+nbinom.tests.unfilt <- alply(all.pair.combos, 2, function(combo) {
   setname <- paste(combo[1], combo[2], sep="-vs-")
   print(setname)
   ## perform significance testing
-  res.unfilt <- nbinomTest(cds, combo[1], combo[2])
-  return(list(res.unfilt=res.unfilt))
-}) 
+  allresults <- nbinomTest(cds, combo[1], combo[2])
+  return(list(allresults=allresults))
+  }) 
+
+save.image(file.path(resultsDir, "RDATA.binomtests"))
 ```
 
 ---
@@ -354,11 +354,11 @@ There are 3 ways to visualize these significant results:
 
 ### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
 
-There are `r nrow(sig.results[[num]]$results)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
 
 ```{r out1, out.width='50%', fig.show='hold', dev='png'}
-sig.results[[num]]$qqplots
-sig.results[[num]]$DEplots
+nbinom.tests[[num]]$qqplots
+nbinom.tests[[num]]$DEplots
 ```
 
 **QQ and M-A plots highlighting genes with significant differential expression** 
@@ -366,15 +366,15 @@ sig.results[[num]]$DEplots
 **Table of top 10 transcripts showing significant differential expression** 
 
 ```{r tables1, results='asis'}
-if (nrow(sig.results[[num]]$results)>(numsig-1)) {
-  out1 <- sig.results[[num]]$results[1:numsig,]
+if (nrow(nbinom.tests[[num]]$DEresults)>(numsig-1)) {
+  out1 <- nbinom.tests[[num]]$DEresults[1:numsig,]
   } else {
-    out1  <- sig.results[[num]]$results
+    out1  <- nbinom.tests[[num]]$DEresults
     }
 out1.gvis <- gvisTable(as.data.frame(apply(out1, 2, as.character)), options=list(width=1280))
 print(out1.gvis, "chart")
 
-write.table(sig.results[[num]]$results, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(nbinom.tests[[num]]$DEresults, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
 [Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
@@ -383,11 +383,11 @@ write.table(sig.results[[num]]$results, file=file.path(resultsDir, paste("DE.gen
 
 ### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
 
-There are `r nrow(sig.results[[num]]$results)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
 
 ```{r out2, out.width='50%', fig.show='hold', dev='png'}
-sig.results[[num]]$qqplots
-sig.results[[num]]$DEplots
+nbinom.tests[[num]]$qqplots
+nbinom.tests[[num]]$DEplots
 ```
 
 **QQ and M-A plots highlighting genes with significant differential expression**  
@@ -395,15 +395,15 @@ sig.results[[num]]$DEplots
 **Table of top 10 transcripts showing significant differential expression** 
 
 ```{r tables2, results='asis'}
-if (nrow(sig.results[[num]]$results)>(numsig-1)) {
-  out2 <- sig.results[[num]]$results[1:numsig,]
+if (nrow(nbinom.tests[[num]]$DEresults)>(numsig-1)) {
+  out2 <- nbinom.tests[[num]]$DEresults[1:numsig,]
   } else {
-    out2  <- sig.results[[num]]$results
+    out2  <- nbinom.tests[[num]]$DEresults
     }
 out2.gvis <- gvisTable(as.data.frame(apply(out2, 2, as.character)), options=list(width=1280))
 print(out2.gvis, "chart")
 
-write.table(sig.results[[num]]$results, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(nbinom.tests[[num]]$DEresults, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
 [Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
@@ -412,11 +412,11 @@ write.table(sig.results[[num]]$results, file=file.path(resultsDir, paste("DE.gen
 
 ### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
 
-There are `r nrow(sig.results[[num]]$results)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
 
 ```{r out3, out.width='50%', fig.show='hold', dev='png'}
-sig.results[[num]]$qqplots
-sig.results[[num]]$DEplots
+nbinom.tests[[num]]$qqplots
+nbinom.tests[[num]]$DEplots
 ```
 
 **QQ and M-A plots highlighting genes with significant differential expression**  
@@ -424,15 +424,15 @@ sig.results[[num]]$DEplots
 **Table of top 10 transcripts showing significant differential expression** 
 
 ```{r tables3, results='asis'}
-if (nrow(sig.results[[num]]$results)>(numsig-1)) {
-  out3 <- sig.results[[num]]$results[1:numsig,]
+if (nrow(nbinom.tests[[num]]$DEresults)>(numsig-1)) {
+  out3 <- nbinom.tests[[num]]$DEresults[1:numsig,]
   } else {
-    out3  <- sig.results[[num]]$results
+    out3  <- nbinom.tests[[num]]$DEresults
     }
 out3.gvis <- gvisTable(as.data.frame(apply(out3, 2, as.character)),options=list(width=1280))
 print(out3.gvis, "chart")
 
-write.table(sig.results[[num]]$results, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(nbinom.tests[[num]]$DEresults, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
 [Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
@@ -445,9 +445,10 @@ Includes genes which were not significantly DE
 counts.output <- as.data.frame(counts(cds.filt, normalize=TRUE))
 counts.output$id <- row.names(counts.output)
 counts.output <- annotate_df(counts.output)
+setnames <- apply(all.pair.combos, 2, function(x) paste(x, collapse="_vs_"))
 
 for (n in 1:3){
-  stats.output <- sig.results[[n]]$res.filt
+  stats.output <- nbinom.tests[[n]]$allresults
   output <- merge(counts.output,stats.output)
   output <- annotate_df(output)
   output.filename <- file.path(resultsDir, paste("all.exprs.stats", setnames[n], "xls", sep="."))
@@ -458,7 +459,7 @@ for (n in 1:3){
 counts.output <- as.data.frame(counts(cds, normalize=TRUE))
 counts.output$id <- row.names(counts.output)
 for (n in 1:3) {
-  stats.output <- sig.results.unfilt[[n]]$res.unfilt
+  stats.output <- nbinom.tests.unfilt[[n]]$allresults
   output <- merge(counts.output,stats.output)
   output <- annotate_df(output)
   output.filename <- file.path(resultsDir, paste("all.exprs.stats.unfiltered.genes", setnames[n], "xls", sep="."))
@@ -467,21 +468,18 @@ for (n in 1:3) {
 ```
 
 `r num=1`
-[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.genes", setnames[num], "xls", sep="."))` )
-
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r  paste("all.exprs.stats.genes", setnames[num], "xls", sep=".")`)
 `r num=num+1`
-[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.genes", setnames[num], "xls", sep="."))`)
-
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats.genes", setnames[num], "xls", sep=".")`)
 `r num=num+1`
-[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.genes", setnames[num], "xls", sep="."))`)
-
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats.genes", setnames[num], "xls", sep=".")`)
 
 `r num=1`
-[Counts and stats for ALL  genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep="."))`)
+[Counts and stats for ALL  genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](..results/`r paste(".all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep=".")`)
 `r num=num+1`
-[Counts and stats for ALL genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep="."))`)
+[Counts and stats for ALL genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](..results/`r paste("all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep=".")`)
 `r num=num+1`
-[Counts and stats for ALL genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](`r file.path(resultsDir, paste("all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep="."))`)
+[Counts and stats for ALL genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats.unfiltered.genes", setnames[num], "xls", sep=".")`)
 
 ---
 
@@ -490,55 +488,60 @@ for (n in 1:3) {
 To find genes that are differentially expressed in both FAP cell types as compared to MEFS, we can do a simple search to find genes that are differentially expressed in the same direction (i.e. down in MEFs, up in both FAP cell types) in both of these comparisons.
 
 ```{r comboFAP, dev='png', fig.show='hold'}
-sig.results.FAPLung.vs.MEF <- sig.results[[2]]$res.filt[(sig.results[[2]]$res.filt$padj<pvalcutoff & sig.results[[2]]$res.filt$log2FoldChange<logfoldcutoff),]
+sig.results.FAPLung.vs.MEF <- nbinom.tests[[2]]$DEresults
 sig.results.FAPLung.vs.MEF <- sig.results.FAPLung.vs.MEF[grepl("ENS", sig.results.FAPLung.vs.MEF$id),]
 
-sig.results.FAPMuscle.vs.MEF <- sig.results[[3]]$res.filt[(sig.results[[3]]$res.filt$padj<pvalcutoff & sig.results[[3]]$res.filt$log2FoldChange<logfoldcutoff),]
+sig.results.FAPMuscle.vs.MEF <- nbinom.tests[[3]]$DEresults
 sig.results.FAPMuscle.vs.MEF <- sig.results.FAPMuscle.vs.MEF[grepl("ENS", sig.results.FAPMuscle.vs.MEF$id),]
 
 
-FAPLung=length(sig.results.FAPLung.vs.MEF$id)
-FAPMuscle=length(sig.results.FAPMuscle.vs.MEF$id)
+FAPLung_v_MEF=length(sig.results.FAPLung.vs.MEF$id)
+FAPMuscle_v_MEF=length(sig.results.FAPMuscle.vs.MEF$id)
 both.sig <- merge(sig.results.FAPLung.vs.MEF[,c("id","log2FoldChange" )], sig.results.FAPMuscle.vs.MEF[,c("id","log2FoldChange" )], by="id", all=FALSE)
 both.sig <- both.sig[grepl("ENS", both.sig$id),]
 num.both.sig <- length(which(apply(both.sig, 1, function(x) prod(as.numeric(x[2]),as.numeric(x[3]))>0)))
 
 grid.newpage()
-draw.pairwise.venn(FAPLung, FAPMuscle, num.both.sig,fill = c(cbPalette[2],cbPalette[3]),
+draw.pairwise.venn(FAPLung_v_MEF, FAPMuscle_v_MEF, num.both.sig,fill = c(cbPalette[2],cbPalette[3]),
                    alpha = c(0.75, 0.75), lwd=0, cat.dist=0,
-                   cat.cex=2, cat.fontfamily = 3,
-                   cex = 1, fontfamily =3, 
-                   category=c("FAPLung", "FAPMuscle"), 
+                   cat.cex=1, cat.fontfamily = 2,
+                   cex = 1, fontfamily =2, 
+                   category=c("FAPLung_v_MEF", "FAPMuscle_v_MEF"), 
                    euler.d=T, scaled=T)
 grid.newpage()
 ```
 
 `r idx=2`
 
-For the `r sig.results[[idx]]$setname` comparison, there are `r length(unique(sig.results[[1]]$res.filt$id[(sig.results[[idx]]$res.filt$padj<pvalcutoff & sig.results[[idx]]$res.filt$log2FoldChange<logfoldcutoff)]))` unique genes that are differentially expressed, i.e. with at least `r 2^logfoldcutoff` fold change between the `r sig.results[[idx]]$cond1` and `r sig.results[[idx]]$cond2` sample classes with a pvalue of lower than `r pvalcutoff`.
+For the `r nbinom.tests[[idx]]$setname` comparison, there are `r length(unique(nbinom.tests[[1]]$allresults$id[(nbinom.tests[[idx]]$allresults$padj<pvalcutoff & nbinom.tests[[idx]]$allresults$log2FoldChange<logfoldcutoff)]))` unique genes that are differentially expressed, i.e. with at least `r 2^logfoldcutoff` fold change between the `r nbinom.tests[[idx]]$cond1` and `r nbinom.tests[[idx]]$cond2` sample classes with a pvalue of lower than `r pvalcutoff`.
 
 `r idx=idx+1`
 
-For the `r sig.results[[idx]]$setname` comparison, there are `r length(unique(sig.results[[1]]$res.filt$id[(sig.results[[idx]]$res.filt$padj<pvalcutoff & sig.results[[idx]]$res.filt$log2FoldChange<logfoldcutoff)])
-)` unique genes that are differentially expressed, i.e. with at least `r 2^logfoldcutoff` fold change between the `r sig.results[[idx]]$cond1` and `r sig.results[[idx]]$cond2` sample classes.
+For the `r nbinom.tests[[idx]]$setname` comparison, there are `r length(unique(nbinom.tests[[1]]$allresults$id[(nbinom.tests[[idx]]$allresults$padj<pvalcutoff & nbinom.tests[[idx]]$allresults$log2FoldChange<logfoldcutoff)])
+)` unique genes that are differentially expressed, i.e. with at least `r 2^logfoldcutoff` fold change between the `r nbinom.tests[[idx]]$cond1` and `r nbinom.tests[[idx]]$cond2` sample classes.
 
 There are `r num.both.sig` genes that are differentially expressed in the same direction in both FAP cell types as compared to MEFs.
 
 ```{r sigoverlap}
 #basic hypergeometic overlap
 totalassayed <- length(featureNames(cds.filt))
-prob.overlap  <- 1 - phyper(num.both.sig - 1, FAPLung, totalassayed - FAPLung, FAPMuscle)
-
-## Using OrderLists library
-# order significant results by log2foldchange
-ID.list.FAPLung <- sig.results[[2]]$res.filt$id[order(sig.results[[2]]$res.filt$log2FoldChange)]
-ID.list.FAPMuscle <- sig.results[[3]]$res.filt$id[order(sig.results[[3]]$res.filt$log2FoldChange)]
-## compare with OrderedList, let it select alpha
-comparedlist <- compareLists(ID.list.FAPLung, ID.list.FAPMuscle, mapping = NULL, two.sided = TRUE, B = 10000, alphas = NULL, min.weight = 1e-5, invar.q = 0.5)
-getOverlap(comparedlist)
+prob.overlap  <- 1 - phyper(num.both.sig - 1, FAPLung_v_MEF, totalassayed - FAPLung_v_MEF, FAPMuscle_v_MEF)
 ```
 
 Without taking the order of the differentially expressed genes (i.e. how significant or large the changes between samples are), the probability of seeing this many differentially expressed genes in common from both comparisons at random is `r prob.overlap`.
+
+```{r orderlists1}
+## Using OrderLists library
+# order all  results by log2foldchange
+ID.list.FAPLung_v_MEF <- nbinom.tests[[2]]$allresults$id[order(nbinom.tests[[2]]$allresults$log2FoldChange)]
+ID.list.FAPMuscle_v_MEF <- nbinom.tests[[3]]$allresults$id[order(nbinom.tests[[3]]$allresults$log2FoldChange)]
+## compare with OrderedList, preselect alpha
+ol.alpha=0.005
+comparedlist <- compareLists(ID.list.FAPLung_v_MEF, ID.list.FAPMuscle_v_MEF, mapping = NULL, two.sided = TRUE, B = 10000, alphas = c(0.1, 0.05, 0.01, 0.005, 0.0025), min.weight = 1e-5, invar.q = 0.5)
+getOverlap(comparedlist)
+```
+
+`r ol.alpha=0.0025`
 
 We can also compare the lists and take into account that some genes are more differentially expressed than others. The Bioconductor library [OrderedList][5] allows us to examine  overlap of two ordered lists (here ordered by log2 fold change) of differentially expressed genes while giving more weight to the most differentially expressed genes i.e. an overlap between the two gene sets counts more if it is at the top of both lists (most differentially expressed) than the bottom. 
 The algorithm progressively moves down the ranks of both lists and calculates the number of genes (overlap) that are present in both lists. These overlaps are summed but each is given less weight as the algorithm progresses through the ranks. The weight given to the observed overlap at each list rank decays exponentially and is determined by the formula exp(-`r ol.alpha` x rank). 
@@ -548,37 +551,42 @@ The algorithm progressively moves down the ranks of both lists and calculates th
 `r rank=4`
 At rank `r rank`, the `r rank` most differentially expressed genes for both comparisons:  
 The FAPLung gene list has:   
-`r head(ID.list.FAPLung, rank)`  
+`r head(ID.list.FAPLung_v_MEF, rank)`  
 The FAPMuscle gene list has:  
-`r head(ID.list.FAPMuscle, rank)`
-`r overlap=length(intersect(head(ID.list.FAPLung, rank), head(ID.list.FAPMuscle,rank)))`
-There are `r length(intersect(head(ID.list.FAPLung, rank), head(ID.list.FAPMuscle,rank)))` genes overlapping between the two lists.  
-The weight given to any overlap at this rank is: `r exp(-0.005*rank)`  
-The weighted overlap is then: `r exp(-0.005*rank)*(as.numeric(overlap))`.  
+`r head(ID.list.FAPMuscle_v_MEF, rank)`
+`r overlap=length(intersect(head(ID.list.FAPLung_v_MEF, rank), head(ID.list.FAPMuscle_v_MEF,rank)))`
+There are `r length(intersect(head(ID.list.FAPLung_v_MEF, rank), head(ID.list.FAPMuscle_v_MEF,rank)))` genes overlapping between the two lists.  
+The weight given to any overlap at this rank is: `r exp(-ol.alpha*rank)`  
+The weighted overlap is then: `r exp(-ol.alpha*rank)*(as.numeric(overlap))`.  
 
 `r rank=10`
 In contrast, at rank `r rank`:
 The FAPLung gene list has:   
-`r head(ID.list.FAPLung, rank)`  
+`r head(ID.list.FAPLung_v_MEF, rank)`  
 The FAPMuscle gene list has:  
-`r head(ID.list.FAPMuscle, rank)`
-`r overlap=length(intersect(head(ID.list.FAPLung, rank), head(ID.list.FAPMuscle,rank)))`
-There are `r length(intersect(head(ID.list.FAPLung, rank), head(ID.list.FAPMuscle,rank)))` genes overlapping between the two lists.  
-The weight given to any overlap at this rank is: `r exp(-0.005*rank)`  
-The weighted overlap is then: `r exp(-0.005*rank)*(as.numeric(overlap))` 
+`r head(ID.list.FAPMuscle_v_MEF, rank)`
+`r overlap=length(intersect(head(ID.list.FAPLung_v_MEF, rank), head(ID.list.FAPMuscle_v_MEF,rank)))`
+There are `r length(intersect(head(ID.list.FAPLung_v_MEF, rank), head(ID.list.FAPMuscle_v_MEF,rank)))` genes overlapping between the two lists.  
+The weight given to any overlap at this rank is: `r exp(-ol.alpha*rank)`  
+The weighted overlap is then: `r exp(-ol.alpha*rank)*(as.numeric(overlap))` 
 
 These calculations are repeated after randomly permuting the lists to determine  the chance of this level of overlap occurring at random. Here, the chance of this level of overlap occurring at random is `r getOverlap(comparedlist)$pvalue`.
 
-The a) expression levels and b) differential expression statistics for genes that contribute the most to this overlap are listed below.
+The a) expression levels and b) differential expression statistics for genes that contribute the most to this overlap and are differentially expressed in both comparisons are listed below.
 
-```{r overlapgenes, results='asis',eval=FALSE}
-overlapgenes <- getOverlap(comparedlist)$intersect
+```{r overlapgenes, results='asis'}
+overlapgenes <- getOverlap(comparedlist, max.rank=4605)$intersect
 
-stats.overlapgenes <- merge(sig.results[[1]]$results, sig.results[[2]]$results, by=c('id', 'description', 'mgi_symbol',"FAPLung1", "FAPLung2", "FAPLung3", "FAPLung4", "FAPLung5", "FAPMuscle2", "FAPMuscle3", "FAPMuscle4", "FAPMuscle5", "MEF1", "MEF2", "MEF3", "MEF4"), suffixes=c("_FAPLung.vs.MEF", "_FAPMuscle.vs.MEF"))
+stats.DE.overlapgenes <- merge(nbinom.tests[[2]]$DEresults, nbinom.tests[[3]]$DEresults, by=c('id', 'description', 'mgi_symbol',"FAPLung1", "FAPLung2", "FAPLung3", "FAPLung4", "FAPLung5", "FAPMuscle2", "FAPMuscle3", "FAPMuscle4", "FAPMuscle5", "MEF1", "MEF2", "MEF3", "MEF4"), suffixes=c("_FAPLung.vs.MEF", "_FAPMuscle.vs.MEF"))
+stats.overlapgenes <- stats.DE.overlapgenes[stats.DE.overlapgenes$id %in% overlapgenes,]
 
 output.filename <- file.path(resultsDir, "all.exprs.stats.overlapped.comparisons.genes.xls")
 write.table(stats.overlapgenes, file=output.filename, quote=F, sep="\t", row.names=F, col.names=T)
 ```
+
+The following should be the genes that:
+1) are differentially expressed (log2FoldChange>`r logfoldcutoff` and adjusted pvalue<`r pvalcutoff`) in both FAP-MEF comparisons and 
+2) contribute significantly to the overlap between the two lists of differentially expressed genes from the FAP-MEF comparisons
 
 [Most Commonly Differentially Expressed Genes in Both FAP vs. MEF Comparisons](../results/deseq/all.exprs.stats.overlapped.comparisons.genes.xls)
 

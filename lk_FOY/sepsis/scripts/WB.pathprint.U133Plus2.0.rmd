@@ -1,9 +1,9 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/PBMC-U133Plus2-pathprint-", cache.path="cache/PBMC-U133Plus2-pathprint-")
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/WB-U133Plus2-pathprint-", cache.path="cache/WB-U133Plus2-pathprint-")
 options(width=200)
 ```
 
-# PATHPRINT ANALYSES OF U133PLUS2.0 STUDIES OF PBMC SAMPLES
+# PATHPRINT ANALYSES OF U133PLUS2.0 STUDIES
 
 ---
 
@@ -21,7 +21,7 @@ The sections below provide code to reproduce the included results and plots.
 
 ## General purpose R libraries necessary for analysis
 
-```{r general_libraries_functions}
+```{r pathprint_general_libraries_functions}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
@@ -40,23 +40,23 @@ count_trinary_outcomes <- function(vector){
 
 ## Locations of directories for data, metadata and results
 
-```{r general_directories}
-if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
-  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
-  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
-    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY"
+```{r pathprint_general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/sepsis")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/sepsis"
     } else {
-      baseDir <- "/Volumes/ody/consults/lk_FOY"
+      baseDir <- "/Volumes/ody/consults/lk_FOY/sepsis"
       }
-dataDir <- file.path(baseDir, "data")
-resultsDir <- file.path(baseDir, "results", "PBMC", "U133Plus2")
-metaDir <- file.path(baseDir, "meta", "PBMC")
+dataDir <- file.path(baseDir, "data", "WB")
+resultsDir <- file.path(baseDir, "results", "WB", "U133Plus2")
+metaDir <- file.path(baseDir, "meta", "WB")
 ````
 
 ## Load in raw and RMA normalized  microarray data from generic microarray analysis.
 
-```{r load_affybatch, echo=FALSE}
-load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0"))
+```{r pathprint_load_affybatch, echo=FALSE}
+load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0"))
 pd <- pData(mic.norm.eset)
 ```
 
@@ -75,16 +75,15 @@ library(hgu133plus2.db)
 
 ## Pathprint samples - default settings
 
-```{r PBMC_pathprint}
+```{r pathprint, cache=TRUE}
 mic.platform <- "GPL570"
 mic.species <- "human"
-mic.names <- pData(mic.norm.eset)$ID
+mic.names <- pData(mic.norm.eset)$arrayID
 mic.f.default <- exprs2fingerprint(exprs = exprs(mic.norm.eset), platform = mic.platform, species = mic.species, progressBar = FALSE)
-dimnames(mic.f.default)[[2]] <- pData(mic.norm.eset)$ID
+dimnames(mic.f.default)[[2]] <- pData(mic.norm.eset)$arrayID
 ```
 
-```{r nexus, echo=FALSE}
-pd <- pData(mic.norm.eset)
+```{r pathprint_nexus, echo=FALSE}
 Nexus <- function (matrixname, file, dataType = "discrete") {
   mat <- t(matrixname)
   manb <- dim(mat)[2]
@@ -143,15 +142,13 @@ Nexus <- function (matrixname, file, dataType = "discrete") {
   cat(";", "\n", "end;", "\n", "\n", file = file, sep = "", 
       append = TRUE)
   }
-mic.f.default.adult <- mic.f.default[,unlist(pd$ID[which(pd$stage=="adult")])]
+mic.f.default.adult <- mic.f.default[,unlist(pd$arrayID[which(pd$stage=="adult")])]
 colnames(mic.f.default.adult) <- paste("adult", colnames(mic.f.default.adult), sep="_")
-mic.f.default.child <- mic.f.default[,unlist(pd$ID[which(pd$stage=="child")])]
+mic.f.default.child <- mic.f.default[,unlist(pd$arrayID[which(pd$stage=="child")])]
 colnames(mic.f.default.child) <- paste("child", colnames(mic.f.default.child), sep="_")
 mic.f.default.adult.child <- cbind(mic.f.default.adult, mic.f.default.child)
-Nexus((mic.f.default.adult.child+1), file.path(resultsDir, "fingerprints.adult.child.PBMC.nxs"))
+Nexus((mic.f.default.adult.child+1), file.path(resultsDir, "fingerprints.adult.child.nxs"))
 ```
-
-[Nexus file of pathprint results](./results/PBMC/fingerprints.adult.child.PBMC.nxs)  
 
 ### Default Pathway Differentiation
 
@@ -160,7 +157,7 @@ i.e. minimize intra-group variation while maximizing inter-group variation.
 
 ```{r pathwaydiff_vars}
 # cutoffs used to filter the data
-ttest.cutoff=1e-2
+ttest.cutoff=1e-8
 sd.cutoff=0.5
 ```
 
@@ -172,31 +169,30 @@ For this, I set two filtering criteria:
 
 Same setup as for the previous limma analysis.
 
-```{r design}
+```{r pathprint_design}
 design <- model.matrix(~ -1+factor(pd$stage))
 # make sure the headings match
 colnames(design) <- sub("factor.pd.stage.", "", colnames(design))
 ```
 
-```{r contrastmatrix}
+```{r pathprint_contrastmatrix}
 contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
 ```
 
 #### Heatmaps
 - clustered by both column (sample) and row (pathway)
 
-```{r heatmap_colors}
+```{r pathprint_heatmap_colors}
 # annotation colors
-study_colors <- c( cbPalette[1:8] )
+study_colors <- c( cbPalette[1:7] )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
-gender_colors <- c("cyan", "pink")
-names(gender_colors) <- unique(unlist(pd$gender))
-ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+ann_colors = list(study = study_colors, stage = stage_colors)
 ```
 
-```{r default_contrasts, fig.width=12, fig.height=12}
+
+```{r pathprint_default_contrasts, fig.width=12, fig.height=12}
 # for each comparison
 for (n in 1:3) {
   contrast <- dimnames(contrast.matrix)$Contrasts[n]
@@ -224,19 +220,12 @@ for (n in 1:3) {
   dim(mic.f.default.contrast.sub)
   ## Heatmaps
   # annotations for heatmaps
-  heatmap.annots <- pData.contrast[,c("ID", "study", "stage", "gender")]
+  heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage")]
   heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
-  row.names(heatmap.annots) <- heatmap.annots$ID
-  heatmap.annots$ID <- NULL
+  row.names(heatmap.annots) <- heatmap.annots$arrayID
+  heatmap.annots$arrayID <- NULL
   # both genders
+  if(nrow(mic.f.default.contrast.sub))
   pheatmap(mic.f.default.contrast.sub, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-  
- #FEMALE
-  mic.f.default.contrast.sub.female <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="FEMALE")]
-  pheatmap(mic.f.default.contrast.sub.female, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - FEMALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
- #MALE
-  mic.f.default.contrast.sub.male <- mic.f.default.contrast.sub[,which(pData.contrast$gender=="MALE")]
-  pheatmap(mic.f.default.contrast.sub.male, color=c("blue", "white", "red"), cluster_rows=T, cluster_cols=F, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - MALE",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
-
-}
+  }
 ```

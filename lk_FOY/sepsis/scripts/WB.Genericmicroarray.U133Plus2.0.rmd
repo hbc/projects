@@ -1,13 +1,19 @@
 ```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/PBMC-U133Plus2-microarray-", cache.path="cache/PBMC-U133Plus2-microarray-")
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", 
+               echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, 
+               tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), 
+               fig.path="figure/WB-U133Plus2-microarray-", 
+               cache.path="cache/WB-U133Plus2-microarray-")
 options(width=200)
 ```
 
-# STANDARD MICROARRAY ANALYSES OF U133PLUS2.0 STUDIES OF PBMC SAMPLES
+# STANDARD MICROARRAY ANALYSES OF U133PLUS2.0 STUDIES
 
 ---
 
-Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. PBMC Samples.
+Analysis of public datasets for differential gene expression signatures between
+adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of
+the DARPA 7-day Biodefense Program.
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
@@ -23,43 +29,51 @@ The sections below provide code to reproduce the included results and plots.
 
 ```{r general_libraries}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
-require(xtable) # table generation for reports
-require(plyr) # library for iteratively working with data structures
-require(ggplot2) # library for plotting 
-require(RColorBrewer) # library for generating color palettes
-require(googleVis) # library for presenting tables
+library(xtable) # table generation for reports
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 ```
 
 ## Locations of directories for data, metadata and results
 
+
 ```{r general_directories}
-if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
-  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
-  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
-    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY"
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/sepsis")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/sepsis"
     } else {
-      baseDir <- "/Volumes/ody/consults/lk_FOY"
+      baseDir <- "/Volumes/ody/consults/lk_FOY/sepsis"
       }
-dataDir <- file.path(baseDir, "data")
-resultsDir <- file.path(baseDir, "results", "PBMC", "U133Plus2")
-metaDir <- file.path(baseDir, "meta", "PBMC")
+dataDir <- file.path(baseDir, "data", "WB")
+resultsDir <- file.path(baseDir, "results", "WB", "U133Plus2")
+metaDir <- file.path(baseDir, "meta", "WB")
 ````
 
 ----
 
 # Microarray Analysis
-- currently only looking at the HG-U133-2.0 Plus arrays, so subsetted the unified metadata file to this array (GPL570 for GEO studies, A-AFFY-44 for Array Express studies)
-- subsetted to samples for which we know gender, age and have raw data
+- currently only looking at the HG-U133-2.0 Plus arrays, so subsetted the 
+unified metadata file to this array (GPL570 for GEO studies, A-AFFY-44 for Array Express studies)
+- subsetted to samples for which we have age and raw data
 
 ```{r subset_data}
-refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.PBMC.tab"))
-U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & !is.na(refined.metadata$gender) & !is.na(refined.metadata$CEL_regex) & grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
-write.table(U133.Plus2.data, file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.tab"), quote=F, sep="\t", row.names=F, col.names=T)
-write.table(U133.Plus2.data, file=file.path(metaDir, "unified.metadata.refined.PBMC.U133Plus2.0.xls"), sep="\t", row.names=F, col.names=T)
+refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.tab"))
+U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & 
+  !is.na(refined.metadata$CEL_regex) & 
+  grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
+write.table(U133.Plus2.data, 
+            file.path(metaDir, "unified.metadata.refined.U133Plus2.0.tab"), 
+            quote=F, 
+            sep="\t", 
+            row.names=F, 
+            col.names=T)
 ```
 
-That metadata file is [here](../meta/PBMC/unified.metadata.refined.PBMC.U133Plus2.0.xls)
+That metadata file is [here](../meta/WB/unified.metadata.refined.U133Plus2.0.tab)
 
 ## Setup
 
@@ -96,7 +110,7 @@ neonate.age.range <- c(0,4)
 ```
 
 ### Load and parse the unified, refined and subsetted metadata file 
-Purpose: to make a covariate table that allows you to load the CEL files using the [affy][2] Bioconductor library
+- to make a covariate table that allows you to load the CEL files using the [affy][2] Bioconductor library
 - this table has the CEL file location in the first column, without a header
 - the other columns contain the sampleIDs, ages, genders,ethnicities and respective studies
 
@@ -104,29 +118,42 @@ Purpose: to make a covariate table that allows you to load the CEL files using t
 
 ```{r covariatedataframe}
 # U1332.0Plus only for now
-covartemplate.file <- "unified.metadata.refined.PBMC.U133Plus2.0.tab" 
-covartemplate <- read.table(file.path(metaDir,covartemplate.file), header=T, colClasses="character", sep="\t")
+covartemplate.file <- "unified.metadata.refined.U133Plus2.0.tab" 
+covartemplate <- read.table(file.path(metaDir,covartemplate.file ), 
+                            header=T, 
+                            colClasses="character", 
+                            sep="\t")
 # convert character ages to numeric to allow numeric subsetting 
 covartemplate$age <- as.numeric(covartemplate$age) 
+
 ## limit samples to those within the described child, adult and neonate age ranges
-covartemplate <- covartemplate[union(union(which(covartemplate$age<=max(child.age.range) & covartemplate$age>=min(child.age.range)), which(covartemplate$age<min(child.age.range))), which(covartemplate$age<=max(adult.age.range) & covartemplate$age>=min(adult.age.range))),] 
+children.indices <- which(covartemplate$age<=max(child.age.range) & 
+  covartemplate$age>=min(child.age.range))
+neonate.indices <- which(covartemplate$age<=max(neonate.age.range))
+adult.indices <- which(covartemplate$age<=max(adult.age.range) & 
+  covartemplate$age>=min(adult.age.range))
+sample.indices <- c(neonate.indices, children.indices, adult.indices)
+covartemplate <- covartemplate[sample.indices,]
+
 # convert age back to character value so you can use it in a character matrix
 covartemplate$age <- as.character(covartemplate$age) 
 covartemplate <- as.matrix(covartemplate)
 covars <- aaply(covartemplate, 1, function(n){
   # pull out the info you need piece by piece
-  sampleID <- n[1] 
-  age <- n[3]
-  gender <- n[4]
-  ethnicity=n[5]
-  CELregex <- n[7]
-  CELFTP <- n[6]
-  study=n[9]
-  if(n[10]=="GEO"){
-    # for GEO studies, get the CEL file name from the FTP locaiton in the metadata file
+  sampleID <- n[grep("sampleID", colnames(covartemplate))] 
+  arrayID <- n[grep("arrayID", colnames(covartemplate))]
+  age <- n[grep("^age", colnames(covartemplate))]
+  gender <- n[grep("gender", colnames(covartemplate))]
+  stage <- n[grep("stage", colnames(covartemplate))]
+  outcome <- n[grep("outcome", colnames(covartemplate))]
+  CELregex <- n[grep("CEL_regex", colnames(covartemplate))]
+  CELFTP <- n[grep("CEL_FTP", colnames(covartemplate))]
+  study=n[grep("study", colnames(covartemplate))]
+  if(n[grep("study", colnames(covartemplate))]!="GSE4607"){
+    # for non GSE4607 studies, get the CEL file name from the FTP location in the metadata file
     CELfileloc <- file.path(dataDir,study, sub(".gz", "", basename(as.character(CELFTP)))) 
   } else {
-    # for ArrayExpress studies, get the CEL file name directly from the CEL file regex in the metadata file
+    # for GSE4607, get the CEL file name directly from the CEL file regex in the metadata file
     CELfileloc <- file.path(dataDir, study, CELregex) 
     }
   if(!file.exists(CELfileloc)){
@@ -135,15 +162,26 @@ covars <- aaply(covartemplate, 1, function(n){
     break
     } else {
       # if CEL file is where its supposed to be, add location to covariate table
-      return(list(CELfileloc=CELfileloc, ID=sampleID, age=age, gender=gender, ethnicity=ethnicity, study=study)) 
+      return(list(CELfileloc=CELfileloc, 
+                  sampleID=sampleID, 
+                  arrayID=arrayID, 
+                  age=age, 
+                  gender=gender, 
+                  stage=stage, 
+                  outcome=outcome, 
+                  study=study)
+             ) 
       }
   })
 covars <- as.data.frame(covars)
 covars$age <- as.numeric(covars$age)
 # label samples with their stage as determined by age
 # don't need to specify adult ranges, as we limited the dataset above to neonates, children and adults
-# was mislabelling 4 year old neonates as adults!
-covars$stage <- ifelse(covars$age<=max(neonate.age.range), "neonate", ifelse(covars$age>=min(child.age.range) & covars$age<=max(child.age.range), "child", ifelse(covars$age>=min(adult.age.range) & covars$age<=max(adult.age.range), "adult", NA)))
+covars$stage <- ifelse(covars$age<=max(neonate.age.range), "neonate", 
+                       ifelse(covars$age>=min(child.age.range)
+                              & covars$age<=max(child.age.range), "child", 
+                              ifelse(covars$age>=min(adult.age.range)
+                                     & covars$age<=max(adult.age.range), "adult", NA)))
 covars <- covars[order(covars$stage),]
 #remove unclassified samples
 covars <- covars[!is.na(covars$stage),]
@@ -151,63 +189,101 @@ covars <- covars[!is.na(covars$stage),]
 
 ### Load CEL files
 
-```{r load_data}
-mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars) 
+```{r load_data, eval=FALSE}
+mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
 ```
+
 
 ## Quality Control and Normalization
 
 ### Array QC checks on raw data with [ArrayQualityMetrics][3]
 
 ```{r rawQC, eval=FALSE}
-arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("stage", "study"))
+arrayQualityMetrics(expressionset=mic.raw, 
+                    outdir=file.path(resultsDir, "QCreport_raw"), 
+                    force=TRUE, 
+                    do.logtransform=TRUE, 
+                    intgroup=c("stage", "study"))
+
 ````
 
-[Raw Data QC Report](../results/PBMC/U133Plus2/QCreport_raw/index.html)
+[Raw Data QC Report](../results/WB/U133Plus2/QCreport_raw/index.html)
+
+### Remove outlier arrays
+Arrays that failed array intensity, RLE or NUSE analyses during raw data QC were excluded.
+
+```{r exclude_from_raw, eval=FALSE}
+# subset ExpressionSet to studies that are NOT the following
+exclude.arrays <- c("GSM287323.CEL", "GSM287359.CEL", "GSM901532_t23767201.CEL", "GSM901583_t33439045.CEL", "GSM901623_t3457955.CEL", "GSM901763_t20055549.CEL", "01_0013_A1.CEL", "01_0026_A1_HG_U133_Plus_2.CEL", "10_0005_A1_HG_U133_Plus_2.CEL", "GSM648590_01_0013_A1.CEL", "GSM648596_01_0026_A1_HG_U133_Plus_2.CEL", "GSM648718_26_260611A_HG_U133.2.CEL", "GSM244499.CEL", "26_260611A_HG_U133.2.CEL", "05_0011_A1_HG_U133_Plus_2.CEL", "15_0007A1_HG_U133_Plus_2.CEL", "09_0002A1_HG_U133_Plus_2.CEL", "06_0001_A2.CEL", "05_0008A1_HG_U133_Plus_2.CEL", "05_0003_A1_HG_U133_Plus_2.CEL", "11_0021A_HG_U133_Plus_2.CEL", "GSM648615_01-0007A_HG_U133.2.CEL", "GSM648628_01-0086A_HG_U133.2.CEL", "GSM648643_05_0008A1_HG_U133_Plus_2.CEL", "GSM648645_05_0011_A1_HG_U133_Plus_2.CEL", "GSM648647_06_0001_A2.CEL", "GSM648656_09_0002A1_HG_U133_Plus_2.CEL", "GSM648682_11_0054A_HG_U133.2.CEL", "GSM648704_15_0007A1_HG_U133_Plus_2.CEL", "GSM648706_15_0017A_HG_U133_2.CEL", "GSM647580_18_0004.CEL", "GSM647594_W04_06Y4A_HG_U133_Plus2.CEL", "GSM647597_W07_06Y47_HG_U133_Plus2.CEL", "GSM647600_W10_06Y44_HG_U133_Plus2.CEL")
+
+mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
+# change the sample names to more informative
+sampleNames(mic.raw) <- as.vector(unlist(pData(mic.raw)$arrayID))
+```
 
 ### Normalize all arrays using [RMA][4]
 
 ```{r normalize_RMA, eval=FALSE}
-mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
+mic.norm.eset <- rma(mic.raw,
+                     normalize=TRUE,
+                     background=TRUE)
 ```
 
 ### Array QC checks on normalized data with ArrayQualityMetrics
 
 ```{r normQC, eval=FALSE}
-arrayQualityMetrics(expressionset=mic.norm.eset, outdir=file.path(resultsDir, "QCreport_norm"), force=TRUE, do.logtransform=FALSE, intgroup=c("stage", "study"))
+arrayQualityMetrics(expressionset=mic.norm.eset, 
+                    outdir=file.path(resultsDir, "QCreport_norm"), 
+                    force=TRUE,
+                    do.logtransform=FALSE, 
+                    intgroup=c("stage", "study"))
+q()
 ```
 
-[Normalized Data QC Report](../results/PBMC/U133Plus2/QCreport_norm/index.html)
+[Normalized Data QC Report](../results/WB/U133Plus2/QCreport_norm/index.html)
 
-### Remove outlier studies
-- removed GSM844204,GSM253697,GSM253700,GSM253707, GSM253708 failed RLE in raw QC. 
-- removed GSM253709 as it failed intensity, and MA check in raw QC
-- removed GSM253667 as it is an outlier in raw QC and post-normalized QC
+### Remove any remaining outlier samples
+GSM287389, GSM244502,GSM648696,GSM647548,GSM647551,GSM350157,GSM244501,GSM103054,GSM648605,GSM648695,GSM648714,GSM647552,GSM647574,GSM350177,GSM350178,GSM350236
 
-- slope for RNA degradation plots for GSE14642 is very different (flat), kept in but it's worth keeping an eye on it
+```{r drop_outliers, eval=FALSE}
+# subset ExpressionSet to samples that are NOT the following
+exclude.arrays <- c("GSM287389","GSM244502", "GSM648696","GSM647548","GSM647551","GSM350157","GSM244501","GSM103054","GSM648605","GSM648695","GSM648714","GSM647552","GSM647574","GSM350177","GSM350178","GSM350236")
+mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
+```
 
+### Drop replicates
+Overall, the GSE36809 study had more outlier samples than the GSE11375, so I kept the GSE11375 samples.
 - renormalize data
 
-```{r drop_outliers}
-mic.raw <- mic.raw[,which(!(unlist(pData(mic.raw)$ID) %in% c("GSM844204","GSM253697","GSM253700","GSM253707", "GSM253708", "GSM253709","GSM253667" )))]
+```{r discarddupes, eval=FALSE}
+nonduplicate.indices <- which(!(duplicated(pData(mic.raw)$sampleID)))
+# subset Expression Set discard samples 
+mic.raw <- mic.raw[,nonduplicate.indices]
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data.PBMC.U133Plus2.0" ))
+save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
+```
+
+
+```{r load_affybatch, echo=FALSE}
+# this is a hack to get around knitr having memory issues with loading and parsing CEL files
+# instead of having knitr do the CEL file manipulation, do it interactively and save out an RDATA object that you can load into the final knitr run
+load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
 ```
 
 ### Metadata for remaining U133Plus2.0 studies
 
 ```{r print_metadata, results='asis'}
 pd <- pData(mic.norm.eset)
-pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=640))  
+pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
 print(pd.gvis, "chart")
+# rename the samples with the arrayID (to get rid of weird array names)
+sampleNames(mic.norm.eset) <- as.vector(unlist(pData(mic.norm.eset)$arrayID))
 ```
 
 ### Output Expression Values for ALL Genes and Samples
 
 ```{r allexprs}
 exprs.all <-exprs(mic.norm.eset)
-colnames(exprs.all) <- pData(mic.norm.eset)$ID
-
 probeIDs <- row.names(exprs.all)
 
 symbols <- unlist(mget(rownames(exprs.all), hgu133plus2SYMBOL, ifnotfound=NA))
@@ -215,8 +291,7 @@ exprs.all <- cbind(cbind(probeIDs, symbols), exprs.all)
 write.table(exprs.all, file.path(resultsDir, "U133_2.0Plus.all.exprs.xls"), sep="\t", row.names=F, col.names=T)
 ```
 
-[All Expression Values for all Samples](../results/PBMC/U133Plus2/U133_2.0Plus.all.exprs.xls)  
-
+[All Expression Values for all Samples](../results/WB/U133Plus2/U133_2.0Plus.all.exprs.xls)  
 
 ## Differential Expression Analyses
 
@@ -231,10 +306,10 @@ To perform limma, we construct two matrices. The design matrix provides a repres
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
 
 ```{r design, results="asis"}
-design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
+design <- model.matrix(~ 0+stage, data=pData(mic.norm.eset))
 # make sure the headings match
-colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
-design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design, "ID"), 2, as.character)), options=list(width=640))  
+colnames(design) <- sub("stage", "", colnames(design))
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"ID"), 2, as.character)), options=list(width=640))  
 print(design.gvis, "chart")
 ```
 
@@ -245,7 +320,7 @@ print(design.gvis, "chart")
 
 ```{r contrastmatrix, results='asis'}
 contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
-contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"contrast"), 2, as.character)), options=list(width=240, height=240))  
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"contrast"), 2, as.character)), options=list(width=240, height=120))  
 print(contrast.gvis, "chart")
 ```
 
@@ -260,7 +335,6 @@ These matrices are used to fit a linear model to the data. The linear model is a
 
 ```{r linearmodel}
 exprs.norm <- exprs(mic.norm.eset)
-dimnames(exprs.norm)[[2]] <- as.character(pData(mic.norm.eset)$ID)
 fit.exprs <- lmFit(exprs.norm, design) 
 ```
 
@@ -277,7 +351,6 @@ fit2.exprs <- contrasts.fit(fit.exprs, contrast.matrix)
 fit2.exprs <- eBayes(fit2.exprs) 
 ```
 
-
 ### Calculate statistics for comparisons
 - generate statistics describing level of differential expression of genes, as sorted by unadjusted pvalue
 
@@ -290,15 +363,15 @@ stats.exprs <- lapply(seq(1,3,1), function(n) {
   # get expression levels for these genes in the samples involved in this contrast
   exprs.contrast <- exprs.norm[,apply(design[,colnames(design) %in% names(which(abs(contrast.matrix[,contrast])==1))]==1, 1,any)]
   # sanity check
-  identical(colnames(exprs.contrast), as.vector(unlist(pd.contrast$ID)))
+  identical(colnames(exprs.contrast), as.vector(unlist(pd.contrast$arrayID)))
   # rearrange expression values to match order of stats output above
   exprs.contrast <- exprs.contrast[stats.contrast$ID, ]
   # bind columns of stats to columns of sample expressioin values
   stats.exprs.contrast <- cbind(stats.contrast, exprs.contrast)
   # output to file
-  write.table(stats.exprs.contrast, file.path(resultsDir,  paste("U133_2.0Plus.stats.exprs", gsub(" ", "", contrast), "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+  write.table(stats.exprs.contrast, file.path(resultsDir, paste("U133_2.0Plus.stats.exprs", gsub(" ", "", contrast), "xls", sep=".")), sep="\t", row.names=F, col.names=T)
   # sanity check
-  identical(colnames(exprs.contrast), as.vector(unlist(pd.contrast$ID)))
+  identical(colnames(exprs.contrast), as.vector(unlist(pd.contrast$arrayID)))
   # save for later use in heatmaps
   return(list(contrast=contrast, pd.contrast=pd.contrast, stats.exprs.contrast=stats.exprs.contrast))
   })
@@ -312,9 +385,9 @@ stats.exprs <- lapply(seq(1,3,1), function(n) {
 - the adj.P.Val is the p-value adjusted for multiple testing (by FDR) 
 - the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
 
-[Adult vs. Child](../results/PBMC/U133Plus2/U133_2.0Plus.stats.exprs.adult-child.xls)  
-[Adult vs. Neonate](../results/PBMC/U133Plus2/U133_2.0Plus.stats.exprs.adult-neonate.xls)  
-[Neonate vs. Child](../results/PBMC/U133Plus2/U133_2.0Plus.stats.exprs.neonate-child.xls) 
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.stats.exprs.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2/U133_2.0Plus.stats.exprs.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.stats.exprs.neonate-child.xls) 
 
 ### Heatmaps of top 100 differentially expressed genes
 - for each pairwise comparison
@@ -344,32 +417,31 @@ for(n in 1:3){
     top.stats.exprs.contrast <- top.stats.exprs.contrast[1:100,]
     }  
   # extract expression values for samples
-  top.exprs.contrast <- top.stats.exprs.contrast[,colnames(top.stats.exprs.contrast) %in% pd.contrast$ID]
+  top.exprs.contrast <- top.stats.exprs.contrast[,colnames(top.stats.exprs.contrast) %in% pd.contrast$arrayID]
   # setup row names for the heatmap, paste probeset ID to gene symbol
   row.names(top.exprs.contrast) <- paste(as.vector(unlist(mget(top.stats.exprs.contrast$ID, hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,top.stats.exprs.contrast$ID, ")", sep="")
 
   # heatmap annotations
-  heatmap.annots <- pd.contrast[,c("ID", "study", "stage", "gender")]
+  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage")]
   heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
-  row.names(heatmap.annots) <- heatmap.annots$ID
-  heatmap.annots$ID <- NULL
+  row.names(heatmap.annots) <- heatmap.annots$arrayID
+  heatmap.annots$arrayID <- NULL
   # heatmap annotation colors
-  study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
+  study_colors <- c(cbPalette[1:7] )
   names(study_colors) <- unique(unlist(pd.contrast$study))
   stage_colors <- c("white", "darkgrey")
   names(stage_colors) <- unique(unlist(pd.contrast$stage))
-  gender_colors <- c("cyan", "pink")
-  names(gender_colors) <- unique(unlist(pd.contrast$gender))
-  ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+  ann_colors = list(study = study_colors, stage = stage_colors)
   ## Heatmaps
-  # ALL genders 
-  pheatmap(as.matrix(top.exprs.contrast), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), cluster_cols = FALSE,main=paste(contrast,  "- Unclustered", sep=""), show_colnames=F, fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
-  # FEMALE gender  
-  top.exprs.contrast.female <- top.exprs.contrast[,which(pd.contrast$gender=="FEMALE")]
-  pheatmap(as.matrix(top.exprs.contrast.female), annotation=subset(heatmap.annots,gender=="FEMALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(FEMALE) - Unclustered", sep=" "), show_colnames=F,fontsize=24, fontsize_row=10,annotation_colors=ann_colors)  
-  # MALE gender  
-  top.exprs.contrast.male <- top.exprs.contrast[,which(pd.contrast$gender=="MALE")]
-  pheatmap(as.matrix(top.exprs.contrast.male), annotation=subset(heatmap.annots,gender="MALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main=paste(contrast,"(MALE) - Unclustered", sep=" "), show_colnames=F, fontsize=24,fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast), 
+           annotation=heatmap.annots, 
+           color=rev(brewer.pal(11,"RdBu")), 
+           cluster_cols = FALSE,
+           main=paste(contrast,  "- Unclustered", sep=""), 
+           show_colnames=F, 
+           fontsize=24, 
+           fontsize_row=10,
+           annotation_colors=ann_colors) 
   }
 ```
 
@@ -399,27 +471,28 @@ top.exprs.union <- exprs.norm[top.IDs,]
 row.names(top.exprs.union) <- paste(as.vector(unlist(mget(row.names(top.exprs.union), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(top.exprs.union), ")", sep="")
 # annotations
 pd <- pData(mic.norm.eset)
-heatmap.annots <- pd[,c("ID", "study", "stage", "gender")]
+heatmap.annots <- pd[,c("arrayID", "study", "stage")]
 heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
-row.names(heatmap.annots) <- heatmap.annots$ID
-heatmap.annots$ID <- NULL
+row.names(heatmap.annots) <- heatmap.annots$arrayID
+heatmap.annots$arrayID <- NULL
 # annotation colors
-study_colors <- c("#FF0000","#00FF00", "#0000FF", cbPalette )
+study_colors <- c(cbPalette[1:7] )
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
-gender_colors <- c("cyan", "pink")
-names(gender_colors) <- unique(unlist(pd$gender))
-ann_colors = list(study = study_colors, stage = stage_colors, gender=gender_colors)
+ann_colors = list(study = study_colors, stage = stage_colors)
 ## Heatmaps
-# Both genders
-pheatmap(as.matrix(top.exprs.union), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), cluster_cols = FALSE, main="All Comparisons, All Samples - Unclustered", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)  
-# Female gender
-top.exprs.union.female <- top.exprs.union[,which(pd$gender=="FEMALE")]
-pheatmap(as.matrix(top.exprs.union.female), annotation=subset(heatmap.annots,gender=="FEMALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All Female Samples - Unclustered", show_colnames=F,fontsize=24, fontsize_row=8,annotation_colors=ann_colors)  
-# Male gender
-top.exprs.union.male <- top.exprs.union[,which(pd$gender=="MALE")]
-pheatmap(as.matrix(top.exprs.union.male), annotation=subset(heatmap.annots,gender=="MALE"), cluster_cols = FALSE, color=rev(brewer.pal(11,"RdBu")), main="All Comparisons, All male Samples - Unclustered", show_colnames=F, fontsize=24,fontsize_row=8,annotation_colors=ann_colors)   
+pheatmap(as.matrix(top.exprs.union), 
+         annotation=heatmap.annots, 
+         color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         main="All Comparisons, All Samples - Unclustered", 
+         show_colnames=F, 
+         fontsize=24,
+         fontsize_row=8,
+         annotation_colors=ann_colors)
+
+
 ```
 
 

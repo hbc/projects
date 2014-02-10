@@ -1,0 +1,320 @@
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/WB-U133Plus2-barcode-", cache.path="cache/WB-U133Plus2-barcode-")
+options(width=200)
+```
+
+# BARCODE ANALYSES OF U133PLUS2.0 STUDIES
+
+---
+
+Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUPh
+
+## General purpose R libraries necessary for analysis
+
+```{r barcode_general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(xtable) # table generation for reports
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+```
+
+## Locations of directories for data, metadata and results
+- also misc. variables
+
+```{r barcode_general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/sepsis")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/sepsis"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY/sepsis"
+      }
+dataDir <- file.path(baseDir, "data", "WB")
+resultsDir <- file.path(baseDir, "results", "WB", "U133Plus2")
+metaDir <- file.path(baseDir, "meta", "WB")
+# colorblind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+````
+
+## Load in raw and [RMA][1] normalized AffyBatch microarray data.
+
+```{r barcode_load_affybatch, echo=FALSE, eval=FALSE}
+load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0"))
+```
+
+---
+
+# Barcoding
+
+The group of Rafael Irizarry introduced the concept of ’barcoding’ expression information in *McCall MN, Uppal K, Jaffee HA, Zilliox MJ, and Irizarry RA (2011). The Gene Expression Barcode: leveraging public data repositories to begin cataloging the human and murine transcriptomes, Nucleic Acids Research,39:D1011-5.*
+  
+From their site, [The Gene Expression Barcode][3]
+>The barcode algorithm is designed to estimate which genes are expressed and which are unexpressed in a given microarray hybridization. The output of our algorithm is a vector of ones and zeros denoting which genes are estimated to be expressed (ones) and unexpressed (zeros). We call this a gene expression barcode.
+
+## Load in necessary [Bioconductor][4] libraries
+
+```{r barcode_libraries}
+# frozen RMA and barcoding library
+library(frma) 
+# previously analyzed dataset from same array
+library(hgu133plus2frmavecs)
+# for pretty dendrograms
+library(ggdendro)
+# for contrast matrix
+library(limma)
+# pretty heatmaps
+library(pheatmap) 
+# annotations for the hgU1332.0Plus array
+library(hgu133plus2.db) 
+```
+
+## Run fRMA (frozen RMA) and Barcode expression data
+
+Using the [frma][5] Bioconductor libraray. As described in *McCall MN, Bolstad BM, and Irizarry RA (2010). Frozen Robust Multi-Array Analysis (fRMA), Biostatistics, 11(2):242-253.* frozen RMA essentially normalizes against a previously analyzed ("frozen") dataset of samples run on the same array.
+
+Used the same samples as the previous generic microarray analysis.
+
+```{r barcode_frma_run, cache=TRUE, eval=FALSE}
+mic.frma <- frma(mic.raw, summarize="random_effect")
+save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
+bc <- barcode(mic.frma) 
+```
+
+```{r barcode_load_frma, echo=FALSE}
+# hack to get around running frma in knitr
+load(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
+```
+
+## Compare hierarchal clustering  before and after barcoding
+- there is a slight improvement, but the arrays still don't completely cluster by age group
+
+```{r barcode_clustering, fig.width=12, fig.height=12}
+dimnames(bc)[[2]] <- sampleNames(mic.frma)
+rma.exprs <- exprs(mic.norm.eset)
+colnames(rma.exprs) <- pData(mic.frma)$stage
+myDist.pre <- dist(t(rma.exprs))
+myTree.pre <- hclust(myDist.pre)
+dhc.pre <- as.dendrogram(myTree.pre)
+ddata.pre <- dendro_data(dhc.pre)
+
+bc.exprs <- bc
+colnames(bc.exprs) <- pData(mic.frma)$stage
+myDist.bc <- dist(t(bc.exprs))
+myTree.bc <- hclust(myDist.bc)
+dhc.bc <- as.dendrogram(myTree.bc)
+ddata.bc <- dendro_data(dhc.bc, type="rectangle")
+
+p.pre <- ggplot(segment(ddata.pre)) +
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+  theme_dendro() + 
+  geom_text(data=label(ddata.pre), aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label))) +
+  coord_flip() + 
+  scale_y_reverse(expand=c(0.2, 50)) +
+  labs(title = "Original RMA Normalized Expression Data") +
+  theme(legend.title=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+
+p.bc <- ggplot(segment(ddata.bc)) +
+  geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+  theme_dendro() + 
+  geom_text(data=label(ddata.bc), aes(x=x, y=y, label=label, hjust=-0.1, colour=factor(label))) +
+  coord_flip() + 
+  scale_y_reverse(expand=c(0.2, 50)) +
+  labs(title = "fRMA Normalized and Barcoded Expression Data") +
+  theme(legend.title=element_blank(),
+    axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank())
+p.pre 
+p.bc 
+## cleanup
+rm(p.pre, p.bc, ddata.bc, dhc.bc, myTree.bc, myDist.bc, ddata.pre, dhc.pre, myTree.pre, myDist.pre, rma.exprs )
+```
+
+**The improvement from frma normalization is striking.**
+
+#### Setup design and contrast matrices 
+
+Same setup as for the previous limma analysis.
+
+```{r barcode_design}
+design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
+# make sure the headings match
+colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
+```
+
+```{r barcode_contrastmatrix}
+contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
+```
+
+## Heatmaps of barcoded expression data
+
+We can try to identify probes with consistent differences between the cohorts by only keeping probes exhibiting low entropy within a group. Maximum entropy would be when a probe is expressed in exactly 50 % of the samples. 
+ – but high entropy overall (i.e each group is internally consistent but the groups themselves are different)
+
+### The function to calculate binary entropy
+
+```{r barcode_binary_entropy_function}
+binaryEntropy <- function(v) {
+  # Proportion of probes found to be expressed
+  p <- sum(v) / length(v)
+  if (p == 0 | p == 1) {
+    return(0)
+    }
+  return(-p * log10(p) - (1 - p) * log10(1 - p))
+  }
+```
+
+### Heatmaps of genes with consistent intra and inter-group expression patterns 
+
+```{r barcode_filters1}
+intra.entropycutoff <- 0.30
+inter.entropycutoff <- 0.30
+
+# prep data for output
+class(bc) <- "numeric"
+all(colnames(bc)==pData(mic.frma)$ID)
+```
+
+I tried out a couple of entropy cutoffs in an attempt to balance the number of resulting genes with the observed study effects.
+In the first passs I allowd relatively more intra-group entropy (<`r intra.entropycutoff`), while allowing the entropy across both groups to be higher (>`r inter.entropycutoff`).
+  
+```{r barcode_heatmap_annotation_colors}
+# annotation colors
+study_colors <- c(cbPalette[1:7])
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+ann_colors = list(study = study_colors, stage = stage_colors)
+```
+
+
+```{r barcode_diff_heatmap0.3, fig.width=18, fig.height=18}
+# filter and output heatmap for each contrast
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  bc.contrast <- bc[,pData(mic.frma)$stage %in% c(stage.1, stage.2)]
+  pData.contrast <- pData(mic.frma)[pData(mic.frma)$stage %in% c(stage.1, stage.2),] 
+  f.contrast <- as.factor(pData.contrast$stage)
+  entropies.stage = adply(bc.contrast, 1, function(n) {
+    by(n, f.contrast, function(x) binaryEntropy(x))
+    })
+  row.names(entropies.stage) <- entropies.stage$X1
+  entropies.stage$X1 <- NULL
+  entropies.stage <- as.matrix(entropies.stage)
+  mode(entropies.stage) <- "numeric"
+  entropies.contrast <- apply(bc.contrast, 1, binaryEntropy)
+  # filter genes by intra-group and across group entropy
+  bc.contrast.sub <- bc.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+  dim(bc.contrast.sub)
+  if (nrow(bc.contrast.sub)>0) {
+    # remove any AFFY control probes
+    if (any(grepl("AFFX", row.names(bc.contrast.sub)))){
+      bc.contrast.sub <- bc.contrast.sub[-(grep("AFFX", row.names(bc.contrast.sub))),]  
+      }
+    ## output to file
+    output <- as.data.frame(bc.contrast.sub)
+    probeID <- row.names(output)
+    symbol <- unlist(mget(row.names(output), hgu133plus2SYMBOL, ifnotfound=NA))
+    output.entropies.stage <- entropies.stage[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+    output.entropies.contrast <- entropies.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff]
+    output <- cbind(probeID, cbind(symbol, cbind(output.entropies.stage, cbind(output.entropies.contrast, output))))
+    names(output)[3:5] <- c(paste("intra", c(stage.1,stage.2), "entropy", sep="_" ), "overall_entropy")
+    write.table(output, file.path(resultsDir, paste("U133_2.0Plus.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+    ## Heatmaps
+    # annotations for heatmaps
+    heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage")]
+    heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+    row.names(heatmap.annots) <- heatmap.annots$arrayID
+    heatmap.annots$arrayID <- NULL
+    # row labels - add gene symbol to probeset id
+    row.names(bc.contrast.sub) <- paste(as.vector(unlist(mget(row.names(bc.contrast.sub), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(bc.contrast.sub), ")", sep="")
+    # decide if you are going to show row labels in heatamp
+    if(nrow(bc.contrast.sub)>100){showrownames_var <-  FALSE}else{showrownames_var <- TRUE}
+    # both genders
+    
+    pheatmap(bc.contrast.sub, 
+             color=c("blue", "red"), 
+             cluster_rows=TRUE, 
+             cluster_cols=FALSE, 
+             show_colnames=F, 
+             show_rownames=showrownames_var, 
+             fontsize=18, 
+             fontsize_row=10, 
+             annotation=heatmap.annots, 
+             annotation_colors=ann_colors, 
+             legend_breaks=c(0,1), 
+             main=paste("Barcoded Intensities for ", contrast, " comparison - Unclustered",  sep=""))
+    }
+  }
+```
+
+#### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
+
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.3.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.3.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.3.neonate-child.xls) 
+
+These looser cutoffs find a very large number of genes, being more stringent in our cutoffs will reduce the number of genes to a manageable level. After experimenting with different cutoffs, the upper limit for the inter-group entropy is 0.3, anything higher fails to yield any genes. However, we can reduce the intra-group entropy (i.e. how consistent the group is within itself) to 0.2 before we stop seeing results.
+
+```{r barcode_filters2}
+intra.entropycutoff <- 0.25
+inter.entropycutoff <- 0.30
+```
+
+Here, I imposed stricter criteria for intra-group entropy (<`r intra.entropycutoff`) and let the entropy across both groups remain at `r inter.entropycutoff`.
+
+You can see from the heatmaps that there are fewer study specific effects. As you can see, the tradeoff is that you get fewer genes to work with.
+
+```{r barcode_diff_heatmap0.25, ref.label='barcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```
+
+#### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
+
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.25.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.25.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.25.neonate-child.xls)
+
+```{r barcode_filters3}
+intra.entropycutoff <- 0.22
+inter.entropycutoff <- 0.30
+```
+
+We can reduce the intra-group entropy even further to  (<`r intra.entropycutoff`).
+
+```{r barcode_diff_heatmap0.2, ref.label='barcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```
+
+#### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
+
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.22.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.22.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.22.neonate-child.xls)
+
+[1]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+[2]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
+[3]: http://barcode.luhs.org (Barcode)
+[4]: http://www.bioconductor.org (BioC)
+[5]: http://www.bioconductor.org/packages/2.6/bioc/html/frma.html (fRMA)
+[6]: https://dl.dropboxusercontent.com/u/4253254/Consults/lk_FOY/April.18.2013/Generic.microarray.U133Plus2.0.html (previous analysis)
+

@@ -170,7 +170,7 @@ estim.corr <- nmf(eset.corr, 2:7, nrun = TRAIN, seed = 123456)
 plot(estim.corr)
 ```
 
-These results suggest there are at least 3-5 metagenes as :  
+These results suggest there are at least 3-5 metagenes to separate tall the classes :  
 1) the cophenetic curve starts decreasing at the 4th factorization rank
 2) the largest inflection points of the rss curve occurs at the 3rd and 5th factorization ranks
 
@@ -197,7 +197,7 @@ consensusmap(estim.corr, annCol=list(samplegroups=as.character(unlist(eset.corr$
 
 It appears that there are 2-4 factors that can be used to divide the samples. Overall though, perhaps unsurprisingly, 4 metagenes appear to best classify the data. While 2 metagenes allow us to clearly separately cluster the LSC samples, we can't separately cluster the BMM, PM and RBM samples. With 3 metagenes, we see the RBM samples starting to form a cluster while at rank 4 we can now classify both the LSC and RBM samples, as well as the BMM and PM samples
 
-Going forward, I only looked at factorization ranks of 4 (i.e. 4 metagenes).
+Going forward for this analysis, to find factors that isolate the LSCs from the other cell types, I only looked at factorization ranks of 2 (i.e. 2 metagenes).
 
 ### Choosing an algorithm
 
@@ -206,9 +206,9 @@ To this point, I have been using the default (*brunet*) algorithm for the gross 
 To do so, I ran NMF on the data using four of the most popular algorithms (with error tracking enabled), and compared the error plots. In these error plots, each track is normalized so that its first value equals one, and stops at the iteration where the method's convergence criterion was fulfilled; algorithms that converge at lower objective values are optimal.
 
 ```{r comparealgs, cache=TRUE, results="hide", fig.show='hold', out.width='50%'}
-res.multi.method.4 <- nmf(eset.corr, 4, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "t")
+res.multi.method.2 <- nmf(eset.corr, 2, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "t")
 
-plot(res.multi.method.4, main="NMF residuals - 4 metagenes")
+plot(res.multi.method.2, main="NMF residuals - 2 metagenes")
 ```
 
 Here, the *nsMMF* algorirthm works best. The nsNMF approach has the slight benefit of creating 'sparse' metagenes which are easier to interpret functionally, so I proceeded with this algorithm.
@@ -220,28 +220,28 @@ Here, the *nsMMF* algorirthm works best. The nsNMF approach has the slight benef
 The NMF analyses so far have used a low number of iterations (<50), here I ran NMF with `r RUN` iterations to allow the algorithm to fully converge and yield as accurate a result as possible.
 
 ```{r fullNMF, cache=TRUE}
-res.final.4 <- nmf(eset.corr, 4, "nsNMF", nrun=RUN, .options = "t")
+res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "t")
 ```
 
 ---
 
 ## NMF Metagene Feature Extraction
 
-We can extract the genes that comprise the metagenes that define our different classes.
+We can extract the genes that comprise the metagenes that define the different classes.
 
-```{r rank4plots, fig.show='hold', out.width='33%'}
-consensusmap(res.final.4,  annCol=list(samplegroups=as.character(unlist(eset.corr$group_short ))),  labCol=groups.corr, labRow=groups.corr, annColors=list(samplegroups=cbPalette[1:4], basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")))
+```{r rank2plots, fig.show='hold', out.width='33%'}
+consensusmap(res.final.2,  annCol=list(samplegroups=as.character(unlist(eset.corr$group_short ))),  labCol=groups.corr, labRow=groups.corr, annColors=list(samplegroups=cbPalette[1:4], basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")))
 
-coefmap(res.final.4, labCol=groups.corr, annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral"))) # shows the individual genes in relation to metagenes and samples
+coefmap(res.final.2, labCol=groups.corr, annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral"))) # shows the individual genes in relation to metagenes and samples
 
-basismap(res.final.4, subsetRow=TRUE,annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")), main="Metagene Components - All Contributing Genes") # shows metagenes in relation to samples
-basismap(res.final.4, subsetRow=0.5,annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")), main="Metagene Components - Most Specific Genes") # shows metagenes in relation to samples
+basismap(res.final.2, subsetRow=TRUE,annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")), main="Metagene Components - All Contributing Genes") # shows metagenes in relation to samples
+basismap(res.final.2, subsetRow=0.95,annColors=list(basis=cbPalette[5:8], consensus=brewer.pal(4, "Spectral")), main="Metagene Components - Most Specific Genes") # shows metagenes in relation to samples
 
-bestfit4 <- fit(res.final.4) #extract the best fit NMf model
-fs4 <- featureScore(bestfit4) # get all the feature scores which measure specificity to which a gene contributes to a metagene
-f4 <- extractFeatures(bestfit4) # extract the features with the most specifciity for each of the metagenes
+bestfit2 <- fit(res.final.2) #extract the best fit NMf model
+fs2 <- featureScore(bestfit2) # get all the feature scores which measure specificity to which a gene contributes to a metagene
+f2 <- extractFeatures(bestfit2) # extract the features with the most specifciity for each of the metagenes
 ## get unique annotations for genes (NMF returns number referenced IDs) in metagenes
-unique.metagenesymbols <- lapply(f4, function(x) {
+unique.metagenesymbols <- lapply(f2, function(x) {
   genenames <- unique(unlist(fData(eset.corr)[x,"GeneName"]))
   return(genenames)
   })
@@ -249,45 +249,33 @@ unique.metagenesymbols <- lapply(f4, function(x) {
 numgenes <- unlist(lapply(unique.metagenesymbols, length))
 ```
 
-The "Metagene Components"" plots indicate the contributions of a gene to the individual metagenes. As genes can participate in more than one metagene it can be beneficial to investigate genes that have relatively restricted contribution to a single metagene. This contribution can be measured with the featurescore,as defined by [Kim et al. (2007).][5] and yields a number within the range of 0 to 1; the higher the feature score the more metagene-specific the corresponding feature. Here I first plotted all genes that contribute to any metagene and then plotted only the genes that were the most specific to a metagene, using a cutoff that selected at least 2 genes in each metagene. 
+The "Metagene Components"" plots indicate the contributions of a gene to the individual metagenes. As genes can participate in more than one metagene it can be beneficial to investigate genes that have relatively restricted contribution to a single metagene. This contribution can be measured with the featurescore,as defined by [Kim et al. (2007).][5] and yields a number within the range of 0 to 1; the higher the feature score the more metagene-specific the corresponding feature. Here I first plotted all genes that contribute to any metagene and then plotted genes that more the most specific to a metagene, using an arbitrary cutoff that selected at least 10 genes in each metagene. 
 
-Looking at the mixture coefficient plot, we see that we can classify LSC, RBM, BMM, and PM cells by clustering on four metagenes (of  `r numgenes[1]`,`r numgenes[2]`, `r numgenes[3]` and `r numgenes[4]` genes respectively) with different weights for each sample. Looking at the coefficient plot:
+Looking at the mixture coefficient plot, we see that we can classify LSC, and the RBM/BMM/PM cells by clustering on two metagenes (of  `r numgenes[1]`and`r numgenes[2]`) genes respectively) with different weights for each sample. Looking at the coefficient plot:
 metagene 1 = LSC
-metagene 2 = RBM
-metagene 3 = BMM
-metagene 4 = PM
+metagene 2 = RBM/PM/BMM
 
 We can extract the genes that make a contribution to the different metagenes. Here I included all genes that contribute to a metagene, but to get the genes most specific to a metagene, you can filter these results by the featurescore, selecting only those genes above a particular cutoff.
 
-```{r rank4.metagenes}
+```{r rank2.metagenes}
 # dataframe to present the metagene features that includes both the metagene annotations and the featurescores
-metagene4.1 <- cbind(fData(eset.corr)[f4[[1]],], fs4[f4[[1]]]) 
-names(metagene4.1)[ncol(metagene4.1)] <- "featurescore"
-metagene4.2 <- cbind(fData(eset.corr)[f4[[2]],], fs4[f4[[2]]]) 
-names(metagene4.2)[ncol(metagene4.2)] <- "featurescore"
-metagene4.3 <- cbind(fData(eset.corr)[f4[[3]],], fs4[f4[[3]]]) 
-names(metagene4.3)[ncol(metagene4.3)] <- "featurescore"
-metagene4.4 <- cbind(fData(eset.corr)[f4[[4]],], fs4[f4[[4]]]) 
-names(metagene4.4)[ncol(metagene4.4)] <- "featurescore"
+metagene2.1 <- cbind(fData(eset.corr)[f2[[1]],], fs2[f2[[1]]]) 
+names(metagene2.1)[ncol(metagene2.1)] <- "featurescore"
+metagene2.2 <- cbind(fData(eset.corr)[f2[[2]],], fs2[f2[[2]]]) 
+names(metagene2.2)[ncol(metagene2.2)] <- "featurescore"
 
-write.table(as.matrix(metagene4.1), file=file.path(resultsDir, paste("Rank4.metagenes", 1, "xls", sep=".")), sep="\t", quote=F)
-write.table(as.matrix(metagene4.2), file=file.path(resultsDir, paste("Rank4.metagenes", 2, "xls", sep=".")), sep="\t", quote=F)
-write.table(as.matrix(metagene4.3), file=file.path(resultsDir, paste("Rank4.metagenes", 3, "xls", sep=".")), sep="\t", quote=F)
-write.table(as.matrix(metagene4.4), file=file.path(resultsDir, paste("Rank4.metagenes", 4, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene2.1), file=file.path(resultsDir, paste("Rank2.metagenes", 1, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene2.2), file=file.path(resultsDir, paste("Rank2.metagenes", 2, "xls", sep=".")), sep="\t", quote=F)
 ```
 
 [Excel file of metagene number 1 features](../results/metagene.1.xls) 
 
 [Excel file of metagene number 2 features](../results/metagene.2.xls)
 
-[Excel file of metagene number 3 features](../results/metagene.3.xls)
-
-[Excel file of metagene number 3 features](../results/metagene.4.xls)
-
 ### LSC specific metagene
 
 ```{r LSC.metagene.print, results='asis', echo=FALSE}
-metagene.lsc.gvis <- gvisTable(as.data.frame(apply(metagene4.1, 2, as.character)), options = list(width = 960, height=800))  
+metagene.lsc.gvis <- gvisTable(as.data.frame(apply(metagene2.1, 2, as.character)), options = list(width = 960, height=800))  
 print(metagene.lsc.gvis, "chart")
 ```
 
@@ -298,7 +286,7 @@ Looking for  functional enrichment (Biological Process ontologies) in the list o
 
 ```{r GOlsc, results='hide'}
 # extract only first gene listed, when multiple gene names found in a single annotation row 
-genes.of.interest.lsc <- unique(unlist(lapply(metagene4.1$GeneName, function(x) unlist(strsplit(x, split="/"))[1])))
+genes.of.interest.lsc <- unique(unlist(lapply(metagene2.1$GeneName, function(x) unlist(strsplit(x, split="/"))[1])))
 background.genes.lsc <- unique(unlist(lapply(fData(eset.corr)[,"GeneName"], function(x) unlist(strsplit(x, split="/"))[1]))) # all the genes tested in the NMF analysis
 GO.results.lsc <- GOstats.genesymbols(genesymbols=genes.of.interest.lsc, background.genesymbols=background.genes.lsc, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" ) 
 # used the mouse4302 db here, best practices
@@ -312,18 +300,18 @@ print(GOresults.lsc.gvis, "chart")
 
 *Not that these GO results may be inaccurate as the method 1) was originally designed to work with microarrays and 2) has no easy method to work with multi-hits in the data ie. for data points annotated with mulitple genes, I simply picked the first  gene from the annotations, an oversimplification as the mass spec data points could likely originate from multiple different genes with identical protein domains*
 
-### RBM specific metagene
+### RBM/PM/BMM specific metagene
 
 ```{r RBM.metagene.print, echo=FALSE, results='asis'}
-metagene.rbm.gvis <- gvisTable(as.data.frame(apply(metagene4.2, 2, as.character)), options = list(width = 960, height=800))  
+metagene.rbm.gvis <- gvisTable(as.data.frame(apply(metagene2.2, 2, as.character)), options = list(width = 960, height=800))  
 print(metagene.rbm.gvis, "chart")
 ```
 
-#### Gene Ontology Analyses of RBM metagene features
+#### Gene Ontology Analyses of RBM/PM/BMM metagene features
 
 ```{r GOrbm, results='hide'}
 # split up genes in list, when multiple genes
-genes.of.interest.rbm <- unique(unlist(lapply(metagene4.2$GeneName, function(x) unlist(strsplit(x, split="/")))))
+genes.of.interest.rbm <- unique(unlist(lapply(metagene2.2$GeneName, function(x) unlist(strsplit(x, split="/")))))
 background.genes.rbm <- unique(unlist(lapply(fData(eset.corr)[,"GeneName"], function(x) unlist(strsplit(x, split="/")))))
 GO.results.rbm <- GOstats.genesymbols(genesymbols=genes.of.interest.rbm, background.genesymbols=background.genes.rbm, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" )
 ```
@@ -335,51 +323,6 @@ print(GOresults.rbm.gvis, "chart")
 
 *same caveats as above apply* 
 
-#### PM specific metagene
-
-```{r PM.metagene.print, echo=FALSE, results='asis'}
-metagene.PM.gvis <- gvisTable(as.data.frame(apply(metagene4.4, 2, as.character)), options = list(width = 960, height=800))  
-print(metagene.PM.gvis, "chart")
-```
-
-#### Gene Ontology Analyses of PM metagene features
-
-```{r GOPM, results='hide'}
-# split up genes in list, when multiple genes
-genes.of.interest.PM <- unique(unlist(lapply(metagene4.4$GeneName, function(x) unlist(strsplit(x, split="/")))))
-background.genes.PM <- unique(unlist(lapply(fData(eset.corr)[,"GeneName"], function(x) unlist(strsplit(x, split="/")))))
-GO.results.PM <- GOstats.genesymbols(genesymbols=genes.of.interest.PM, background.genesymbols=background.genes.PM, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" )
-```
-
-```{r GOPM.print, results='asis', echo=FALSE}
-GOresults.PM.gvis <- gvisTable(as.data.frame(apply(GO.results.PM, 2, as.character)))  
-print(GOresults.PM.gvis, "chart")
-```
-
-*same caveats as above apply* 
-
-#### Single BMM sample specific metagene
-
-```{r BMM.metagene.print, echo=FALSE, results='asis'}
-metagene.BMM.gvis <- gvisTable(as.data.frame(apply(metagene4.3, 2, as.character)), options = list(width = 960, height=800))  
-print(metagene.BMM.gvis, "chart")
-```
-
-#### Gene Ontology Analyses of BMM metagene features
-
-```{r GOBMM, results='hide'}
-# split up genes in list, when multiple genes
-genes.of.interest.BMM <- unique(unlist(lapply(metagene4.3$GeneName, function(x) unlist(strsplit(x, split="/")))))
-background.genes.BMM <- unique(unlist(lapply(fData(eset.corr)[,"GeneName"], function(x) unlist(strsplit(x, split="/")))))
-GO.results.BMM <- GOstats.genesymbols(genesymbols=genes.of.interest.BMM, background.genesymbols=background.genes.BMM, biomaRt.filter="mgi_symbol", pvalue.cutoff=0.05, annotation="mouse4302" )
-```
-
-```{r GOBMM.print, results='asis', echo=FALSE}
-GOresults.BMM.gvis <- gvisTable(as.data.frame(apply(GO.results.BMM, 2, as.character)))  
-print(GOresults.BMM.gvis, "chart")
-```
-
-*same caveats as above apply* 
 
 ----
 
