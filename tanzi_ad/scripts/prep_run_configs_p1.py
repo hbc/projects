@@ -48,7 +48,7 @@ def write_config(g, baminfo, name, config):
                                      "20000000", "high", "genome", config["coverage"]])
                     bam_files.append(bamfile)
                 else:
-                    print("BAM file missing for %s: %s" % (info["sample"], family))
+                    raise ValueError("BAM file missing for %s: %s" % (info["sample"], family))
     subprocess.check_call(["bcbio_nextgen.py", "-w", "template", "freebayes-variant",
                            meta_file] + bam_files)
 
