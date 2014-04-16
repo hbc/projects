@@ -21,6 +21,18 @@ def _gemini_iterator(in_file):
 def _get_vcf_handles(vcf_files):
     return [vcf.Reader(filename=v) for v in vcf_files]
 
+def _samples_to_consider(called_families, famfile):
+    """
+    only consider samples from families that have been called
+    """
+    to_consider = []
+    with open(famfile) as in_handle:
+        for line in in_handle:
+            family = line.split("\t")[0]
+            sample_name = line.split("\t")[1]
+            if family in called_families:
+                to_consider.append(sample_name)
+    return to_consider
 
 if __name__ == "__main__":
     description = ("Perform concordance checks between CASAVA and Illumina "
@@ -31,19 +43,20 @@ if __name__ == "__main__":
                 "and variant_samples columns in the output.")
     parser.add_argument("vcf_dir", help="Directory of VCFs to scan. "
                         "Must be tabix indexed.")
+    parser.add_argument("fam", help="FAM file.")
     args = parser.parse_args()
 
     vcf_files = _get_vcfs(args.vcf_dir)
+    called_families = [os.path.basename(x).split("-")[0] for x in vcf_files]
+    to_consider = _samples_to_consider(called_families, args.fam)
     vcf_handles = _get_vcf_handles(vcf_files)
 
-    print ",".join(["chrom", "start", "end", "ref", "alt", "concordant",
-                     "casava_only", "recalled_only", "mismatch",
-                     "mismatch_alleles", "samples_with_variant",
-                     "num_concordant", "num_casava_only",
-                     "num_recalled_only", "num_mismatch"])
+    print ",".join(["chrom", "start", "end", "ref", "alt",
+                    "num_concordant", "num_casava_only",
+                    "num_recalled_only"])
     with open(args.gemini) as in_handle:
         header = in_handle.next().split("\t")
         for line in in_handle:
             sys.stderr.write(".")
             line = dict(zip(header, line.split("\t")))
-            print concordance_calculator(line, vcf_handles)
+            print concordance_calculator(line, vcf_handles, to_consider)
