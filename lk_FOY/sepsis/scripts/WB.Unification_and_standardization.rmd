@@ -7,7 +7,7 @@ options(width=200)
 
 ---
 
-Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. 
+Analysis of public datasets for differential gene expressi  on signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. 
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
@@ -67,8 +67,7 @@ library(ArrayExpress)
 The IDs of the GEO series (GSEs) are:
 
 ```{r GEOIDs}
-GSEids <- c("GSE28750", "GSE11755", "GSE4607", "GSE13904", "GSE26440", "GSE26378", "GSE9692", "GSE36809", "GSE11375", "GSE13015","GSE10474","GSE32707","GSE40586","GSE5580","GSE22278","GSE3026","GSE3284")
-
+GSEids <- c("GSE28750", "GSE11755", "GSE4607", "GSE13904", "GSE26440", "GSE26378", "GSE9692", "GSE36809", "GSE11375", "GSE13015","GSE10474","GSE32707","GSE40586","GSE5580","GSE22278","GSE3026","GSE3284", "GSE54514")
 # GSE32707 not in barcode or pathprint database - ignored
  
 AEids <- c("MEXP-3621")
@@ -118,7 +117,7 @@ for (AEid in AEids) {
   if (!(file.exists(ae.dataDir))) {
     dir.create(ae.dataDir)
   }
-  ae <-   try(ArrayExpress(accession=paste("E", AEid, sep="-"), path=ae.dataDir, save=TRUE,  ))
+  ae <-   try(ArrayExpress(accession=paste("E", AEid, sep="-"), path=ae.dataDir, save=TRUE  ))
   Sys.sleep(5)
 }
 ```
@@ -146,11 +145,15 @@ These GEO and ArrayExpress metadata files were then individually hand examined t
 
 ### Array Express studies
 
-- no ages or gender; ignored
+**MEXP-3621**
+- age 19-25 years of age to metadata from PI
+- replace spaces in column headers with period
 
 ```{r modMEXP3621}
 metadata <- read.delim(file.path(dataDir, "MEXP-3621", "E-MEXP-3621.sdrf.txt"), sep="\t", header=T)
-# no ages or genders, move on
+metadata$agecol <- mean(19,25)
+write.table(metadata, file=file.path(dataDir, "MEXP-3621", "metadata.MEXP-3621.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
 rm(metadata)
 ```
 
@@ -162,7 +165,11 @@ GSE32707 not in barcode or pathprint database; ignored.
 
 #### Sepsis studies
 
-Metadata from GSE26440 and GSE26378 need no modifications, but the metadata filename was modified for consistency.
+**GSE26440**
+**GSE26378**
+**GSE54514**
+
+Metadata from GSE26440,  GSE26378 and GSE54514 need no modifications, but the metadata filenames were modified for consistency.
 
 ```{r modGSE26440_GSE26378}
 metadata <- read.delim(file.path(dataDir, "GSE26440", "metadata.GSE26440.1.tab"), sep="\t", header=T)
@@ -170,8 +177,25 @@ write.table(metadata, file=file.path(dataDir, "GSE26440", "metadata.GSE26440.tab
 
 metadata <- read.delim(file.path(dataDir, "GSE26378", "metadata.GSE26378.1.tab"), sep="\t", header=T)
 write.table(metadata, file=file.path(dataDir, "GSE26378", "metadata.GSE26378.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+metadata <- read.delim(file.path(dataDir, "GSE54514", "metadata.GSE54514.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE54514", "metadata.GSE54514.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
 rm(metadata)
 ```
+
+**Becton Dickinson Data**
+
+Metadata and data for were obtained outside of GEO from BD. Age ranges were described ast "adult", assigned an age of 40 to all samples.  Assigned platform ID (GPL570=HG-U133_Plus_2) as well.
+
+```{r modBD}
+metadata <- read.delim(file.path(dataDir, "BD", "celToPatientStatus.txt"))
+metadata$database <- "BD"
+metadata$agecol <- 40
+metadata$platform <- "GPL570"
+write.table(metadata, file=file.path(dataDir, "BD", "metadata.BD.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+```
+
 
 **For some of the other GEO metdata files, manual correction of the metadata was necessary**
 
@@ -276,8 +300,13 @@ metadata <- read.delim(file.path(dataDir, "GSE4607", "metadata.GSE4607.1.tab"),
 wong.metadata <- read.delim(file.path(dataDir, "GSE4607", "Wong_metadata.GSE4607.tab"), 
                                     sep="\t", 
                                     header=T)
-wong.metadata$age_years <-   as.vector(difftime(mdy(as.character(unlist(wong.metadata$Enrollment.Date))),
-           mdy(as.character(unlist(wong.metadata$Date.of.Birth))), 
+yearconvert <- function(x, year=1968){
+  m <- year(x) %% 100
+  year(x) <- ifelse(m > year %% 100, 1900+m, 2000+m)
+  x
+}
+wong.metadata$age_years <-   as.vector(difftime(yearconvert(mdy(as.character(unlist(wong.metadata$Enrollment.Date)))),
+           yearconvert(mdy(as.character(unlist(wong.metadata$Date.of.Birth)))), 
            unit="days")/365)
 metadata <- merge(metadata, wong.metadata, 
                             by.x="geo_accession", 
@@ -326,6 +355,7 @@ metadata <- merge(metadata, wong.metadata, by.x="geo_accession", by.y="Geo.Sampl
 write.table(metadata, file=file.path(dataDir, "GSE13904", "metadata.GSE13904.tab"), sep="\t", col.names=T, row.names=F)
 rm(metadata, wong.metadata)
 ```  
+
 
 #### Trauma studies
 
@@ -533,7 +563,7 @@ for(rownum in 1:nrow(template)) {
   
   ## get arrayIDs
   if (is.na(colids$arrayID)) {arrayIDs <- rep(NA, nrow(study.metadata))} else { arrayIDs <- study.metadata[,as.vector(colids$arrayID)]} # if there are no sampleIDs, fill with NA
-  l 
+ 
   ## get sampletypes
   if(is.na(colids$sampletype_col.1)){
     ## if there is no sampletype column #1, fill with NA's
@@ -589,7 +619,7 @@ The file with the unified (but not consistent) metadata can be found [here](../m
 *(this is a tab-delimited file that can be opened in Excel)*
 The end goal is a file containing the metadata for all control samples in all studies. To generate a file that can be then be used to load in the metadata and its respective raw data later in the analysis, I also needed consistent labeling of gender, age, sepsis stage, outcome, FTP location, and CEL file search terms. 
 
-To make this file, I ran the "unified.metadata.unrefined.tab" file through [Google refine][6], merging multiple terms for the same thing into a single term. For example, terms such as "F", "Female", "Fem", and "f" were merged into the single term FEMALE. All ages were converted into year based units. Outcome was simplified into either "SURVIVOR" or "NONSURVIVOR. Any patients with longer term recorded outcomes such as transfer to other facilities (including nursing, rehabiliation, acute care facilities) or home were considered survivors. Sepsis stage was simplified to one of "SEPSIS", "SEPTIC SHOCK", or "SIRS". Time in stage (i.e. SIRS-day3 or Sepsis Day1) at which sample was taken was not considered.
+To make this file, I ran the "unified.metadata.unrefined.tab" file through [Google refine][6], merging multiple terms for the same thing into a single term. For example, terms such as "F", "Female", "Fem", and "f" were merged into the single term FEMALE. All ages were converted into year based units. Outcome was simplified into either "SURVIVOR" or "NONSURVIVOR. Any patients with longer term recorded outcomes such as transfer to other facilities (including nursing, rehabiliation, acute care facilities) or home were considered survivors. Sepsis stage was simplified to one of "SEPSIS", "SEPTIC SHOCK", or "SIRS". Time in stage (i.e. SIRS-day3 or Sepsis Day1) at which sample was taken was not considered. Any undefined values (gender, status etc.) were labelled "UNKNOWN". ArrayExpress platform IDs were translated into GEO platform IDs (GPLs) (i.e. A-AFFY-37 into GPL571)
 
 The unified, refined metadata file can be found [here](../meta/WB/unified.metadata.refined.tab)
 

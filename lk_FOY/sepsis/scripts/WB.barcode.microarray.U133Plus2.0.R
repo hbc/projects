@@ -22,7 +22,7 @@ metaDir <- file.path(baseDir, "meta", "WB")
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 
 
-## ----barcode_load_affybatch, echo=FALSE----------------------------------
+## ----barcode_load_affybatch, echo=FALSE, eval=FALSE----------------------
 load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0"))
 
 
@@ -41,10 +41,8 @@ library(pheatmap)
 library(hgu133plus2.db) 
 
 
-## ----barcode_frma_run, cache=TRUE----------------------------------------
-mic.frma <- frma(mic.raw, summarize="random_effect")
-save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
-bc <- barcode(mic.frma) 
-pd <- pData(mic.frma)
-dimnames(bc)[[2]] <- as.vector(unlist(pd[which(row.names(pd) %in% dimnames(bc)[[2]]),"ID"]))
-q()
+## ----barcode_frma_run, cache=TRUE, eval=FALSE----------------------------
+ mic.frma <- frma(mic.raw, summarize="random_effect")
+ save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
+ bc <- barcode(mic.frma)
+ q()

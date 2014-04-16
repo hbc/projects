@@ -88,8 +88,9 @@ Used the same samples as the previous generic microarray analysis.
 
 ```{r barcode_frma_run, cache=TRUE, eval=FALSE}
 mic.frma <- frma(mic.raw, summarize="random_effect")
-save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
 bc <- barcode(mic.frma) 
+save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
+q()
 ```
 
 ```{r barcode_load_frma, echo=FALSE}
@@ -98,7 +99,7 @@ load(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
 ```
 
 ## Compare hierarchal clustering  before and after barcoding
-- there is a slight improvement, but the arrays still don't completely cluster by age group
+- strong improvement in clustering
 
 ```{r barcode_clustering, fig.width=12, fig.height=12}
 dimnames(bc)[[2]] <- sampleNames(mic.frma)
@@ -184,8 +185,8 @@ binaryEntropy <- function(v) {
 ### Heatmaps of genes with consistent intra and inter-group expression patterns 
 
 ```{r barcode_filters1}
-intra.entropycutoff <- 0.30
-inter.entropycutoff <- 0.30
+intra.entropycutoff <- 0.3
+inter.entropycutoff <- 0.3
 
 # prep data for output
 class(bc) <- "numeric"
@@ -197,11 +198,16 @@ In the first passs I allowd relatively more intra-group entropy (<`r intra.entro
   
 ```{r barcode_heatmap_annotation_colors}
 # annotation colors
-study_colors <- c(cbPalette[1:7])
+pd <- pData(mic.frma)
+study_colors <- c(cbPalette[1:8])
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
-ann_colors = list(study = study_colors, stage = stage_colors)
+gender_colors <- c("pink", "blue", "yellow")
+names(gender_colors) <- c("FEMALE", "MALE", "UNKNOWN")
+
+ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_colors)
+
 ```
 
 
@@ -230,20 +236,22 @@ for (n in 1:3) {
   if (nrow(bc.contrast.sub)>0) {
     # remove any AFFY control probes
     if (any(grepl("AFFX", row.names(bc.contrast.sub)))){
-      bc.contrast.sub <- bc.contrast.sub[-(grep("AFFX", row.names(bc.contrast.sub))),]  
+      bc.contrast.sub <- bc.contrast.sub[!(grepl("AFFX", row.names(bc.contrast.sub))),]  
       }
     ## output to file
     output <- as.data.frame(bc.contrast.sub)
     probeID <- row.names(output)
     symbol <- unlist(mget(row.names(output), hgu133plus2SYMBOL, ifnotfound=NA))
     output.entropies.stage <- entropies.stage[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+    output.entropies.stage <- output.entropies.stage[row.names(bc.contrast.sub),]
     output.entropies.contrast <- entropies.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff]
+    output.entropies.contrast <- output.entropies.contrast[row.names(bc.contrast.sub)]
     output <- cbind(probeID, cbind(symbol, cbind(output.entropies.stage, cbind(output.entropies.contrast, output))))
     names(output)[3:5] <- c(paste("intra", c(stage.1,stage.2), "entropy", sep="_" ), "overall_entropy")
     write.table(output, file.path(resultsDir, paste("U133_2.0Plus.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
     ## Heatmaps
     # annotations for heatmaps
-    heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage")]
+    heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage", "gender")]
     heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
     row.names(heatmap.annots) <- heatmap.annots$arrayID
     heatmap.annots$arrayID <- NULL
@@ -265,6 +273,7 @@ for (n in 1:3) {
              annotation_colors=ann_colors, 
              legend_breaks=c(0,1), 
              main=paste("Barcoded Intensities for ", contrast, " comparison - Unclustered",  sep=""))
+    
     }
   }
 ```
@@ -275,10 +284,10 @@ for (n in 1:3) {
 [Adult vs. Neonate](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.3.adult-neonate.xls)  
 [Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.3.neonate-child.xls) 
 
-These looser cutoffs find a very large number of genes, being more stringent in our cutoffs will reduce the number of genes to a manageable level. After experimenting with different cutoffs, the upper limit for the inter-group entropy is 0.3, anything higher fails to yield any genes. However, we can reduce the intra-group entropy (i.e. how consistent the group is within itself) to 0.2 before we stop seeing results.
+These looser cutoffs find a very large number of genes, being more stringent in our cutoffs will reduce the number of genes to a manageable level. After experimenting with different cutoffs, the upper limit for the inter-group entropy is 0.3010300, anything higher fails to yield any genes. However, we can reduce the intra-group entropy (i.e. how consistent the group is within itself) to ~0.275 before we stop seeing results.
 
 ```{r barcode_filters2}
-intra.entropycutoff <- 0.25
+intra.entropycutoff <- 0.29
 inter.entropycutoff <- 0.30
 ```
 
@@ -291,12 +300,12 @@ You can see from the heatmaps that there are fewer study specific effects. As yo
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
-[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.25.adult-child.xls)  
-[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.25.adult-neonate.xls)  
-[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.25.neonate-child.xls)
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.29.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.29.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.29.neonate-child.xls)
 
 ```{r barcode_filters3}
-intra.entropycutoff <- 0.22
+intra.entropycutoff <- 0.275
 inter.entropycutoff <- 0.30
 ```
 
@@ -307,9 +316,9 @@ We can reduce the intra-group entropy even further to  (<`r intra.entropycutoff`
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
-[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.22.adult-child.xls)  
-[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.22.adult-neonate.xls)  
-[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.22.neonate-child.xls)
+[Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-child.xls)  
+[Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-neonate.xls)  
+[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.275.neonate-child.xls)
 
 [1]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
 [2]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)

@@ -59,12 +59,15 @@ metaDir <- file.path(baseDir, "meta", "WB")
 - currently only looking at the HG-U133-2.0 Plus arrays, so subsetted the 
 unified metadata file to this array (GPL570 for GEO studies, A-AFFY-44 for Array Express studies)
 - subsetted to samples for which we have age and raw data
+- also remove GSE11375 and GSE36809
 
 ```{r subset_data}
 refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.tab"))
+refined.metadata=refined.metadata[!(refined.metadata$study %in% c("GSE11375", "GSE36809")),]
 U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & 
   !is.na(refined.metadata$CEL_regex) & 
   grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
+
 write.table(U133.Plus2.data, 
             file.path(metaDir, "unified.metadata.refined.U133Plus2.0.tab"), 
             quote=F, 
@@ -118,7 +121,7 @@ neonate.age.range <- c(0,4)
 
 ```{r covariatedataframe}
 # U1332.0Plus only for now
-covartemplate.file <- "unified.metadata.refined.U133Plus2.0.tab" 
+covartemplate.file <- "unified.metadata.refined.U133Plus2.0.tab"
 covartemplate <- read.table(file.path(metaDir,covartemplate.file ), 
                             header=T, 
                             colClasses="character", 
@@ -149,7 +152,7 @@ covars <- aaply(covartemplate, 1, function(n){
   CELregex <- n[grep("CEL_regex", colnames(covartemplate))]
   CELFTP <- n[grep("CEL_FTP", colnames(covartemplate))]
   study=n[grep("study", colnames(covartemplate))]
-  if(n[grep("study", colnames(covartemplate))]!="GSE4607"){
+  if(!n[grep("study", colnames(covartemplate)) ] %in% c("GSE4607", "BD")){
     # for non GSE4607 studies, get the CEL file name from the FTP location in the metadata file
     CELfileloc <- file.path(dataDir,study, sub(".gz", "", basename(as.character(CELFTP)))) 
   } else {
@@ -159,7 +162,8 @@ covars <- aaply(covartemplate, 1, function(n){
   if(!file.exists(CELfileloc)){
     # check if the CEL file is actually where its supposed to be, if not notify and move on
     print(paste(CELfileloc, "does not exist", sep=" ")) 
-    break
+    #print(CELFTP)
+    stop()
     } else {
       # if CEL file is where its supposed to be, add location to covariate table
       return(list(CELfileloc=CELfileloc, 
@@ -193,7 +197,6 @@ covars <- covars[!is.na(covars$stage),]
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
 ```
 
-
 ## Quality Control and Normalization
 
 ### Array QC checks on raw data with [ArrayQualityMetrics][3]
@@ -204,7 +207,6 @@ arrayQualityMetrics(expressionset=mic.raw,
                     force=TRUE, 
                     do.logtransform=TRUE, 
                     intgroup=c("stage", "study"))
-
 ````
 
 [Raw Data QC Report](../results/WB/U133Plus2/QCreport_raw/index.html)
@@ -214,7 +216,7 @@ Arrays that failed array intensity, RLE or NUSE analyses during raw data QC were
 
 ```{r exclude_from_raw, eval=FALSE}
 # subset ExpressionSet to studies that are NOT the following
-exclude.arrays <- c("GSM287323.CEL", "GSM287359.CEL", "GSM901532_t23767201.CEL", "GSM901583_t33439045.CEL", "GSM901623_t3457955.CEL", "GSM901763_t20055549.CEL", "01_0013_A1.CEL", "01_0026_A1_HG_U133_Plus_2.CEL", "10_0005_A1_HG_U133_Plus_2.CEL", "GSM648590_01_0013_A1.CEL", "GSM648596_01_0026_A1_HG_U133_Plus_2.CEL", "GSM648718_26_260611A_HG_U133.2.CEL", "GSM244499.CEL", "26_260611A_HG_U133.2.CEL", "05_0011_A1_HG_U133_Plus_2.CEL", "15_0007A1_HG_U133_Plus_2.CEL", "09_0002A1_HG_U133_Plus_2.CEL", "06_0001_A2.CEL", "05_0008A1_HG_U133_Plus_2.CEL", "05_0003_A1_HG_U133_Plus_2.CEL", "11_0021A_HG_U133_Plus_2.CEL", "GSM648615_01-0007A_HG_U133.2.CEL", "GSM648628_01-0086A_HG_U133.2.CEL", "GSM648643_05_0008A1_HG_U133_Plus_2.CEL", "GSM648645_05_0011_A1_HG_U133_Plus_2.CEL", "GSM648647_06_0001_A2.CEL", "GSM648656_09_0002A1_HG_U133_Plus_2.CEL", "GSM648682_11_0054A_HG_U133.2.CEL", "GSM648704_15_0007A1_HG_U133_Plus_2.CEL", "GSM648706_15_0017A_HG_U133_2.CEL", "GSM647580_18_0004.CEL", "GSM647594_W04_06Y4A_HG_U133_Plus2.CEL", "GSM647597_W07_06Y47_HG_U133_Plus2.CEL", "GSM647600_W10_06Y44_HG_U133_Plus2.CEL")
+exclude.arrays <- c("GSM901488_t10941827.CEL", "GSM901590_t6435853.CEL", "GSM901596_t30233480.CEL", "GSM901635_t12826796.CEL", "GSM901715_t31323988.CEL", "GSM901751_t27248819.CEL", "GSM901787_t33629137.CEL", "GSM901822_t23737198.CEL", "1092761.cel", "1091261.cel", "1090861.cel", "01_0013_A1.CEL", "01_0026_A1_HG_U133_Plus_2.CEL", "GSM648590_01_0013_A1.CEL", "GSM648596_01_0026_A1_HG_U133_Plus_2.CEL", "GSM648718_26_260611A_HG_U133.2.CEL", "GSM244499.CEL", "26_260611A_HG_U133.2.CEL", "05_0011_A1_HG_U133_Plus_2.CEL", "15_0007A1_HG_U133_Plus_2.CEL", "09_0002A1_HG_U133_Plus_2.CEL", "06_0001_A2.CEL", "05_0008A1_HG_U133_Plus_2.CEL", "11_0021A_HG_U133_Plus_2.CEL", "GSM648643_05_0008A1_HG_U133_Plus_2.CEL", "GSM648645_05_0011_A1_HG_U133_Plus_2.CEL", "GSM648647_06_0001_A2.CEL", "GSM648656_09_0002A1_HG_U133_Plus_2.CEL", "GSM648682_11_0054A_HG_U133.2.CEL", "GSM648704_15_0007A1_HG_U133_Plus_2.CEL", "GSM648706_15_0017A_HG_U133_2.CEL")
 
 mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
 # change the sample names to more informative
@@ -229,6 +231,7 @@ mic.norm.eset <- rma(mic.raw,
                      background=TRUE)
 ```
 
+
 ### Array QC checks on normalized data with ArrayQualityMetrics
 
 ```{r normQC, eval=FALSE}
@@ -236,31 +239,26 @@ arrayQualityMetrics(expressionset=mic.norm.eset,
                     outdir=file.path(resultsDir, "QCreport_norm"), 
                     force=TRUE,
                     do.logtransform=FALSE, 
-                    intgroup=c("stage", "study"))
-q()
+                    intgroup=c("stage", "study")
 ```
 
 [Normalized Data QC Report](../results/WB/U133Plus2/QCreport_norm/index.html)
 
 ### Remove any remaining outlier samples
-GSM287389, GSM244502,GSM648696,GSM647548,GSM647551,GSM350157,GSM244501,GSM103054,GSM648605,GSM648695,GSM648714,GSM647552,GSM647574,GSM350177,GSM350178,GSM350236
+GSM901535, M033, M060, M129, GSM103067, GSM647548, GSM647628, GSM103048, GSM647574, GSM647597, GSM647600, GSM350178
 
 ```{r drop_outliers, eval=FALSE}
 # subset ExpressionSet to samples that are NOT the following
-exclude.arrays <- c("GSM287389","GSM244502", "GSM648696","GSM647548","GSM647551","GSM350157","GSM244501","GSM103054","GSM648605","GSM648695","GSM648714","GSM647552","GSM647574","GSM350177","GSM350178","GSM350236")
+exclude.arrays <- c("GSM901535", "M033", "M060", "M129", "GSM103067", "GSM647548", "GSM647628", "GSM103048", "GSM647574", "GSM647597", "GSM647600", "GSM350178")
+        
 mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
 ```
 
-### Drop replicates
-Overall, the GSE36809 study had more outlier samples than the GSE11375, so I kept the GSE11375 samples.
-- renormalize data
+### Renormalize data
 
-```{r discarddupes, eval=FALSE}
-nonduplicate.indices <- which(!(duplicated(pData(mic.raw)$sampleID)))
-# subset Expression Set discard samples 
-mic.raw <- mic.raw[,nonduplicate.indices]
+```{r normalize_RMA2, eval=FALSE}
 mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save.image(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
+save(list=c("mic.raw", "mic.norm.eset"), file=file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
 ```
 
 
@@ -394,10 +392,7 @@ stats.exprs <- lapply(seq(1,3,1), function(n) {
 
 Here I first looked for genes with at least a 2 fold change in expression and an adjusted pvalue <0.1. The results were sorted by the unadjusted pvalue and the top 100 taken for the heatmaps.
 
-There are three heatmaps for each comparison  
-- both genders 
-- female only
-- male only
+There is one heatmap for each comparison  with both genders and unknown genders included.
 
 *note that the differentially expressed genes clustered in these heatmaps are based on comparisons that include both genders* 
 
@@ -422,16 +417,18 @@ for(n in 1:3){
   row.names(top.exprs.contrast) <- paste(as.vector(unlist(mget(top.stats.exprs.contrast$ID, hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,top.stats.exprs.contrast$ID, ")", sep="")
 
   # heatmap annotations
-  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage")]
+  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage", "gender")]
   heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
   row.names(heatmap.annots) <- heatmap.annots$arrayID
   heatmap.annots$arrayID <- NULL
   # heatmap annotation colors
-  study_colors <- c(cbPalette[1:7] )
+  study_colors <- c(cbPalette, "#FF0000")
   names(study_colors) <- unique(unlist(pd.contrast$study))
-  stage_colors <- c("white", "darkgrey")
+  stage_colors <- c("white", "darkgrey", "black")
   names(stage_colors) <- unique(unlist(pd.contrast$stage))
-  ann_colors = list(study = study_colors, stage = stage_colors)
+  gender_colors <- cbPalette[c(3,5,8)]
+  names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
+  ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
   ## Heatmaps
   pheatmap(as.matrix(top.exprs.contrast), 
            annotation=heatmap.annots, 
@@ -471,16 +468,18 @@ top.exprs.union <- exprs.norm[top.IDs,]
 row.names(top.exprs.union) <- paste(as.vector(unlist(mget(row.names(top.exprs.union), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(top.exprs.union), ")", sep="")
 # annotations
 pd <- pData(mic.norm.eset)
-heatmap.annots <- pd[,c("arrayID", "study", "stage")]
+heatmap.annots <- pd[,c("arrayID", "study", "stage", "gender")]
 heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
 row.names(heatmap.annots) <- heatmap.annots$arrayID
 heatmap.annots$arrayID <- NULL
 # annotation colors
-study_colors <- c(cbPalette[1:7] )
-names(study_colors) <- unique(unlist(pd$study))
-stage_colors <- c("white", "darkgrey", "black")
-names(stage_colors) <- unique(unlist(pd$stage))
-ann_colors = list(study = study_colors, stage = stage_colors)
+  study_colors <- c(cbPalette, "#FF0000")
+  names(study_colors) <- unique(unlist(pd$study))
+  stage_colors <- c("white", "darkgrey", "black")
+  names(stage_colors) <- unique(unlist(pd$stage))
+  gender_colors <- cbPalette[c(3,5,8)]
+  names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
+  ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
 ## Heatmaps
 pheatmap(as.matrix(top.exprs.union), 
          annotation=heatmap.annots, 

@@ -28,19 +28,16 @@ The sections below provide code to reproduce the included results and plots.
 
 ## General purpose R libraries necessary for analysis
 
-```{r general_libraries}
+```{r general_libraries, results='hide'}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
 library(RColorBrewer) # library for generating color palettes
 library(googleVis) # library for presenting tables
 source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
-
-
-# formula to count number of occurrences of each of the pathprint outcomes
-count_trinary_outcomes <- function(vector){
-  c(length(which(vector==-1)),length(which(vector==0)),length(which(vector==1)) )
-  }
+#library(devtools) # install libraries from github
+#install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+#library(dplyr)
 ```
 
 ## Locations of directories for data, metadata and results
@@ -66,12 +63,14 @@ metaDir <- file.path(baseDir, "meta", "WB")
 
 ### Load libraries for Pathprint analysis and visualization
 
-```{r pathprint_libraries}
+```{r pathprint_libraries, results='hide'}
 library(GEOquery)
+library(ArrayExpress)
 library(pathprint)
 library(limma)
 library(ape)
 library(pheatmap)
+library(affy)
 ```
 
 ### Setup some more variables for the  analyses
@@ -80,8 +79,8 @@ library(pheatmap)
 # colorblind friendly palette
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # age ranges to compare
-child.age.range <- c(5,12)
-adult.age.range <- c(18,50)
+child.age.range <- c(5,19)
+adult.age.range <- c(20,60)
 neonate.age.range <- c(0,4)
 if (any(c(any(seq(adult.age.range[1], adult.age.range[2]) %in% seq(child.age.range[1], child.age.range[2])), 
 any(seq(adult.age.range[1], adult.age.range[2]) %in% seq(neonate.age.range[1], neonate.age.range[2])),
@@ -116,11 +115,9 @@ That revised metadata file is [here](../meta/WB/unified.metadata.refined.pathpri
 
 ### Parse the unified, refined and subsetted metadata file 
 - to make a covariate table that allows you to download the data using the [GEOquery][2] Bioconductor library
-
-- also limit samples to those within the age ranges described above and label each with their "stage"
+- limit samples to those within the age ranges described above and label each with their "stage"
 
 ```{r covariatedataframe}
-# U1332.0Plus only for now
 covars <- refined.metadata
 # convert character ages to numeric to allow numeric subsetting 
 covars$age <- as.numeric(as.character(covars$age))
@@ -157,18 +154,23 @@ write.table(covars,
 That revised metadata file is [here](../meta/WB/"unified.metadata.refined.pathprint_plaforms.targetted.samples.tab)
 
 ### Download Expression data from GEO
-- for each study
+- for each GEO study
   - pull down a study's expression data
     - subset study's expression data to samples of interest (using covars)
     - pathprint study
 - combine pathprinted data
 
 GSE13015 and GSE3284 have more than one platform per experiment, so need to handle those instances
+Also processed GSE54514 separately for now (data not into GEO as of `r date()`).
 
-```{r load_data, eval=FALSE}
+```{r pathprintdata, results='hide'}
 pathprint.GPLs <- names(platform.thresholds)
-fingerprints.l <- lapply(unique(covars$study), function(GSE){
+covars.GEO <- covars[which(covars$database=="GEO"),]
+
+fingerprints.GEO.l <- lapply(unique(covars.GEO$study), function(GSE){
+  print(GSE)
   GEOdata <- getGEO(GSE, GSEMatrix=TRUE)
+
   #GSE13015 and GSE3284 have more than one platform (GPL) per GSE, so need to handle those
   # if more than one platform in GSE, subset to platform that is covered by pathprint
   if (length(GEOdata)==1) {# only one GPL within the GSE
@@ -187,7 +189,7 @@ fingerprints.l <- lapply(unique(covars$study), function(GSE){
           } else { # more than one platform covered by pathprint in the GSE 
             # which GSE indexes (platforms) have samples you want?
             GPLS.with.samples <- which(unlist(lapply(GEOdata, function(study){
-              any(pData(study)$geo_accession %in% covars$arrayID)
+              any(pData(study)$geo_accession %in% covars.GEO$arrayID)
               })))
             
             if (length(GPLS.with.samples)>1){ # samples split across more than one pathprinted platform            
@@ -201,7 +203,9 @@ fingerprints.l <- lapply(unique(covars$study), function(GSE){
   # get intensity values
   eset <- exprs(GEOdata)
   # subset to our samples of interest
-  eset <- eset[,as.character(covars$arrayID[covars$study %in% GSE])]
+  eset <- eset[,as.character(covars.GEO$arrayID[covars.GEO$study %in% GSE])]
+  # write data to file for Les
+  write.table(eset, file=file.path(dataDir, GSE, paste(GSE, "GEO.eset.tab", sep=".")))
   # run pathprint on subsetted data
   mic.platform <- annotation(GEOdata)
   mic.species <- "human"
@@ -209,8 +213,334 @@ fingerprints.l <- lapply(unique(covars$study), function(GSE){
   mic.f.default <- exprs2fingerprint(exprs = eset, platform = mic.platform, species = mic.species, progressBar = FALSE)
   return(mic.f.default)
   })
-fingerprints <- do.call(cbind, fingerprints.l)
-save.image(file.path(resultsDir, "pathprint.RData")
+
+fingerprints.GEO <- do.call(cbind, fingerprints.GEO.l)
+```
+
+### Download Expression data from ArrayExpress and Pathprint
+- for the single ArrayExpress (AE) study
+  - pull down study's raw expression data (as an AffyBatch)
+    - RMA normalize into an ExpressionSet
+    - subset study's expression data to samples of interest (using covars)
+    - pathprint study
+- combine pathprinted data
+
+```{r pathprintAE, results='hide'}
+covars.AE <- covars[which(covars$database=="AE"),]
+fingerprints.AE.l <- lapply(unique(covars.AE$study), function(AEid){
+    ae.dataDir=file.path(dataDir, AEid)
+  if (!(file.exists(ae.dataDir))) {
+    dir.create(ae.dataDir)
+  }
+  AEdata <-   try(ArrayExpress(accession=paste("E", AEid, sep="-"), path=ae.dataDir, save=TRUE))
+  AEdata <- rma(AEdata)
+  # get intensity values
+  eset.AE <- as.data.frame(exprs(AEdata))
+  # subset to our samples of interest
+  eset.AE <- eset.AE[,as.character(covars.AE$arrayID[covars.AE$study %in% AEid])]
+  # run pathprint on subsetted data
+  mic.platform.AE <- as.character(unique(covars.AE$platform[covars.AE$study %in% AEid]))
+  mic.species <- "human"
+  mic.names <- names(eset.AE)
+  mic.f.default <- exprs2fingerprint(exprs = eset.AE, platform = mic.platform.AE, species = mic.species, progressBar = FALSE)
+  return(mic.f.default)
+  })
+
+fingerprints.AE <- do.call(cbind, fingerprints.AE.l)
+```
+
+### Normalize data from BD and Pathprint
+
+```{r pathprintBD, results='hide'}
+covars.BD <- covars[which(covars$database=="BD"),]
+row.names(covars.BD) <- covars.BD$arrayID
+celfiles.BD <- as.character(covars.BD$CEL_regex)
+# load CEL files 
+affyraw.BD <- ReadAffy(filenames=file.path(dataDir, "BD", celfiles.BD), phenoData=covars.BD)
+# change names to match covars$arrayID
+sampleNames(affyraw.BD) <- as.character(covars.BD$arrayID)
+# normalize
+affynorm.BD  <- affy::rma(affyraw.BD)
+# extract intensities
+eset.BD <- exprs(affynorm.BD)
+# fingerprint
+mic.platform.BD <- as.character(unique(covars.BD$platform))
+mic.species <- "human"
+mic.names <- names(eset.BD)
+fingerprints.BD <- exprs2fingerprint(exprs = eset.BD, platform = mic.platform.BD, species = mic.species, progressBar = FALSE)
+```
+
+#### Combine Pathprints of all samples
+
+```{r unify}
+fingerprints <- do.call(cbind, list(fingerprints.GEO, fingerprints.AE, fingerprints.BD))
+save(list="fingerprints",file=file.path(resultsDir, "pathprints.RData"))
+```
+
+```{r loaddata, eval=FALSE, echo=FALSE}
+## hack to get around caching issues with knitr
+load(file.path(resultsDir, "pathprints.RData"))
+```
+
+## Default Pathway Differentiation
+
+Find pathways with minimal intra-group variation and maximal inter-group variation.
+
+```{r pathwaydiff_vars}
+# cutoffs used to filter the data
+ttest.cutoff=1e-10
+sd.cutoff=0.5
+```
+
+For this, I set two filtering criteria:
+1) maximize homogeneity within an age group - based on minimizing the standard deviation (as I have no idea how to calculate a trinary entropy), cutoff used was sd<`r sd.cutoff`
+2) maximize differences between groups - using ttests, cutoff used here was p<`r ttest.cutoff`
+
+### Setup design and contrast matrices 
+
+```{r pathprint_design}
+# reorder the fingerprints and metadata about the samples
+fingerprints <- fingerprints[,order(colnames(fingerprints))]
+pd <- covars[order(covars$arrayID),]
+
+if(!identical(as.character(pd$arrayID),colnames(fingerprints))){
+  stop("covariate and fingerprint samples are not identically ordered")
+}
+design <- model.matrix(~ 0 + stage,  data=pd)
+# tweak the headings
+colnames(design) <- sub("stage", "", colnames(design))
+
+contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=colnames(design))
+```
+
+### Heatmaps
+- clustered by both column (sample) and row (pathway)
+
+#### Setup annotations
+
+```{r pathprint_heatmap_colors}
+# annotation colors
+study_colors <- rep(cbPalette,2)[1:18]
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+gender_colors <- c("blue", "pink", "yellow")
+genders <-as.vector(unique(unlist(pd$gender)))
+genders[is.na(genders)] <- "unknown"
+names(gender_colors) <- unique(unlist(genders))
+ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_colors)
+```
+
+#### Make comparisons and plot
+
+```{r pathprint_default_contrasts, fig.width=12, fig.height=12}
+# for each comparison
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  fingerprints.contrast <- fingerprints[,pd$stage %in% c(stage.1, stage.2)]
+  pd.contrast <- pd[pd$stage %in% c(stage.1, stage.2),] 
+  contrast.factor <- as.factor(pd.contrast$stage)
+  sds.stage = adply(fingerprints.contrast, 1, function(x) {
+    by(x, contrast.factor, function(x) sd(x))
+    })
+  row.names(sds.stage) <- sds.stage$X1
+  sds.stage$X1 <- NULL
+  sds.stage <- as.matrix(sds.stage)
+  mode(sds.stage) <- "numeric"
+  # t-tests between groups
+  ttestpvals.contrast <- apply(fingerprints.contrast, 1, function(x) {
+    try(t.test(x~contrast.factor)$p.value)
+    })
+  ttestpvals.contrast<-as.numeric(ttestpvals.contrast)
+  
+  # fisher's exact tests
+  #   getcounts <- function(x){
+  #     table(factor(x,lev=c(-1,0,1)))
+  #     }
+  #   fisherpvals.contrast <- apply(fingerprints.contrast, 1, function(x){
+  #     counts.df <- aggregate(x, by=list(stage=pd.contrast$stage), getcounts, simplify=T)
+  #     counts.df$stage <- NULL
+  #     pval <- fisher.test(counts.df)$p.value
+  #     return(pval)
+  #     })
+  
+  # filter genes by intra-group variation and across group differences
+  fingerprints.contrast.sub <- fingerprints.contrast[sds.stage[,stage.1]<=sd.cutoff  & sds.stage[,stage.2]<=sd.cutoff & ttestpvals.contrast<ttest.cutoff &  !is.na(ttestpvals.contrast),]
+  #   fingerprints.contrast.sub <- fingerprints.contrast[sds.stage[,stage.1]<=sd.cutoff  & sds.stage[,stage.2]<=sd.cutoff & fisherpvals.contrast<ttest.cutoff &  !is.na(fisherpvals.contrast),]
+  
+  # remove any columsn with only NAs
+  fingerprints.contrast.sub <- fingerprints.contrast.sub[!apply(fingerprints.contrast.sub, 1, function(n) all(is.na(n))),]
+  dim(fingerprints.contrast.sub)
+  
+  ## Heatmaps
+  # annotations for heatmaps
+  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage", "gender")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  row.names(heatmap.annots) <- heatmap.annots$arrayID
+  heatmap.annots$arrayID <- NULL
+  # getting the annotations and annotation colors to play nice
+  heatmap.annots <- as.matrix(heatmap.annots)
+  
+  heatmap.annots[,"gender"][is.na(as.vector(heatmap.annots[,"gender"]))] <- "unknown"
+  
+  # both genders
+  if(nrow(fingerprints.contrast.sub)>0){
+    pheatmap(fingerprints.contrast.sub, color=c("blue", "white", "red")    , cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+    }
+  }
+```
+
+### Remove Trauma studies
+
+```{r removetrauma}
+trauma.studies <- c("GSE5580","GSE11375","GSE36809")
+pd <- pd[!(pd$study %in% trauma.studies),]
+fingerprints <- fingerprints[,colnames(fingerprints) %in% pd$arrayID]
+```
+
+#### Setup annotations again
+
+```{r pathprint_heatmap_colors2}
+# annotation colors
+study_colors <- rep(cbPalette,2)[1:15]
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+gender_colors <- c("blue", "pink", "yellow")
+genders <-as.vector(unique(unlist(pd$gender)))
+genders[is.na(genders)] <- "unknown"
+names(gender_colors) <- unique(unlist(genders))
+ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_colors)
+```
+
+#### Make comparisons and plot
+
+```{r pathprint_default_contrasts2, ,fig.width=12, fig.height=12, warning=FALSE}
+# for each comparison
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  fingerprints.contrast <- fingerprints[,pd$stage %in% c(stage.1, stage.2)]
+  pd.contrast <- pd[pd$stage %in% c(stage.1, stage.2),] 
+  contrast.factor <- as.factor(pd.contrast$stage)
+  sds.stage = adply(fingerprints.contrast, 1, function(x) {
+    by(x, contrast.factor, function(x) sd(x))
+    })
+  row.names(sds.stage) <- sds.stage$X1
+  sds.stage$X1 <- NULL
+  sds.stage <- as.matrix(sds.stage)
+  mode(sds.stage) <- "numeric"
+  # t-tests between groups
+  ttestpvals.contrast <- apply(fingerprints.contrast, 1, function(x) {
+    try(t.test(x~contrast.factor)$p.value)
+    })
+  ttestpvals.contrast<-as.numeric(ttestpvals.contrast)
+  
+  # filter genes by intra-group variation and across group differences
+  fingerprints.contrast.sub <- fingerprints.contrast[sds.stage[,stage.1]<=sd.cutoff  & sds.stage[,stage.2]<=sd.cutoff & ttestpvals.contrast<ttest.cutoff &  !is.na(ttestpvals.contrast),]
+  
+  # remove any columsn with only NAs
+  fingerprints.contrast.sub <- fingerprints.contrast.sub[!apply(fingerprints.contrast.sub, 1, function(n) all(is.na(n))),]
+  dim(fingerprints.contrast.sub)
+  
+  ## Heatmaps
+  # annotations for heatmaps
+  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage", "gender")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  row.names(heatmap.annots) <- heatmap.annots$arrayID
+  heatmap.annots$arrayID <- NULL
+  # getting the annotations and annotation colors to play nice
+  heatmap.annots <- as.matrix(heatmap.annots)
+  
+  heatmap.annots[,"gender"][is.na(as.vector(heatmap.annots[,"gender"]))] <- "unknown"
+  
+  # both genders
+  if(nrow(fingerprints.contrast.sub)>0){
+    pheatmap(fingerprints.contrast.sub, color=c("blue", "white", "red")    , cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+    }
+  }
+```
+
+
+### Remove GSE54514
+
+
+```{r removeGSE54514}
+pd <- pd[!(pd$study %in% "GSE54514"),]
+fingerprints <- fingerprints[,colnames(fingerprints) %in% pd$arrayID]
+```
+
+#### Setup annotations again
+
+```{r pathprint_heatmap_colors3}
+# annotation colors
+study_colors <- rep(cbPalette,2)[1:14]
+names(study_colors) <- unique(unlist(pd$study))
+stage_colors <- c("white", "darkgrey", "black")
+names(stage_colors) <- unique(unlist(pd$stage))
+gender_colors <- c("blue", "pink", "yellow")
+genders <-as.vector(unique(unlist(pd$gender)))
+genders[is.na(genders)] <- "unknown"
+names(gender_colors) <- unique(unlist(genders))
+ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_colors)
+```
+
+#### Make comparisons and plot
+
+```{r pathprint_default_contrasts3, ,fig.width=12, fig.height=12, warning=FALSE}
+# for each comparison
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  fingerprints.contrast <- fingerprints[,pd$stage %in% c(stage.1, stage.2)]
+  pd.contrast <- pd[pd$stage %in% c(stage.1, stage.2),] 
+  contrast.factor <- as.factor(pd.contrast$stage)
+  sds.stage = adply(fingerprints.contrast, 1, function(x) {
+    by(x, contrast.factor, function(x) sd(x))
+    })
+  row.names(sds.stage) <- sds.stage$X1
+  sds.stage$X1 <- NULL
+  sds.stage <- as.matrix(sds.stage)
+  mode(sds.stage) <- "numeric"
+  # t-tests between groups
+  ttestpvals.contrast <- apply(fingerprints.contrast, 1, function(x) {
+    try(t.test(x~contrast.factor)$p.value)
+    })
+  ttestpvals.contrast<-as.numeric(ttestpvals.contrast)
+  
+  # filter genes by intra-group variation and across group differences
+  fingerprints.contrast.sub <- fingerprints.contrast[sds.stage[,stage.1]<=sd.cutoff  & sds.stage[,stage.2]<=sd.cutoff & ttestpvals.contrast<ttest.cutoff &  !is.na(ttestpvals.contrast),]
+  
+  # remove any columsn with only NAs
+  fingerprints.contrast.sub <- fingerprints.contrast.sub[!apply(fingerprints.contrast.sub, 1, function(n) all(is.na(n))),]
+  dim(fingerprints.contrast.sub)
+  
+  ## Heatmaps
+  # annotations for heatmaps
+  heatmap.annots <- pd.contrast[,c("arrayID", "study", "stage", "gender")]
+  heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+  row.names(heatmap.annots) <- heatmap.annots$arrayID
+  heatmap.annots$arrayID <- NULL
+  # getting the annotations and annotation colors to play nice
+  heatmap.annots <- as.matrix(heatmap.annots)
+  
+  heatmap.annots[,"gender"][is.na(as.vector(heatmap.annots[,"gender"]))] <- "unknown"
+  
+  # both genders
+  if(nrow(fingerprints.contrast.sub)>0){
+    pheatmap(fingerprints.contrast.sub, color=c("blue", "white", "red")    , cluster_rows=T, cluster_cols=T, show_colnames=F, annotation=heatmap.annots,  legend_breaks=c(-1,0,1),main=paste("Pathways for ", contrast, "comparison - clustered",  sep=" "), fontsize=14, fontsize_row=10, annotation_colors=ann_colors)
+    }
+  }
 ```
 
 
@@ -218,7 +548,4 @@ save.image(file.path(resultsDir, "pathprint.RData")
 [1]: http://www.bioconductor.org (BioC)
 [2]: http://www.bioconductor.org/packages/2.11/bioc/html/GEOquery.html (GEOquery_BioC_library)
 
-[3]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
-[4]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
-[5]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
 
