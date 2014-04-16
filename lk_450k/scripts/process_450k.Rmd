@@ -1,0 +1,473 @@
+---
+title: "450k Analysis"
+output:
+  html_document:
+    toc: true
+    theme: united
+    fig_width: 12
+    fig_height: 12
+    fig_caption: false
+    highlight: textmate
+    smart: true
+---
+
+
+```{r setup, echo=FALSE}
+options("width"=200)
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=TRUE, echo=FALSE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+
+clientname="Les Kobzik"
+clientemail="lkobzik@hsph.harvard.edu"
+lablocation="HSPH "
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+---
+
+Illumnina 450k(methyation) analysis for `r clientname` (`r clientemail`), at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+# METHODS SUMMARY
+
+All raw data (idat format) for was imported and processed using the [minfi][1] and [methylumi][2] [Bioconductor][3] packages. 
+
+Quality control involved examining sample results for control probe outliers, beta density outliers and using array SNP probes to look for sample swaps. Samples were examined for potential unknown confounding factors such as batch, slide or sample gender using mutlidimensional scaling. 
+
+Intensities were normalized both within and between arrays using a version of the [Tost][4] method. 
+
+Differential methylation at individual loci was assessed with pairwise F-tests of the logit transformed beta values i.e. $\beta$ = $\frac{methylated}{unmethylated+methylated}$.
+
+M=$\log2(\frac{methylated}{unmethylated})$
+
+No probes were filtered, genders were not adjusted for and duplicate samples were not handled.
+
+---
+
+# SETUP
+
+## Libraries
+
+Bioconductor and R libraries used to process and visualize the data
+
+```{r libraries}
+library(ggplot2) # pretty plots
+library(minfi)
+library(xlsx) # load Excel files
+library(wateRmelon) #pfilter and BMIQ funcitons
+library(IlluminaHumanMethylation450k.db)
+library(devtools)
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(methylumi)
+library(beanplot)
+```
+
+## Variables
+
+```{r variables}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_450k/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_450k/"
+  } else {
+  baseDir <- "/Volumes/ody/consults/lk_450k/"
+  }
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir<-file.path(baseDir, "results")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+## FUNCTIONS
+
+```{r functions}
+densityBeanPlot.JH <- function (dat, sampGroups = NULL, sampNames = NULL, main = NULL, pal = branrewer.pal(12, "Set3"), numPositions = 10000, label.size=0.8) 
+{
+    if (is(dat, "RGChannelSet") || is(dat, "MethylSet")) {
+        b <- getBeta(dat)
+    }
+    else if (is(dat, "matrix")) {
+        b <- dat
+    }
+    else {
+        stop("argument 'dat' must be an 'RGChannelSet', a 'MethylSet'  or matrix.")
+    }
+    n <- ncol(b)
+    if (!is.null(sampNames)) 
+        colnames(b) <- sampNames
+    if (is.null(main)) 
+        main <- "Beta"
+    if (is.null(sampGroups)) 
+        sampGroups <- rep(1, n)
+    sampGroups <- as.factor(sampGroups)
+    col <- lapply(sampGroups, function(x) rep(pal[x], 4))
+    if (is.null(numPositions)) 
+        idx <- 1:dim(dat)[1]
+    else idx <- sample(nrow(b), numPositions)
+    x <- melt(b[idx, ], varnames = c("cpg", "sample"))
+    o <- order(colnames(b))
+    beanplot(value ~ sample, horizontal = TRUE, what = c(0, 1, 
+        1, 0), log = "", las = 1, ylim = c(0, 1), xlab = "Beta", 
+        main = main, col = col[o], data = x, cex.axis=label.size, cex.lab = 0.9, beanlinewd = 1, 
+        border = NA)
+    abline(h = 1:(n + 1) - 0.5, lty = 3, col = "grey70")
+}
+```
+
+---
+
+# IMPORT
+
+## Sample metadata import
+
+```{r metadataimport, results='hide'}
+samplesheet <- read.delim(file.path(metaDir, "Samples_Table.txt" ), sep="\t")
+metadata <- read.xlsx(file.path(metaDir, "human-methylation450-96samples-sample-sheet_Kobzik.xlsx"), sheetIndex = 2, header=F)
+
+# fix the name of the renamed replicate sample in the samplesheet so you can match to metadata
+samplesheet$Sample.ID <- sub("a5_2", "a5",samplesheet$Sample.ID)
+# capitalize the array positionson the metadata so you can match by it as well
+metadata$X1 <- toupper(metadata$X1)
+
+# sanity check to make sure you have metadata for all samples
+all(samplesheet$Sample.ID %in% metadata$X2)
+all(metadata$X2 %in% samplesheet$Sample.ID)
+
+# merge all sample metadata
+merged_metadata <- merge(metadata, samplesheet, by.x=c("X1", "X2"), by.y=c("Sample_Well", "Sample.ID"))
+
+# setup for minfi & methylumi import functions
+merged_metadata$barcode<-paste(merged_metadata$Sentrix.Barcode, merged_metadata$Sample.Section, sep="_")
+merged_metadata$Basename <- file.path(dataDir, merged_metadata$barcode)
+
+names(merged_metadata) <- sub("Sentrix.Barcode", "Slide", names(merged_metadata))
+names(merged_metadata) <- sub("Sample.Section", "Array", names(merged_metadata))
+names(merged_metadata) <- sub("X1", "Position", names(merged_metadata))
+names(merged_metadata) <- sub("X2", "SampleID", names(merged_metadata))
+names(merged_metadata) <- sub("X3", "group", names(merged_metadata))
+# dump extra columns
+merged_metadata <- merged_metadata[,!grepl("Detected|Signal|Pool_ID|Sample_Plate|Index|Sample.Group", names(merged_metadata))]
+# add this so that methylumi can get the sampleNames on iDAT import
+row.names(merged_metadata) <- merged_metadata$barcode
+```
+
+The metadata for the samples is as follows:
+
+```{r printmetadata, results='asis'}
+kable(metadata)
+```
+
+## Sample data import
+
+```{r dataimport, cache=TRUE}
+#minfi 
+## method, use etended option to get an RGChannelSEtextended, necessary for pfiltering in next steps
+if(file.exists(file.path(resultsDir, "RDATA.RGset"))){
+  load(file.path(resultsDir, "RDATA.RGset"))
+  } else {
+    RGset <- read.450k.exp(base=dataDir, targets=merged_metadata, extended = TRUE)
+    save(RGset, file=file.path(resultsDir, "RDATA.RGset"))
+    }
+
+#methylumi
+barcodes <- unique(sub("_Grn.idat|_Red.idat", "", list.files(path = dataDir, pattern = "idat$")))
+
+if(file.exists(file.path(resultsDir, "RDATA.mldat"))){
+  load(file.path(resultsDir, "RDATA.mldat"))
+  } else {  
+    mldat <- methylumIDAT(barcodes=barcodes, idatPath=dataDir, parallel=TRUE, oob=TRUE)
+    save(mldat, file=file.path(resultsDir, "RDATA.mldat"))
+    }
+# merge in sample metadata
+pData(mldat) <- merge(pData(mldat), merged_metadata)
+# add in Ilumina annotations, here we grab them from the array facility's GenomeStudio output
+annots <- read.delim(file.path(dataDir, "Group Methylation Profile.txt"), sep="\t")
+annots <- annots[,!grepl("Group", names(annots))]
+fData(mldat) <- merge(fData(mldat), annots, by.x="Probe_ID", "TargetID")
+#save.image(file.path(resultsDir, "RDATA" ))
+
+#methylumi, from GenomeStudio output
+# mldat.BS <- methylumiR(file.path(dataDir, "Sample Methylation Profile.txt"), qcfile=file.path(dataDir, "Control Probe Profile.txt"), sampleDescriptions=merged_metadata)
+# save.image(file.path(resultsDir, "RDATA" ))
+```
+
+---
+
+# QUALITY CONTROL
+
+We can run some basic checks on the minfi imported data to see if any arrays failed during processing.
+
+## Control Probe Sets
+
+First we take advantage of  a number  of control probes that Illumina includes on every array to check for things like failure of bisulfite converion, extension, hybridization or factors.
+
+```{r controlprobeset_minfi, out.width='50%'}
+# these use the minfi RGChannelSet objects
+control.probesets <- c("BISULFITE CONVERSION I", "BISULFITE CONVERSION II", "EXTENSION", "HYBRIDIZATION", "NEGATIVE", "NON-POLYMORPHIC", "NORM_A", "NORM_C", "NORM_G", "NORM_T", "SPECIFICITY I", "SPECIFICITY II")
+for (set in control.probesets){
+  controlStripPlot(RGset, controls=set, sampNames=pData(RGset)$SampleID, xlim=c(1,17))
+}
+```
+
+These arrays look fine. No large outliers to be found.
+
+## Intensity Distributions
+
+We can also take a look at their overall beta values to see if we find any outliers.
+
+```{r densityplots_minfi, out.width='50%'}
+# these use the minfi RGChannelSet objects
+densityPlot(RGset, sampGroups=pData(RGset)$Array, main="By Array", pal=cbPalette)
+densityPlot(RGset, sampGroups=pData(RGset)$Slide,  main="By Slide", pal=cbPalette)
+### density bean plots
+par(oma=c(2,10,1,1))
+densityBeanPlot.JH(RGset, sampGroups=pData(RGset)$Array, sampNames=pData(RGset)$Sample_Name, main="By Array", pal=rep("black",12),label.size=0.7)
+densityBeanPlot.JH(RGset, sampGroups=pData(RGset)$Slide, sampNames=pData(RGset)$Sample_Name, main="By Slide", pal=cbPalette, label.size=0.7)
+```
+
+There don't appear to be any major outliers. Between these results and those of the control probes, no arrays appear to have failed.
+
+---
+
+# DATA EXPLORATION
+
+Lets get a look at the underlying structure of the data. Are there unknown covariates that we can see? Are the samples clustering by batch or array position? We can also look for any sample swaps that might have occurred.
+
+### Genotypes
+
+We can use the 65 SNP probes on the 450k chip to take a broad look at the population structure of our samples. Using the beta values from these probes we can look for samples that correlate highly with each other (>0.6) as evidence that they are identical or related samples.
+
+```{r snps_methylumi, out.width='50%'}
+# this is the only reason you are keeping methylumi around
+betas.snps <- betas(mldat)[grep("rs", row.names(betas(mldat))),]
+names(betas.snps) <- names(betas.snps) 
+cor.snps <- cor(betas.snps, use = "pairwise.complete.obs")
+
+cor.snps.m <- melt(cor.snps)
+ggplot(cor.snps.m, aes(X1, X2, fill = value>0.8)) + geom_tile(color="darkgrey")+
+  scale_x_discrete(name="")+scale_y_discrete(name="")+
+   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+      scale_fill_manual(values = cbPalette[1:2])
+
+# what are the sampel pairs with high SNP concordance
+cor.snps.hi <- cor.snps.m[cor.snps.m$value>0.6,]
+
+cor.snps.hi <- cor.snps.hi[apply(cor.snps.hi, 1, function(x){
+  x[1]!=x[2]
+}),]
+
+cor.snps.hi$X1 <- merged_metadata$SampleID[match(cor.snps.hi$X1, merged_metadata$barcode)]
+cor.snps.hi$X2 <- merged_metadata$SampleID[match(cor.snps.hi$X2, merged_metadata$barcode)]
+names(cor.snps.hi) <- c("Sample1", "Sample2", "correlation")
+```
+
+Sample duplicates show high correlations for genotypes (as expected). 22m shows an unexpectedly high correlation with 23m. Are they related?
+
+```{r showcorrs, results='asis'}
+kable(cor.snps.hi, row.names=FALSE)
+```
+
+### Methylation Based Clustering
+
+First lets look at an unsupervised clustering of the samples to check if they cluster by class.
+
+```{r mdsplot, out.width="50%"}
+mdsplot.RGset(RGset, numPositions = 1000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group", cex=10, alpha=0.5)
+```
+
+There are definite clusters, but they are not purely defined by sample group. Are they clustering by slide or slide position (array)?
+
+```{r mdsplot2_minfi, out.width="50%"}
+mdsplot.RGset(RGset, numPositions = 1000, sampGroups = "Slide", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Slide", cex=10, alpha=0.5)
+mdsplot.RGset(RGset, numPositions = 1000, sampGroups = "Array", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Array", cex=10, alpha=0.5)
+```
+
+The samples are clustering into (loosely) 6 groups, with four of the groups defined as vDAART and PBMC Japan/Taro samples, and the other two containing all the asthmatics, controls and smokers samples. The split between groups of a sample type may be due to gender.
+
+We can estimate the sample sexes based on their methylation data. Using the  median values of the measurments on the X and Y chromosomes, if yMed - xMed is less than cutoff we predict a female, otherwise male. Using these values, we can see if gender predicts the sample clusters.
+
+```{r genderpredict_minfi, out.width='50%'}
+# the red green probe values have to be mapped to the Genome (i.e. annotated) for this step
+GMset <- mapToGenome(RGset)
+predictedSex <- getSex(GMset)
+
+pData(RGset) <- cbind(pData(RGset), predictedSex)
+mdsplot.RGset(RGset, numPositions = 1000, sampGroups = "predictedSex", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Array", cex=10, alpha=0.5)
+```
+
+As you can see, gender clearly differentiates the sample groups.  
+How do the groups separate if we only look at one gender at a time?
+
+```{r genderedmds, out.width='50%'}
+mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
+
+mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+```
+
+There are still big differences between the adult samples (VDAART, PBMC Japan/Taro) and the cord blood samples (Asthmatics, Controls and Smokers). Given that we are mainly interested in the latter groups, we can exclude the adult samples and look at the remaining samples.
+
+```{r subsetgendermds, out.width='50%'}
+#drop samples we aren't interested in
+RGset.sub <- RGset[,which(grepl("Asthma|Control|Smoker",pData(RGset)$group))]
+mdsplot.RGset(RGset.sub[,which(pData(RGset.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
+mdsplot.RGset(RGset.sub[,which(pData(RGset.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+```
+
+---
+
+# PREPROCESSING
+
+## Background Correction and Normalization
+
+A stratified quantile normalization between and within the arrays.
+
+This procedure is an implementation of the [Tost method][4], which essentially quantile normalizes each probe type and probe target region separately. 
+
+See the [minfi publication][5] for details about this method and comparisons to other normalization methods. 
+
+```{r norm, results='hide'}
+# this step will not work with pfiltered data
+# dasen normalization not working with minfi data or methylumi data
+# becuase of stratification in normalizaitno procedure, this can only yield a GenomicRatioSet
+GRset.norm <-  preprocessQuantile(RGset, fixOutliers = FALSE, removeBadSamples = FALSE, quantileNormalize = TRUE, stratified=TRUE, verbose=TRUE)
+```
+
+Post-normalization MDS plots.
+
+```{r postnormMDS, out.width='50%'}
+GRset.norm.sub <- GRset.norm[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm)$group))]
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+```
+
+
+# DIFFERENTIAL METHYLATION ANALYSIS
+
+Pairwise comparisons between Smokers and Controls and Between Asthmatics and Controls, at individual probes.  
+This approach does not currently:  
+  - filter any probes for quality,SNPs or repeats  
+  - address any imbalances in gender that might exist between groups  
+  - adjust for inter-probe dependencies (could affect the multiple test adjustment)  
+  
+```{r dmp, cache=TRUE}
+all.pair.combos <- combn(as.vector(unique(pData(GRset.norm)$group)),2)
+selected.combos <- all.pair.combos[,apply(all.pair.combos, 2, function(x) any(grepl("Controls", x)) & any(grepl("Asthmatics|Smokers",x)))]
+# SORT SO CONTROLS ARE FIRST
+selected.combos <- apply(selected.combos, 2, function(x) {
+  if(x[1]!="Controls"){rev(x)}
+  else {x}
+    })
+
+all.stats <- apply(selected.combos, 2, function(combo){
+  contrast <- paste(combo, collapse="-vs-")
+  # subset data to smples of interest
+  GRset.norm.combo <- GRset.norm[,pData(GRset.norm)$group %in% combo]
+  # get logit transformed beta values
+  Mvalues.combo <- getM(GRset.norm.combo)
+  # run F-tests to find differentially methylated loci
+  stats <- dmpFinder(Mvalues.combo, pheno=pData(GRset.norm.combo)$group, type="categorical")
+  stats <- row2colnames(stats, "TargetID")
+  stats.annot <- merge(stats, as.data.frame(annots), by.y="TargetID")
+  return(list(contrast=contrast, stats.annot=stats.annot))
+})
+
+
+```
+
+## Controls vs. Asthmatics
+The table here shows just the top ten differentially methylated probes. You can find the annotated results for all probes in the Excel file under the table.
+
+```{r results1, results='asis'}
+x <- all.stats[[2]]
+contrast.sub <- x$contrast
+stats.annot.sub <- x$stats.annot
+# sort by adjusted pvalue before writing to file
+stats.annot.sub <- stats.annot.sub[order(stats.annot.sub$qval),]
+write.table(stats.annot.sub, file=file.path(resultsDir, paste("annotated.stats", contrast.sub, "xls", sep="." )), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+stats.annot.sub <- stats.annot.sub[,!grepl("SEQ|COLOR|NEXTBASE|ADDRESS|RANDOM|METHYL27", names(stats.annot.sub))]
+output <- head(stats.annot.sub)
+output[is.na(output)]   <- " " 
+kable(output)
+```
+
+[Excel file with results for Controls vs. Asthmatics](../results/`r paste("annotated.stats", contrast.sub, "xls", sep="." )`) 
+
+## Controls vs. Smokers
+The table here shows just the top ten differentially methylated probes. You can find the annotated results for all probes in the Excel file under the table.
+
+```{r results2, results='asis'}
+x <- all.stats[[1]]
+contrast.sub <- x$contrast
+stats.annot.sub <- x$stats.annot
+# sort by adjusted pvalue before writing to file
+stats.annot.sub <- stats.annot.sub[order(stats.annot.sub$qval),]
+write.table(stats.annot.sub, file=file.path(resultsDir, paste("annotated.stats", contrast.sub, "xls", sep="." )), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+stats.annot.sub <- stats.annot.sub[,!grepl("SEQ|COLOR|NEXTBASE|ADDRESS|RANDOM|METHYL27", names(stats.annot.sub))]
+output <- head(stats.annot.sub)
+output[is.na(output)]   <- " " 
+kable(output)
+```
+
+[Excel file with results for Controls vs. Smokers](../results/`r paste("annotated.stats", contrast.sub, "xls", sep="." )`) 
+
+---
+
+# FUTURE WORK
+
+## Filter Probes
+
+We could remove probes based on bead count and detection p-values across the samples. Because our datasets are of mixed genders, this step can also result in the removal of most of the chrY and chrX probes. We can also remove probes targetted to areas with known SNPs or repetetive DNA. 
+
+**For now, we've left  all the probes in but we can revisit this if we don't find anything significant, especially after multiple test correction**
+
+```{r pfilter, eval=FALSE}
+# Failed probes
+## have to do the initial pfilter with the base RGset, as it fails with with the GMset
+RGset.pf <- pfilter(RGset)
+## transform to GM so you can get actual probe names instead of indices
+GMset.pf <- mapToGenome(RGset.pf)
+## get failed probe names by comparing pre and post filtered objects
+failedprobes <- featureNames(GMset)[!featureNames(GMset) %in% featureNames(GMset.pf)]
+## subset data to passed probes
+GRset.norm.passed <- GRset.norm[which(!featureNames(GRset.norm) %in% failedprobes),]
+### test for improvements in separation
+GRset.norm.sub <- GRset.norm.passed[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed)$group))]
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+
+# Probes with SNPs
+## get the probe annotations
+annots <- getAnnotation(GRset.norm)
+## probes with SNPs overlapping the CpG site
+CpGSNPprobes <-  row.names(annots[which(!is.na(annots$CpG_rs)),])
+GRset.norm.passed.CpGSNPfree <- GRset.norm.passed[which(!featureNames(GRset.norm.passed) %in% CpGSNPprobes),]
+### test for improvements in separation
+GRset.norm.sub <- GRset.norm.passed.CpGSNPfree[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed.CpGSNPfree)$group))]
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+## probes with SNPs overlapping the extension site
+SBESNPprobes <-  row.names(annots[which(!is.na(annots$SBE_rs)),])
+GRset.norm.passed.CpGSNPfree.SBESNPfree <- GRset.norm.passed.CpGSNPfree[which(!featureNames(GRset.norm.passed.CpGSNPfree) %in% SBESNPprobes),]
+### test for improvements in separation
+GRset.norm.sub <- GRset.norm.passed.CpGSNPfree.SBESNPfree[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed.CpGSNPfree.SBESNPfree)$group))]
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 1000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 1000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+```
+
+
+
+[1]: http://www.bioconductor.org/packages/2.10/bioc/html/minfi.html (minfi)
+
+[2]: http://www.bioconductor.org/packages/release/bioc/html/methylumi.html (methylumi)
+
+[3]: http://www.bioconductor.org (BioC)
+
+[4]: http://www.ncbi.nlm.nih.gov/pubmed/22690668 (Tost)
+
+[5]: http://www.ncbi.nlm.nih.gov/pubmed/24478339 (minfipub)
+
+
