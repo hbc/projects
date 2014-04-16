@@ -23,11 +23,11 @@ Second analysis, using increased Lycorine concentration and matched control.
 
 All ZebGene 1.0 ST arrays were processed using the [BioConductor][1] package [oligo][2], quality-controlled with [arrayQualityMetrics][3] and [RMA normalized][4]. Batch correction was performed with the [sva][5] package via the [ComBat][6] method. Differentially expressed genes were identified using [limma][7].
 
-The sections below provide descriptions of the included results and include code to reproduce them. 
+The sections below provide descriptions of the included results and include code to reproduce them.
 
 ---
 
-# Setup 
+# Setup
 
 ## Libraries
 
@@ -64,7 +64,7 @@ source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
 if(file.exists("/n/home08/jhutchin/")){
   baseDir="/n/hsphS10/hsphfs1/chb/projects/lz_HSC_niche_effects/"
   } else if (file.exists("/Volumes/ody/")){
-  baseDir="/Volumes/ody_new/projects/lz_HSC_niche_effects/"
+  baseDir="/Volumes/ody/projects/lz_HSC_niche_effects/"
 }
 metaDir=file.path(baseDir, "meta")
 dataDir=file.path(baseDir, "data")
@@ -85,14 +85,14 @@ sdfilter <- 0.1
 Load the metadata and use the  phenotypes and array names from the metadata to load in the raw data.
 
 ```{r dataload, results='hide'}
-covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
+covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1)
 covars <- covars[order(covars$sample),]
 celFiles <- file.path(dataDir, row.names(covars))
 affyRaw <- read.celfiles(celFiles)
-## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
+## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in
 #subsequent columns
 identical(basename(celFiles), row.names(covars)) ## sanity check
-pData(affyRaw) <- covars 
+pData(affyRaw) <- covars
 validObject(affyRaw) ## sanity check
 ````
 
@@ -100,13 +100,13 @@ The table below details the metadata for this analysis.
 
 ```{r covars, results='asis'}
 ## Sample information table
-pd.gvis <- gvisTable(as.data.frame(apply(rownames2col(pData(affyRaw), "CEL"),2, as.character)), options=list(width=960))  
+pd.gvis <- gvisTable(as.data.frame(apply(rownames2col(pData(affyRaw), "CEL"),2, as.character)), options=list(width=960))
 print(pd.gvis, "chart")
 ```
 
 ---
 
-# Basic QA/QC 
+# Basic QA/QC
 
 First, I used the arrayQualityMetrics library to examine the raw CEL file data. Here I grouped the samples by cell type, treatment and batch.
 
@@ -118,21 +118,21 @@ arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_
 *this time around the array# matches the sample#*
 
 The new arrays look fine. There is still good clustering by cell type. There doesn't appear to be too much overall clustering by batch (batch 5 are the new arrays).
-  
+
 I kept the old lyrcorine samples in the dataset  for now, to compare with the new samples.
 
 ```{r drop_arrays, results='hide'}
-## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
+## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in
 #subsequent columns
-covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1) 
+covars <- read.delim(file.path(metaDir, covarsfilename), row.names=1)
 covars <- covars[-(grep("3PR|4PF", covars$array_name)),]
 covars <- covars[order(covars$sample),]
 celFiles <- file.path(dataDir, row.names(covars))
 affyRaw <- read.celfiles(celFiles)
-## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in 
+## simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in
 #subsequent columns
 identical(basename(celFiles), row.names(covars)) ## sanity check
-pData(affyRaw) <- covars 
+pData(affyRaw) <- covars
 validObject(affyRaw) ## sanity check
 ```
 
@@ -189,7 +189,7 @@ combat_edata <- ComBat(dat=eset.core,
                        batch=batch,
                        mod=mod,
                        numCovs=NULL,
-                       par.prior=TRUE, 
+                       par.prior=TRUE,
                        prior.plots=TRUE)
 affyNorm.batch <- affyNorm
 exprs(affyNorm.batch) <- combat_edata
@@ -212,7 +212,7 @@ plot_dendro(affyNorm.batch[,which(pData(affyNorm.batch)$lycorine_conc!="LO")], l
 plot_dendro(affyNorm.batch[,which(pData(affyNorm.batch)$lycorine_conc!="LO")], labels.colname="treatment", colors.colname="celltype", title="Cell Types and Treatments, All Batch Corrected Samples - High Lycorine Concentration")
 ```
 
-The endothelial cells cluster together well. There is still less separation between the HSC and negative cells. There is definite improvement of clustering based on treatment. 
+The endothelial cells cluster together well. There is still less separation between the HSC and negative cells. There is definite improvement of clustering based on treatment.
 
 ## Principal Component Analyses
 
@@ -250,10 +250,10 @@ We can also use the standard deviations and mean expression levels to filter out
 featureData(affyNorm.batch) <- getNetAffx(affyNorm.batch, "transcript")
 ## remove control and unannotated probes, keep "main" category probes
 affyNorm.batch <- affyNorm.batch[which(pData(featureData(affyNorm.batch))$category=="main"),]
-## remove probes with low expression levels 
+## remove probes with low expression levels
 means <- apply(exprs(affyNorm.batch), 1, mean)
 affyNorm.batch <- affyNorm.batch[which(means>exprfilter),]
-## remove probes with little variance among samples 
+## remove probes with little variance among samples
 sds <- apply(exprs(affyNorm.batch),1, sd)
 affyNorm.batch <- affyNorm.batch[which(sds>sdfilter),]
 ```
@@ -266,14 +266,14 @@ Here I filtered out probes that show a mean intensity level (after log transform
 
 Translate the array feature data (i.e. information about the probes) to gene symbols that correspond to each probeset group on the array.
 
-The annotations I use here are obtained from two sources. 
+The annotations I use here are obtained from two sources.
 First, using the *getNetAffx* command from the [oligo][2] package, retrieve the annotations from the Bioconductor package pd.zebgene.1.0.st, which are auto-generated by BioConductor from the Affymetrix supplied *cdf* microarray library file. I used this information above, to determine which probes were in the 'main' category.
 
 Full probe-gene/mrna annotations were then imported and parsed from the [annotation](../meta/ZebGene-1_0-st-v1.na33.3.zv9.transcript.csv) file downloaded from the NetAffx site.
 The annotations are a bit confusing, so I tried to simplify as best I could. Most probes bind to multiple annotated accessions from different databases with varying degrees of evidence; often these accessions describe slight variations of the same gene(s) (listed under *symbols*, which appear to include the ZFIN IDs). I listed the gene accession numbers genes in order of evidence, comma separated, in the *accessions* column. The accession (regardless of database origin) with the most evidence is separately listed in the *bestgene* column. Many probes don't bind to any annotated genes, so I also included the bound mRNAs in a similar manner to the genes.
 
 ```{r features, results='hide'}
-# Import the annotations 
+# Import the annotations
 dat <- read.csv(file.path(metaDir, "ZebGene-1_0-st-v1.na33.3.zv9.transcript.csv"), comment.char = "#", stringsAsFactors=FALSE, na.string = "---")
 dat <- col2rownames(dat, "probeset_id")
 #extract and reorder to match the array features
@@ -294,7 +294,7 @@ names(mrnas) <- c("best.mrna", "mrnas")
 headercol <- "gene_assignment"
 genes <- t(sapply(strsplit(dat[, headercol], " /// "), function(x) {
   if(is.na(x[1])){
-    out <- rep("NA", 6)             
+    out <- rep("NA", 6)
     } else {
       dat.probe.mat <- as.matrix(do.call(rbind, strsplit(x, " // ")))
       bestgene <- as.character(dat.probe.mat[1,1])
@@ -340,7 +340,7 @@ A linear model for microarray data analysis (Limma) was performed on the samples
 
 To perform limma, we constructed two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
 
-### Design matrix 
+### Design matrix
 - make a matrix with arrays as rows, treatment groups as columns
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
 
@@ -348,7 +348,7 @@ To perform limma, we constructed two matrices. The design matrix provides a repr
 design <- model.matrix(~0+celltype:treatment, data=model.frame(pData(affyNorm.batch)))
 # make sure the headings match
 colnames(design) <- sub(":", "_", gsub("celltype|treatment|", "", colnames(design)))
-design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"id"), 2, as.character)), options=list(width=960))  
+design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"id"), 2, as.character)), options=list(width=960))
 print(design.gvis, "chart")
 ```
 
@@ -362,26 +362,26 @@ print(design.gvis, "chart")
 
   **Differences between cell types**
   - differences between HSC and ENDO cell types from negative and from each other, after DMSO treatment (ENDO.celltype,  HSC.celltype and ENDO.HSC.celltype)
-  
+
   **Effect of drugs on individual cell types**
   - changes in HSC ("HSC.Lyc") cells after drug treatments
   - changes in ENDO  ("ENDO.Lyc") cells after lyrcorine treatment
-  
+
   **Differences in how cell types respond to drug treatment**
     - "interaction terms"
     - differences in how HSC cells respond to lycorine as compared to NEG (Diff.Lyc.HSC.Neg) cells
     - differences in how ENDO cells respond to lyrcorin as compared to NEG (Diff.Lyc.ENDO.Neg) cells
 
 ```{r contrastmatrix, results='asis'}
-contrast.matrix <- makeContrasts(ENDO.celltype=ENDO_DMSO - NEG_DMSO, 
-                                 HSC.celltype=HSC_DMSO - NEG_DMSO, 
+contrast.matrix <- makeContrasts(ENDO.celltype=ENDO_DMSO - NEG_DMSO,
+                                 HSC.celltype=HSC_DMSO - NEG_DMSO,
                                  ENDO.HSC.celltype=ENDO_DMSO - HSC_DMSO,
-                                 ENDO.Lyc=ENDO_Lycorine - ENDO_DMSO, 
-                                 HSC.Lyc=HSC_Lycorine - HSC_DMSO, 
+                                 ENDO.Lyc=ENDO_Lycorine - ENDO_DMSO,
+                                 HSC.Lyc=HSC_Lycorine - HSC_DMSO,
                                  Diff.Lyc.HSC.Neg = (HSC_Lycorine - HSC_DMSO) - (NEG_Lycorine - NEG_DMSO),
                                  Diff.Lyc.ENDO.Neg = (ENDO_Lycorine - ENDO_DMSO) - (NEG_Lycorine - NEG_DMSO),
                                  levels=c("ENDO_DMSO", "HSC_DMSO", "NEG_DMSO", "ENDO_Lycorine", "HSC_Lycorine", "NEG_Lycorine"))
-contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"class"), 2, as.character)), options=list(width=960,height=320 ))  
+contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"class"), 2, as.character)), options=list(width=960,height=320 ))
 print(contrast.gvis, "chart")
 ```
 
@@ -389,25 +389,25 @@ print(contrast.gvis, "chart")
 
 These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
 
-- first fit the linear model based on the design matrix 
+- first fit the linear model based on the design matrix
   - for each gene based on the given series of arrays
 
 ```{r linearmodel}
 eset.batch <- exprs(affyNorm.batch)
-fit.core <- lmFit(eset.batch, design) 
+fit.core <- lmFit(eset.batch, design)
 ```
 
 - using the contrast matrix, compute estimated coefficients and standard errors for contrasts
 
 ```{r contrastfit}
-fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+fit2.core <- contrasts.fit(fit.core, contrast.matrix)
 ```
 
-- compute moderated t-statistics and log-odds of differential expression 
+- compute moderated t-statistics and log-odds of differential expression
   - by empirical Bayes shrinkage of the standard errors towards a common value
 
 ```{r bayes}
-fit2.core <- eBayes(fit2.core) 
+fit2.core <- eBayes(fit2.core)
 ```
 
 ---
@@ -442,12 +442,12 @@ lapply(all.stats, function(x) {
 ## Statistics and expression levels for ALL genes for each comparison
 
 These Excel files contain the following information:
-- logFC is the log2-fold change  
-- the AveExpr is the average expression value across this the contrast's set of arrays  
-- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value  
-- the adj.P.Value is the p-value adjusted for multiple testing (by FDR)  
-- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)  
-- the last columns contain the log-transformed normalized expression levels for these genes in the relevant samples   
+- logFC is the log2-fold change
+- the AveExpr is the average expression value across this the contrast's set of arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR)
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last columns contain the log-transformed normalized expression levels for these genes in the relevant samples
 
 ```{r all_exprs_stats, results='hide'}
 all.exprs.stats <- lapply(all.stats, function(x) {
@@ -456,7 +456,7 @@ all.exprs.stats <- lapply(all.stats, function(x) {
   eset.all <- exprs(affyNorm.batch)[stats.core$probeids,]
   colnames(eset.all) <- pData(affyNorm.batch)$samplelabel
   # parse the contrast matrix and design matrix to find the sample indices for the samples contained within this contrast and subset the eset to those samples
-  eset.stats.all <- cbind(stats.core, eset.all)  
+  eset.stats.all <- cbind(stats.core, eset.all)
   return(list(eset.stats.all=eset.stats.all, contrast=contrast ))
   })
 
@@ -507,10 +507,10 @@ top.stats <- lapply(seq(1,ncol(contrast.matrix),1), function(n) {
       }
   if (nrow(stats.top.core)>=200){
     stats.top.core <- stats.top.core[1:200,]
-    } 
+    }
   # incorporate expression levels for these genes in all samples
   if(nrow(stats.top.core)>0) {
-    eset.top.core  <-  exprs(affyNorm.batch[stats.top.core[, "probeids"], ]) 
+    eset.top.core  <-  exprs(affyNorm.batch[stats.top.core[, "probeids"], ])
     colnames(eset.top.core)  <-  pData(affyNorm.batch)[,"samplelabel"]
     eset.top.core=eset.top.core[,apply(design[,colnames(design) %in% names(which(abs(contrast.matrix[,contrast])==1))]==1, 1, any)]
     eset.stats.top.core <- cbind(stats.top.core, eset.top.core)
@@ -583,7 +583,7 @@ for(n in 1:ncol(contrast.matrix)){
   names(Batch_colors) <- unique(unlist(pData(affyNorm.batch)$Batch))
   ann_colors = list(treatment = treatment_colors, celltype = celltype_colors, Batch=Batch_colors)
   ## Heatmaps
-  pheatmap(as.matrix(top.exprs.contrast[1:100,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=T, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)  
+  pheatmap(as.matrix(top.exprs.contrast[1:100,]), annotation=heatmap.annots, color=rev(brewer.pal(11,"RdBu")), main=contrast, cluster_rows=T, cluster_cols=T, show_colnames=F, fontsize=14, fontsize_row=10,annotation_colors=ann_colors)
   }
 ```
 
