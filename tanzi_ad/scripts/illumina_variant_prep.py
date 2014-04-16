@@ -19,7 +19,6 @@ import joblib
 
 from bcbio import broad, utils
 from bcbio.variation import effects, population, vcfutils
-from bcbio.distributed.messaging import parallel_runner
 
 def main(config_file, env, cores):
     cores = int(cores)
@@ -43,20 +42,21 @@ def main(config_file, env, cores):
     merge_file = merge_vcf_files(out_files, cores, config)
     effects_file = effects.snpeff_effects({"vrn_file": merge_file,
                                            "sam_ref": config["ref"]["GRCh37"],
+                                           "reference": {"fasta" : {"base": config["ref"]["GRCh37"]}},
                                            "genome_resources": {"aliases" : {"snpeff": "GRCh37.74"}},
                                            "genome_build": "GRCh37",
                                            "config": config})
-    noexclude_file = "%s-noexclude%s" % utils.splitext_plus(effects_file)
-    noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
-                                              config["ref"]["GRCh37"], config)
     data = {"config": config, "dirs": {"work": os.getcwd()}, "name": [""]}
-    prepare_plink_vcftools(noexclude_file, config)
-    gemini_db = population.prep_gemini_db([noexclude_file],
-                                          [utils.splitext_plus(config["outputs"]["merge"])[0], "casava"],
+    gemini_db = population.prep_gemini_db([os.path.join(os.getcwd(), effects_file)],
+                                          [utils.splitext_plus(config["outputs"]["merge"])[0], "casava", True],
                                           [{"config": config, "work_bam": "yes", "genome_build": "GRCh37",
                                             "genome_resources": {"aliases": {"human": True}}}],
                                           data)[0][1]["db"]
     print gemini_db
+    noexclude_file = "%s-noexclude%s" % utils.splitext_plus(effects_file)
+    noexclude_file = vcfutils.exclude_samples(effects_file, noexclude_file, exclude,
+                                              config["ref"]["GRCh37"], config)
+    prepare_plink_vcftools(noexclude_file, config)
 
 def merge_vcf_files(sample_files, cores, config):
     out_file = config["outputs"]["merge"]
