@@ -54,11 +54,13 @@ No probes were filtered, genders were not adjusted for and duplicate samples wer
 Bioconductor and R libraries used to process and visualize the data
 
 ```{r libraries}
+library(knitr)
 library(ggplot2) # pretty plots
 library(minfi)
 library(xlsx) # load Excel files
 library(wateRmelon) #pfilter and BMIQ funcitons
-library(IlluminaHumanMethylation450k.db)
+
+library(FDb.InfiniumMethylation.hg19)
 library(devtools)
 install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
 library(CHBUtils)
@@ -69,11 +71,13 @@ library(beanplot)
 ## Variables
 
 ```{r variables}
-if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_450k/")) {
-  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_450k/"
-  } else {
-  baseDir <- "/Volumes/ody/consults/lk_450k/"
-  }
+if(file.exists("~/projects/lk_450k/")){
+  baseDir <- "~/projects/lk_450k/"
+  } else if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_450k/")) {
+    baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_450k/"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_450k/"
+      }
 dataDir <- file.path(baseDir, "data")
 metaDir <- file.path(baseDir, "meta")
 resultsDir<-file.path(baseDir, "results")
@@ -124,10 +128,11 @@ densityBeanPlot.JH <- function (dat, sampGroups = NULL, sampNames = NULL, main =
 
 ```{r metadataimport, results='hide'}
 samplesheet <- read.delim(file.path(metaDir, "Samples_Table.txt" ), sep="\t")
-metadata <- read.xlsx(file.path(metaDir, "human-methylation450-96samples-sample-sheet_Kobzik.xlsx"), sheetIndex = 2, header=F)
+metadata <- as.matrix(read.xlsx(file.path(metaDir, "human-methylation450-96samples-sample-sheet_Kobzik.xlsx"), sheetIndex = 2, header=F))
 
-# fix the name of the renamed replicate sample in the samplesheet so you can match to metadata
-samplesheet$Sample.ID <- sub("a5_2", "a5",samplesheet$Sample.ID)
+# fix the name of the  replicate a5 sample in the metadata so you can match to samplesheet
+metadata[which(metadata[,"X1"]=="b12" & metadata[,"X2"]=="a5"), 2] <- "a5_2"
+metadata <- as.data.frame(metadata)
 # capitalize the array positionson the metadata so you can match by it as well
 metadata$X1 <- toupper(metadata$X1)
 
@@ -161,9 +166,9 @@ kable(metadata)
 
 ## Sample data import
 
-```{r dataimport, cache=TRUE}
+```{r dataimportGRset.norm.filtered}
 #minfi 
-## method, use etended option to get an RGChannelSEtextended, necessary for pfiltering in next steps
+## method, use etended option to get an RGChannelSEtextended, necessary for pfiltering in next stepsz
 if(file.exists(file.path(resultsDir, "RDATA.RGset"))){
   load(file.path(resultsDir, "RDATA.RGset"))
   } else {
@@ -186,11 +191,6 @@ pData(mldat) <- merge(pData(mldat), merged_metadata)
 annots <- read.delim(file.path(dataDir, "Group Methylation Profile.txt"), sep="\t")
 annots <- annots[,!grepl("Group", names(annots))]
 fData(mldat) <- merge(fData(mldat), annots, by.x="Probe_ID", "TargetID")
-#save.image(file.path(resultsDir, "RDATA" ))
-
-#methylumi, from GenomeStudio output
-# mldat.BS <- methylumiR(file.path(dataDir, "Sample Methylation Profile.txt"), qcfile=file.path(dataDir, "Control Probe Profile.txt"), sampleDescriptions=merged_metadata)
-# save.image(file.path(resultsDir, "RDATA" ))
 ```
 
 ---
@@ -265,8 +265,17 @@ names(cor.snps.hi) <- c("Sample1", "Sample2", "correlation")
 
 Sample duplicates show high correlations for genotypes (as expected). 22m shows an unexpectedly high correlation with 23m. Are they related?
 
+
 ```{r showcorrs, results='asis'}
 kable(cor.snps.hi, row.names=FALSE)
+```
+
+In any case, we will remove duplicated samples.  
+- a5 looks marginally better than a5_2 in the control metrics, so removed a5_2
+- 322418 looks marginally better than 322418-2 in the control metrics, so removed 322418-2
+
+```{r removedupes}
+RGset <- RGset[,which(!grepl("a5_2|322418-2", pData(RGset)$SampleID))]
 ```
 
 ### Methylation Based Clustering
@@ -302,7 +311,6 @@ How do the groups separate if we only look at one gender at a time?
 
 ```{r genderedmds, out.width='50%'}
 mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
-
 mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
 ```
 
@@ -331,7 +339,8 @@ See the [minfi publication][5] for details about this method and comparisons to 
 # this step will not work with pfiltered data
 # dasen normalization not working with minfi data or methylumi data
 # becuase of stratification in normalizaitno procedure, this can only yield a GenomicRatioSet
-GRset.norm <-  preprocessQuantile(RGset, fixOutliers = FALSE, removeBadSamples = FALSE, quantileNormalize = TRUE, stratified=TRUE, verbose=TRUE)
+# fixOultiers=TRUE to stop from having infinite values when you derive M-values later
+GRset.norm <-  preprocessQuantile(RGset, fixOutliers = TRUE, removeBadSamples = FALSE, quantileNormalize = TRUE, stratified=TRUE, verbose=FALSE)
 ```
 
 Post-normalization MDS plots.
@@ -340,91 +349,14 @@ Post-normalization MDS plots.
 GRset.norm.sub <- GRset.norm[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm)$group))]
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+#save.image(file.path(resultsDir, "RDATA"))
 ```
-
-
-# DIFFERENTIAL METHYLATION ANALYSIS
-
-Pairwise comparisons between Smokers and Controls and Between Asthmatics and Controls, at individual probes.  
-This approach does not currently:  
-  - filter any probes for quality,SNPs or repeats  
-  - address any imbalances in gender that might exist between groups  
-  - adjust for inter-probe dependencies (could affect the multiple test adjustment)  
-  
-```{r dmp, cache=TRUE}
-all.pair.combos <- combn(as.vector(unique(pData(GRset.norm)$group)),2)
-selected.combos <- all.pair.combos[,apply(all.pair.combos, 2, function(x) any(grepl("Controls", x)) & any(grepl("Asthmatics|Smokers",x)))]
-# SORT SO CONTROLS ARE FIRST
-selected.combos <- apply(selected.combos, 2, function(x) {
-  if(x[1]!="Controls"){rev(x)}
-  else {x}
-    })
-
-all.stats <- apply(selected.combos, 2, function(combo){
-  contrast <- paste(combo, collapse="-vs-")
-  # subset data to smples of interest
-  GRset.norm.combo <- GRset.norm[,pData(GRset.norm)$group %in% combo]
-  # get logit transformed beta values
-  Mvalues.combo <- getM(GRset.norm.combo)
-  # run F-tests to find differentially methylated loci
-  stats <- dmpFinder(Mvalues.combo, pheno=pData(GRset.norm.combo)$group, type="categorical")
-  stats <- row2colnames(stats, "TargetID")
-  stats.annot <- merge(stats, as.data.frame(annots), by.y="TargetID")
-  return(list(contrast=contrast, stats.annot=stats.annot))
-})
-
-
-```
-
-## Controls vs. Asthmatics
-The table here shows just the top ten differentially methylated probes. You can find the annotated results for all probes in the Excel file under the table.
-
-```{r results1, results='asis'}
-x <- all.stats[[2]]
-contrast.sub <- x$contrast
-stats.annot.sub <- x$stats.annot
-# sort by adjusted pvalue before writing to file
-stats.annot.sub <- stats.annot.sub[order(stats.annot.sub$qval),]
-write.table(stats.annot.sub, file=file.path(resultsDir, paste("annotated.stats", contrast.sub, "xls", sep="." )), sep="\t", row.names=FALSE, col.names=TRUE)
-# drop unnecessary details for quick table output
-stats.annot.sub <- stats.annot.sub[,!grepl("SEQ|COLOR|NEXTBASE|ADDRESS|RANDOM|METHYL27", names(stats.annot.sub))]
-output <- head(stats.annot.sub)
-output[is.na(output)]   <- " " 
-kable(output)
-```
-
-[Excel file with results for Controls vs. Asthmatics](../results/`r paste("annotated.stats", contrast.sub, "xls", sep="." )`) 
-
-## Controls vs. Smokers
-The table here shows just the top ten differentially methylated probes. You can find the annotated results for all probes in the Excel file under the table.
-
-```{r results2, results='asis'}
-x <- all.stats[[1]]
-contrast.sub <- x$contrast
-stats.annot.sub <- x$stats.annot
-# sort by adjusted pvalue before writing to file
-stats.annot.sub <- stats.annot.sub[order(stats.annot.sub$qval),]
-write.table(stats.annot.sub, file=file.path(resultsDir, paste("annotated.stats", contrast.sub, "xls", sep="." )), sep="\t", row.names=FALSE, col.names=TRUE)
-# drop unnecessary details for quick table output
-stats.annot.sub <- stats.annot.sub[,!grepl("SEQ|COLOR|NEXTBASE|ADDRESS|RANDOM|METHYL27", names(stats.annot.sub))]
-output <- head(stats.annot.sub)
-output[is.na(output)]   <- " " 
-kable(output)
-```
-
-[Excel file with results for Controls vs. Smokers](../results/`r paste("annotated.stats", contrast.sub, "xls", sep="." )`) 
-
----
-
-# FUTURE WORK
 
 ## Filter Probes
 
-We could remove probes based on bead count and detection p-values across the samples. Because our datasets are of mixed genders, this step can also result in the removal of most of the chrY and chrX probes. We can also remove probes targetted to areas with known SNPs or repetetive DNA. 
+We can remove failed probes based on bead count and detection p-values across the samples. Because our datasets are of mixed genders, this step can also result in the removal of most of the chrY and chrX probes. We can also remove probes targetted to areas with known SNPs or repetetive DNA. I took a conservative appraoch and removed all probes with any common SNP in either the probe CpG or the single base extension site, withouyt regard to the minor allele frequency of the SNP.
 
-**For now, we've left  all the probes in but we can revisit this if we don't find anything significant, especially after multiple test correction**
-
-```{r pfilter, eval=FALSE}
+```{r pfilter, out.width='50%'}
 # Failed probes
 ## have to do the initial pfilter with the base RGset, as it fails with with the GMset
 RGset.pf <- pfilter(RGset)
@@ -436,28 +368,192 @@ failedprobes <- featureNames(GMset)[!featureNames(GMset) %in% featureNames(GMset
 GRset.norm.passed <- GRset.norm[which(!featureNames(GRset.norm) %in% failedprobes),]
 ### test for improvements in separation
 GRset.norm.sub <- GRset.norm.passed[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed)$group))]
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, by Group, Male only", cex=10, alpha=0.5)
 
 # Probes with SNPs
 ## get the probe annotations
-annots <- getAnnotation(GRset.norm)
+annots <- as.data.frame(getAnnotation(GRset.norm.passed))
 ## probes with SNPs overlapping the CpG site
 CpGSNPprobes <-  row.names(annots[which(!is.na(annots$CpG_rs)),])
 GRset.norm.passed.CpGSNPfree <- GRset.norm.passed[which(!featureNames(GRset.norm.passed) %in% CpGSNPprobes),]
 ### test for improvements in separation
 GRset.norm.sub <- GRset.norm.passed.CpGSNPfree[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed.CpGSNPfree)$group))]
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, no CpG SNPs, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, no CpG SNPs, by Group, Male only", cex=10, alpha=0.5)
 ## probes with SNPs overlapping the extension site
 SBESNPprobes <-  row.names(annots[which(!is.na(annots$SBE_rs)),])
 GRset.norm.passed.CpGSNPfree.SBESNPfree <- GRset.norm.passed.CpGSNPfree[which(!featureNames(GRset.norm.passed.CpGSNPfree) %in% SBESNPprobes),]
 ### test for improvements in separation
 GRset.norm.sub <- GRset.norm.passed.CpGSNPfree.SBESNPfree[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm.passed.CpGSNPfree.SBESNPfree)$group))]
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 1000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
-mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 1000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 1000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, no CpG SNPs, no SBE SNPs, by Group, Female only", cex=10, alpha=0.5)
+mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, filtered probes, no CpG SNPs, no SBE SNPs, by Group, Male only", cex=10, alpha=0.5)
+
+# simplify object name
+GRset.norm.filtered <- GRset.norm.passed.CpGSNPfree.SBESNPfree
 ```
 
+Removing failed probes results in removal of `r dim(GRset.norm)[1]-dim(GRset.norm.passed)[1]` probes.
+Removing probes with a common SNP in the CpG site results in removal of `r nrow(GRset.norm.passed)-nrow(GRset.norm.passed.CpGSNPfree)` probes.
+Removing probes with a common SNP in the single base extension (SBE) site results in removal of `r nrow(GRset.norm.passed.CpGSNPfree)-nrow(GRset.norm.passed.CpGSNPfree.SBESNPfree)` probes.
+
+---
+
+# DIFFERENTIAL METHYLATION ANALYSIS
+
+Pairwise comparisons between Smokers and Controls and Between Asthmatics and Controls, at individual probes.  
+This approach does not currently:  
+  - adjust for inter-probe dependencies (could affect the multiple test adjustment)  
+
+## Limma
+
+A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially methylated CpGs for two pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each probe and is designed to handle complex experiments involving comparisons between many targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+### Create appropriate design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+- we include the predicted genders here as well, so they can be used later in the linear model
+
+```{r design, results="asis"}
+GRset.norm.filtered <- GRset.norm.passed.CpGSNPfree.SBESNPfree
+design <- model.matrix(~ 0 + group+predictedSex,  data=pData(GRset.norm.filtered))
+# make sure the headings match
+colnames(design) <- sub("group", "", colnames(design))
+colnames(design) <- sub("PBMC Japan/Taro", "Japan", colnames(design))
+kable(design)
+```
+
+### Create contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+- here, I specify  a contrast which combines the two pairwise constrasts (smokers vs. controls  & asthmatics vs. controls) to find common differences between smokers and asthmatics as compared to controls
+
+```{r contrasts, results='asis'}
+contrast.matrix <- makeContrasts(control_v_smokers=Controls-Smokers, controls_v_asthmatics=Controls-Asthmatics, combined_v_controls=(Smokers-Controls)+(Asthmatics-Controls),levels=colnames(design))
+kable(contrast.matrix)
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each probe based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+### Fit a linear model
+- for each probe
+- this was done on the M-values
+
+```{r linearmodel}
+Mvalue.norm.filtered <- getM(GRset.norm.filtered)
+fit.mvalues <- lmFit(Mvalue.norm.filtered, design) 
+```
+
+### Compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.mvalues <- contrasts.fit(fit.mvalues, contrast.matrix) 
+```
+
+### Compute moderated t-statistics and log-odds of differential methylation
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.mvalues <- eBayes(fit2.mvalues) 
+```
+
+---
+
+## Results
+
+### Differential Methylation Statistics
+
+```{r dmpGRset.norm.filtered}
+stats.contrasts <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.mvalues, coef=1, sort.by="B",adjust.method="BH",number=nrow(fit2.mvalues))
+  stats <- row2colnames(stats, "TargetID")
+  ## add probe annotations
+  annots <- row2colnames(annots, "TargetID")
+  stats.annot <- merge(stats, as.data.frame(annots), by="TargetID")
+  # add beta values
+  Betavalues <- getBeta(GRset.norm.filtered)
+  colnames(Betavalues) <- paste(pData(GRset.norm.filtered)$SampleID, "betas", sep="_")
+  Betavalues <- row2colnames(as.data.frame(Betavalues), "TargetID")
+  stats.annot.betas <- merge(stats.annot, Betavalues, by="TargetID") 
+  return(list(contrast=contrast, stats.annot.betas=stats.annot.betas))
+  })
+
+```
+
+
+The tables here show just the top ten differentially methylated probes for each comparison. You can find the annotated results for all probes in the Excel file under the table.
+
+## Controls vs. Smokers comparison
+
+```{r results1, results='asis'}
+num=1
+stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
+contrast <- stats.contrasts[[num]]$contrast
+# sort by adjusted pvalue before writing to file
+stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+output <- head(stats.annot.betas, n=10)
+output[is.na(output)]   <- " " 
+kable(output)
+```
+
+[Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
+
+
+## Controls vs. Asthmatics comparison
+
+```{r results2, results='asis'}
+num=2
+stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
+contrast <- stats.contrasts[[num]]$contrast
+# sort by adjusted pvalue before writing to file
+stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+output <- head(stats.annot.betas, n=10)
+output[is.na(output)]   <- " " 
+kable(output)
+
+```
+
+[Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
+
+## Common differences between Controls-Asthmatics and Controls-Smokers comparisons
+
+
+```{r results3, results='asis'}
+num=3
+stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
+contrast <- stats.contrasts[[num]]$contrast
+# sort by adjusted pvalue before writing to file
+stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+output <- head(stats.annot.betas, n=10)
+output[is.na(output)]   <- " " 
+kable(output)
+
+
+```
+
+[Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
+
+---
+
+# FUTURE WORK
+- adjust for inter-dependence among CpGs in a region, i.e. smoothing
 
 
 [1]: http://www.bioconductor.org/packages/2.10/bioc/html/minfi.html (minfi)
