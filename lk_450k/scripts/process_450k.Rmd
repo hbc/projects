@@ -59,7 +59,6 @@ library(ggplot2) # pretty plots
 library(minfi)
 library(xlsx) # load Excel files
 library(wateRmelon) #pfilter and BMIQ funcitons
-
 library(FDb.InfiniumMethylation.hg19)
 library(devtools)
 install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
@@ -499,9 +498,10 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
 output <- head(stats.annot.betas, n=10)
 output[is.na(output)]   <- " " 
 kable(output)
@@ -518,9 +518,9 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
 output <- head(stats.annot.betas, n=10)
 output[is.na(output)]   <- " " 
 kable(output)
@@ -538,14 +538,12 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
 output <- head(stats.annot.betas, n=10)
 output[is.na(output)]   <- " " 
 kable(output)
-
-
 ```
 
 [Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
