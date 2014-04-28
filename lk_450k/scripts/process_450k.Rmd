@@ -54,6 +54,7 @@ No probes were filtered, genders were not adjusted for and duplicate samples wer
 Bioconductor and R libraries used to process and visualize the data
 
 ```{r libraries}
+library(knitr)
 library(ggplot2) # pretty plots
 library(minfi)
 library(xlsx) # load Excel files
@@ -124,10 +125,11 @@ densityBeanPlot.JH <- function (dat, sampGroups = NULL, sampNames = NULL, main =
 
 ```{r metadataimport, results='hide'}
 samplesheet <- read.delim(file.path(metaDir, "Samples_Table.txt" ), sep="\t")
-metadata <- read.xlsx(file.path(metaDir, "human-methylation450-96samples-sample-sheet_Kobzik.xlsx"), sheetIndex = 2, header=F)
+metadata <- as.matrix(read.xlsx(file.path(metaDir, "human-methylation450-96samples-sample-sheet_Kobzik.xlsx"), sheetIndex = 2, header=F))
 
-# fix the name of the renamed replicate sample in the samplesheet so you can match to metadata
-samplesheet$Sample.ID <- sub("a5_2", "a5",samplesheet$Sample.ID)
+# fix the name of the  replicate a5 sample in the metadata so you can match to samplesheet
+metadata[which(metadata[,"X1"]=="b12" & metadata[,"X2"]=="a5"), 2] <- "a5_2"
+metadata <- as.data.frame(metadata)
 # capitalize the array positionson the metadata so you can match by it as well
 metadata$X1 <- toupper(metadata$X1)
 
@@ -163,7 +165,7 @@ kable(metadata)
 
 ```{r dataimport, cache=TRUE}
 #minfi 
-## method, use etended option to get an RGChannelSEtextended, necessary for pfiltering in next steps
+## method, use etended option to get an RGChannelSEtextended, necessary for pfiltering in next stepsz
 if(file.exists(file.path(resultsDir, "RDATA.RGset"))){
   load(file.path(resultsDir, "RDATA.RGset"))
   } else {
@@ -265,8 +267,17 @@ names(cor.snps.hi) <- c("Sample1", "Sample2", "correlation")
 
 Sample duplicates show high correlations for genotypes (as expected). 22m shows an unexpectedly high correlation with 23m. Are they related?
 
+
 ```{r showcorrs, results='asis'}
 kable(cor.snps.hi, row.names=FALSE)
+```
+
+In any case, we will remove duplicated samples.  
+- a5 looks marginally better than a5_2 in the control metrics, so removed a5_2
+- 322418 looks marginally better than 322418-2 in the control metrics, so removed 322418-2
+
+```{r removedupes}
+RGset <- RGset[,which(!grepl("a5_2|322418-2", pData(RGset)$SampleID))]
 ```
 
 ### Methylation Based Clustering
@@ -302,7 +313,6 @@ How do the groups separate if we only look at one gender at a time?
 
 ```{r genderedmds, out.width='50%'}
 mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
-
 mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
 ```
 
@@ -340,6 +350,7 @@ Post-normalization MDS plots.
 GRset.norm.sub <- GRset.norm[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm)$group))]
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
+#save.image(file.path(resultsDir, "RDATA"))
 ```
 
 
@@ -369,7 +380,14 @@ all.stats <- apply(selected.combos, 2, function(combo){
   # run F-tests to find differentially methylated loci
   stats <- dmpFinder(Mvalues.combo, pheno=pData(GRset.norm.combo)$group, type="categorical")
   stats <- row2colnames(stats, "TargetID")
-  stats.annot <- merge(stats, as.data.frame(annots), by.y="TargetID")
+  stats.annot <- merge(stats, as.data.frame(annots), by="TargetID")
+  # extract beta values  
+  Betavalues.combo <- getBeta(GRset.norm.combo)
+  colnames(Betavalues.combo) <- pData(GRset.norm.combo)$SampleID
+  Betavalues.combo <- row2colnames(Betavalues.combo, "TargetID")
+  
+  merge(stats.annot, Betavalues.combo, by)
+  
   return(list(contrast=contrast, stats.annot=stats.annot))
 })
 
