@@ -65,6 +65,7 @@ install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
 library(CHBUtils)
 library(methylumi)
 library(beanplot)
+library(data.table)
 ```
 
 ## Variables
@@ -499,21 +500,45 @@ fit2.mvalues <- eBayes(fit2.mvalues)
 
 ## Results
 
+
 ### Differential Methylation Statistics
 
-```{r dmpGRset.norm.filtered}
+```{r dmpGRset.norm.filtered, cache=TRUE}
+# Get beta values
+Betavalues <- getBeta(GRset.norm.filtered)
+#subset to smokers, controls and asthmatics
+pd <- as.data.frame(pData(GRset.norm.filtered))
+samples.of.interest <- pd$barcode[pd$group %in% c("Asthmatics", "Controls", "Smokers")]
+Betavalues <- Betavalues[,samples.of.interest]
+pd <- pd[samples.of.interest,]
+
+smoker.cols <- which(pd$group=="Smokers")
+control.cols <- which(pd$group=="Controls")
+asthmatic.cols <- which(pd$group=="Asthmatics")
+
+smoker.means <- apply(Betavalues[,smoker.cols], 1, mean)
+control.means <- apply(Betavalues[,control.cols], 1, mean)
+asthmatic.means <- apply(Betavalues[,asthmatic.cols],1, mean)
+# sds
+smoker.sds <- apply(Betavalues[,smoker.cols], 1, sd)
+control.sds <- apply(Betavalues[,control.cols], 1, sd)
+asthmatic.sds <- apply(Betavalues[,asthmatic.cols],1, sd)
+# combine all stats
+beta.stats <- do.call(cbind, list(smoker.means, smoker.sds, control.means, control.sds, asthmatic.means, asthmatic.sds))
+colnames(beta.stats) <- c("smoker_mean", "smoker_sd", "control_mean", "control_sd", "asthmatic_mean", "asthmatic_sd")
+beta.stats <- as.data.frame(beta.stats)
+beta.stats <- row2colnames(beta.stats, "TargetID")
+
 stats.contrasts <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  print(num)
   contrast <- dimnames(contrast.matrix)$Contrasts[num]
   stats <- topTable(fit2.mvalues, coef=1, sort.by="B",adjust.method="BH",number=nrow(fit2.mvalues))
   stats <- row2colnames(stats, "TargetID")
   ## add probe annotations
   annots <- row2colnames(annots, "TargetID")
   stats.annot <- merge(stats, as.data.frame(annots), by="TargetID")
-  # add beta values
-  Betavalues <- getBeta(GRset.norm.filtered)
-  colnames(Betavalues) <- paste(pData(GRset.norm.filtered)$SampleID, "betas", sep="_")
-  Betavalues <- row2colnames(as.data.frame(Betavalues), "TargetID")
-  stats.annot.betas <- merge(stats.annot, Betavalues, by="TargetID") 
+  # add summarized beta values
+  stats.annot.betas <- merge(stats.annot, beta.stats, by="TargetID")
   return(list(contrast=contrast, stats.annot.betas=stats.annot.betas))
   })
 
@@ -521,7 +546,7 @@ stats.contrasts <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), fu
 
 
 The tables here show just the top ten differentially methylated probes for each comparison. You can find the annotated results for all probes in the Excel file under the table.
-
+
 ## Controls vs. Smokers comparison
 
 ```{r results1, results='asis'}
@@ -530,7 +555,7 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+stats.annot.betas <- stats.annot.betas[,grepl("TargetID|P.Value|adj.P.Val|UCSC_RefGene_Name|UCSC_RefGene_Accession|_mean|_sd", names(stats.annot.betas))]
 
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
@@ -550,7 +575,7 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+stats.annot.betas <- stats.annot.betas[,grepl("TargetID|P.Value|adj.P.Val|UCSC_RefGene_Name|UCSC_RefGene_Accession|_mean|_sd", names(stats.annot.betas))]
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
 output <- head(stats.annot.betas, n=10)
@@ -570,7 +595,7 @@ stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
 stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
-stats.annot.betas <- stats.annot.betas[,!grepl("Seq|Color|NextBase|Address|Random|Methyl27", names(stats.annot.betas))]
+stats.annot.betas <- stats.annot.betas[,grepl("TargetID|P.Value|adj.P.Val|UCSC_RefGene_Name|UCSC_RefGene_Accession|_mean|_sd", names(stats.annot.betas))]
 write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
 # drop unnecessary details for quick table output
 output <- head(stats.annot.betas, n=10)
