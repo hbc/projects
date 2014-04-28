@@ -1,0 +1,554 @@
+---
+title: "DESeq2 Analysis"
+output:
+  html_document:
+    toc: true
+    theme: united
+    fig_width: 12
+    fig_height: 12
+    fig_caption: false
+    highlight: textmate
+---
+
+
+```{r setup, echo=FALSE}
+options(width=200)
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=FALSE, echo=FALSE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+
+clientname="Andrew Gagne"
+clientemail="agagne@genome.med.harvard.edu"
+lablocation="Biopolymers Facility"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+---
+
+RNAseq (DESeq) analysis for `r clientname` (`r clientemail`), at `r lablocation`.  Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+# METHODS SUMMARY
+
+All reads were trimmed to remove adapter sequences and low quality calls.  Trimmed reads were aligned with [Star][1] and gene specific read counts for [Ensembl gene annotations][2] determined with the featureCounts program from the [subread][3] suite. Read counts were then normalized and differential gene expression calculated with the [DESeq2][4] Bioconductor package.
+
+The sections below provide code to reproduce the post-counting results and plots. 
+
+---
+
+# SETUP
+
+## Libraries
+
+Bioconductor and R libraries used to process and visualize the data
+
+```{r libraries}
+library(DESeq)
+library(plyr)
+library(reshape2)
+library(ggplot2)
+library(biomaRt)
+library(scales)
+library(devtools)
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(knitr)
+devtools::install_github("wesanderson","karthik")
+require(wesanderson)
+# colorblind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+# Wes Anderson palette
+pal <-  wes.palette(5,name = "Zissou")
+```
+
+## Variables
+
+Working directories, cutoffs and other variables necessary to the analysis.
+
+```{r variables}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/project/work/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/project/work/"
+  metaDir <- "/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/meta/"
+  } else {
+  baseDir <- "/Volumes/ody/projects/ljg_cardiac_rnaseq/project/work/"
+  metaDir <- "/Volumes/ody/projects/ljg_cardiac_rnaseq/meta/"
+}
+dataDir <- file.path(baseDir, "htseq-count/")
+resultsDir <- file.path(baseDir, "deseq")
+count.file <- file.path(dataDir, "combined.counts")
+
+
+pvalcutoff=0.05
+numsig=10
+rowcount.cutoff=10
+logfoldcutoff=1
+```
+
+
+For this analysis, the cutoff for significant differential expression was an FDR (False Discovery Rate) of `r pvalcutoff` and a log2(foldchange) of expression of at least `r logfoldcutoff`.  
+
+--- 
+
+# DATA IMPORT
+
+The data consists of HTseq counts generated for individual genes (using the Ensembl GTF annotation) from the Tophat aligments. The metadata (or covariates) that describes the experiment consists of the  information about sample ID, type of siRNA and expression pattern of the siRNA.
+
+These data and metadata were and loaded into a DESeq *CountDataSet*.
+
+```{r dataload_and_reshape, results='asis'}
+metadata <- read.csv(file.path(metaDir,"sample_metadata.csv" ))
+combined.counts <- read.table(count.file, header=T, row.names=1)
+# only one replicate per sample, so just use samplenames get covars from the filenames of the counted samples
+covars <- names(combined.counts)
+## load up new count dataset
+cds <- newCountDataSet(combined.counts, conditions=covars)
+kable(as.matrix(metadata))
+```
+
+---
+
+# DATA PREPROCESSING
+
+## Normalization
+
+Here is a sample of `r numsig` of the non-normalized counts of reads mapping to
+genes in the annotation. These are just chosen at random for display purposes:
+
+```{r rawcounts, results='asis'}
+annotated_counts = head(as.data.frame(counts(cds)), numsig)
+annotated_counts <- row2colnames(annotated_counts, "id")
+annotated_counts = annotate_df(annotated_counts,
+                               df_ensemblid_header="id",
+                               biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                               biomart_ensemblid_filter="ensembl_gene_id",
+                               biomart_genesymbol_attribute="mgi_symbol")
+kable(annotated_counts)
+```
+
+To normalize for different depth of sequencing, size factors are calculated for each sample. 
+
+Call $k_{ij}$ the count for gene $i$ in sample $j$. 
+
+For all samples $j$, assume most of the counts for genes will have a constant ratio comparing any two samples in $j$, reflecting the assumption that most genes are not differentially expressed between samples. 
+
+A reference set of counts is created by taking $f_i$, geometric mean of the counts for each gene $i$, and the median of of $\frac{k_i}{f_i}$ for sample $j$ is called the size factor for sample $j$. 
+
+The size factors can be thought of as an attempt to normalize for the total number of reads mapping to transcripts, depending on the assumption that most of the transcripts are not vastly different between samples.
+
+Here are the size factors for each sample in this experiment:
+
+```{r sizefactors, results='asis'}
+cds = estimateSizeFactors(cds)
+kable(as.data.frame(sizeFactors(cds)))
+```
+
+These are the normalized counts, which are the raw counts divided by the size factor, for the same `r numsig` genes:
+
+```{r normalized_counts, results='asis'}
+annotated_normalized = head(as.data.frame(counts(cds, normalized=TRUE)), numsig)
+annotated_normalized  <- row2colnames(annotated_normalized, 'id')
+annotated_normalized = annotate_df(annotated_normalized,
+                               df_ensemblid_header="id",
+                               biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                               biomart_ensemblid_filter="ensembl_gene_id",
+                               biomart_genesymbol_attribute="mgi_symbol")
+kable(annotated_normalized)
+```
+
+We can see the assumption holds true by plotting the ratio of counts for any two randomly drawn samples and noting the distribution has a large central peak.
+
+In blue are the raw counts and in red are the normalized counts. The effect of normalization is to shift the mean ratio towards 1.
+
+Here are a couple examples:
+
+```{r ratio_hist, out.width='50%', results='hide', fig.show='hold'}
+raw.counts = counts(cds, normalized=FALSE)
+cols <- sample(ncol(raw.counts),4, replace=F)
+norm.counts = counts(cds, normalized=TRUE)
+
+for(x in c(1,3)){
+  rawdata = data.frame(ratio=raw.counts[,cols[x]] / raw.counts[,cols[x+1]])
+  rawdata$set <- "raw"
+  
+  normdata = data.frame(ratio=norm.counts[,x] / norm.counts[,x+1])
+  normdata$set <- "normalized"
+  raw.norm.data <- rbind(rawdata, normdata)
+  
+  n = ggplot(raw.norm.data, aes(x=ratio, fill=set)) + geom_density(alpha=0.25) +
+    scale_x_log10(breaks=c(0.01, 0.1, 1, 10, 100), labels=math_format(format=log10)) +
+    labs(title="Normalized counts")
+  print(n)
+}
+rm(raw.counts, norm.counts)
+```
+
+## Variance estimation
+
+With replicates you can get a more accurate repesentation of the biological variability or dispersion. Dispersion describes the fluctuation of the observed counts for a gene around the mean counts for that gene and can be the square of the coefficient of biological variation. For example, if a gene's expression level fluctuates by 20% the calculated dispersion is $0.2^2 = 0.04$.
+
+Typically you would calculate the dispersion from your replicates, but here we don't have any. Our assumption then becomes that the mean is a good predictor for the dispersion. Accepting this assumption, we can argue that 
+> given two samples from different conditions and a number of genes with comparable expression levels, of which we expect only a minority to be influenced by the condition, we may take the dispersion estimated from comparing across their counts *across* conditions as ersatz for a proper extimate fo the variance across replicates. 
+
+i.e. we assume that the estimated variance should not be too affected by the influence of the few differentially expressed genes
+
+After the empirical dispersion values have been calculated for each gene, a dispersion-mean relationship is fitted to share information across genes to reduce the variability of the dispersion estimates. So we end up with two values for each gene: the empirical value (derived only from this gene's data), and the fitted value (i.e., the dispersion value typical for genes with an average expression similar to those of this gene). Because we have no replicates, and very few samples, we can only use the fitted value. Other methods or choosing between the empirical and fitted gene dispersion values aredesigned to detect false positives from dispersion outliers (i.e. genes with unusually high variability), but without replicates we can't catch these outliers.
+
+Below is a plot of the estimated dispersion for genes with given counts; the dispersion increases as the mean count decreases meaning it is more difficult to accurately measure the expression level of
+low-count genes. The red line represents the fitted value we will use.
+
+```{r estimate_sizefactors, results='hide', out.width='75%'}
+# sharingMode = maximum, most conservative approach to sharing information across genes to reduce variability of the dispersion estimates
+cds <- estimateDispersions(cds, method="blind", sharingMode="fit-only")
+ggplotDispEsts(cds)
+```
+
+---
+
+# EXPLORATORY ANALYSES
+
+## Unsupervised Clustering
+- the goal of this analysis is to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample categories
+- Principal Component Analysis  (PCA) is a dimension reduction and visualisation technique that is used to project the multivariate data vector of each sample into a two-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the samples.
+- in basic terms, we are checking whether the samples cluster by sample type; its a good sign if they do
+
+The plots show a scatterplot of the samples along all dual combinations of the first four principal components. Each sample group is represented by a separate color. You can use these plots to explore if the samples cluster, and whether this is according to an intended experimental factor or according to unintended causes such as batch effects. 
+
+
+```{r pca, out.width='50%', fig.show='hold'}
+# this is a hack because I can't figure our how DESeq is using the pData, more than the minimal columns interfere with the nbinomTest function
+PCAplot.cds(cds, categories="condition",normalize.counts=FALSE, title="Raw counts", colorpalette=cbPalette, alpha=0.8, numcomponents=4)
+PCAplot.cds(cds, categories="condition", normalize.counts=TRUE, title="Normalized counts", colorpalette=cbPalette, alpha=0.8, numcomponents=4)
+```
+
+Lack of replicates aside, it does appear that two "wildtype"" heart sammples, RUSH900.TnT.Cre and WT cluster together (wildtype heart and rescued wildtype heart respectively), which is promising.
+In contrast, only two of the three potential samples that include a cardiomyocyte knockdown, RUSH900 (total knockdown) and  CRUSH2673-TnT-Cre (cardio knockdown)) cluster together. The the remaining sample,  CRUSH2673 (total knockdown) remains an outlier. Its unclear if this sample is an outlier for technical or biological reasons. This outlier raises questions about whether we can reliably use the RUSH900 total knockdown and CRUSH2673 knockdowns interchangeably i.e. in a comparison of the wildtype hearts (RUSH900-TnT-Cre & WT vs.RUSH900, CRUSH2673-active & CRUSH2673-TnT-Cre). 
+
+These plots only describe  qualitative differences, I explore this more quantitatively in the differential expression analyses below...
+
+---
+
+## Quantitative Assessment of Sample Differences by Differential Expression
+
+### Filtering
+
+Removing genes with no variance in the samples. 
+
+Using this data, I performed independent filtering to eliminate genes that have no, or little chance of showing signicant evidence. Filtering should result in increased detection power, in terms of false discovery rate. Here, genes were filtered  based on the sum of counts from all samples, as below a certain number of counts, it is not possible to get a pvalue below the desired cutoff. I also filtered out any genes without and Ensembl ID annotation.
+
+```{r filter}
+## get sum of counts for all samples for each gene
+rowcounts <- rowSums(counts(cds, normalized=TRUE))
+## filter the data based on the minimal row sum 
+use <- (rowcounts > rowcount.cutoff)
+cds.filt <- cds[use,]
+## annotated?
+use <- grepl("ENS", row.names(counts(cds.filt)))
+cds.filt <- cds.filt[use,]
+```
+
+Here I discarded the genes with less than `r rowcount.cutoff` counts total in all samples, i.e. the bottom `r ecdf(rowcounts)(rowcount.cutoff)*100`% of genes by total counts
+
+### Pairwise Comparisons
+
+I generated data for all possible pairwise comparisons, comparing each sample to each other.
+
+```{r pairwise_comparisons, cache=TRUE}
+## first construct the actual combinations
+all.pair.combos <- combn(as.vector(unique(pData(cds)$condition)),2)
+setnames = apply(all.pair.combos, 2, function(x) paste(x[1], x[2], sep="-"))
+
+# then run the comparisons
+nbinom.tests <- alply(all.pair.combos, 2, function(combo) {
+  contrast <- paste(combo[1], combo[2], sep="-vs-")
+  print(contrast)
+  ## perform significance testing
+  nbinomtests <- nbinomTest(cds.filt, combo[1], combo[2])
+  if(length(which(nbinomtests$padj<pvalcutoff & abs(nbinomtests$log2FoldChange)>logfoldcutoff))==0) {
+    print(paste("The", x$contrast, " contrast has no genes differentially expressed at least a ", logfoldcutoff, " log2-fold change in expression at an adjusted pvalue of less than ", pvalcutoff, sep=""))
+    DEplots <- NA
+    DEresults <- NA
+    } else {
+      ## get normalized counts for significant hits, relabel samples with condition rather than sampleID
+      DEresults.counts <- counts(cds.filt, normalize=TRUE)[which(nbinomtests$padj<pvalcutoff & abs(nbinomtests$log2FoldChange)>logfoldcutoff),]
+      ## get means and pvalues for significant hits and put together with counts
+      DEresults.stats <- nbinomtests[which(nbinomtests$padj<pvalcutoff & abs(nbinomtests$log2FoldChange)>logfoldcutoff),]
+      DEresults <- cbind(DEresults.counts, DEresults.stats)
+      DEresults <- annotate_df(DEresults,
+                               df_ensemblid_header="id",
+                               biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                               biomart_ensemblid_filter="ensembl_gene_id",
+                               biomart_genesymbol_attribute="mgi_symbol")
+      DEresults <- DEresults[order(DEresults$padj),]
+      ## output some plots
+      DEplots <- plotDE(nbinomtests, basemean_colid="baseMean", log2foldchange_colid="log2FoldChange", adj_pval_colid="padj", adj_pval_cutoff=pvalcutoff, plottitle=paste("MAplot for", contrast, sep=" "))
+    }
+  allcounts <- row2colnames(counts(cds.filt, normalize=T), "id")
+  allstats <- nbinomtests
+  allresults <- merge(allcounts, allstats, by="id")
+  allresults <- annotate_df(allresults,
+                            df_ensemblid_header="id",
+                            biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                            biomart_ensemblid_filter="ensembl_gene_id",
+                            biomart_genesymbol_attribute="mgi_symbol")
+  return(list(nbinomtests=nbinomtests, contrast=contrast,cond1=combo[1], cond2=combo[2],DEresults=DEresults,  DEplots=DEplots, allresults=allresults))
+  })
+```
+
+Here are links to the count data and statistics for all genes and samples of those pairwise comparisons.
+
+```{r output_all, cache=TRUE}
+counts.output <- as.data.frame(counts(cds.filt, normalize=TRUE))
+counts.output$id <- row.names(counts.output)
+counts.output <- annotate_df(counts.output,
+                               df_ensemblid_header="id",
+                               biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                               biomart_ensemblid_filter="ensembl_gene_id",
+                               biomart_genesymbol_attribute="mgi_symbol")
+
+for (n in 1:10){
+  output <- nbinom.tests[[n]]$allresults
+  output.filename <- file.path(resultsDir, paste("all.exprs.stats", setnames[n], "xls", sep="."))
+  write.table(output, file=output.filename, quote=F, sep="\t", row.names=F, col.names=T)
+  }
+```
+
+`r num=1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r  paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+`r num=num+1`
+[Counts and stats for filtered genes and samples in `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
+
+
+### Selected comparisons
+
+Here I selected subset of the pairwise comparisons to try further assess whether the samples are suitable as replicates.
+
+For each comparison, significant genes which passed a `r pvalcutoff*100`% false discovery rate are reported or highlighted.
+
+There are 2 ways to visualize any significant results:
+  - MA-plot, with significantly varying transcripts shaded in red
+  - table of transcripts with significantly different expression levels 
+
+#### "Wildtype" Samples 
+
+First, lets look at the two "wildtype samples", WT and RUSH900-TnT-Cre to see how different they are.
+
+`r num=1`
+
+##### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
+
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+
+**M-A plot highlighting genes with significant differential expression** 
+
+```{r out, out.width='50%', fig.show='hold'}
+nbinom.tests[[num]]$DEplots
+```
+
+**Table of top `r numsig` transcripts showing significant differential expression** 
+
+```{r tables, results='asis'}
+if (nrow(nbinom.tests[[num]]$DEresults)>(numsig-1)) {
+  out1 <- nbinom.tests[[num]]$DEresults[1:numsig,]
+  } else {
+    out1  <- nbinom.tests[[num]]$DEresults
+    }
+kable(out1)
+
+write.table(nbinom.tests[[num]]$DEresults, file=file.path(resultsDir, paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
+```
+
+[All Significant results for this comparison](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
+
+Similar to the qualitative analyes, these two samples look very similar.
+
+
+#### "Knockdown" Samples 
+
+Now, lets look at the three "knockdown samples", RUSH900, CRUSH2673-active and CRUSH2673-TnT-Cre to see how similar/different they are.
+
+`r num=8`
+
+##### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
+
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+
+**M-A plot highlighting genes with significant differential expression** 
+
+```{r out1, ref.label='out',out.width='50%', fig.show='hold'}
+```
+
+**Table of top 10 transcripts showing significant differential expression** 
+
+```{r tables1, ref.label='tables',results='asis'}
+```
+
+[Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
+
+These samples initally look to be quite similar. Alot of the differences appear to be driven by genes that are absent in the RUSH900 sample, which is always a reason for caution as this can be the result of low sequencing depth in a sample. One gene that does jumps out is *Xist*. It appears that the RUSH900 mouse is male (low Xist expression) while the CRUSH2673-active mouse is female.
+
+
+`r num=9`
+
+##### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
+
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+
+**M-A plot highlighting genes with significant differential expression** 
+
+```{r out2, ref.label='out',out.width='50%', fig.show='hold'}
+```
+
+**Table of top 10 transcripts showing significant differential expression** 
+
+```{r tables2, ref.label='tables',results='asis'}
+```
+
+[Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
+
+Overall, these samples appear to be quite similar. Differences are driven by genes that are present in both samples. 
+
+`r num=10`
+
+##### `r all.pair.combos[1,num]` vs. `r all.pair.combos[2,num]`
+
+There are `r nrow(nbinom.tests[[num]]$DEresults)` genes with significant differential expression (FDR<`r pvalcutoff` and a log2 fold change in expression of at least `r logfoldcutoff`)
+
+**M-A plot highlighting genes with significant differential expression** 
+
+```{r out3, ref.label='out',out.width='50%', fig.show='hold'}
+```
+
+**Table of top 10 transcripts showing significant differential expression** 
+
+```{r tables3, ref.label='tables',results='asis'}
+```
+
+[Significant results](../results/deseq/`r paste("DE.genes.q", pvalcutoff, setnames[num], "xls", sep=".")`)
+
+These samples are quite different. Once again, we seee differential expression of *Xist*. It appears that the CRUSH2673-TnT-Cre mouse is female (high Xist expression) while the CRUSH2673-active mouse is male.  
+
+Looking at all the other pairwise comparisons, it appears that CRUSHG2673-TnT-Cre is the only female sample in the experiment. However, looking back at the earlier PCA plots, it doesn't appear to be the major factor differentiating the samples, as the female CRUSH2673-TnT-Cre sample clusters with the male RUSH900 sample.
+
+---
+
+# GROUPED DIFFERENTIAL EXPRESSION ANALYSIS
+
+The experiment has no replicates and involves two different siRNAs and varying genders. Given these issues, its not strictly proper to do anything other than simple pairwise comparisons. However, accepting these issues and their accompanying risk of increased false positives, we can try to analyses the samples by treating them as replicates based on a particular characteristic i.e. what are the results of treating some of the samples as replicates strictly in terms of siRNA expression in a tissue, without regard for siRNA identity or sample gender?
+
+## Cardiomyocyte siRNA effects
+
+First, lets compare samples with a cardiomyocyte siRNA against those without to identify putative changes caused by heart knockdown that correlate with phenotype.  
+
+Here, in calculating the dispersion, I proceeded as if we had replicates, and calculated dispersion from individual sample classes. We use the the "maximum"" method of choosing between the empirical and fitted values of the dispersion, a more conservative approach than before, but one that (now assuming we have true replicates) will let us detect dispersion outliers.
+
+`r siRNAlocation <- "cardiomyocyte_siRNA"`
+
+```{r replicatediff1, out.width='50%', fig.show='hold'}
+# use metadata columns to get sample groups
+covars <- metadata[,siRNAlocation]
+## load up new count dataset
+cds <- newCountDataSet(combined.counts, conditions=covars)
+## estimate size factors
+cds = estimateSizeFactors(cds)
+## estimate dispersions, use pooled method as we are pretending these samples are replicates
+cds <- estimateDispersions(cds, method="per-condition", sharingMode="fit-only")
+# filter by rowcounts adn annotations again
+## get sum of counts for all samples for each gene
+rowcounts <- rowSums(counts(cds, normalized=TRUE))
+## filter the data based on the minimal row sum 
+use <- (rowcounts > rowcount.cutoff)
+cds.filt <- cds[use,]
+## annotated?
+use <- grepl("ENS", row.names(counts(cds.filt)))
+cds.filt <- cds.filt[use,]
+# run negative binomial tests
+nbinom.tests <- nbinomTest(cds.filt, "NO", "YES")
+
+# combine with counts data
+counts.filt.norm <- counts(cds.filt, normalize=TRUE)
+counts.filt.norm <- row2colnames(counts.filt.norm, "id")
+results.filt.norm <- merge(counts.filt.norm, nbinom.tests, by="id")
+     
+results.filt.norm <- annotate_df(results.filt.norm,
+                                    df_ensemblid_header="id",
+                                    biomart_ensembl_dataset="mmusculus_gene_ensembl",
+                                    biomart_ensemblid_filter="ensembl_gene_id",
+                                    biomart_genesymbol_attribute="mgi_symbol")
+
+
+## MA plots
+plotDE(results.filt.norm, basemean_colid="baseMean", log2foldchange_colid="log2FoldChange", adj_pval_colid="padj", adj_pval_cutoff=0.05, plottitle="MAplot")
+plotDE(results.filt.norm, basemean_colid="baseMean", log2foldchange_colid="log2FoldChange", adj_pval_colid="padj", adj_pval_cutoff=0.001, plottitle="MAplot")
+
+## Volcano plot
+labeled.results.filt.norm <-results.filt.norm[abs(results.filt.norm$log2FoldChange)>2 & results.filt.norm$padj<1e-15, ]
+p <- ggplot(results.filt.norm, aes(x=log2FoldChange, y=-log10(padj)) )+
+  geom_point(size=5, alpha=0.5, fill=pal[2], color=pal[1], pch=21)+
+  geom_vline(xintercept=c(-1,1), color=pal[4])+
+  geom_text(data = labeled.results.filt.norm, aes(x=log2FoldChange, y=-log10(padj), label = mgi_symbol), hjust = 1.2, col=pal[5])+
+  theme_bw()+
+  scale_y_continuous(name="-log10(adjusted pvalue)")+
+  scale_x_continuous(limits=c(-10,10))
+print(p)
+```
+
+Here are the top 10 differentially expressed genes for this comparisons by adjusted pvalue
+
+```{r replicatediff1table1, results='asis'}
+## print top 10 hits
+kable(results.filt.norm[1:10,])
+## output to file
+write.table(results.filt.norm, file=file.path(resultsDir, paste("all.exprs.stats", siRNAlocation, "contrast.xls", sep=".")), quote=F, sep="\t", row.names=F, col.names=T)
+```
+
+[All results from this comparison](../results/deseq/`r paste("all.exprs.stats", siRNAlocation, "contrast.xls", sep=".")`)
+
+## Non-cardiomyocyte siRNA effects
+
+We can do the same thing for samples with a non-cardiomyocyte siRNA against those without to identify putative changes in non-cardiomyocyte cells.
+
+`r siRNAlocation <- "non_cardiomyocyte_siRNA"`
+
+```{r replicatediff2, ref.label='replicatediff1', results='asis', out.width='50%', fig.show='hold' }
+```
+
+Here are the top 10 differentially expressed genes for this comparisons by adjusted pvalue
+
+
+```{r replicatediff1table2, ref.label='replicatediff1table1', results='asis'}
+```
+
+
+[All results from this comparison](../results/deseq/`r paste("all.exprs.stats", siRNAlocation, "contrast.xls", sep=".")`)
+
+---
+
+# R Session Information
+
+```{r save_image, echo=FALSE}
+sessionInfo()
+```
+
+
+[1]: http://bioinformatics.oxfordjournals.org/content/early/2012/10/25/bioinformatics.bts635 (Star)
+[2]: http://tophat.cbcb.umd.edu/igenomes.html (iGenomes)
+[3]: http://subread.sourceforge.net/ (subread)
+[4]: http://www.bioconductor.org/packages/release/bioc/html/DESeq2.html (DESeq2)
