@@ -404,38 +404,7 @@ Removing probes with a common SNP in the single base extension (SBE) site result
 Pairwise comparisons between Smokers and Controls and Between Asthmatics and Controls, at individual probes.  
 This approach does not currently:  
   - adjust for inter-probe dependencies (could affect the multiple test adjustment)  
-<<<<<<< HEAD
   
-```{r dmp, cache=TRUE}
-all.pair.combos <- combn(as.vector(unique(pData(GRset.norm)$group)),2)
-selected.combos <- all.pair.combos[,apply(all.pair.combos, 2, function(x) any(grepl("Controls", x)) & any(grepl("Asthmatics|Smokers",x)))]
-# SORT SO CONTROLS ARE FIRST
-selected.combos <- apply(selected.combos, 2, function(x) {
-  if(x[1]!="Controls"){rev(x)}
-  else {x}
-    })
-
-all.stats <- apply(selected.combos, 2, function(combo){
-  contrast <- paste(combo, collapse="-vs-")
-  # subset data to smples of interest
-  GRset.norm.combo <- GRset.norm[,pData(GRset.norm)$group %in% combo]
-  # get logit transformed beta values
-  Mvalues.combo <- getM(GRset.norm.combo)
-  # run F-tests to find differentially methylated loci
-  stats <- dmpFinder(Mvalues.combo, pheno=pData(GRset.norm.combo)$group, type="categorical")
-  stats <- row2colnames(stats, "TargetID")
-  stats.annot <- merge(stats, as.data.frame(annots), by="TargetID")
-  # extract beta values  
-  Betavalues.combo <- getBeta(GRset.norm.combo)
-  colnames(Betavalues.combo) <- pData(GRset.norm.combo)$SampleID
-  Betavalues.combo <- row2colnames(Betavalues.combo, "TargetID")
-  
-  merge(stats.annot, Betavalues.combo, by)
-  
-  return(list(contrast=contrast, stats.annot=stats.annot))
-})
-=======
->>>>>>> 91d6f77a38a25b3e102e7b869b8b72c1b68b5f69
 
 ## Limma
 
@@ -532,7 +501,7 @@ beta.stats <- row2colnames(beta.stats, "TargetID")
 stats.contrasts <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
   print(num)
   contrast <- dimnames(contrast.matrix)$Contrasts[num]
-  stats <- topTable(fit2.mvalues, coef=1, sort.by="B",adjust.method="BH",number=nrow(fit2.mvalues))
+  stats <- topTable(fit2.mvalues, coef=num, sort.by="B",adjust.method="BH",number=nrow(fit2.mvalues))
   stats <- row2colnames(stats, "TargetID")
   ## add probe annotations
   annots <- row2colnames(annots, "TargetID")
