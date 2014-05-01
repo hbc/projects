@@ -45,7 +45,7 @@ The sections below provide code to reproduce the post-counting results and plots
 Bioconductor and R libraries used to process and visualize the data
 
 ```{r libraries}
-library(DESeq)
+library(DESeq2)
 library(plyr)
 library(reshape2)
 library(ggplot2)
@@ -68,17 +68,17 @@ pal <-  wes.palette(5,name = "Zissou")
 Working directories, cutoffs and other variables necessary to the analysis.
 
 ```{r variables}
-if (file.exists("/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/project/work/")) {
-  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/project/work/"
-  metaDir <- "/n/hsphS10/hsphfs1/chb/projects/ljg_cardiac_rnaseq/meta/"
-  } else {
-  baseDir <- "/Volumes/ody/projects/ljg_cardiac_rnaseq/project/work/"
-  metaDir <- "/Volumes/ody/projects/ljg_cardiac_rnaseq/meta/"
-}
-dataDir <- file.path(baseDir, "htseq-count/")
-resultsDir <- file.path(baseDir, "deseq")
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/seidman_rnaseq")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/seidnman_rnaseq"
+  } else if (file.exists("/Users/johnhutchinson/projects/seidman_rnaseq")){
+    baseDir <- "/Users/johnhutchinson/projects/seidman_rnaseq"
+    } else {
+      baseDir <- "/Volumes/ody/projects/seidman_rnaseq"
+      }
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+dataDir <- file.path(baseDir, "project/final/2014-04-24_project")
 count.file <- file.path(dataDir, "combined.counts")
-
 
 pvalcutoff=0.05
 numsig=10
@@ -93,12 +93,12 @@ For this analysis, the cutoff for significant differential expression was an FDR
 
 # DATA IMPORT
 
-The data consists of HTseq counts generated for individual genes (using the Ensembl GTF annotation) from the Tophat aligments. The metadata (or covariates) that describes the experiment consists of the  information about sample ID, type of siRNA and expression pattern of the siRNA.
+The data consists of counts generated for individual genes (using the Ensembl GTF annotation) from the Star aligments. The metadata (or covariates) that describes the experiment consists of the  information about sample ID, heart sublocation and sample age.
 
 These data and metadata were and loaded into a DESeq *CountDataSet*.
 
 ```{r dataload_and_reshape, results='asis'}
-metadata <- read.csv(file.path(metaDir,"sample_metadata.csv" ))
+metadata <- read.csv(file.path(metaDir,"project.csv" ))
 combined.counts <- read.table(count.file, header=T, row.names=1)
 # only one replicate per sample, so just use samplenames get covars from the filenames of the counted samples
 covars <- names(combined.counts)
