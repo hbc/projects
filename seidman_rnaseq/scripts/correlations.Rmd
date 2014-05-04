@@ -1,20 +1,22 @@
 ---
-title: "Correlation Analysis"
+title: "Raw Count Correlation Analysis"
 output:
   html_document:
     toc: true
-    theme: united
+    css: ~/Dropbox/Public/CSS/table.css
+    theme: spacelab
     fig_width: 12
     fig_height: 12
     fig_caption: false
-    highlight: textmate
+    highlight: kate
 ---
+
 
 
 ```{r setup, echo=FALSE}
 options(width=200)
 library(knitr)
-opts_chunk$set(tidy=TRUE, cache=FALSE, echo=FALSE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+opts_chunk$set(tidy=TRUE, cache=TRUE, echo=TRUE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
 
 clientname="Andrew Gagne"
 clientname2="Steve DePalma"
@@ -135,7 +137,11 @@ names(prev.counts) <- c("symbol", "sample", "biopolymer_counts")
 both.counts <- merge(bcbio.counts, prev.counts)
 ```
 
-Correlations are based on `r length(common.symbols)` genes which were shared between the two dataset annotations.
+---
+
+# RESULTS
+
+Correlations are based on the `r length(common.symbols)` genes which were shared between the two dataset annotations.
 
 Here I calculated the pearson correlation (r) of the gene counts for each sample.
 
@@ -148,26 +154,68 @@ kable(by.sample.cor)
 You can look for systematic differences using MAplots.
 
 ```{r maplots}
-ggplot(both.counts, aes(x=0.5*(log(bcbio_counts)+log(biopolymer_counts)), y=(log(biopolymer_counts)-log(bcbio_counts))))+
+p <- ggplot(both.counts, aes(x=0.5*(log(bcbio_counts)+log(biopolymer_counts)), y=(log(biopolymer_counts)-log(bcbio_counts))))+
   geom_point(alpha=0.25)+
-  facet_wrap(~sample, nrow=4)+
-  scale_y_continuous(name="M (difference between log counts (biopolymer-bcbio))")+
+  facet_wrap(~sample, nrow=4)
+
+p+  scale_y_continuous(name="M (difference between log counts (biopolymer-bcbio))")+
   scale_x_continuous(name="A (average log counts)")
 ```
 
-The previous method appears to find a larger number of counts for many genes than bcbio.
+The previous method appears to map a larger number of counts to many genes than bcbio.
 
-We can examine those genes individually to see if they are consistently the same genes.
+---
 
-```{r individualgenes}
+# DISCUSSION
+
+We can examine those genes individually to investigate why that is.
+
+Focusing on the sample with the lowest correlation (E14_5_LA), I subsetted to genes that have a finite  M value (i.e. no zero counts in the bcbio data) of at least 5, and an average log count of at least 2. 
+
+```{r individualgenes, results='asis'}
 both.counts$A <- 0.5*(log(both.counts$bcbio_counts)+log(both.counts$biopolymer_counts))
 both.counts$M <- (log(both.counts$biopolymer_counts)-log(both.counts$bcbio_counts))
 
+kable(subset(both.counts, M>5 & A>2 & is.finite(M) & sample=="E14_5_LA"), row.names=FALSE)
+```
 
+Some of the biggest differences are at mitochondrial genes ("mt-" genes) like mt-Atp6. 
 
+`r kable(both.counts[both.counts$symbol=="mt-Atp6",])`
+
+We can see typically less than a hundred reads aligned to these genes by bcbio, but ten/hundreds of thousands of reads aligned previously. What is causing that?
+
+If we look at the mappability of mt-Atp6 on the mm9 genome build (a measure of how uniquely different k-mers are expected to map to the sequence), we can see that it is less than 50% for the length of the gene. 
+
+![mt-Atp6 mappability](../results/raw_count_correlations/screenshots/Atpase6.png)
+
+This suggests the possibility that the previous method mapped reads here that could have mapped elsewhere as well, aka multi mappping reads. While there are multiple schools of thought on how to handle multi-mapping reads, bcbio follows a philosophy of minimizing false positives, so discards reads which have an uncertain origin. While we have not examined every gene with discordant counts between the two approaches, this would certainly explain the discrepancy in mapping at some of these loci. 
+
+Another genes, Capn12, shows another reason the methods might disagree. Some algorithms map reads to genes without taking overall gene expression into account, this can be a problem when a highly expressed gene overlaps a gene with lower expression. Looking at the alignment for Capn12 in [IGV][5], we can see that the 3' end of Capn12 overlaps the 3' end of Actn4, and there are alot of reads that map to this sequence. 
+
+![Capn12 IGV reads](../results/raw_count_correlations/screenshots/Capn12.png)
+
+It is likely that the previous algorithm assigned these reads to both genes. However,looking at both genes, we can see that these reads are likely originating from the Actn4 gene, as there are alot of reads that map in the 5' regions of Actn4, but there are very few that map to the 5' region of Capn12. bcbio takes this fact into account and probabilistically assigns the reads to a gene based on its overall expresion, resulting in bcbio mapping far fewer reads to Capn12 than the previous method.
+
+We can see something similar occurring for Sla2.
+
+![Sla2 IGV reads](../results/raw_count_correlations/screenshots/Sla2.png)
+
+---
+
+# CONCLUSIONS
+
+The factors of:   
+a) different multi-read handling and   
+b) different methods of handling overlapping genes,   
+together with the   
+c) likely use of dif ferent genome builds for the alignment (previous:mm9 vs. bcbio:mm10) and  
+d) likely use of different gene annotations (previous:UCSC? vs. bcbio:Ensembl)  
+likely explain many of the differences between the raw count results from the two approaches.
 
 
 [1]: https://github.com/chapmanb/bcbio-nextgen (bcbio)
 [2]: http://bioinformatics.oxfordjournals.org/content/early/2012/10/25/bioinformatics.bts635 (Star)
 [3]: http://tophat.cbcb.umd.edu/igenomes.html (iGenomes)
 [4]: http://subread.sourceforge.net/ (subread)
+[5]: https://www.broadinstitute.org/igv/home (IGV)
