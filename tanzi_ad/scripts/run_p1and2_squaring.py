@@ -25,6 +25,7 @@ def main(cores=1):
     work_dir = utils.safe_makedir("/scratch/square")
     priorities = set(["1", "2"])
     list_file = get_input_list(start_dir, priorities)
+    ensure_bam_index(list_file)
     # Ensure input CRAMs are indexed; gets IO bound quickly so limit cores
     cram_cores = min(int(cores), 6)
     for cindex in joblib.Parallel(cram_cores)(joblib.delayed(index_cram)(x) for x in find_crams(list_file)):
@@ -37,7 +38,7 @@ def main(cores=1):
             shutil.copy(out_file + ext, new_file)
 
 def run_squaring(list_file, name, ref_file, cores):
-    mem = 3 * int(cores)
+    mem = 4 * int(cores)
     mem_opts = ["-Xms%sG" % (mem // 2), "-Xmx%sG" % mem]
     out_file = os.path.join(os.getcwd(), "%s.vcf.gz" % name)
     if not utils.file_exists(out_file):
@@ -45,6 +46,16 @@ def run_squaring(list_file, name, ref_file, cores):
                               ["square", out_file, ref_file, list_file,
                                "--caller", "freebayes", "--cores", str(cores)])
     return out_file
+
+def ensure_bam_index(in_file):
+    with open(in_file) as in_handle:
+        for line in (l.strip() for l in in_handle):
+            if line.endswith(".bam"):
+                if not os.path.exists(line + ".bai"):
+                    old_index = "%s.bai" % os.path.splitext(line)[0]
+                    if os.path.exists(old_index):
+                        shutil.move(old_index, line + ".bai")
+                assert os.path.exists(line + ".bai"), line
 
 def index_cram(fname):
     out_file = "%s.crai" % fname
