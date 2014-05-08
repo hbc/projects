@@ -103,6 +103,12 @@ These data and metadata were and loaded into a DESeq *CountDataSet*.
 ```{r dataload_and_reshape, results='asis'}
 metadata <- read.csv(file.path(metaDir,"project.csv" ))
 combined.counts <- read.table(count.file, header=T, row.names=1)
+# rename samples to match previous analyses naming scheme
+names(combined.counts) <- sub("E14_5", "E14.5", names(combined.counts))
+names(combined.counts) <- unlist(lapply(strsplit(names(combined.counts), "_"), function(x) paste(x[2], x[1], sep="_")))
+metadata$description <- sub("E14_5", "E14.5", metadata$description)
+metadata$description  <- unlist(lapply(strsplit(metadata$description, "_"), function(x) paste(x[2], x[1], sep="_")))
+
 # only one replicate per sample, so just use samplenames get covars from the filenames of the counted samples
 covars <- names(combined.counts)
 ## load up new count dataset
@@ -262,11 +268,10 @@ Generate data for selected pairwise comparisons, comparing each sample to each o
 
 ```{r pairwise_comparisons,  results='hide'}
 ## first construct the actual combinations
-all.pair.combos <- combn(as.vector(unique(pData(cds)$condition)),2)
-selected.combos <- all.pair.combos[,apply(all.pair.combos, 2, function(x) all(grepl("E14_5|P10",x)))]
-selected.combos <- apply(selected.combos, 2, sort)
-selected.combos <- selected.combos[,apply(selected.combos, 2, function(x)  !(all(grepl("E14_5", x))|all(grepl("P10", x))))]
-selected.combos <- selected.combos[,apply(selected.combos, 2, function(x) (grepl("LV", x[1])&grepl("RA", x[2]))|grepl("LA",x[1])&grepl("RV", x[2])|(grepl("RA", x[1])&grepl("LV", x[2]))|grepl("RV",x[1])&grepl("LA", x[2]))]
+selected.combos <- matrix(c("RA_P10", "LV_E14.5",
+                            "RV_P10", "LA_E14.5",
+                            "RA_E14.5", "LV_P10",
+                            "RV_E14.5", "LA_P10"), nrow=2)
 
 setnames = apply(selected.combos, 2, function(x) paste(x[1], x[2], sep="-"))
 
@@ -310,8 +315,6 @@ for (n in 1:length(setnames)){
 [Counts and stats for filtered genes and samples in `r selected.combos[1,num]` vs. `r selected.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
 `r num=num+1`
 [Counts and stats for filtered genes and samples in `r selected.combos[1,num]` vs. `r selected.combos[2,num]` comparison](../results/`r paste("all.exprs.stats", setnames[num], "xls", sep=".")`)
-
-
 
 ## Selected comparisons
 
@@ -422,6 +425,7 @@ There are `r nrow(statistical.tests[[num]]$DEresults)` genes with significant di
 # R Session Information
 
 ```{r save_image, echo=FALSE}
+save(statistical.tests, file=file.path(resultsDir, "RDATA-DESeq"))
 sessionInfo()
 ```
 
