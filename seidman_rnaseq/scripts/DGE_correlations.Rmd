@@ -1,0 +1,251 @@
+---
+title: "Raw Count Correlation Analysis"
+output:
+  html_document:
+    toc: true
+    css: ~/Dropbox/Public/CSS/table.css
+    theme: spacelab
+    fig_width: 12
+    fig_height: 12
+    fig_caption: false
+    highlight: kate
+---
+
+
+
+```{r setup, echo=FALSE}
+options(width=200)
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=TRUE, echo=TRUE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+
+clientname="Andrew Gagne"
+clientname2="Steve DePalma"
+clientemail="agagne@genome.med.harvard.edu"
+lablocation="Biopolymers Facility"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+---
+
+Correlation of bcbio.RNAseq+DESeq differential gene expression results with previous results for `r clientname` (`r clientemail`), at `r lablocation` using data from the Seidman lab  (`r clientname2`).  Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+# METHODS SUMMARY
+
+
+There are two sets of differntial expression results to compare:
+
+1) bcbio data: counts generated for individual genes (using the Ensembl GTF annotation) from the Star aligments
+This dataset was generated with [bcbio][1], all read  were trimmed to remove adapter sequences and low quality calls.  Trimmed reads were aligned with [Star][2] and gene specific read counts for [Ensembl gene annotations][3] determined with the featureCounts program from the [subread][4] suite. Differential gene expression was examine with [DESeq][5]
+
+
+2) previous data: counts generated for individual genes and samples from `r clientname2`
+
+The sections below provide code to reproduce the post-counting results and plots. 
+
+---
+
+# SETUP
+
+## Libraries
+
+Bioconductor and R libraries used to process and visualize the data
+
+```{r libraries}
+library(plyr)
+library(reshape2)
+library(ggplot2)
+library(biomaRt)
+library(devtools)
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(knitr)
+library(gridExtra)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+as.num <- function(x){as.numeric(as.character(unlist(x)))}
+```
+
+## Variables
+
+Working directories, cutoffs and other variables necessary to the analysis.
+
+```{r variables}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/seidman_rnaseq")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/seidnman_rnaseq"
+  } else if (file.exists("/Users/johnhutchinson/projects/seidman_rnaseq")){
+    baseDir <- "/Users/johnhutchinson/projects/seidman_rnaseq"
+    } else {
+      baseDir <- "/Volumes/ody/projects/seidman_rnaseq"
+      }
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+dataDir <- file.path(baseDir, "project/final/2014-04-24_project")
+
+bcbio.results.file <- file.path(resultsDir, "RDATA-DESeq")
+prev.results.file <- file.path(baseDir, "data/previous_results/LA_E14.5_LA_P0_LA_P10_LA_P3_LV_E14.5_LV_P0_LV_P10_LV_P3_RA_E14.5_RA_P0_RA_P10_RA_P3_RV_E14.5_RV_P0_RV_P10_RV_P3.expr")
+```
+
+---
+
+# DATA IMPORT
+
+```{r dataload_and_reshape}
+load(bcbio.results.file)
+
+prev.results <- read.delim(prev.results.file, sep="\t", header=T, row.names=1)
+prev.results.ori <- prev.results
+```
+
+---
+
+# DATA PREPROCESS
+
+Subset to common samples and common gene symbols
+
+```{r munge}
+contrasts <- matrix(c("LV_E14.5", "RA_P10", "LA_E14.5", "RV_P10", "LV_P10", "RA_E14.5", "LA_P10", "RV_E14.5"), nrow=2)
+
+results.contrasts <- apply(contrasts, 2, function(contrast){
+  # look at contrast for these samples only
+  sampleA <- as.character(contrast[1])
+  sampleB <- as.character(contrast[2])
+  
+  ## previous results data extraction and munging
+  # subset previous data to normalized counts, fold changes and pvalues for selected comparison
+  prev.results <- prev.results.ori[,grepl(paste(paste(sampleA, "norm", sep="."),
+                                                paste(sampleB, "norm", sep="."),
+                                                paste(sampleA, sampleB, sep="."),
+                                                sep="|"), 
+                                          names(prev.results.ori))] 
+  # mod col names to match bcbio results
+  names(prev.results) <- sub(".$","", names(prev.results))
+  names(prev.results) <- sub("E14.5", "E14_5", names(prev.results))
+  # apply this mod to only the pvalue and foldchange columns
+  names(prev.results)[!grepl("norm", names(prev.results))] <-  lapply(strsplit(names(prev.results)[!grepl("norm", names(prev.results))], "\\."), function(n) paste(n[1], ".", n[3],"-vs-", n[2], sep=""))
+  names(prev.results) <- sub("E14_5", "E14.5", names(prev.results))
+  # take the mean of the normalized counts for each sample in contrast
+  prev.results[, paste("basemean.", sampleB, "-vs-",sampleA, sep="")] <- rowMeans(prev.results[,grep("norm", names(prev.results))])
+  ## bcbio data extraction and munging
+  # setup contrast
+  bcbio.contrast <- paste(sampleB, "-vs-", sampleA, sep="")
+  # extract all results fro contrast
+  bcbio.results <- statistical.tests[[which(unlist(lapply(statistical.tests, function(x) grepl(bcbio.contrast, x$contrast))))]]$allresults
+  # extract pvalues, fold changes and normalized counts for contrast
+  bcbio.results <- bcbio.results[, c("mgi_symbol", "pval", "foldChange", "baseMean", sampleA,sampleB)]
+  # rename columsn to match those from previous results
+  colnames(bcbio.results) <- c("mgi_symbol", paste("pvalue", bcbio.contrast, sep="."),paste("fold", bcbio.contrast, sep="."),paste("basemean", bcbio.contrast, sep="."),paste(sampleA, "norm", sep="."), paste(sampleB, "norm", sep=".") )
+  bcbio.results <- as.data.frame(bcbio.results)
+  # remove duplicated gene rows from bcbio data and use symbosl for row names
+  bcbio.results <- bcbio.results[order(bcbio.results$mgi_symbol),]
+  bcbio.results <- bcbio.results[!duplicated(bcbio.results$mgi_symbol),]
+  row.names(bcbio.results) <- bcbio.results$mgi_symbol
+  bcbio.results$mgi_symbol <- NULL
+  ## Match up datasets by gene and column, cleanup
+  # subset bcbio and previous data to common gene symbols
+  common.symbols <- intersect(row.names(bcbio.results), row.names(prev.results))
+  bcbio.results <- bcbio.results[row.names(bcbio.results) %in% common.symbols,]
+  prev.results <- prev.results[row.names(prev.results) %in% common.symbols,]
+  # sort both datasets by gene symbol
+  bcbio.results <- bcbio.results[order(row.names(bcbio.results)),]
+  prev.results <- prev.results[order(row.names(prev.results)),]
+  # reorder columns
+  bcbio.results <- bcbio.results[,order(names(bcbio.results))]
+  prev.results <- prev.results[, order(names(prev.results))]
+  # add back a column with the gene symbol
+  bcbio.results <- row2colnames(bcbio.results, "symbol")
+  prev.results <- row2colnames(prev.results, "symbol")
+  ## Combine datasets
+  both.results <- merge(bcbio.results, prev.results, by="symbol", suffixes=c(".bcbio", ".prev"))
+  names(both.results) <- sub(paste(".", bcbio.contrast, sep=""), "",names(both.results))
+  ## Calculate adjusted pvalues for both datasets 
+  both.results$padj.bcbio <- p.adjust(both.results$pvalue.bcbio)
+  both.results$padj.prev <- p.adjust(both.results$pvalue.prev)
+  ## Calculate log2 fold changes for both datasets
+  both.results$lfc.bcbio <- log2(both.results$fold.bcbio)
+  both.results$lfc.prev <- log2(both.results$fold.prev)
+  # dump any genes without data for any variable
+  both.results <- both.results[!apply(both.results, 1, function(y) any(is.na(y))),]
+  return(list(both.results=both.results, contrast=bcbio.contrast, sampleA=sampleA, sampleB=sampleB))
+})
+```
+  
+  ---
+
+# RESULTS
+
+
+## Correlations
+
+Here I calculated the pearson correlations (r) of  the log2 transformed fold changes as well as the -log10 fold transformed pvalues. Correlations are based on the genes which were shared between the two dataset annotations and which had finite results after log2/log10 transformation (ie. non-calculable or infinite log2 fold changes were omitted). 
+
+```{r correlations1, results='asis'}
+cors <- ldply(results.contrasts, function(results.contrast){
+  both.results <- results.contrast$both.results
+  contrast <- results.contrast$contrast 
+  # log2 transform fold changes and only use finite results
+  lfcs <- cbind(log2(both.results$fold.bcbio), log2(both.results$fold.prev))
+  lfcs <- lfcs[which(apply(lfcs, 1, function(x) all(is.finite(x)))),]
+  lfc.cor <- cor(lfcs[,1], lfcs[,2])
+  # log10 transform pvalues and only use finite results
+  pvalues <- cbind(-log10(both.results$pvalue.bcbio),-log10(both.results$pvalue.prev) )
+  pvalues <- pvalues[which(apply(pvalues, 1, function(x) all(is.finite(x)))),]
+  
+  pvalue.cor <- cor(pvalues[,1], pvalues[,2])
+  c(contrast,lfc.cor, pvalue.cor)
+})
+  
+names(cors) <- c("contrast", "log2(foldchanges)-correlation", "-log10(pvalues)-correlation")
+kable(cors, row.names=FALSE)
+```
+
+The fold changes appear to correlate quite well between the two methods, but the pvalues do not correlate nearly as well.
+
+## Scatterplots
+
+We can use scatterplots as a first step to explore the correlation structure between the data.
+
+```{r scatterplots,  fig.height=8, fig.width=20, results='hide'}
+plotalpha=0.7
+
+lapply(results.contrasts, function(results.contrast){
+  bcbio.contrast <- results.contrast$contrast
+  both.results <- results.contrast$both.results
+ p1 <-  ggplot(both.results,  aes(x=lfc.bcbio, y=lfc.prev, fill=log(basemean.bcbio)))+
+    geom_point(alpha=plotalpha, size=5, pch=21, col="lightgrey")+
+    scale_fill_continuous(name="log(mean norm counts)", low="blue", high="red")+
+    geom_abline(intercept=0,1,  alpha=0.5)+
+    theme_bw()+
+    ggtitle(paste("Fold Change Comparisons", bcbio.contrast, sep=" - "))+
+    scale_y_continuous("log2FoldChange - previous", limits=c(-10,10))+
+    scale_x_continuous("log2FoldChange - bcbio", limits=c(-10,10))
+  
+ p3 <-  ggplot(both.results, aes(x=-log10(pvalue.bcbio), y=-log10(pvalue.prev), fill=log(basemean.bcbio)))+
+    geom_point(alpha=plotalpha, size=5, col="lightgray", pch=21)+
+    scale_fill_continuous(name="log(mean norm counts)",low="blue", high="red")+
+    geom_abline(intercept=0,1,  alpha=0.5)+
+    theme_bw()+
+    ggtitle(paste("Pvalue Comparisons", bcbio.contrast, sep=" - "))+
+    scale_y_continuous("-log10(pvalue) - previous")+
+    scale_x_continuous("-log10(pvalue) - bcbio")
+ # knitr will not output all four plots unless you arrange them ahead of time
+ grid.arrange(p1,p3, ncol=2)
+})
+```
+  
+As with the correlation calculations, there appears to be good agreeement between the two methods for log fold changes, but the pvalues are very different, with the previous analysis finding much more significant pvalues than bcbio+ DESeq. There also appears to be some relationship between the correlation between the two methods and the mean counts for a gene.
+  
+---
+
+# CONCLUSIONS
+
+The result from the two methods are comparable at the level of fold changes in gene expression. The bcbio-DESeq analysis is far more conservative in assigning pvalues than that previously used. 
+
+
+[1]: https://github.com/chapmanb/bcbio-nextgen (bcbio)
+[2]: http://bioinformatics.oxfordjournals.org/content/early/2012/10/25/bioinformatics.bts635 (Star)
+[3]: http://tophat.cbcb.umd.edu/igenomes.html (iGenomes)
+[4]: http://subread.sourceforge.net/ (subread)
+[5]: http://bioconductor.org/packages/release/bioc/html/DESeq.html (DESeq)
