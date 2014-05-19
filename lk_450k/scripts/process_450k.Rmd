@@ -53,7 +53,7 @@ No probes were filtered, genders were not adjusted for and duplicate samples wer
 
 Bioconductor and R libraries used to process and visualize the data
 
-```{r libraries}
+```{r libraries, cache=FALSE}
 library(knitr)
 library(ggplot2) # pretty plots
 library(minfi)
@@ -65,7 +65,6 @@ install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
 library(CHBUtils)
 library(methylumi)
 library(beanplot)
-library(data.table)
 ```
 
 ## Variables
@@ -314,14 +313,7 @@ mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="M")], numPositions = 1000
 mdsplot.RGset(RGset[,which(pData(RGset)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
 ```
 
-There are still big differences between the adult samples (VDAART, PBMC Japan/Taro) and the cord blood samples (Asthmatics, Controls and Smokers). Given that we are mainly interested in the latter groups, we can exclude the adult samples and look at the remaining samples.
-
-```{r subsetgendermds, out.width='50%'}
-#drop samples we aren't interested in
-RGset.sub <- RGset[,which(grepl("Asthma|Control|Smoker",pData(RGset)$group))]
-mdsplot.RGset(RGset.sub[,which(pData(RGset.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
-mdsplot.RGset(RGset.sub[,which(pData(RGset.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
-```
+There are still big differences between the VDAART, PBMC Japan/Taro and the cord blood samples (Asthmatics, Controls and Smokers).
 
 ---
 
@@ -349,14 +341,14 @@ Post-normalization MDS plots.
 GRset.norm.sub <- GRset.norm[,which(grepl("Asthma|Control|Smoker",pData(GRset.norm)$group))]
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Male only", cex=10, alpha=0.5)
 mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="F")], numPositions = 10000, sampGroups = "group", sampNames="SampleID", main="Beta-value MDS, 10000 most variable positions, by Group, Female only", cex=10, alpha=0.5)
-#save.image(file.path(resultsDir, "RDATA"))
+
 ```
 
 ## Filter Probes
 
 We can remove failed probes based on bead count and detection p-values across the samples. Because our datasets are of mixed genders, this step can also result in the removal of most of the chrY and chrX probes. We can also remove probes targetted to areas with known SNPs or repetetive DNA. I took a conservative appraoch and removed all probes with any common SNP in either the probe CpG or the single base extension site, withouyt regard to the minor allele frequency of the SNP.
 
-```{r pfilter, out.width='50%'}
+```{r pfilter, out.width='50%', cache=FALSE}
 # Failed probes
 ## have to do the initial pfilter with the base RGset, as it fails with with the GMset
 RGset.pf <- pfilter(RGset)
@@ -391,6 +383,8 @@ mdsplot.RGset(GRset.norm.sub[,which(pData(GRset.norm.sub)$predictedSex=="M")], n
 
 # simplify object name
 GRset.norm.filtered <- GRset.norm.passed.CpGSNPfree.SBESNPfree
+
+save(GRset.norm.filtered, file=file.path(resultsDir, "RDATA.GRset.norm.filtered"))
 ```
 
 Removing failed probes results in removal of `r dim(GRset.norm)[1]-dim(GRset.norm.passed)[1]` probes.
@@ -430,10 +424,10 @@ kable(design)
 - to perform specified pairwise comparisons
 - in this table, columns are contrasts/comparisons and rows are sample groups
 -  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
-- here, I specify  a contrast which combines the two pairwise constrasts (smokers vs. controls  & asthmatics vs. controls) to find common differences between smokers and asthmatics as compared to controls
+- here, I specify  four pairwise constrasts (smokers vs. controls, asthmatics vs. controls, vDAART vs. controls and Japanese vs. controls) and one combined contrast to find common differences between smokers, asthmatics and vDAART samples as compared to controls
 
 ```{r contrasts, results='asis'}
-contrast.matrix <- makeContrasts(control_v_smokers=Controls-Smokers, controls_v_asthmatics=Controls-Asthmatics, combined_v_controls=(Smokers-Controls)+(Asthmatics-Controls),levels=colnames(design))
+contrast.matrix <- makeContrasts(control_v_vdaart=Controls-vDAART, controls_v_japanese=Controls-Japan, control_v_smokers=Controls-Smokers, controls_v_asthmatics=Controls-Asthmatics, combined_v_controls=(Smokers-Controls)+(Asthmatics-Controls)+(vDAART-Controls),levels=colnames(design))
 kable(contrast.matrix)
 ```
 
@@ -477,24 +471,29 @@ fit2.mvalues <- eBayes(fit2.mvalues)
 Betavalues <- getBeta(GRset.norm.filtered)
 #subset to smokers, controls and asthmatics
 pd <- as.data.frame(pData(GRset.norm.filtered))
-samples.of.interest <- pd$barcode[pd$group %in% c("Asthmatics", "Controls", "Smokers")]
-Betavalues <- Betavalues[,samples.of.interest]
-pd <- pd[samples.of.interest,]
 
 smoker.cols <- which(pd$group=="Smokers")
 control.cols <- which(pd$group=="Controls")
 asthmatic.cols <- which(pd$group=="Asthmatics")
+vdaart.cols <- which(grepl("vDAART", pd$group))
+japan.cols <- which(grepl("Japan", pd$group))
 
 smoker.means <- apply(Betavalues[,smoker.cols], 1, mean)
 control.means <- apply(Betavalues[,control.cols], 1, mean)
 asthmatic.means <- apply(Betavalues[,asthmatic.cols],1, mean)
+japan.means <- apply(Betavalues[,japan.cols],1,mean)
+vdaart.means <- apply(Betavalues[,vdaart.cols],1, mean)
+
 # sds
 smoker.sds <- apply(Betavalues[,smoker.cols], 1, sd)
 control.sds <- apply(Betavalues[,control.cols], 1, sd)
 asthmatic.sds <- apply(Betavalues[,asthmatic.cols],1, sd)
+japan.sds <- apply(Betavalues[,japan.cols],1,sd)
+vdaart.sds <- apply(Betavalues[,vdaart.cols],1, sd)
 # combine all stats
-beta.stats <- do.call(cbind, list(smoker.means, smoker.sds, control.means, control.sds, asthmatic.means, asthmatic.sds))
-colnames(beta.stats) <- c("smoker_mean", "smoker_sd", "control_mean", "control_sd", "asthmatic_mean", "asthmatic_sd")
+
+beta.stats <- do.call(cbind, list(smoker.means, smoker.sds, control.means, control.sds, asthmatic.means, asthmatic.sds, japan.means, japan.sds, vdaart.means, vdaart.sds))
+colnames(beta.stats) <- c("smoker_mean", "smoker_sd", "control_mean", "control_sd", "asthmatic_mean", "asthmatic_sd", "japan_mean", "japan_sd","vdaart_mean", "vdaart_sd")
 beta.stats <- as.data.frame(beta.stats)
 beta.stats <- row2colnames(beta.stats, "TargetID")
 
@@ -515,8 +514,9 @@ stats.contrasts <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), fu
 
 
 The tables here show just the top ten differentially methylated probes for each comparison. You can find the annotated results for all probes in the Excel file under the table.
-
-## Controls vs. Smokers comparison
+
+
+## Controls vs. vDAART comparison
 
 ```{r results1, results='asis'}
 num=1
@@ -536,7 +536,7 @@ kable(output)
 [Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
 
 
-## Controls vs. Asthmatics comparison
+## Controls vs. Japan/Taro PBMCs comparison
 
 ```{r results2, results='asis'}
 num=2
@@ -555,11 +555,50 @@ kable(output)
 
 [Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
 
-## Common differences between Controls-Asthmatics and Controls-Smokers comparisons
 
+## Controls vs. Smokers comparison
 
 ```{r results3, results='asis'}
 num=3
+stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
+contrast <- stats.contrasts[[num]]$contrast
+# sort by adjusted pvalue before writing to file
+stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+stats.annot.betas <- stats.annot.betas[,grepl("TargetID|P.Value|adj.P.Val|UCSC_RefGene_Name|UCSC_RefGene_Accession|_mean|_sd", names(stats.annot.betas))]
+
+write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+output <- head(stats.annot.betas, n=10)
+output[is.na(output)]   <- " " 
+kable(output)
+```
+
+[Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
+
+
+## Controls vs. Asthmatics comparison
+
+```{r results4, results='asis'}
+num=4
+stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
+contrast <- stats.contrasts[[num]]$contrast
+# sort by adjusted pvalue before writing to file
+stats.annot.betas <- stats.annot.betas[order(stats.annot.betas$adj.P.Val),]
+stats.annot.betas <- stats.annot.betas[,grepl("TargetID|P.Value|adj.P.Val|UCSC_RefGene_Name|UCSC_RefGene_Accession|_mean|_sd", names(stats.annot.betas))]
+write.table(stats.annot.betas, file=file.path(resultsDir, paste("annotated.stats_and_betas", contrast, "xls", sep=".")), sep="\t", row.names=FALSE, col.names=TRUE)
+# drop unnecessary details for quick table output
+output <- head(stats.annot.betas, n=10)
+output[is.na(output)]   <- " " 
+kable(output)
+
+```
+
+[Excel file with results for `r contrast`](../results/`r paste("annotated.stats_and_betas", contrast, "xls", sep=".")`) 
+
+## Common differences between Controls-Asthmatics, Controls-Smokers and Controls-vDAART comparisons, limma method
+
+```{r results5, results='asis'}
+num=5
 stats.annot.betas <- stats.contrasts[[num]]$stats.annot.betas
 contrast <- stats.contrasts[[num]]$contrast
 # sort by adjusted pvalue before writing to file
@@ -576,9 +615,12 @@ kable(output)
 
 ---
 
-# FUTURE WORK
-- adjust for inter-dependence among CpGs in a region, i.e. smoothing
+# R Session
 
+```{r rsession}
+sessionInfo()
+save.image(file.path(resultsDir, "RDATA"))
+```
 
 [1]: http://www.bioconductor.org/packages/2.10/bioc/html/minfi.html (minfi)
 

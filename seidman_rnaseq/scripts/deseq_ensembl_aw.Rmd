@@ -8,6 +8,8 @@ output:
     fig_height: 12
     fig_caption: false
     highlight: kate
+    smart: false
+    css: ~/Dropbox/Public/CSS/table.css
 ---
 
 

@@ -47,9 +47,9 @@ metaDir <- file.path(baseDir, "meta", "WB")
 
 ----
 
-# CURATION and UNIFICATION OF DATA
+# INITIAL DOWNLOAD of METATDATA
 ## Obtaining metadata for all studies 
-In this section, I downloaded the metadata for all the whole blood studies Les shared in his [Whole Blood Array Inventory](../meta/WB/WHOLEBLOODArrayINVENTORYMarch4update.pages)
+In this section, I downloaded the metadata for all the whole blood studies Les shared in his [file](../meta/WB/MoreNormalsForPathPrint.pages)
 I used two [Bioconductor][1] libraries to interface with the [Gene Expression Omnibus][2] and [Array Express][3] databases ([GEOquery][4] and [ArrayExpress][5] respectively). 
 
 ```{r database_download_libraries}
@@ -61,23 +61,17 @@ library(ArrayExpress)
 The IDs of the GEO series (GSEs) are:
 
 ```{r GEOIDs}
-GSE.ids <- c("GSE10715", "GSE11375", "GSE12288", "GSE14844", "GSE14882", "GSE15289", "GSE16028", "GSE16059", "GSE17732", "GSE18897", "GSE19151", "GSE19491", "GSE19743", "GSE20189", "GSE21345", "GSE21592", "GSE22868", "GSE24223", "GSE25742", "GSE2634", "GSE26415", "GSE26440", "GSE26378", "GSE28750", "GSE30550", "GSE31014", "GSE3284", "GSE33321", "GSE33341", "GSE34404", "GSE37171", "GSE38485", "GSE39017", "GSE40396", "GSE40561", "GSE40586",  "GSE42002", "GSE4488", "GSE6575", "GSE7400", "GSE8121", "GSE9692")
+GSE.ids <- c("GSE10715","GSE11375","GSE16028","GSE16059","GSE19743","GSE3284","GSE37171","GSE14844","GSE26378","GSE26440","GSE8121","GSE9692","GSE35571","GSE46449","GSE16059","GSE25414","GSE54247","GSE53195","GSE34404","GSE42826","GSE38900","GSE47728","GSE33828","GSE53195","GSE40396","GSE45603","GSE35846","GSE48152","GSE36382","GSE33321","GSE20142","GSE40561","GSE42026","GSE22098","GSE52005","GSE3846","GSE45878","GSE41890","GSE22255","GSE47353","GSE53823","GSE21311","GSE46743","GSE42002","GSE47727","GSE16561","GSE55319","GSE48348")
 GSE.ids=sub(" .*" , "", GSE.ids)
 GSE.ids=sub(" .*" , "", GSE.ids)
 print(GSE.ids)
 ```
 
-- *removed GSE33493 as it is currently a private dataset*  
-- *removed GSE41505 as it is a PBMC dataset*  
-**This left `r length(GSE.ids)` GEO series in total**
+**There are `r length(GSE.ids)` GEO series in total**
 
 ### Data for each GEO series was downloaded via GEOquery into separate directories by series ID
 - for series with more than one dataset (GDS), I numbered the metadata files separately, according to their order in the series  metadata
 - for series with only one dataset, the metadata file contains the number "1"
-
-For some of the GEO metdata files, manual correction of the metadata was necessary   
-  - **GSE2634** - remove malformatted rows at top    
-  - **GSE21345** - tried to realign columns by hand in Excel, but as data is completely discordant between samples, we would have to split up the whole table. As study used an uncommon array type, I decided to just exclude it.
 
 ```{r GEOquerypDATA, eval=FALSE}
 for (GSE.id in GSE.ids) {
@@ -105,6 +99,7 @@ for (GSE.id in GSE.ids) {
     }
   }
 ```
+
 
 ### Load in the Array Express IDs of the Array Express studies
 The IDs of the Array Express studies are: 
