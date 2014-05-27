@@ -12,7 +12,7 @@ use Cwd;
 # set up script_dir variable
 
 # JH temp while debugging
-my $script_dir = "/n/hsphS10/hsphfs1/chb/projects/bh_assembly/scripts";
+my $script_dir = "/n/home08/jhutchin/consults/bh_assembly/scripts";
 #my $script_dir = $ENV{SCRIPT_DIR};
 print "$script_dir\n";
 

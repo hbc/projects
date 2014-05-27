@@ -6,7 +6,7 @@ use DBI;
 
 # set up scripts directory
 
-my $script_dir = "/n/hsphS10/hsphfs1/chb/projects/bh_assembly/scripts/clustering_scripts";
+my $script_dir = "/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scripts";
 $ENV{SCRIPT_DIR} = $script_dir;
 
 # random number for job submission/dependencies
@@ -226,13 +226,17 @@ print STDERR "Submitted job $reftrainjobid - to train Glimmer and Prodigal on re
 # only submit with assembly memory requirements if fastqs are present in the input list
 my $assembly = 0;
 my $jobarrayid="";
+
+
 if (grep(/fastq/,@ARGV)) {
-	$jobarrayid=`sbatch -d afterany:$reftrainjobid --mem=8000 -n 1 -t 60 --job-name=$jobid\".\"glim[1-$count] -p serial_requeue -o log.\%I -e err.\%I --wrap=\"./JobArray.\${LSB_JOBINDEX}\" | awk ' { print \$4 }'`;
+	write_suffix_array_slurm_script("RunJobArrays.sh", "8000", "1", "60", "general", "JobArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid --array=1-$count --job-name=$jobid.glim --wrap=\"./RunJobArrays.sh" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 	$assembly = 1;
 } else {
-	$jobarrayid=`sbatch -d afterany:$reftrainjobid --mem=2000 -n 1 -t 60 --job-name=$jobid\".\"glim[1-$count] -p serial_requeue -o log.\%I -e err.\%I --wrap=\"./JobArray.\${LSB_JOBINDEX}\" | awk ' { print \$4 }'`;
+	write_suffix_array_slurm_script("RunJobArrays.sh", "2000", "1", "60", "general", "JobArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid --array=1-$count --job-name=$jobid.glim --wrap=\"./RunJobArrays.sh" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 }
@@ -240,8 +244,12 @@ if (grep(/fastq/,@ARGV)) {
 
 # print file for checkpointing following gene prediction
 
+write_clustering_checkpoint_slurm_script("RunCheckpoints.sh", "2000", "1", "10", "general"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+
+exit;
+
 `sbatch -d afterok:$jobarrayid --mem=2000 -n 1 -t 10 --job-name=$jobid\".\"CHK -p serial_requeue -o all.log -e all.err --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"`;
-	
+#system "bsub -J \"$jobid\".CHK -w \"ended($jobid"."glim[1-$count])\" -o all.log -e all.err $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";                   to see exactly what this module does.	
 
 # print files for COGtriangles clustering (three stages have different memory requirements)
 
@@ -304,3 +312,47 @@ The reference genome will not feature in the final analysis unless it also featu
 
 ";
 }
+
+sub write_suffix_array_slurm_script {
+	my $scriptname=$_[0];
+	my $memory=$_[1];
+	my $nodes=$_[2];
+	my $minutes=$_[3];
+	my $queue=$_[4];
+	my $stageprefix=$_[5];
+	open SLURMSCRIPTFH, "> $scriptname";
+	print SLURMSCRIPTFH "#!/bin/bash\n";
+  	print SLURMSCRIPTFH "#SBATCH --mem=$memory\n";
+  	print SLURMSCRIPTFH "#SBATCH -n $nodes\n";
+  	print SLURMSCRIPTFH "#SBATCH -t $minutes\n";
+	print SLURMSCRIPTFH "#SBATCH -p $queue\n";
+	print SLURMSCRIPTFH "#SBATCH -o log.%A_%a\n";
+	print SLURMSCRIPTFH "#SBATCH -e err.%A_%a\n";
+	print SLURMSCRIPTFH "./$stageprefix.";
+	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
+	close SLURMSCRIPTFH;
+	system "chmod +x $scriptname";
+}
+
+sub write_clustering_checkpoint_slurm_script {
+	my $scriptname=$_[0];
+	my $memory=$_[1];
+	my $nodes=$_[2];
+	my $minutes=$_[3];
+	my $queue=$_[4];
+	open SLURMSCRIPTFH, "> $scriptname";
+	print SLURMSCRIPTFH "#!/bin/bash\n";
+  	print SLURMSCRIPTFH "#SBATCH --mem=$memory\n";
+  	print SLURMSCRIPTFH "#SBATCH -n $nodes\n";
+  	print SLURMSCRIPTFH "#SBATCH -t $minutes\n";
+	print SLURMSCRIPTFH "#SBATCH -p $queue\n";
+	print SLURMSCRIPTFH "#SBATCH -o log.%A_%a\n";
+	print SLURMSCRIPTFH "#SBATCH -e err.%A_%a\n";
+	print SLURMSCRIPTFH ".$script_dir/clustering_checkpoint.pl ";
+	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
+	print SLURMSCRIPTFH " $jobid $assembly $refnum $reference";
+	close SLURMSCRIPTFH;
+	system "chmod +x $scriptname";
+}
+
+`sbatch -d afterok:$jobarrayid --mem=2000 -n 1 -t 10 --job-name=$jobid\".\"CHK -p serial_requeue -o all.log -e all.err --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"`;
