@@ -95,8 +95,6 @@ if ($file =~ /_1.fastq/) {
 	$file =~ s/_1/.fa/g;
 	system "echo \">$file\" | cat - joined.seq > ../$file";
 	chdir "$working_dir";
-
-
 }
 
 ########################################################################

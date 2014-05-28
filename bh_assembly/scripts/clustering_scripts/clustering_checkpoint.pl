@@ -40,38 +40,7 @@ foreach (<IN>) {
 
 close IN;
 
-# check whether a sufficient number of proteins have been output from each genome
-
 my @file_nums = (1..$count);
-my @rerun;
-
-# retrieve the number of CDSs predicted in the reference sequence
-
-my $ref_mfa = $tracking{$refnum};
-$ref_mfa =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.CDS.mfa/g;
-my $ref_CDS = `grep -c '>' $ref_mfa | tr -d "\n"`;
-
-# check that a reasonable number of CDSs have been predicted for each assembly
-
-foreach my $num (@file_nums) {
-	my $CDS_mfa = $tracking{$num};
-	$CDS_mfa =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.CDS.mfa/g;
-	if (-e "$dir/$CDS_mfa" && -e "$dir/seq.$num.csv" && -e "$dir/$tracking{$num}.report") {
-		my $test_CDS = `grep -c '>' $CDS_mfa`;
-		chomp $test_CDS;
-		if ($test_CDS < (0.75*$ref_CDS)) {		# check for good assembly and gene prediction
-			push(@rerun,$num);
-		}
-	} else {
-		push(@rerun,$num);
-	}
-}
-
-$" = ",";
-
-# rerun jobs where necessary; else run clustering jobs
-
-$rerunindices = join(",", @rerun);
 
 # concatenate the assembly reports
 
@@ -81,23 +50,38 @@ if (-e "$dir/all.strains.assembly_stats.out") {
 
 system "echo -e \"File\tLength\t#_contigs\tN50\t#_CDS\" > all.strains.assembly_stats.out";
 
+
+# JH filenames were wrong, .report files are based on fa filenames, used to use the fastq.gz filenames output at start of master script
 foreach my $num (keys %tracking) {
 	unless ($num == $refnum) {
-		system "cat $tracking{$num}.report >> all.strains.assembly_stats.out";
-		system "rm $tracking{$num}.report";
+		my $filename = $tracking{$num};
+		$filename =~ s/_1.fastq.gz/.fa/g;
+		system "cat $filename.report >> all.strains.assembly_stats.out";
+		system "rm $filename.report";
 	}
 }
 
 # submit the concatenation script
 
-system "bsub -J \"$jobid"."CAT\" -o all.log -e all.err -M 8000000 -R 'select[mem>8000] rusage[mem=8000]' ./concatenation_script.sh";
+my $concatjobid=`sbatch -n 1 --mem=8000 -t 10 -o all.log -e all.err -p serial_requeue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
+chomp $concatjobid;
+print STDERR "Submitted job $concatjobid - concatenation script\n";
+#system "bsub -J \"$jobid"."CAT\" -o all.log -e all.err -M 8000000 -R 'select[mem>8000] rusage[mem=8000]' ./concatenation_script.sh";
 
 # run BLAST comparisons
+write_suffix_array_slurm_script("RunBlastArrays.sh", "2000", "1", "60", "serial_requeue", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+my $blastarrayid=`sbatch -d afterok:$concatjobid --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
+chomp $blastarrayid;
+print STDERR "Submitted job $blastarrayid - to run Blast\n";
+#system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."UBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./BlastJob.\${LSB_JOBINDEX}';
 
-system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."UBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./BlastJob.\${LSB_JOBINDEX}';
+write_suffix_array_slurm_script("RunFilterBlastArrays.sh", "2000", "1", "60", "serial_requeue", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+my $filterblastarrayid=`sbatch -d afterok:$concatjobid --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+chomp $filterblastarrayid;
+print STDERR "Submitted job $filterblastarrayid - to run Filtered Blast\n";
+#system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."FBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./FilterBlast.\${LSB_JOBINDEX}';
 
-system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."FBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./FilterBlast.\${LSB_JOBINDEX}';
-
+exit;
 	
 # run Cogtriangles on the BLAT comparisons
 
@@ -174,27 +158,6 @@ sub write_suffix_array_slurm_script {
 	print SLURMSCRIPTFH "#SBATCH -e err.%A_%a\n";
 	print SLURMSCRIPTFH "./$stageprefix.";
 	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
-	close SLURMSCRIPTFH;
-	system "chmod +x $scriptname";
-}
-
-sub write_clustering_checkpoint_slurm_script {
-	my $scriptname=$_[0];
-	my $memory=$_[1];
-	my $nodes=$_[2];
-	my $minutes=$_[3];
-	my $queue=$_[4];
-	open SLURMSCRIPTFH, "> $scriptname";
-	print SLURMSCRIPTFH "#!/bin/bash\n";
-  	print SLURMSCRIPTFH "#SBATCH --mem=$memory\n";
-  	print SLURMSCRIPTFH "#SBATCH -n $nodes\n";
-  	print SLURMSCRIPTFH "#SBATCH -t $minutes\n";
-	print SLURMSCRIPTFH "#SBATCH -p $queue\n";
-	print SLURMSCRIPTFH "#SBATCH -o log.%A_%a\n";
-	print SLURMSCRIPTFH "#SBATCH -e err.%A_%a\n";
-	print SLURMSCRIPTFH ".$script_dir/clustering_checkpoint.pl ";
-	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
-	print SLURMSCRIPTFH " $jobid $assembly $refnum $reference";
 	close SLURMSCRIPTFH;
 	system "chmod +x $scriptname";
 }
