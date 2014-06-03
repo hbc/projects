@@ -12,6 +12,7 @@ use strict;
 #my $script_dir = $ENV{SCRIPT_DIR};
 #JH temp change while debugging
 my $script_dir="/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scripts";
+my $slurmqueue = $ENV{SLURMQUEUE};
 
 
 # process input
@@ -43,7 +44,6 @@ close IN;
 my @file_nums = (1..$count);
 
 # concatenate the assembly reports
-
 if (-e "$dir/all.strains.assembly_stats.out") {
 	system "rm $dir/all.strains.assembly_stats.out";
 }
@@ -63,26 +63,25 @@ foreach my $num (keys %tracking) {
 
 # submit the concatenation script
 
-my $concatjobid=`sbatch -n 1 --mem=8000 -t 10 -o all.log -e all.err -p serial_requeue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
+my $concatjobid=`sbatch -n 1 --mem=8000 -t 10 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
 chomp $concatjobid;
 print STDERR "Submitted job $concatjobid - concatenation script\n";
 #system "bsub -J \"$jobid"."CAT\" -o all.log -e all.err -M 8000000 -R 'select[mem>8000] rusage[mem=8000]' ./concatenation_script.sh";
 
 # run BLAST comparisons
-write_suffix_array_slurm_script("RunBlastArrays.sh", "2000", "1", "60", "serial_requeue", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-my $blastarrayid=`sbatch -d afterok:$concatjobid --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
+write_suffix_array_slurm_script("RunBlastArrays.sh", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+my $blastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=1000 -n 1 -t 60 --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
 chomp $blastarrayid;
 print STDERR "Submitted job $blastarrayid - to run Blast\n";
 #system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."UBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./BlastJob.\${LSB_JOBINDEX}';
 
-write_suffix_array_slurm_script("RunFilterBlastArrays.sh", "2000", "1", "60", "serial_requeue", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-my $filterblastarrayid=`sbatch -d afterok:$concatjobid --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+write_suffix_array_slurm_script("RunFilterBlastArrays.sh", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+my $filterblastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=1000 -n 1 -t 60 --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
 chomp $filterblastarrayid;
 print STDERR "Submitted job $filterblastarrayid - to run Filtered Blast\n";
 #system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."FBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./FilterBlast.\${LSB_JOBINDEX}';
 
-exit;
-	
+
 # run Cogtriangles on the BLAT comparisons
 
 # calculate approximate memory requirements - 13 Gb per 100 strains, 20 Gb starting level - this gives the 98 Gb needed to process the SPARC collection, need to fix this for other bugs
@@ -90,8 +89,11 @@ exit;
 my @blat_array = (1..$count);
 my @filter_array = (1..$count);
 $" = ",";
+
+my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=1000 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+chomp $blast_checkpointid;
 	
-system "bsub -w \"ended($jobid"."UBLA[1-$count]) && ended($jobid"."FBLA[1-$count])\" -o all.log -e all.err $script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum";
+
 	
 	#my $bignum = 10000000;
 #	my $smallnum = 10000;
@@ -143,19 +145,9 @@ print STDERR "Completed clustering_checkpoint.pl\n";
 
 sub write_suffix_array_slurm_script {
 	my $scriptname=$_[0];
-	my $memory=$_[1];
-	my $nodes=$_[2];
-	my $minutes=$_[3];
-	my $queue=$_[4];
-	my $stageprefix=$_[5];
+	my $stageprefix=$_[1];
 	open SLURMSCRIPTFH, "> $scriptname";
 	print SLURMSCRIPTFH "#!/bin/bash\n";
-  	print SLURMSCRIPTFH "#SBATCH --mem=$memory\n";
-  	print SLURMSCRIPTFH "#SBATCH -n $nodes\n";
-  	print SLURMSCRIPTFH "#SBATCH -t $minutes\n";
-	print SLURMSCRIPTFH "#SBATCH -p $queue\n";
-	print SLURMSCRIPTFH "#SBATCH -o log.%A_%a\n";
-	print SLURMSCRIPTFH "#SBATCH -e err.%A_%a\n";
 	print SLURMSCRIPTFH "./$stageprefix.";
 	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
 	close SLURMSCRIPTFH;
