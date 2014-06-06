@@ -90,7 +90,7 @@ my @blat_array = (1..$count);
 my @filter_array = (1..$count);
 $" = ",";
 
-my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=1000 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=1000 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 chomp $blast_checkpointid;
 	
 

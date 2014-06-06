@@ -10,7 +10,13 @@ use Bio::SeqIO;
 
 # set up script_dir variable
 
-my $script_dir = $ENV{SCRIPT_DIR};
+#JH my $script_dir = $ENV{SCRIPT_DIR};
+
+my $script_dir = "~/consults/bh_assembly/scripts/clustering_scripts/";
+$ENV{SCRIPT_DIR} = $script_dir;
+#JH my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmqueue = "general";
+$ENV{SCRIPT_DIR} = $slurmqueue;
 
 # random number for job submission/dependencies
 
@@ -82,7 +88,8 @@ while ($num <= $count) {
 	unless ($num == $refnum) {
 		my $seqfull = "seq".$num;
 		print PAM "$seqfull";
-		foreach my $cluster (sort keys %{%clusters_strains}) {
+		#JH foreach my $cluster (sort keys %{%clusters_strains}) { #JH remove extra curly braces
+		foreach my $cluster (sort keys %clusters_strains) { 
 			if (defined($clusters_strains{$cluster}{$seqfull}) && $clusters_strains{$cluster}{$seqfull} >= 1) {
 				print PAM "\t1";
 			} else {
@@ -114,7 +121,9 @@ if ($count > 100) {
 	}
 }
 
-system "bsub -o all.log -e log.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' $script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum";
+my $ccpgid=`sbatch -n 1 --mem=$smallnum -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CALCCOGPAN --wrap=\"$script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum\" | awk ' { print \$4 }'`;
+chomp $ccpgid;
+#JH system "bsub -o all.log -e log.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' $script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum";
 
 print STDERR "Submitted; now identifying single copy orthologues\n";
 
@@ -180,6 +189,7 @@ foreach $SCcount (sort keys %SCcore) {						# submit analysis jobs for clusters 
 		close OUT;
 		system "chmod +x AlignArray.$normal_count";
 		$normal_count++;
+		print $normal_count;
 	} elsif (scalar(@{$SCcore{$SCcount}}) > 0) {
 		if (($ten_count/10)-(int($ten_count/10)) == 0) {
 			close SMA;
@@ -204,26 +214,59 @@ if ($ten_count != 1) {
 $normal_count--;
 $small_count--;
 my $dependency_string;
+my $alignarrayid;
+my $smallalignarrayid;
 
 # run analysis of clusters containing more than 74 members
 
 if ($normal_count > 1) {
-	system "bsub -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -q normal_serial -J $jobid"."aln[1-$normal_count]".'%100 -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
-	$dependency_string = "ended($jobid"."aln[1-$normal_count])";
+	write_suffix_array_slurm_script("AlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+	my $alignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$normal_count --job-name=$jobid.ALN --wrap=\"./AlignArrays.sh\" | awk ' { print \$4 }'`;
+	chomp $alignarrayid;
+	#JH system "bsub -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -q normal_serial -J $jobid"."aln[1-$normal_count]".'%100 -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
+	#JH $dependency_string = "ended($jobid"."aln[1-$normal_count])";
+	$dependency_string="$alignarrayid"; #JH
 }
+
 
 # run analysis of clusters containing fewer than 75 members
 
 if ($small_count > 1) {
-	system "bsub -q short_serial -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -J $jobid"."Saln[1-$small_count]".'%100 -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
-	if (defined($dependency_string) && length($dependency_string) > 0) {
-		$dependency_string.=" && ";
+	write_suffix_array_slurm_script("SmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+	my $smallalignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$small_count --job-name=$jobid.SMALN --wrap=\"./SmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+	chomp $smallalignarrayid;
+	$dependency_string="$smallalignarrayid"; #JH
+
+	#JHsystem "bsub -q short_serial -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -J $jobid"."Saln[1-$small_count]".'%100 -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
+	if (defined($alignarrayid) && length($alignarrayid) > 0) {
+		$dependency_string="$alignarrayid:$smallalignarrayid";
+	
+	#JH if (defined($dependency_string) && length($dependency_string) > 0) {
+	#JH	$dependency_string.=" && ";
 	}
-	$dependency_string.="ended($jobid"."Saln[1-$small_count])";
+	#JH $dependency_string.="ended($jobid"."Saln[1-$small_count])";
 }
 
 # submit checkpointing and alignment processing jobs
 
-system "bsub -o all.log -e all.err -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum";
+my $ccaid=`sbatch -d afterok:$dependency_string -n 1 --mem=2500 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CHKCOG --wrap=\"$script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum\" | awk ' { print \$4 }'`;
+chomp $ccaid;
+#JH system "bsub -o all.log -e all.err -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum;
 
 print STDERR "Done\nCompleted extract_annotate_orthologues\n";
+
+
+##############
+# SUBROUTINES #
+##############
+
+sub write_suffix_array_slurm_script {
+	my $scriptname=$_[0];
+	my $stageprefix=$_[1];
+	open SLURMSCRIPTFH, "> $scriptname";
+	print SLURMSCRIPTFH "#!/bin/bash\n";
+	print SLURMSCRIPTFH "./$stageprefix.";
+	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
+	close SLURMSCRIPTFH;
+	system "chmod +x $scriptname";
+}
