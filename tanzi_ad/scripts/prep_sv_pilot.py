@@ -24,12 +24,13 @@ def write_config_file(samples, name, region_file):
     bams = []
     with open(meta_file, "w") as out_handle:
         writer = csv.writer(out_handle)
-        writer.writerow(["samplename", "description", "batch", "sex",
-                         "aligner", "mark_duplicates", "variantcaller", "svcaller", "variant_regions"])
+        writer.writerow(["samplename", "description", "batch", "sex", "coverage_interval",
+                         "mark_duplicates", "variantcaller", "svcaller", "variant_regions"])
         for sample in sorted(samples, key=lambda x: x["family"]):
             bams.append(sample["bam"])
             writer.writerow([os.path.basename(sample["bam"]), sample["sample"], sample["family"],
-                             sample["gender"], "false", "false", "false", "lumpy;cn.mops", region_file])
+                             sample["gender"], "regional", "true", "false",
+                             "lumpy;cn.mops;delly", region_file])
     subprocess.check_call(["bcbio_nextgen.py", "-w", "template", "freebayes-variant",
                            meta_file] + bams)
 
@@ -49,6 +50,7 @@ def get_bam(sample, bam_dir):
 
 def get_samples(families, fname):
     samples = []
+    seen_samples = set([])
     with open(fname) as in_handle:
         reader = csv.reader(in_handle)
         reader.next()  # header
@@ -56,7 +58,9 @@ def get_samples(families, fname):
             family_id, sample_id, priority = parts[1:4]
             status_flag = parts[16]
             if status_flag != "Exclude" and family_id in families:
-                samples.append({"sample": sample_id, "family": family_id, "gender": _get_gender(parts[12])})
+                if sample_id not in seen_samples:
+                    seen_samples.add(sample_id)
+                    samples.append({"sample": sample_id, "family": family_id, "gender": _get_gender(parts[12])})
     return samples
 
 def _get_gender(gender):
