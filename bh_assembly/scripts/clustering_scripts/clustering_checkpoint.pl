@@ -7,12 +7,11 @@ use strict;
 # Checks whether gene predictions have run on each genome appropriately           #
 ###################################################################################
 
-# set up script_dir variable
-
-#my $script_dir = $ENV{SCRIPT_DIR};
-#JH temp change while debugging
-my $script_dir="/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scripts";
+# set up script_dir and slurm variables
+my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmtime = $ENV{SLURMTIME};
+my $slurmmem = $ENV{SLURMMEM};
 
 
 # process input
@@ -62,21 +61,21 @@ foreach my $num (keys %tracking) {
 }
 
 # submit the concatenation script
-
-my $concatjobid=`sbatch -n 1 --mem=8000 -t 10 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
+my $jobmem = $slurmmem*8;
+my $concatjobid=`sbatch -n 1 --mem=$jobmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
 chomp $concatjobid;
 print STDERR "Submitted job $concatjobid - concatenation script\n";
 #system "bsub -J \"$jobid"."CAT\" -o all.log -e all.err -M 8000000 -R 'select[mem>8000] rusage[mem=8000]' ./concatenation_script.sh";
 
 # run BLAST comparisons
 write_suffix_array_slurm_script("RunBlastArrays.sh", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-my $blastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=1000 -n 1 -t 60 --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
+my $blastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
 chomp $blastarrayid;
 print STDERR "Submitted job $blastarrayid - to run Blast\n";
 #system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."UBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./BlastJob.\${LSB_JOBINDEX}';
 
 write_suffix_array_slurm_script("RunFilterBlastArrays.sh", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-my $filterblastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=1000 -n 1 -t 60 --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+my $filterblastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
 chomp $filterblastarrayid;
 print STDERR "Submitted job $filterblastarrayid - to run Filtered Blast\n";
 #system "bsub -w \"ended($jobid"."CAT)\" -M 2000000 -R 'select[mem>2000] rusage[mem=2000] hname!=bc-11-4-10' -J $jobid"."FBLA[1-$count]".' -q normal_serial -o log.%I -e err.%I ./FilterBlast.\${LSB_JOBINDEX}';
@@ -90,7 +89,7 @@ my @blat_array = (1..$count);
 my @filter_array = (1..$count);
 $" = ",";
 
-my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=1000 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=$slurmmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 chomp $blast_checkpointid;
 	
 
@@ -125,18 +124,20 @@ chomp $blast_checkpointid;
 foreach my $num (@file_nums) {
 	my $file_dna = $tracking{$num};
 	unless ($file_dna =~ /.dna/) {
-		$file_dna =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.dna/g;
+		$file_dna =~ s/_1.fastq$|_1.fastq.gz$|.dna|.fasta|.seq|.fa/.dna/g; #JH mod to remove correct file if input is gzipped
 		system "rm $file_dna";
 	}
 	my $file_fa = $tracking{$num};
 	unless ($file_fa =~ /.fa/) {
-		$file_fa =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.fa/g;
+		$file_fa =~ s/_1.fastq$|_1.fastq.gz$|.dna|.fasta|.seq|.fa/.fa/g; #JH mod to remove correct file if input is gzipped
+		system "rm $file_dna";
 		system "rm $file_fa";
 	}
 }
 
 my $refstem = $tracking{$refnum};
-$refstem =~ s/_1.fastq|.dna|.fasta|.seq|.fa//g;
+$refstem =~ s/_1.fastq$|_1.fastq.gz$|.dna|.fasta|.seq|.fa//g; #JH mod to remove correct file if input is gzipped
+#JH system "rm $file_dna";
 system "rm $tracking{$refnum}.report $refstem.train $refstem.longorfs reference_training.sh ";
 
 

@@ -9,10 +9,13 @@ use Cwd;
 # Runs gene predictions, writes out EMBL files and protein sequences              #
 ###################################################################################
 
-# set up script_dir variable
-#my $script_dir = $ENV{SCRIPT_DIR};
-#JH temp for debug
-my $script_dir = "~/consults/bh_assembly/scripts/clustering_scripts";
+# set up script_dir variable, slurm variables
+my $script_dir = $ENV{SCRIPT_DIR};
+# the scripts called by this script are on directory higher in the tree than the clustering scripts, chop off last directory
+$script_dir =~ s/\/[^\/]+$//; 
+my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmtime = $ENV{SLURMTIME};
+my $slurmmem = $ENV{SLURMMEM};
 
 # set up other variables
 
@@ -82,11 +85,11 @@ if ($file =~ /_1.fastq/) {
 	my $forward = $file;
 	my $reverse = $file;
 	$reverse =~ s/_1.fastq/_2.fastq/g;
-	system "~croucher/Scripts/velvet_assembly.sh -f $forward -r $reverse -p -s shuffled.$file";
+	system "$script_dir/velvet_assembly.sh -f $forward -r $reverse -p -s shuffled.$file";
 	$file =~ s/.fastq//g;
 	system "cp $reference shuffled.$file"."_velvet"; # so you can run the abacas command from the subdirectory
 	chdir "$working_dir/shuffled.$file"."_velvet"; # change into directory to run abacas
-	system "abacas.1.3.1.pl -abcNm -p nucmer -q contigs.fa -r $reference"; #found in PATH
+	system "$script_dir/abacas.1.3.1.pl -abcNm -p nucmer -q contigs.fa -r $reference"; #found in PATH
 	system "cat contigs.fa_"."$reference.MULTIFASTA.fa contigs.fa_"."$reference.contigsInbin.fas > $mfa";
 	system "cat $mfa | grep -v '>' > joined.seq";
 	$file =~ s/_1/.fa/g;
@@ -317,7 +320,7 @@ close PRED;
 close RED;
 
 
-system "~croucher/Scripts/glimmer3totab.pl filtered.$file.glim.predict > $tab"; #found in hardcoded directory
+system "$script_dir/glimmer3totab.pl filtered.$file.glim.predict > $tab"; #found in hardcoded directory
 system "cat $dna | seqret -filter -osformat EMBL > $embltemp";
 
 open TMP, "$embltemp";

@@ -9,10 +9,11 @@ use warnings;
 ###################################################################################
 
 
-# set up script_dir variable
-
-#JH my $script_dir = $ENV{SCRIPT_DIR};
-my $script_dir = "~/consults/bh_assembly/scripts/clustering_scripts/";
+# set up script_dir and slurm variables
+my $script_dir = $ENV{SCRIPT_DIR};
+my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmtime = $ENV{SLURMTIME};
+my $slurmmem = $ENV{SLURMMEM};
 
 my $current_dir = `pwd | tr -d "\n"`;
 my $out_dir = "$current_dir"."/pangenome/";

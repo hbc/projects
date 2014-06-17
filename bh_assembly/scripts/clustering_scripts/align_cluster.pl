@@ -452,8 +452,8 @@ if ($core ne "0") {
 
 if (-e "cluster.$SCcount.report") {
 	if ($core ne "0" && -e "partial.$SCcount.core_genome.tab") {
-		system "rm cluster.$SCcount.*.seq cluster.$SCcount.aln";
+		system "rm cluster.$SCcount.*seq cluster.$SCcount.aln"; #JH mod to remove period before wildcard, can't find file otherwise
 	} elsif ($core eq "0") {
-		system "rm cluster.$SCcount.*.seq cluster.$SCcount.*.aln";
+		system "rm cluster.$SCcount.*seq cluster.$SCcount.*aln";#JH mod to remove period before wildcard, can't find file otherwise
 	}
 }

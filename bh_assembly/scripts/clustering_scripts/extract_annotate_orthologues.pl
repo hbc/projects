@@ -8,15 +8,13 @@ use Bio::SeqIO;
 # Processes clusters before analysis, identifies the core genome                  #
 ###################################################################################
 
-# set up script_dir variable
+# set up script_dir and slurm variables
+my $script_dir = $ENV{SCRIPT_DIR};
+my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmtime = $ENV{SLURMTIME};
+my $slurmmem = $ENV{SLURMMEM};
 
-#JH my $script_dir = $ENV{SCRIPT_DIR};
 
-my $script_dir = "~/consults/bh_assembly/scripts/clustering_scripts/";
-$ENV{SCRIPT_DIR} = $script_dir;
-#JH my $slurmqueue = $ENV{SLURMQUEUE};
-my $slurmqueue = "general";
-$ENV{SCRIPT_DIR} = $slurmqueue;
 
 # random number for job submission/dependencies
 
@@ -219,7 +217,7 @@ my $smallalignarrayid;
 
 # run analysis of clusters containing more than 74 members
 
-if ($normal_count > 1) {
+if ($normal_count >= 1) { #JH changed from >1 to >=1
 	write_suffix_array_slurm_script("AlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
 	my $alignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$normal_count --job-name=$jobid.ALN --wrap=\"./AlignArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $alignarrayid;
@@ -231,7 +229,7 @@ if ($normal_count > 1) {
 
 # run analysis of clusters containing fewer than 75 members
 
-if ($small_count > 1) {
+if ($small_count >= 1) { #JH changed from >1 to >=1
 	write_suffix_array_slurm_script("SmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
 	my $smallalignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$small_count --job-name=$jobid.SMALN --wrap=\"./SmallAlignArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $smallalignarrayid;

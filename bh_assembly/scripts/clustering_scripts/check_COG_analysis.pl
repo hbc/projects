@@ -7,9 +7,11 @@ use strict;
 # Checks whether the alignment script has successfully run on all COGs            #
 ###################################################################################
 
-# set up script_dir variable
-
+# set up script_dir and slurm variables
 my $script_dir = $ENV{SCRIPT_DIR};
+my $slurmqueue = $ENV{SLURMQUEUE};
+my $slurmtime = $ENV{SLURMTIME};
+my $slurmmem = $ENV{SLURMMEM};
 my $dir = `pwd | tr -d "\n"`;
 
 # set up variables
@@ -103,7 +105,8 @@ $" = ", ";
 my $dependency_string;
 my $jobarray_n = 0;
 my $smalljobarray_n = 0;
-
+my $alignarrayid;
+my $smallalignarrayid;
 
 if ($#jobarray > -1) {
 	$jobarray_n = 1;
@@ -116,11 +119,17 @@ if ($#jobarray > -1) {
 	}
 	$jobarray_n--;
 	if ($jobarray_n > 1) {
-		system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1-$jobarray_n]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
+		write_suffix_array_slurm_script("RAlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+		my $alignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1-$jobarray_n --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
+		chomp $alignarrayid;
+	#JH	system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1-$jobarray_n]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
 	} else {
-		system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
+		write_suffix_array_slurm_script("RAlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+		my $alignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
+		chomp $alignarrayid;
+	#JH system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
 	}
-	$dependency_string = "ended($jobid"."Raln[1-$jobarray_n])";
+	$dependency_string = $alignarrayid;
 }
 
 my $ten_count = 1;
@@ -141,22 +150,35 @@ if ($#smalljobarray > -1) {
 	if ($ten_count == 1) {
 		$smalljobarray_n--;
 	}
-	if (defined($dependency_string) && length($dependency_string) > 1) {
-		$dependency_string.=" && ";
-	}
+	#JH  if (defined($dependency_string) && length($dependency_string) > 1) {
+	# 	$dependency_string.=" && ";
+	# }
 	if ($smalljobarray_n > 1) {
-		system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q short_serial -J $jobid"."RSaln[1-$smalljobarray_n]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
-		$dependency_string.="ended($jobid"."RSaln[1-$smalljobarray_n])";
+		
+		write_suffix_array_slurm_script("RSmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+		my $smallalignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1-$smalljobarray_n --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+		chomp $smallalignarrayid;
+	 #JH system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q short_serial -J $jobid"."RSaln[1-$smalljobarray_n]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
+		$dependency_string ="$smallalignarrayid";
 	} else {
-		system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q normal_serial -J $jobid"."RSaln[1]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
-		$dependency_string.="ended($jobid"."RSaln[1])";
+		write_suffix_array_slurm_script("RSmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
+		my $smallalignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+		chomp $smallalignarrayid;
+		#JH system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q normal_serial -J $jobid"."RSaln[1]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
+		$dependency_string = $smallalignarrayid;
 	}
-}
+	if (defined($alignarrayid) && length($alignarrayid) > 0) {
+		$dependency_string="$alignarrayid:$smallalignarrayid";
+	}
+} #JH
 
 if ($#jobarray == -1 && $#smalljobarray == -1) {
-	system "bsub -o all.log -e all.err -M 18000000 -R 'select[mem>18000] rusage[mem=18000]' $script_dir/orthologue_alignment_processing.pl $count $reference $refnum";
+	my $jobmem = $slurmmem*20;	
+	`sbatch -n 1 --mem=$jobmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.OALPROC --wrap=\"$script_dir/orthologue_alignment_processing.pl $count $reference $refnum\"`;
+	#JH	system "bsub -o all.log -e all.err -M 18000000 -R 'select[mem>18000] rusage[mem=18000]' $script_dir/orthologue_alignment_processing.pl $count $reference $refnum";
 } else {
-	system "bsub -o all.log -e all.err -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum";	
+	`sbatch -d afterok:$dependency_string -n 1 --mem=$slurmmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.COGCHK --wrap=\"$script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum\"`;
+	#JH system "bsub -o all.log -e all.err -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum";	
 }
 
 print STDERR "Completed check_COG_analysis.pl\n";
@@ -173,3 +195,15 @@ sub clean_up {
 		}
 	}
 }
+
+sub write_suffix_array_slurm_script {
+	my $scriptname=$_[0];
+	my $stageprefix=$_[1];
+	open SLURMSCRIPTFH, "> $scriptname";
+	print SLURMSCRIPTFH "#!/bin/bash\n";
+	print SLURMSCRIPTFH "./$stageprefix.";
+	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
+	close SLURMSCRIPTFH;
+	system "chmod +x $scriptname";
+}
+

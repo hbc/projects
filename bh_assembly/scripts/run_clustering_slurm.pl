@@ -4,12 +4,16 @@ use Bio::SeqIO;
 use Getopt::Long;
 use DBI;
 
-# set up scripts directory
+# set up scripts directory, slurm variables
 
 my $script_dir = "/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scripts";
 $ENV{SCRIPT_DIR} = $script_dir;
 my $slurmqueue = "general";
 $ENV{SLURMQUEUE} = $slurmqueue;
+my $slurmmem = "3000";
+$ENV{SLURMMEM} = $slurmmem;
+my $slurmtime = "120";
+$ENV{SLURMTIME} = $slurmtime;
 
 # random number for job submission/dependencies
 
@@ -224,7 +228,7 @@ close REF;
 system "chmod +x ./reference_training.sh";
 
 # submit job and track
-my $reftrainjobid=`sbatch -n 1 --mem=1000 -t 10 -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.reftrain --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
+my $reftrainjobid=`sbatch -n 1 --mem=$slurmmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.REFTRAIN --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
 chomp $reftrainjobid;
 print STDERR "Submitted job $reftrainjobid - to train Glimmer and Prodigal on reference\n";
 
@@ -234,21 +238,22 @@ print STDERR "Submitted job $reftrainjobid - to train Glimmer and Prodigal on re
 my $assembly = 0;
 my $jobarrayid="";
 if (grep(/fastq/,@ARGV)) {
-	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=2000 -n 1 -t 10 --array=1-$count --job-name=$jobid.glim --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
+	my $jobmem = $slurmmem*2;
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$jobmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 	$assembly = 1;
 } else {
-	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=1000 -n 1 -t 10 --array=1-$count --job-name=$jobid.glim --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 }
 
 
 # RUN checkpointing following gene prediction
-my $clustercheckpointid=`sbatch -e clustercheck.err -o clustercheck.out -d afterok:$jobarrayid --mem=1000 -n 1 -t 10 --job-name=$jobid\".\"CHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
+my $clustercheckpointid=`sbatch --open-mode=append -e all.err -o all.log -d afterok:$jobarrayid --mem=$slurmmem -n 1 -t $slurmtime --job-name=$jobid\".\"CLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
 chomp $clustercheckpointid;
 print STDERR "Submitted job $clustercheckpointid - to check clusters\n";
 #system "bsub -J \"$jobid\".CHK -w \"ended($jobid"."glim[1-$count])\" -o all.log -e all.err $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";                   to see exactly what this module does.	
@@ -295,6 +300,8 @@ system "chmod +x cogtriangle_run_A.sh";
 system "chmod +x cogtriangle_run_B.sh";
 system "chmod +x cogtriangle_run_C.sh";
 
+
+print STDERR $refnum;
 
 ##############
 # SUBROUTINES #
