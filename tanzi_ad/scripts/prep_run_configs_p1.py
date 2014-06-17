@@ -39,13 +39,13 @@ def write_config(g, baminfo, name, config):
     with open(meta_file, "w") as out_handle:
         writer = csv.writer(out_handle)
         writer.writerow(["samplename", "description", "batch", "sex", "align_split_size",
-                         "coverage_depth", "coverage_interval", "coverage"])
+                         "coverage_depth", "coverage_interval", "archive"])
         for family, samples in g:
             for info in samples:
                 if info["sample"] in baminfo:
                     bamfile = baminfo[info["sample"]]["bam"]
                     writer.writerow([os.path.basename(bamfile), str(info["sample"]), str(family), info["gender"],
-                                     "20000000", "high", "genome", config["coverage"]])
+                                     "20000000", "high", "genome", "cram"])
                     bam_files.append(bamfile)
                 else:
                     raise ValueError("BAM file missing for %s: %s" % (info["sample"], family))
@@ -79,12 +79,15 @@ def split_families(famsamples, max_samples):
 
 # ## Priority file
 
-def _check_sample(fam_id, priority, params):
+def _check_sample(sample_id, fam_id, priority, params):
     if params.get("priority") is not None:
         if priority and int(priority) == params["priority"]:
             return True
     elif params.get("families"):
         if fam_id in params["families"]:
+            return True
+    elif params.get("samples"):
+        if sample_id in params["samples"]:
             return True
     elif params.get("excludefamilies"):
         if fam_id not in params["excludefamilies"]:
@@ -117,7 +120,7 @@ def get_families(in_file, fam_file, params):
             fam_id, sample_id, priority = parts[1:4]
             status_flag = parts[16]
             if status_flag != "Exclude":
-                if _check_sample(fam_id, priority, params):
+                if _check_sample(sample_id, fam_id, priority, params):
                     info = {"sample": sample_id, "gender": _get_gender(parts[12], fam_genders.get(sample_id))}
                     if info not in samples[fam_id]:
                         samples[fam_id].append(info)
