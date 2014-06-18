@@ -174,10 +174,10 @@ if ($#smalljobarray > -1) {
 
 if ($#jobarray == -1 && $#smalljobarray == -1) {
 	my $jobmem = $slurmmem*20;	
-	`sbatch -n 1 --mem=$jobmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.OALPROC --wrap=\"$script_dir/orthologue_alignment_processing.pl $count $reference $refnum\"`;
+	`sbatch -n 1 --mem=$jobmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.OALPROC --wrap=\"$script_dir/orthologue_alignment_processing.pl $count $reference $refnum\"`;
 	#JH	system "bsub -o all.log -e all.err -M 18000000 -R 'select[mem>18000] rusage[mem=18000]' $script_dir/orthologue_alignment_processing.pl $count $reference $refnum";
 } else {
-	`sbatch -d afterok:$dependency_string -n 1 --mem=$slurmmem -t $slurmtime --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.COGCHK --wrap=\"$script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum\"`;
+	`sbatch -d afterok:$dependency_string -n 1 --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.COGCHK --wrap=\"$script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum\"`;
 	#JH system "bsub -o all.log -e all.err -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum";	
 }
 
