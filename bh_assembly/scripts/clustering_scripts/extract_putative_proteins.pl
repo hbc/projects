@@ -403,4 +403,8 @@ close REP;
 
 system "segmasker -in $outname -outfmt fasta | perl -lane 'if (/>/) {print \$_;} else {\$_ =~ tr/a-z/X/; print \$_;}' > filtered.$outname";
 
+open TRACK, "> $file.done" or die print STDERR "Cannot open tracking file $file.done\n";
+print TRACK "$file";
+close TRACK;
+
 print STDERR "done\nCompleted extract_putative_proteins.pl\n";

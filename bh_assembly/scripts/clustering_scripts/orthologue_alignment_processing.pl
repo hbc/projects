@@ -175,7 +175,7 @@ print RUN "outputmat('$dir/baps_clustering.mat')\n";
 
 close RUN;
 
-my $bapsetupid=`sbatch --job-name=$jobid.BAPS --mem=10000 -t 60 -n 1 -p $slurmqueue --wrap=\"module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile\" | awk ' { print \$4 }'`;
+my $bapssetupid=`sbatch --job-name=$jobid.BAPS --mem=10000 -t 60 -n 1 -p $slurmqueue --wrap=\"module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile\" | awk ' { print \$4 }'`;
 chomp $bapssetupid;
 #JH system "bsub -J $jobid"."BAPS -o baps.o -e baps.e -M 10000000 -R 'select[mem>10000] rusage[mem=10000]' -q long_serial 'module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile'";
 

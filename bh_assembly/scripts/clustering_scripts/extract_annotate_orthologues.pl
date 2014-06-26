@@ -114,9 +114,6 @@ my $queue = "long_serial";
 if ($count > 100) {
 	$bignum = int($count/100)*10000000;
 	$smallnum = $bignum/1000;
-	if ($smallnum > 20000) {
-		$queue = "bigmem";
-	}
 }
 
 my $ccpgid=`sbatch -n 1 --mem=$smallnum -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CALCCOGPAN --wrap=\"$script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum\" | awk ' { print \$4 }'`;
