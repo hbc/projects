@@ -10,16 +10,16 @@ my $script_dir = "/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scr
 $ENV{SCRIPT_DIR} = $script_dir;
 my $slurmqueue = "serial_requeue";
 $ENV{SLURMQUEUE} = $slurmqueue;
-my $slurmmem = "1000";
+my $slurmmem = "2000";
 $ENV{SLURMMEM} = $slurmmem;
-my $slurmtime = "120";
+my $slurmtime = "420";
 $ENV{SLURMTIME} = $slurmtime;
 
 # random number for job submission/dependencies
 
 my $range = 1000;
 my $jobid = int(rand($range));
-print STDERR "$jobid\n";
+$ENV{SLURMJOBID} = $jobid;
 
 # deal with command line options
 
