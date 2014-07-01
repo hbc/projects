@@ -252,7 +252,6 @@ if (grep(/fastq/,@ARGV)) {
 }
 
 
-exit; 
 # RUN checkpointing following gene prediction
 my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --mem=200 -n 1 -t 10 --job-name=$jobid\".\"CLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
 chomp $clustercheckpointid;
