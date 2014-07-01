@@ -72,29 +72,30 @@ foreach my $key (@blat_array) {
 }
 # if BLAT jobs completed, then submit clustering jobs; else rerun BLATs
 
+
 if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	
 	my $cogAid=`sbatch -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGA --wrap=\"./cogtriangle_run_A.sh\" | awk ' { print \$4 }'`;
 	chomp $cogAid;
 	#system "bsub -o all.log -e all.err -q long_serial -J $jobid.cogA -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' ./cogtriangle_run_A.sh";
-	print STDERR "Submitted cogtriangle-A job\n";
+	print STDERR "Submitted cogtriangle-A job $cogAid\n";
 
 	my $cogBid=`sbatch -d afterok:$cogAid -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGB --wrap=\"./cogtriangle_run_B.sh\" | awk ' { print \$4 }'`;
 	chomp $cogBid;
 	#system "bsub -w \"ended($jobid.cogA)\" -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -J $jobid.cogB ./cogtriangle_run_B.sh";
-	print STDERR "Submitted cogtriangle-B job\n";
+	print STDERR "Submitted cogtriangle-B job $cogBid\n";
 
 
 	my $cogCid=`sbatch -d afterok:$cogBid -n 1 --mem=$slurmmem -t 10 -p $slurmqueue --job-name=$jobid.COGC --wrap=\"./cogtriangle_run_C.sh\" | awk ' { print \$4 }'`;
 	chomp $cogCid;
 	#system "bsub -w \"ended($jobid.cogB)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cogC ./cogtriangle_run_C.sh";
-	print STDERR "Submitted cogtriangle-C job\n";
+	print STDERR "Submitted cogtriangle-C job $cogCid\n";
 
 
 	my $postprocesscogsid=`sbatch -d afterok:$cogCid -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.PPCOGS --wrap=\"$script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum\" | awk ' { print \$4 }'`;
 	chomp $postprocesscogsid;
 	#system "bsub -w \"ended($jobid.cogC)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cluchk $script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum";
-	print STDERR "Submitted COG post-processing job\n";
+	print STDERR "Submitted COG post-processing job $postprocesscogsid\n";
 
 
 	my $embl = $reference;
@@ -103,7 +104,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	my $extractannotateorthologsid=`sbatch -d afterok:$postprocesscogsid -n 1 --mem=200 -t 10  -p $slurmqueue --job-name=$jobid.EXANORTH --wrap=\"$script_dir/extract_annotate_orthologues.pl $count $refnum $embl\" | awk ' { print \$4 }'`;
 	chomp $extractannotateorthologsid;
 	#system "bsub -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -w \"ended($jobid.cluchk)\" $script_dir/extract_annotate_orthologues.pl $count $refnum $embl";
-	print STDERR "Submitted Ortholog extraction and annotation job job\n";
+	print STDERR "Submitted Ortholog extraction and annotation job $extractannotateorthologsid \n";
 
 
 } else {
@@ -132,7 +133,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 		print STDERR "Submitted job $blastarrayid - to rerun Blasts @blast_rerun\n";
 
 
-		if (defined($filterblastarray) && length($filterblastarrayid) > 0) {
+		if (defined($filterblastarrayid) && length($filterblastarrayid) > 0) {
 			$dependency_string="$filterblastarrayid:$blastarrayid";
 		} else {
 			$dependency_string = $blastarrayid;
