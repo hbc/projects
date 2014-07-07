@@ -80,7 +80,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	#system "bsub -o all.log -e all.err -q long_serial -J $jobid.cogA -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' ./cogtriangle_run_A.sh";
 	print STDERR "Submitted cogtriangle-A job $cogAid\n";
 
-	my $cogBid=`sbatch -d afterok:$cogAid -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGB --wrap=\"./cogtriangle_run_B.sh\" | awk ' { print \$4 }'`;
+	my $cogBid=`sbatch -d afterok:$cogAid -n 1 --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=$jobid.COGB --wrap=\"./cogtriangle_run_B.sh\" | awk ' { print \$4 }'`;
 	chomp $cogBid;
 	#system "bsub -w \"ended($jobid.cogA)\" -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -J $jobid.cogB ./cogtriangle_run_B.sh";
 	print STDERR "Submitted cogtriangle-B job $cogBid\n";
@@ -109,6 +109,8 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 
 } else {
 	
+	my $filterblastarrayid;
+	my $blastarrayid;
 	my $dependency_string;
 	
 	$" = ",";
@@ -116,7 +118,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	if ($#filter_rerun > -1) {
 
 		write_suffix_array_slurm_script("ReRunFilterBlastArrays.sh", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $filterblastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@filter_rerun --job-name=$jobid.REFBLA --wrap=\"./ReRunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+		$filterblastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@filter_rerun --job-name=$jobid.REFBLA --wrap=\"./ReRunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
 		chomp $filterblastarrayid;
 		print STDERR "Submitted job $filterblastarrayid - to rerun Filtered Blasts @filter_rerun\n";
 		$dependency_string = $filterblastarrayid;
@@ -128,7 +130,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	if ($#blast_rerun > -1) {
 					
 		write_suffix_array_slurm_script("ReRunBlastArrays.sh", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $blastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@blast_rerun --job-name=$jobid.REUBLA --wrap=\"./ReRunBlastArrays.sh" | awk ' { print \$4 }'`;
+		$blastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@blast_rerun --job-name=$jobid.REUBLA --wrap=\"./ReRunBlastArrays.sh" | awk ' { print \$4 }'`;
 		chomp $blastarrayid;
 		print STDERR "Submitted job $blastarrayid - to rerun Blasts @blast_rerun\n";
 
