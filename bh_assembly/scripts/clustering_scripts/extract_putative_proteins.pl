@@ -1,8 +1,6 @@
 #! /usr/bin/perl -w
 use strict;
-use diagnostics;
 use Bio::SeqIO;
-use Cwd;
 
 ###################################################################################
 # Submitted by run_clustering.pl | Submits nothing                                #
@@ -87,9 +85,9 @@ if ($file =~ /_1.fastq/) {
 	$reverse =~ s/_1.fastq/_2.fastq/g;
 	system "$script_dir/velvet_assembly.sh -f $forward -r $reverse -p -s shuffled.$file";
 	$file =~ s/.fastq//g;
-	system "cp $reference shuffled.$file"."_velvet"; # so you can run the abacas command from the subdirectory
-	chdir "$working_dir/shuffled.$file"."_velvet"; # change into directory to run abacas
-	system "$script_dir/abacas.1.3.1.pl -abcNm -p nucmer -q contigs.fa -r $reference"; #found in PATH
+	system "cp $reference shuffled.$file"."_velvet";
+	chdir "$working_dir/shuffled.$file"."_velvet";
+	system "$script_dir/abacas.1.3.1.pl -abcNm -p nucmer -q contigs.fa -r $reference";
 	system "cat contigs.fa_"."$reference.MULTIFASTA.fa contigs.fa_"."$reference.contigsInbin.fas > $mfa";
 	system "cat $mfa | grep -v '>' > joined.seq";
 	$file =~ s/_1/.fa/g;
@@ -320,7 +318,7 @@ close PRED;
 close RED;
 
 
-system "$script_dir/glimmer3totab.pl filtered.$file.glim.predict > $tab"; #found in hardcoded directory
+system "$script_dir/glimmer3totab.pl filtered.$file.glim.predict > $tab";
 system "cat $dna | seqret -filter -osformat EMBL > $embltemp";
 
 open TMP, "$embltemp";
@@ -347,7 +345,7 @@ system "grep -v 'ID' $tab | sed s/label=\"orf/label=\"seq"."$count"."orf/g | cat
 
 # get assembly stats for each of the strains
 
-my $stats = `$script_dir/fac.pl $file | head -n 2 | tail -n 1 | tr -d "\n"`; #found in specified script directory
+my $stats = `$script_dir/fac.pl $file | head -n 2 | tail -n 1 | tr -d "\n"`;
 my @stats = split(/\s+/,$stats);
 my $cds_count = 0;
 
