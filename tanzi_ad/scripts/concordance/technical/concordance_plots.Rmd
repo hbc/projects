@@ -1,0 +1,410 @@
+---
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='', echo=FALSE)
+```
+
+```{r load-discordant-concordant, echo=FALSE}
+library(ggplot2)
+library(reshape2)
+library(extrafont)
+library(knitr)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+"#0072B2", "#D55E00", "#CC79A7")
+cbPalette = c("#543005", "#8c510a", "#bf812d", "#dfc27d", "#f6e8c3",
+    "#c7eae5", "#80cdc1", "#35978f", "#01665e", "#003c30")
+
+load_tables = function(discordant, concordant) {
+    discordant$class = "discordant"
+    concordant$class = "concordant"
+    concordant$QUAL = as.numeric(concordant$QUAL)
+    discordant$QUAL = as.numeric(discordant$QUAL)
+    df = rbind(discordant, concordant)
+    df$EFF = NULL
+    snps = unlist(lapply(df$REF, nchar)) == unlist(lapply(df$ALT, nchar))
+    df$snp = ifelse(snps, "snp", "indel")
+    return(df)
+}
+  
+
+discordant = read.table('discordant-merged.tab', header=TRUE, sep="\t",
+  stringsAsFactors=FALSE)
+concordant = read.table('concordant-merged.tab', header=TRUE, sep="\t",
+  stringsAsFactors=FALSE)
+df = load_tables(discordant, concordant)
+df = df[, c("CHROM", "POS", "REF", "ALT", "QUAL", "AC", "AN", "AF", "DP",
+"class", "snp")]
+df$square = "non-square"
+```
+
+
+```{r concordant-discordant-square}
+discordant_square = read.table('square/discordant-merged-square.tab', header=TRUE, sep="\t",
+  stringsAsFactors=FALSE)
+concordant_square = read.table('square/concordant-merged-square.tab', header=TRUE, sep="\t",
+  stringsAsFactors=FALSE)
+df_square = load_tables(discordant_square, concordant_square)
+df_square = df_square[, c("CHROM", "POS", "REF", "ALT", "QUAL", "AC", "AN", "AF", "DP",
+"class", "snp")]
+df_square$square = "square"
+```
+
+# Discordant SNPs are often low-depth heterozygote calls
+```{r discordant-square-plot}
+ggplot(df_square, aes(DP, QUAL, color=AF)) +
+  geom_point(alpha=0.3) + 
+  facet_wrap(~ snp + class) + scale_y_log10() + scale_x_log10()
+```
+
+There is a slight shift to lower qualities for discordant indels and SNPs and
+overall there are more higher quality homozygous calls for concordant vs discordant
+calls. 
+
+```{r concordant-discordant-histogram-depth}
+ggplot(df, aes(DP)) + geom_histogram() +
+  facet_wrap(~ snp + class) + scale_y_log10() + scale_x_log10()
+```
+
+```{r concordant-discordant-histogram-quality}
+ggplot(df, aes(QUAL)) + geom_histogram() +
+  facet_wrap(~ snp + class) + scale_y_log10() + scale_x_log10()
+```
+
+# Squaring-off effect
+```{r squaring-off-plot}
+df_joined = rbind(df, df_square)
+ggplot(df_joined, aes(DP, QUAL, color=square)) + geom_point(alpha=0.3) +
+  facet_wrap(~ snp + class) + scale_y_log10() + scale_x_log10()
+```
+
+Squaring off causes many more reads to be assigned to indels and SNPs.
+
+```{r summary-concordance-table}
+get_summary = function(summary1_fn, summary2_fn, sep=",") {
+    summary_qc1 = read.table(summary1_fn, sep=sep, header=TRUE)
+    summary_qc1$comparison = "qc1_vs_qc2"
+    summary_qc2 = read.table(summary2_fn, sep=sep, header=TRUE)
+    summary_qc2$comparison = "qc2_vs_qc3"
+    original_summary = rbind(summary_qc1, summary_qc2)
+    return(original_summary)
+}
+
+summary_1 = '5210116_qc1-summary.csv'
+summary_2 = '5210116_qc2-summary.csv'
+original_summary = get_summary(summary_1, summary_2)
+original_summary$version = "non-square"
+
+summary_1 = 'square/5210116_qc1-summary.csv'
+summary_2 = 'square/5210116_qc2-summary.csv'
+square_summary = get_summary(summary_1, summary_2)
+square_summary$version = "square"
+
+summary_stats = rbind(original_summary, square_summary)
+
+library(dplyr)
+summary_subset = tbl_df(summary_stats[, c("version", "type", "concordant", "discordant1",
+                                          "discordant2")])
+summary_subset$type = factor(summary_subset$type)
+
+summary_grouped = group_by(summary_subset, type)
+
+z = summary_subset %>%
+    group_by(version, type) %>%
+        summarise(concordant=mean(concordant),
+                  discordant=mean(discordant1 + discordant2))
+
+z$ratio = z$concordant / (z$concordant + z$discordant)
+
+grading_1 = '5210116_qc1-grading.tsv'
+grading_2 = '5210116_qc2-grading.tsv'
+
+original_summary = get_summary(grading_1, grading_2, " ")
+original_summary$version = "non-square"
+
+summary_1 = 'square/5210116_qc1-grading.tsv'
+summary_2 = 'square/5210116_qc2-grading.tsv'
+square_summary = get_summary(summary_1, summary_2, " ")
+square_summary$version = "square"
+
+summary_stats = rbind(original_summary, square_summary)
+summary_stats$discordant = rowSums(summary_stats[, c("extra", "missing", "vardiff", "hethom")])
+summary_stats$ratio = summary_stats$concordant / rowSums(summary_stats[, c("concordant", "extra", "missing", "vardiff", "hethom")])
+```
+
+# Concordance summary
+
+```{r summary-table, echo=TRUE, results='asis'}
+keep = c("type", "version", "concordant", "discordant", "ratio")
+summary_stats = summary_stats[, keep]
+summary_stats = subset(summary_stats, type != "mixed")
+
+summarized = summary_stats %.%
+    group_by(type, version) %.%
+    summarize(concordant = mean(concordant),
+                discordant = mean(discordant),
+                ratio = mean(ratio))
+kable(summarized, format="html")
+ 
+
+```
+
+The overall concordance between technical replicates is good and is in line with other
+studies. Squaring off results in a small boost in concordance for SNPs and indels over
+not squaring off the calls.
+
+# SNP discordance by class
+
+```{r clean-snp-data}
+vcf = read.table("square/replicates-merged.tab", sep="\t", header=TRUE)
+concordant = read.table("square/concordant-merged-square.tab", sep="\t", header=TRUE)
+discordant = read.table("square/discordant-merged-square.tab", sep="\t", header=TRUE)
+concordant_locs = concordant[, c("CHROM", "POS", "REF", "ALT")]
+discordant_locs = discordant[, c("CHROM", "POS", "REF", "ALT")]
+in_discordant = merge(vcf, discordant_locs, by=c("CHROM", "POS", "REF", "ALT"))
+in_concordant = merge(vcf, concordant_locs, by=c("CHROM", "POS", "REF", "ALT"))
+in_discordant$concordance = "discordant"
+in_concordant$concordance = "concordant"
+
+qc1 = read.table("square/5210116_qc1.tab", sep="\t", header=TRUE)
+qc1$sample = "5210116_qc1"
+qc2 = read.table("square/5210116_qc2.tab", sep="\t", header=TRUE)
+qc2$sample = "5210116_qc2"
+qc3 = read.table("square/5210116_qc3.tab", sep="\t", header=TRUE)
+qc3$sample = "5210116_qc3"
+colnames(qc1)[21:27] = c("AO", "RO", "DP", "QA", "QR", "GT", "AD")
+colnames(qc2)[21:27] = c("AO", "RO", "DP", "QA", "QR", "GT", "AD")
+colnames(qc3)[21:27] = c("AO", "RO", "DP", "QA", "QR", "GT", "AD")
+vcf = rbind(qc1, qc2, qc3)
+in_discordant = merge(vcf, discordant_locs, by=c("CHROM", "POS", "REF", "ALT"))
+in_concordant = merge(vcf, concordant_locs, by=c("CHROM", "POS", "REF", "ALT"))
+in_discordant$concordance = "discordant"
+in_concordant$concordance = "concordant"
+concordance = rbind(in_discordant, in_concordant)
+concordance$REF = as.character(concordance$REF)
+concordance$ALT = as.character(concordance$ALT)
+concordance$QUAL = as.numeric(as.character(concordance$QUAL))
+concordance$AB = as.numeric(as.character(concordance$AB))
+concordance$AO = as.numeric(as.character(concordance$AO))
+concordance$RO = as.numeric(as.character(concordance$RO))
+concordance$ABP = as.numeric(as.character(concordance$ABP))
+concordance$DP = as.numeric(as.character(concordance$DP))
+new_concordance = concordance
+snp_index = (unlist(lapply(new_concordance$REF, nchar)) == 1) & (unlist(lapply(new_concordance$ALT, nchar)) == 1)
+snps = new_concordance[snp_index,]
+allele1 = unlist(lapply(strsplit(as.character(snps$GT), "[/||]"), "[", 1))
+allele2 = unlist(lapply(strsplit(as.character(snps$GT), "[/||]"), "[", 2))
+phased = rep(NA, nrow(snps))
+phased[grep("/", snps$GT)] = "unphased"
+phased[-grep("/", snps$GT)] = "phased"
+snps$phased = as.factor(phased)
+genotypes = rep(NA, nrow(snps))
+genotypes[allele1 == snps$REF & allele2 == snps$REF] = "hom_ref"
+genotypes[allele1 != snps$REF & allele2 != snps$REF] = "hom_alt"
+genotypes[is.na(genotypes)] = "het"
+snps$genotype = as.factor(genotypes)
+ad_ref = as.numeric(unlist(lapply(strsplit(as.character(snps$AD), ","), "[", 1)))
+ad_alt = as.numeric(unlist(lapply(strsplit(as.character(snps$AD), ","), "[", 2)))
+het_phased = snps$genotype == "het" & snps$phased == "phased"
+het_unphased = snps$genotype == "het" & snps$phased == "unphased"
+snps$ref_depth = ad_ref
+snps$alt_depth = ad_alt
+snps$ref_depth[is.na(snps$ref_depth)] = snps[is.na(snps$ref_depth),]$RO
+snps$alt_depth[is.na(snps$alt_depth)] = snps[is.na(snps$alt_depth),]$AO
+
+library(dplyr)
+snps = tbl_df(snps)
+positions = group_by(snps, CHROM, POS, REF, ALT)
+positions$GT = as.character(positions$GT)
+positions$genotype = as.character(positions$genotype)
+genotypes = summarize(positions, gt = length(unique(genotype)),
+    common_genotype = names(table(genotype)[which.max(table(genotype))]),
+    minor_genotype = names(table(genotype)[which.min(table(genotype))]))
+status_disagree = merge(snps, subset(genotypes, gt == 2),
+    by=c("CHROM", "POS", "REF", "ALT"))
+
+baseline_prop = table(snps$genotype) / sum(table(snps$genotype))
+
+
+
+variants_disagree = subset(status_disagree, common_genotype != genotype)
+variants_agree = subset(status_disagree, common_genotype == genotype)
+variants_disagree$status = "minority"
+variants_agree$status = "majority"
+```
+
+We have three technical replicates, looking at cases where two out of the three agree
+is useful to try to understand where the differences come from. For the two that agree,
+call them the 'majority' and the one that is different call it the 'minority'. This
+table shows the number of 'majority -> minority' disagreements there are for each
+genotype.
+
+```{r variant-disagreements, echo=TRUE, results='asis'}
+t = table(paste(variants_disagree$common_genotype, "->", variants_disagree$genotype))
+kable(data.frame(t))
+```
+
+```{r variant-disagreement-setup}
+d = rbind(variants_disagree, variants_agree)
+d = subset(d, concordance == "discordant")
+d$AO = as.numeric(as.character(d$AO))
+d$RO = as.numeric(as.character(d$RO))
+d$QA = as.numeric(d$QA)
+d$transition = paste(d$common_genotype, "->", d$minor_genotype)
+d$qratio = d$QA / d$QR
+d$ratio = d$AO / d$RO
+d$ratio = d$alt_depth / d$ref_depth
+d$depth = d$alt_depth + d$ref_depth
+```
+
+```{r depth-vs-ratio-plot, echo=TRUE}
+ ggplot(d, aes(depth, log2(ratio), color=status)) +
+     scale_x_log10() + geom_point(alpha=0.3) + facet_wrap(~ transition) +
+         ## scale_color_brewer(palette="Set3", name="maj -> min",
+         ##                    limits=levels(d$transition)) +
+ylab("log2(alt_depth/ref_depth)") +
+             theme_bw()
+```
+For homozygous disagreements (**hom_ref->hom_alt**, etc) the overall
+depth is very low, and the ratio of alt/ref trends towards 1,
+indicating this might be a sampling issue and these variants are
+undersampled hets.
+
+For disagreements of heterozygotes and homozygotes they tend to be of
+a higher depth but there is still a shift of the read depth in the
+direction of the disagreement. For example **het->hom_ref**, the **het** calls
+are closer to a ratio of 1 and the **hom_ref** calls are shifted towards
+having more reference reads. Continuing to look at the **het->hom_ref**
+panel, even the **het** calls are shifted to have more reference reads
+instead of being centered around 1. These might be due to these being
+**het** calls but there being a bias towards one allele which coupled with
+random sampling results in a incongruent call.
+
+```{r table-again, echo=TRUE, results='asis'}
+kable(data.frame(t))
+```
+
+If all of these variants are true hets which have some sampling issues causing
+an incorrect **hom_alt** or **hom_ref** call, we should expect there to be more
+**het->hom_alt** and **het->hom_ref** disagreements than **hom_ref->het** and
+**hom_alt->het** disagreements, since there has to be two samples disagreeing
+with the truth for a **hom_ref->het** transition than for a **het->hom_ref**.
+
+
+<!--
+odd_variant_idx = snps$ref_depth | is.na(snps$alt_depth)
+odd_variants = snps[odd_variant_idx,]
+
+kosher_variants = snps[-odd_variant_idx,]
+
+new_concordance = kosher_variants[, c("QUAL", "AC", "AN", "AF", "HRun", "AO", "QR", "RO", "ref_depth", "alt_depth", "phased", "genotype", "concordance", "depth")]
+index = 1:nrow(new_concordance)
+testindex = sample(index, trunc(length(index)/2))
+testset = new_concordance[testindex,]
+trainset = new_concordance[-testindex,]
+
+
+library(rpart)
+fit = rpart(concordance ~ ., data=trainset)
+p = data.frame(predict(fit, testset))
+
+pred = ifelse(p$concordant < p$discordant, "discordant", "concordant")
+table(testset$concordance == pred)
+table(testset[testset$concordance != pred,]$concordance)
+table(testset$concordance)
+
+post(fit, file="~/Downloads/tree.ps")
+
+x = rownames(testset[pred == "concordant",])
+locs = unique(kosher_variants[x,c("CHROM", "POS", "REF", "ALT")])
+m = merge(locs, snps, by=c("CHROM", "POS", "REF", "ALT"))
+
+all = rownames(testset)
+all_locs = unique(kosher_variants[all,c("CHROM", "POS", "REF", "ALT")])
+
+ggsave(filename="plots/quality-transition.png")
+
+ ggplot(d, aes((alt_depth + ref_depth), fill=transition)) + geom_histogram() +
+     scale_x_log10() + facet_wrap(~ transition) + xlab("total depth") +
+         ## scale_fill_brewer(palette="Set3", name="maj -> min",
+         ##                    limits=levels(d$transition)) +
+             theme_bw()
+ggsave(filename="plots/depth-by-transition.png")
+
+indels = new_concordance[!snp_index,]
+ind_disc = subset(indels, concordance == "discordant")
+allele1 = unlist(lapply(strsplit(as.character(indels$GT), "[/||]"), "[", 1))
+allele2 = unlist(lapply(strsplit(as.character(indels$GT), "[/||]"), "[", 2))
+phased = rep(NA, nrow(indels))
+phased[grep("/", indels$GT)] = "unphased"
+phased[-grep("/", indels$GT)] = "phased"
+indels$phased = as.factor(phased)
+genotypes = rep(NA, nrow(indels))
+genotypes[allele1 == indels$REF & allele2 == indels$REF] = "hom_ref"
+genotypes[allele1 != indels$REF & allele2 != indels$REF] = "hom_alt"
+genotypes[is.na(genotypes)] = "het"
+indels$genotype = as.factor(genotypes)
+ad_ref = as.numeric(unlist(lapply(strsplit(as.character(indels$AD), ","), "[", 1)))
+ad_alt = as.numeric(unlist(lapply(strsplit(as.character(indels$AD), ","), "[", 2)))
+het_phased = indels$genotype == "het" & indels$phased == "phased"
+het_unphased = indels$genotype == "het" & indels$phased == "unphased"
+indels$ref_depth = ad_ref
+indels$alt_depth = ad_alt
+indels$ref_depth[is.na(indels$ref_depth)] = indels[is.na(indels$ref_depth),]$RO
+indels$alt_depth[is.na(indels$alt_depth)] = indels[is.na(indels$alt_depth),]$AO
+
+library(dplyr)
+indels = tbl_df(indels)
+positions = group_by(indels, CHROM, POS, REF, ALT)
+positions$GT = as.character(positions$GT)
+positions$genotype = as.character(positions$genotype)
+genotypes = summarize(positions, gt = length(unique(genotype)),
+    common_genotype = names(table(genotype)[which.max(table(genotype))]),
+    minor_genotype = names(table(genotype)[which.min(table(genotype))]))
+status_disagree = merge(indels, subset(genotypes, gt == 2),
+    by=c("CHROM", "POS", "REF", "ALT"))
+
+baseline_prop = table(indels$genotype) / sum(table(indels$genotype))
+
+
+variants_disagree = subset(status_disagree, common_genotype != genotype)
+variants_agree = subset(status_disagree, common_genotype == genotype)
+variants_disagree$status = "minority"
+variants_agree$status = "majority"
+
+# for disagreeing variants how many of each transition are there
+t = table(paste(variants_disagree$common_genotype, "->", variants_disagree$genotype))
+
+d = rbind(variants_disagree, variants_agree)
+d = subset(d, concordance == "discordant")
+d$AO = as.numeric(as.character(d$AO))
+d$RO = as.numeric(as.character(d$RO))
+d$QA = as.numeric(d$QA)
+d$transition = paste(d$common_genotype, "->", d$minor_genotype)
+d$qratio = d$QA / d$QR
+d$ratio = d$AO / d$RO
+
+ ggplot(d, aes(AO, RO, color=transition)) +
+     scale_x_log10() + geom_jitter(alpha=0.9) + facet_wrap(~ status) +
+  scale_y_log10() +
+         scale_color_brewer(palette="Set3", name="maj -> min",
+                            limits=levels(d$transition)) + 
+             theme_bw()
+  
+ ggplot(d, aes(QUAL, log2(ratio), color=transition)) +
+     scale_x_log10() + geom_jitter(alpha=0.9) + facet_wrap(~ status) +
+         scale_color_brewer(palette="Set3", name="maj -> min",
+                            limits=levels(d$transition)) + 
+             theme_bw()
+-->
