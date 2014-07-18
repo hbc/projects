@@ -4,22 +4,16 @@ use Bio::SeqIO;
 use Getopt::Long;
 use DBI;
 
-# set up scripts directory, slurm variables
+# set up scripts directory
 
-my $script_dir = "/n/home08/jhutchin/consults/bh_assembly/scripts/clustering_scripts";
+my $script_dir = "/n/hsphS10/hsphfs1/chb/projects/bh_assembly/scripts/clustering_scripts";
 $ENV{SCRIPT_DIR} = $script_dir;
-my $slurmqueue = "serial_requeue";
-$ENV{SLURMQUEUE} = $slurmqueue;
-my $slurmmem = "2000";
-$ENV{SLURMMEM} = $slurmmem;
-my $slurmtime = "420";
-$ENV{SLURMTIME} = $slurmtime;
 
 # random number for job submission/dependencies
 
 my $range = 1000;
 my $jobid = int(rand($range));
-$ENV{SLURMJOBID} = $jobid;
+print STDERR "$jobid\n";
 
 # deal with command line options
 
@@ -150,11 +144,10 @@ foreach $file (@ARGV) {
 	open JA, "> JobArray.$count" or croak();
 	print JA "$script_dir/extract_putative_proteins.pl $file $count $reference";
 	close JA;
-	#chomp $file;
 	my $outname = $file;
-	$outname =~ s/_1.fastq$|_1.fastq.gz$|.dna|.fasta|.seq|.fa/.aa/g; #JH mod to give correct name with fastq.gz inputs
+	$outname =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.aa/g;
 	my $DNA_outname = $file;
-	$DNA_outname =~ s/_1.fastq$|_1.fastq.gz$|.dna|.fasta|.seq|.fa/.CDS.mfa/g; #JH mod to give correct name with fastq.gz inputs
+	$DNA_outname =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.CDS.mfa/g;
 	push(@aa_files,$outname);
 	push(@csv_files,"seq.$count.csv");
 	push(@dna_files,$DNA_outname);
@@ -182,7 +175,6 @@ foreach $file (@ARGV) {
 }
 close LSE;
 
-
 # store information on strains in a file
 open DATA, "> strain.info" or croak();
 foreach my $num (sort keys %tracking) {
@@ -190,11 +182,9 @@ foreach my $num (sort keys %tracking) {
 }
 close DATA;
 
-
-# write script for concatenating data
+# print script for concatenating data
 open CS, '> concatenation_script.sh' or croak();
-#print CS "mkdir blastDB; lfs setstripe blastDB -c -1\n";
-print CS "mkdir blastDB\n"; #JHremove failing lustre command
+print CS "mkdir blastDB; lfs setstripe blastDB -c -1\n";
 print CS "cat @aa_files > blastDB/all.strains.aa\ncat @csv_files > all.strains.csv\ncat @dna_files > blastDB/all.strains.dna\n";
 #print CS "seg blastDB/all.strains.aa -n -x > blastDB/filtered.all.strains.aa\n";
 print CS "cat @filtered > blastDB/filtered.all.strains.aa\n";
@@ -209,12 +199,12 @@ print CS "sqlite3 DNA_sequences.db \".import seq.all.DNAseq DNA\"\n";
 print CS "rm *.DNAseq *.protseq\n";
 print CS "echo 'Completed concatenation_script.sh' >> all.err;";
 close CS;
+# make script executable
 system "chmod +x concatenation_script.sh";
-
 
 $count--;
 
-# write script to train Glimmer and Prodigal on the reference sequence
+# train Glimmer and Prodigal on the reference sequence
 print STDERR "\nSubmitting genome analysis jobs\n";
 
 open REF, "> reference_training.sh";
@@ -225,46 +215,44 @@ build-icm -r all.strains.icm < $refstem.train
 prodigal -t all.strains.prod.train < $reference
 ";
 close REF;
+# make script executable
 system "chmod +x ./reference_training.sh";
 
 # submit job and track
-my $reftrainjobid=`sbatch -n 1 --mem=200 -t 10 --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.REFTRAIN --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
+my $reftrainjobid=`sbatch -n 1 --mem=1000 -t 10 -o all.log -e all.err -p serial_requeue --job-name=${jobid}.reftrain --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
 chomp $reftrainjobid;
 print STDERR "Submitted job $reftrainjobid - to train Glimmer and Prodigal on reference\n";
 
-
-# RUN JobArray scripts to assemble and predict putative proteins
 # only submit with assembly memory requirements if fastqs are present in the input list
 my $assembly = 0;
 my $jobarrayid="";
 if (grep(/fastq/,@ARGV)) {
-	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
-	my $jobmem = $slurmmem*8;
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$jobmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid --mem=8000 -n 1 -t 60 --job-name=$jobid\".\"glim[1-$count] -p serial_requeue -o log.\%I -e err.\%I --wrap=\"./JobArray.\${LSB_JOBINDEX}\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 	$assembly = 1;
 } else {
-	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid --mem=2000 -n 1 -t 60 --job-name=$jobid\".\"glim[1-$count] -p serial_requeue -o log.\%I -e err.\%I --wrap=\"./JobArray.\${LSB_JOBINDEX}\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 }
 
 
-# RUN checkpointing following gene prediction
-my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --mem=200 -n 1 -t 10 --job-name=$jobid\".\"CLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
-chomp $clustercheckpointid;
-print STDERR "Submitted job $clustercheckpointid - to check clusters\n";
-#system "bsub -J \"$jobid\".CHK -w \"ended($jobid"."glim[1-$count])\" -o all.log -e all.err $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";                   to see exactly what this module does.	
+# print file for checkpointing following gene prediction
 
+`sbatch -d afterany:$jobarrayid --mem=2000 -n 1 -t 10 --job-name=$jobid\".\"CHK -p serial_requeue -o all.log -e all.err --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"`;
+	
+#system "bsub $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";
+#system "bsub -J \"$jobid\".CHK -w \"ended($jobid"."glim[1-$count])\" -o all.log -e all.err $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";
 
 # print files for COGtriangles clustering (three stages have different memory requirements)
-open COGA, "> cogtriangle_run_A.sh" or croak();
+
+open COGA , "> cogtriangle_run_A.sh" or croak();
 open COGB, "> cogtriangle_run_B.sh" or croak();
 open COGC, "> cogtriangle_run_C.sh" or croak();
 
 # part A - low memory, processes BLAT results
+
 print COGA "rm *.aa *.CDS.mfa;
 mkdir blan;
 mkdir blaf;
@@ -279,21 +267,26 @@ rm *mod;
 mkdir tmp;
 COGlse -d=./BLASTconv/ -j=LSE.csv -p=all.strains.csv -o=all.strains.lse.csv -t=./tmp;
 echo 'Completed run_cogtriangles_A.sh!' >> all.err";
+
 close COGA;
 
 # part B - high memory, runs clustering
+
 print COGB "
 COGtriangles -i=./BLASTconv -q=all.strains.csv -l=all.strains.lse.csv -o=all.strains.cls.csv -t=0.5 -e=0.01 -n=\"CLS\" -s=1;
 echo 'Completed run_cogtriangles_B.sh!' >> all.err";
+
 close COGB;
 
 # part C - low memory processes the clustering output into a unique cluster for each CDS
+
 print COGC "$script_dir/make_COG_addendum.pl all.strains.csv all.strains.cls.csv;
 cat all.strains.cls.csv addendum.out > all.strains.cls.chk.csv;
 rm all.strains.cls.csv;
 COGcognitor -i=./BLASTconv -t=all.strains.cls.chk.csv -q=all.strains.csv -o=all.strains.cls.out.csv -c=1;
 rm all.strains.cls.chk.csv;
 echo 'Completed run_cogtriangles_C.sh!' >> all.err";
+
 close COGC;
 
 system "chmod +x cogtriangle_run_A.sh";
@@ -301,10 +294,8 @@ system "chmod +x cogtriangle_run_B.sh";
 system "chmod +x cogtriangle_run_C.sh";
 
 
-print STDERR $refnum;
-
 ##############
-# SUBROUTINES #
+# SUBROUTINE #
 ##############
 
 sub croak {
@@ -314,15 +305,4 @@ Error: $!\nUsage: -r [reference fasta] [list of fastqs/fastas/multifastas]
 The reference genome will not feature in the final analysis unless it also features in the list
 
 ";
-}
-
-sub write_suffix_array_slurm_script {
-	my $scriptname=$_[0];
-	my $stageprefix=$_[1];
-	open SLURMSCRIPTFH, "> $scriptname";
-	print SLURMSCRIPTFH "#!/bin/bash\n";
-	print SLURMSCRIPTFH "./$stageprefix.";
-	print SLURMSCRIPTFH '$SLURM_ARRAY_TASK_ID';
-	close SLURMSCRIPTFH;
-	system "chmod +x $scriptname";
 }

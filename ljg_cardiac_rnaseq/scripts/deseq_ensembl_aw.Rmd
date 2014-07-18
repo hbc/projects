@@ -52,6 +52,7 @@ library(ggplot2)
 library(biomaRt)
 library(scales)
 library(devtools)
+library(biomaRt)
 install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
 library(CHBUtils)
 library(knitr)
@@ -61,6 +62,14 @@ require(wesanderson)
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
 # Wes Anderson palette
 pal <-  wes.palette(5,name = "Zissou")
+ensemblmart <- useMart('ensembl', "mmusculus_gene_ensembl")
+attributes <- listAttributes(ensemblmart)
+filters <- listFilters(ensemblmart)
+library(GOstats)
+library("GO.db")
+# GO:0006355 : regulation of transcription, DNA-dependent (GOBP)
+# Any process that modulates the frequency, rate or extent of cellular DNA-dependent transcription.
+g1 <- nodes(oneGOGraph("GO:0006355", GOBPCHILDREN)) #TF
 ```
 
 ## Variables
@@ -491,7 +500,26 @@ results.filt.norm <- annotate_df(results.filt.norm,
                                     df_ensemblid_header="id",
                                     biomart_ensembl_dataset="mmusculus_gene_ensembl",
                                     biomart_ensemblid_filter="ensembl_gene_id",
-                                    biomart_genesymbol_attribute="mgi_symbol")
+                                    biomart_genesymbol_attribute=c("mgi_symbol"))
+
+# annotate genes with transcription factor status
+GOids <- getBM(attributes=c("ensembl_gene_id", "go_id"), filters="ensembl_gene_id", values=results.filt.norm$id, mart=ensemblmart)
+transfac_status <- aggregate(GOids$go_id, by=list(GOids$ensembl_gene_id), function(x) {
+  test <- any(x %in% g1)
+  return(test)
+})
+names(transfac_status) <- c("id", "transfactor")
+results.filt.norm <- merge(results.filt.norm, transfac_status, by="id", all=TRUE)
+
+#annotate type of gene (biotype)
+biotypes <- getBM(attributes=c("ensembl_gene_id", "gene_biotype"), filters="ensembl_gene_id", values=results.filt.norm$id, mart=ensemblmart)
+names(biotypes) <- c("id", "gene_biotype")
+results.filt.norm <- merge(results.filt.norm, biotypes, by="id", all=TRUE)
+ncRNAs <- c("tRNA", "Mt_tRNA", "Mt_rRNA", "rRNA", "scRNA", "snRNA", "snoRNA", "miRNA", "misc_RNA", "lincRNA")
+results.filt.norm$noncoding_RNA <- results.filt.norm$gene_biotype %in% ncRNAs
+
+
+results.filt.norm <- results.filt.norm[order(results.filt.norm$padj),]
 
 
 ## MA plots
@@ -508,6 +536,14 @@ p <- ggplot(results.filt.norm, aes(x=log2FoldChange, y=-log10(padj)) )+
   scale_y_continuous(name="-log10(adjusted pvalue)")+
   scale_x_continuous(limits=c(-10,10))
 print(p)
+
+#identify single sample outliers with maximum deviation from median statistic
+indices <- which(covars=="YES")+1
+results.filt.norm$madmaxes <- apply(results.filt.norm, 1, function(x){
+  values <- as.numeric(as.character(x[indices]))
+  max((abs(values-median(values)))/median(values))
+  })
+
 ```
 
 Here are the top 10 differentially expressed genes for this comparisons by adjusted pvalue

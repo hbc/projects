@@ -77,33 +77,30 @@ qRTPCR.file <- file.path(dataDir,"1405_quantrxx_qPCR_data.xlsx" )
 
 ```{r dataload_and_reshape, results='asis'}
 deseq.data <- read.delim(deseq.file)
-qrtpcr.data <- read.xlsx(qRTPCR.file, sheetIndex = 1)
+qrtpcr.data <- read.xlsx(qRTPCR.file, sheetIndex = 1, startRow = 2)
 ```
 
 ---
 
 # DATA PREPROCESSING
 
-## Subset both sets of results to common genes, sort by gene symbol
+## Subset both sets of results to common genes, sort by gene symbol and drop single outlier from qRT-PCR results (>300000 fold change?)
 
 ```{r rawcounts, results='asis'}
 names(qrtpcr.data)[2] <- "symbol"
+qrtpcr.data <- subset(qrtpcr.data, fold<3e5)
 
 qrtpcr.data <- qrtpcr.data[order(qrtpcr.data$symbol),]
-deseq.data <- deseq.data[order(deseq.data$mgi_symbo),]
+deseq.data <- deseq.data[order(deseq.data$mgi_symbol),]
 
 # drop any genes that are duplicated for simplicity
 deseq.data <- deseq.data[(!base::duplicated(deseq.data$mgi_symbol)),]
 qrtpcr.data <- qrtpcr.data[(!base::duplicated(qrtpcr.data$symbol)),]
 
-
+# subset to common genes
 common.genes <- intersect(qrtpcr.data$symbol, deseq.data$mgi_symbol)
 qrtpcr.data <- qrtpcr.data[qrtpcr.data$symbol %in% common.genes,]
 deseq.data <- deseq.data[deseq.data$mgi_symbol %in% common.genes,]
-
-
-
-
 ```
 
 ---
@@ -112,6 +109,39 @@ deseq.data <- deseq.data[deseq.data$mgi_symbol %in% common.genes,]
 
 ## Compare fold changes in datasets
 
+```{r comparefcs}
+all.data <- merge(deseq.data, qrtpcr.data, by.x="mgi_symbol", by.y="symbol")
+
+ggplot(all.data, aes(x=foldChange,y=fold))+
+  geom_point(alpha=0.25)+
+  xlab("DESeq foldchange")+ylab("qRT-PCR foldchange")+
+  ggtitle("Foldchange Comparisons")
+
+```
+
+## Compare log2 transformed fold changes in datasets
+
+```{r comparelfcs}
+ggplot(all.data, aes(x=log2(foldChange),y=log2(fold)))+
+  geom_point(alpha=0.25)+
+  xlab("DESeq log2-foldchange")+ylab("qRT-PCR log2-foldchange")+
+  ggtitle("Log2-foldchange Comparisons")+
+  ylim(c(-10,10))+xlim(c(-10,10))
+```
+
+
+## Compare ranks of fold changes in datasets
+
+```{r comparerankedfcs}
+# compare ranks
+deseq.data$rank <- rank(deseq.data$foldChange)
+qrtpcr.data$rank <- rank(qrtpcr.data$fold)
+
+all.data <- merge(deseq.data, qrtpcr.data, by.x="mgi_symbol", by.y="symbol")
+
+ggplot(all.data, aes(x=rank.x, y=rank.y))+geom_point(alpha=0.25)+
+  
+```
 
 
 

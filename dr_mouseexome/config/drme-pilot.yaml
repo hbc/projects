@@ -13,6 +13,7 @@ details:
   metadata:
     batch: old3
     treatment: nt
+    depth: 4
   files:
   - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone17.R1.fastq
   - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/old1c_clone17.R2.fastq
@@ -409,6 +410,7 @@ details:
   metadata:
     batch: young3
     treatment: nt
+    depth: 4
   files:
   - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Young3c_clone1.R1.fastq
   - /n/hsphS10/hsphfs1/chb/projects/dr_mouse_exomeseq/data/fastq/Young3c_clone1.R2.fastq
