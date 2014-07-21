@@ -1,0 +1,166 @@
+
+```{r setup, echo=FALSE}
+opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, fig.height=8, fig.width=8, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev='CairoSVG')
+options(width=200)
+
+labPI="Vaidya"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+---
+
+Transcription factor analysis for the `r labPI` group.  Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+## Methods summary
+
+Downloaded conserved transcription factor binding sites surrounding 12 genes:
+Cdh11
+Gabrp
+Mgp
+Mrc1
+Pdpn
+Pld4
+Pltp
+Sema3d
+Scn7a
+Smoc2
+Stra6
+Sytl2
+
+---
+
+## Setup
+
+### Working directories, files and other variables necessary to the analysis.
+
+```{r variables }
+conservation_cutoff=0.75
+rel_cutoff=0.75
+majority_cutoff=0.75
+lowerlimit=-1500
+upperlimit=2500
+
+
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/vv_kidney_RNASeq/functional_project/")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/vv_kidney_RNASeq/functional_project/"
+  } else {
+    baseDir <- "/Volumes/ody_new/projects/vv_kidney_RNASeq/functional_project/"
+    }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+
+library(ggplot2)
+```
+
+### Data
+
+```{r dataload}
+tfids <- read.table(file.path(metaDir, "MATRIX.txt"), sep="\t" )
+tfids$tfid <- paste(tfids[,3], tfids[,4], sep=".")
+names(tfids)[5] <- "tfsymbol"
+tfids <- tfids[,5:6]
+
+tfbs <-  read.table(file.path(dataDir, "conserved_tfbs.12.txt"), header=T)
+tfbs <- merge(tfbs, tfids, by.x="tf_id", by.y="tfid", all.x=T, all.y=F, sort=F)
+```
+
+---
+
+## Analyses
+
+### Filter 
+Subset transcription factor binding sites (TFBSs) by conservation and relative score (a measure of how often the TFBS shows up in the region normalized against its overall occurrence in the genome)
+```{r filter}
+tfbs.conserved <- subset(tfbs, conservation>conservation_cutoff & rel_score>rel_cutoff)
+length(unique(tfbs.conserved$symbol))
+```
+
+The regions surrounding some genes are not well conserved, at these cutoffs, `r length(unique(tfbs.conserved$symbol))` genes remain (`r paste(unique(tfbs.conserved$symbol), collapse=", ")).
+
+### Common sites
+Find sites that are common to all remaining genes and subset the TFBS locations to those.
+
+```{r commontfids}
+unique.tfids.per.gene <- aggregate(tfsymbol ~ symbol, data=tfbs.conserved, function(x) unique(as.character(x)))
+tfids.conserved.majority <- names(which(table(unlist(unique.tfids.per.gene[,2]))>majority_cutoff*length(unique(tfbs.conserved$symbol))))
+tfbs.conserved.majority <-  tfbs.conserved[tfbs.conserved$tfsymbol %in% tfids.conserved.majority ,]
+
+```
+
+
+### Frequencies
+Plot frequencies of individual sites shared among genes.
+
+```{r plot}
+p.majority <- ggplot(tfbs.conserved.majority, aes(x=tfsymbol, fill=tfsymbol))+geom_histogram()+coord_flip()+xlab("transcription factor")+ggtitle(paste("Conserved TFBS found in ", majority_cutoff*100, "% of all genes",sep=""))
+p.majority
+p.majority+facet_grid(~symbol)+ ggtitle(paste("Conserved TFBS found in ", majority_cutoff*100, "% of all genes (by gene)", sep=""))
+```                                                                                                                                                 
+
+
+---
+
+### Regional analyses
+Limit to within `r (-1)*lowerlimit/1000`kb downstream and `r upperlimit/1000`kb upstream of the TSS
+
+```{r limit}
+tfbs.conserved$dist_to_TSS <- apply(tfbs.conserved, 1, function(n){
+  start <- as.numeric(as.character(n[7]))
+  end <- as.numeric(as.character(n[8]))
+  TSS <- as.numeric(as.character(n[9]))
+  strand <- as.numeric(as.character(n[10]))
+  if(strand<0){
+    dist_to_TSS <- end-(TSS-start)
+    } else {
+      dist_to_TSS <- (-1)*((start+end)-TSS)
+      }
+  return(dist_to_TSS)
+  })                                                                                                                                                 
+                                                                                                                                          
+
+                                                                                                                                                 
+#Cdh11, negative strand
+
+gene.locs.sub <- subset(gene.locs, symbol=="Cdh11")
+Cdh11.locs.sub$dist_to_TSS <- Cdh11.locs.sub$end-(gene.locs.sub$tss-gene.locs.sub$start)
+
+#Mgp, negative strand
+gene.locs.sub <- subset(gene.locs, symbol=="Mgp")
+Mgp.locs.sub$dist_to_TSS <- Mgp.locs.sub$end-(gene.locs.sub$tss-gene.locs.sub$start)
+                  
+#Pld4 positive strand
+gene.locs.sub <- subset(gene.locs, symbol=="Pld4")
+Pld4.locs.sub$dist_to_TSS <- (-1)*((gene.locs.sub$start+Pld4.locs.sub$end)-gene.locs.sub$tss)
+
+#Smoc2 positive strand
+gene.locs.sub <- subset(gene.locs, symbol=="Smoc2")
+Smoc2.locs.sub$dist_to_TSS <- (-1)*((gene.locs.sub$start+Smoc2.locs.sub$end)-gene.locs.sub$tss)
+
+lower.limit=-1500
+upper.limit=5000
+Cdh11.locs.sub2 <- Cdh11.locs.sub[Cdh11.locs.sub$dist_to_TSS>lower.limit & Cdh11.locs.sub$dist_to_TSS<upper.limit,]
+Mgp.locs.sub2 <- Mgp.locs.sub[Mgp.locs.sub$dist_to_TSS>lower.limit & Mgp.locs.sub$dist_to_TSS<upper.limit,]
+Pld4.locs.sub2 <- Pld4.locs.sub[Pld4.locs.sub$dist_to_TSS>lower.limit & Pld4.locs.sub$dist_to_TSS<upper.limit,]
+Smoc2.locs.sub2 <- Smoc2.locs.sub[Smoc2.locs.sub$dist_to_TSS>lower.limit & Smoc2.locs.sub$dist_to_TSS<upper.limit,]
+
+# subset to factors common to all 
+common.sites <- intersect(intersect(intersect(Mgp.locs.sub2$factor_name, Smoc2.locs.sub2$factor_name), Cdh11.locs.sub2$factor_name),Pld4.locs.sub2$factor_name)
+Mgp.locs.sub2 <- subset(Mgp.locs.sub2, Mgp.locs.sub2$factor_name %in% common.sites)
+Smoc2.locs.sub2 <- subset(Smoc2.locs.sub2, Smoc2.locs.sub2$factor_name %in% common.sites)
+Cdh11.locs.sub2 <- subset(Cdh11.locs.sub2, Cdh11.locs.sub2$factor_name %in% common.sites)
+Pld4.locs.sub2 <- subset(Pld4.locs.sub2, Pld4.locs.sub2$factor_name %in% common.sites)
+
+locs.sub2 <- do.call(rbind, list(Mgp.locs.sub2, Smoc2.locs.sub2, Cdh11.locs.sub2, Pld4.locs.sub2))
+
+p <- ggplot(locs.sub2, aes(x=factor_name, fill=factor_name))+geom_histogram()+coord_flip()+ylab("transcription factor")
+p
+p+facet_grid(~gene)
+```
+
+
+
