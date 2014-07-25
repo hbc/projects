@@ -4,20 +4,17 @@ script to output for a GEMINI database:
 for each gene in the GEMINI database:
 2) a TPED file of all variants mapping to a gene
 3) the CADD score of all variants in the gene (scaled and raw)
+
+Some of this code would be useful to be added into GEMINI, especially the
+constructed ID code as a formatting option. If you are running this in parallel
+on a cluster, make sure that all of the CPU you request are on the same node.
 """
 import re
 import subprocess
 import os
 import collections
 from argparse import ArgumentParser
-
-
-# 1)
-# gemini dump --tfam {db} > ad.fam
-
-# 2+3)
-# gemini query --tped -q "select * from variants where GENE={gene}" > gene.tped
-# gemini query -q "select chrom, start, end, cadd_raw, cadd_scaled, gts from variants where GENE={gene}" | fix_gene_cadd > gene.cadd
+from multiprocessing import Pool
 
 def flatten(l):
     """
@@ -85,6 +82,17 @@ def genewise_cadd_scores(db, gene, out_dir):
     return out_file
 
 
+def get_cadd_score_runner(db, out_dir):
+    def wrapper(gene):
+        return genewise_cadd_scores(db, gene, out_dir)
+    return wrapper
+
+def get_dump_tped_runner(dn, out_dir):
+    def wrapper(gene):
+        return dump_tped(db, gene, out_dir)
+    return wrapper
+
+
 def unique_genes(db):
     cmd = ('gemini query -q "select DISTINCT gene from variants" {db}').format(**locals())
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
@@ -93,6 +101,7 @@ def unique_genes(db):
 
 if __name__ == "__main__":
     parser = ArgumentParser("Generate gene-wise variant TPED files and CADD scores.")
+    parser.add_argument("--cores", type=int, default=1, help="Number of cores to use.")
     parser.add_argument("db", help="GEMINI database to query.")
     args = parser.parse_args()
 
@@ -100,9 +109,24 @@ if __name__ == "__main__":
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
+    print "Calculating unique genes in the database."
     genes = unique_genes(args.db)
+    print "Found %d unique genes." % len(genes)
+    print "Dumping TFAM file to ad.tfam."
     dump_family(args.db, "ad.tfam")
+
+    cadd_score_runner = get_cadd_score_runner(args.db, out_dir)
+    tped_runner = get_dump_tped_runner(args.db, out_dir)
+    p = Pool(args.cores)
     for gene in genes:
-        genewise_cadd_scores(args.db, gene, out_dir)
-        dump_tped(args.db, gene, out_dir)
+        print "Dumping CADD scores of %s." % gene
+        p.apply_async(genewise_cadd_scores, (args.db, gene, out_dir))
+        print "Dumping TPED of variants in genes of %s." % gene
+        p.apply_async(dump_tped, (args.db, gene, out_dir))
+    p.close()
+    p.join()
+    print "Finished."
+    # for gene in genes:
+    #     genewise_cadd_scores(args.db, gene, out_dir)
+    #     dump_tped(args.db, gene, out_dir)
 
