@@ -9,15 +9,15 @@ use Bio::SeqIO;
 
 # set up script_dir variable, slurm variables
 my $script_dir = $ENV{SCRIPT_DIR};
-
-# the scripts called by this script are on directory higher in the tree than the clustering scripts, chop off last directory
-$script_dir =~ s/\/[^\/]+$//;
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime  = $ENV{SLURMTIME};
 my $slurmmem   = $ENV{SLURMMEM};
 
-# set up other variables
+# the scripts called by this script are on directory higher in the tree than the clustering scripts, chop off last directory
+$script_dir =~ s/\/[^\/]+$//;
 
+
+# set up other variables
 my $tab;
 my $embl;
 my $emblseq;
@@ -76,7 +76,7 @@ $mod =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.mod/g;
 
 ########################################################################
 # VELVET and ABACAS
-# shuffle data if provided as fastq and run abacas
+# shuffle data if provided as fastq and run velvet and abacas
 if ( $file =~ /_1.fastq/ ) {
     my $working_dir = `pwd`;
     chomp $working_dir;
