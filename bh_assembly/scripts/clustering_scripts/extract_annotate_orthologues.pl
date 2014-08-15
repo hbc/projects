@@ -13,6 +13,7 @@ my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime = $ENV{SLURMTIME};
 my $slurmmem = $ENV{SLURMMEM};
+my $slurmexclude = $ENV{SLURMEXCLUDE};
 
 
 
@@ -116,7 +117,7 @@ if ($count > 100) {
 	$smallnum = $bignum/1000;
 }
 
-my $ccpgid=`sbatch -n 1 --mem=$smallnum -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CALCCOGPAN --wrap=\"$script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum\" | awk ' { print \$4 }'`;
+my $ccpgid=`sbatch -n 1 --exclude=$slurmexclude  --mem=$smallnum -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CALCCOGPAN --wrap=\"$script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum\" | awk ' { print \$4 }'`;
 chomp $ccpgid;
 #JH system "bsub -o all.log -e log.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' $script_dir/calculate_COG_pangenome.pl strain.info all.strains.cls.out.csv $refnum";
 
@@ -216,7 +217,7 @@ my $smallalignarrayid;
 
 if ($normal_count >= 1) { #JH changed from >1 to >=1
 	write_suffix_array_slurm_script("AlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	my $alignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$normal_count --job-name=$jobid.ALN --wrap=\"./AlignArrays.sh\" | awk ' { print \$4 }'`;
+	my $alignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude  --mem=2500 -n 1 -t 60 --array=1-$normal_count --job-name=$jobid.ALN --wrap=\"./AlignArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $alignarrayid;
 	#JH system "bsub -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -q normal_serial -J $jobid"."aln[1-$normal_count]".'%100 -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
 	#JH $dependency_string = "ended($jobid"."aln[1-$normal_count])";
@@ -228,7 +229,7 @@ if ($normal_count >= 1) { #JH changed from >1 to >=1
 
 if ($small_count >= 1) { #JH changed from >1 to >=1
 	write_suffix_array_slurm_script("SmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	my $smallalignarrayid=`sbatch -p $slurmqueue --mem=2500 -n 1 -t 60 --array=1-$small_count --job-name=$jobid.SMALN --wrap=\"./SmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+	my $smallalignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude  --mem=2500 -n 1 -t 60 --array=1-$small_count --job-name=$jobid.SMALN --wrap=\"./SmallAlignArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $smallalignarrayid;
 	$dependency_string="$smallalignarrayid"; #JH
 
@@ -244,7 +245,7 @@ if ($small_count >= 1) { #JH changed from >1 to >=1
 
 # submit checkpointing and alignment processing jobs
 
-my $ccaid=`sbatch -d afterok:$dependency_string -n 1 --mem=2500 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CHKCOG --wrap=\"$script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum\" | awk ' { print \$4 }'`;
+my $ccaid=`sbatch -d afterok:$dependency_string -n 1 --exclude=$slurmexclude  --mem=2500 -t 60 -o all.log -e all.err -p $slurmqueue --job-name=$jobid.CHKCOG --wrap=\"$script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum\" | awk ' { print \$4 }'`;
 chomp $ccaid;
 #JH system "bsub -o all.log -e all.err -M 2500000 -R 'select[mem>2500] rusage[mem=2500]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $normal_count $small_count $count $reference $refnum;
 

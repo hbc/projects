@@ -14,7 +14,8 @@ my $slurmmem = "2000";
 $ENV{SLURMMEM} = $slurmmem;
 my $slurmtime = "420";
 $ENV{SLURMTIME} = $slurmtime;
-
+my $slurmexclude = "nelson01,nelson02";
+$ENV{SLURMEXCLUDE} = $slurmexclude;
 # random number for job submission/dependencies
 
 my $range = 1000;
@@ -228,7 +229,7 @@ close REF;
 system "chmod +x ./reference_training.sh";
 
 # submit job and track
-my $reftrainjobid=`sbatch -n 1 --mem=200 -t 10 --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.REFTRAIN --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
+my $reftrainjobid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 10 --open-mode=append -o all.log -e all.err -p $slurmqueue --job-name=${jobid}.REFTRAIN --wrap=\"./reference_training.sh\" | awk ' { print \$4 }'`;
 chomp $reftrainjobid;
 print STDERR "Submitted job $reftrainjobid - to train Glimmer and Prodigal on reference\n";
 
@@ -240,20 +241,20 @@ my $jobarrayid="";
 if (grep(/fastq/,@ARGV)) {
 	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
 	my $jobmem = $slurmmem*8;
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$jobmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --exclude=$slurmexclude --mem=$jobmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 	$assembly = 1;
 } else {
 	write_suffix_array_slurm_script("RunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
-	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
+	$jobarrayid=`sbatch -d afterok:$reftrainjobid -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.GLIM --wrap=\"./RunJobArrays.sh\" | awk ' { print \$4 }'`;
 	chomp $jobarrayid;
 	print STDERR "Submitted job $jobarrayid - to extract putative proteins\n";
 }
 
 
 # RUN checkpointing following gene prediction
-my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --mem=200 -n 1 -t 10 --job-name=$jobid\".\"CLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
+my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --exclude=$slurmexclude --mem=200 -n 1 -t 10 --job-name=$jobid\".\"CLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
 chomp $clustercheckpointid;
 print STDERR "Submitted job $clustercheckpointid - to check clusters\n";
 #system "bsub -J \"$jobid\".CHK -w \"ended($jobid"."glim[1-$count])\" -o all.log -e all.err $script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference";                   to see exactly what this module does.	

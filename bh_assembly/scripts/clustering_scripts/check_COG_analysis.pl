@@ -12,6 +12,7 @@ my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime = $ENV{SLURMTIME};
 my $slurmmem = $ENV{SLURMMEM};
+my $slurmexclude = $ENV{SLURMEXCLUDE};
 my $dir = `pwd | tr -d "\n"`;
 
 # set up variables
@@ -120,12 +121,12 @@ if ($#jobarray > -1) {
 	$jobarray_n--;
 	if ($jobarray_n > 1) {
 		write_suffix_array_slurm_script("RAlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $alignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1-$jobarray_n --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
+		my $alignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t 60 --array=1-$jobarray_n --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $alignarrayid;
 	#JH	system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1-$jobarray_n]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
 	} else {
 		write_suffix_array_slurm_script("RAlignArrays.sh", "AlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $alignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
+		my $alignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.RALN --wrap=\"./RAlignArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $alignarrayid;
 	#JH system "bsub -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -q normal_serial -J $jobid"."Raln[1]".' -o log.%I -e err.%I ./AlignArray.\$LSB_JOBINDEX';
 	}
@@ -156,13 +157,13 @@ if ($#smalljobarray > -1) {
 	if ($smalljobarray_n > 1) {
 		
 		write_suffix_array_slurm_script("RSmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $smallalignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1-$smalljobarray_n --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+		my $smallalignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t 60 --array=1-$smalljobarray_n --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $smallalignarrayid;
 	 #JH system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q short_serial -J $jobid"."RSaln[1-$smalljobarray_n]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
 		$dependency_string ="$smallalignarrayid";
 	} else {
 		write_suffix_array_slurm_script("RSmallAlignArrays.sh", "SmallAlignArray"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		my $smallalignarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
+		my $smallalignarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t 60 --array=1 --job-name=$jobid.SRALN --wrap=\"./RSmallAlignArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $smallalignarrayid;
 		#JH system "bsub -M 4000000 -R 'select[mem>4000] rusage[mem=4000]' -q normal_serial -J $jobid"."RSaln[1]".' -o Slog.%I -e Serr.%I ./SmallAlignArray.\$LSB_JOBINDEX';
 		$dependency_string = $smallalignarrayid;
@@ -174,10 +175,10 @@ if ($#smalljobarray > -1) {
 
 if ($#jobarray == -1 && $#smalljobarray == -1) {
 	my $jobmem = $slurmmem*20;	
-	`sbatch -n 1 --mem=$jobmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.OALPROC --wrap=\"$script_dir/orthologue_alignment_processing.pl $count $reference $refnum\"`;
+	`sbatch -n 1 --exclude=$slurmexclude --mem=$jobmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.OALPROC --wrap=\"$script_dir/orthologue_alignment_processing.pl $count $reference $refnum\"`;
 	#JH	system "bsub -o all.log -e all.err -M 18000000 -R 'select[mem>18000] rusage[mem=18000]' $script_dir/orthologue_alignment_processing.pl $count $reference $refnum";
 } else {
-	`sbatch -d afterok:$dependency_string -n 1 --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.COGCHK --wrap=\"$script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum\"`;
+	`sbatch -d afterok:$dependency_string -n 1 --exclude=$slurmexclude --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=${jobid}.COGCHK --wrap=\"$script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum\"`;
 	#JH system "bsub -o all.log -e all.err -M 1000000 -R 'select[mem>1000] rusage[mem=1000]' -w \"$dependency_string\" -J $jobid"."COGCHK $script_dir/check_COG_analysis.pl $jobarray_n $smalljobarray_n $count $reference $refnum";	
 }
 

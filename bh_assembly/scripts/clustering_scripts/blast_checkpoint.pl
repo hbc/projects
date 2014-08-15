@@ -12,6 +12,7 @@ my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime = $ENV{SLURMTIME};
 my $slurmmem = $ENV{SLURMMEM};
+my $slurmexclude = $ENV{SLURMEXCLUDE};
 
 
 # set up other variables
@@ -75,24 +76,24 @@ foreach my $key (@blat_array) {
 
 if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	
-	my $cogAid=`sbatch -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGA --wrap=\"./cogtriangle_run_A.sh\" | awk ' { print \$4 }'`;
+	my $cogAid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGA --wrap=\"./cogtriangle_run_A.sh\" | awk ' { print \$4 }'`;
 	chomp $cogAid;
 	#system "bsub -o all.log -e all.err -q long_serial -J $jobid.cogA -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' ./cogtriangle_run_A.sh";
 	print STDERR "Submitted cogtriangle-A job $cogAid\n";
 
-	my $cogBid=`sbatch -d afterok:$cogAid -n 1 --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=$jobid.COGB --wrap=\"./cogtriangle_run_B.sh\" | awk ' { print \$4 }'`;
+	my $cogBid=`sbatch -d afterok:$cogAid -n 1 --exclude=$slurmexclude --mem=$slurmmem -t $slurmtime -p $slurmqueue --job-name=$jobid.COGB --wrap=\"./cogtriangle_run_B.sh\" | awk ' { print \$4 }'`;
 	chomp $cogBid;
 	#system "bsub -w \"ended($jobid.cogA)\" -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -J $jobid.cogB ./cogtriangle_run_B.sh";
 	print STDERR "Submitted cogtriangle-B job $cogBid\n";
 
 
-	my $cogCid=`sbatch -d afterok:$cogBid -n 1 --mem=$slurmmem -t 10 -p $slurmqueue --job-name=$jobid.COGC --wrap=\"./cogtriangle_run_C.sh\" | awk ' { print \$4 }'`;
+	my $cogCid=`sbatch -d afterok:$cogBid -n 1 --exclude=$slurmexclude --mem=$slurmmem -t 10 -p $slurmqueue --job-name=$jobid.COGC --wrap=\"./cogtriangle_run_C.sh\" | awk ' { print \$4 }'`;
 	chomp $cogCid;
 	#system "bsub -w \"ended($jobid.cogB)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cogC ./cogtriangle_run_C.sh";
 	print STDERR "Submitted cogtriangle-C job $cogCid\n";
 
 
-	my $postprocesscogsid=`sbatch -d afterok:$cogCid -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.PPCOGS --wrap=\"$script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum\" | awk ' { print \$4 }'`;
+	my $postprocesscogsid=`sbatch -d afterok:$cogCid -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.PPCOGS --wrap=\"$script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum\" | awk ' { print \$4 }'`;
 	chomp $postprocesscogsid;
 	#system "bsub -w \"ended($jobid.cogC)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cluchk $script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum";
 	print STDERR "Submitted COG post-processing job $postprocesscogsid\n";
@@ -101,7 +102,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	my $embl = $reference;
 	$embl =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.embl/g;
 	
-	my $extractannotateorthologsid=`sbatch -d afterok:$postprocesscogsid -n 1 --mem=200 -t 10  -p $slurmqueue --job-name=$jobid.EXANORTH --wrap=\"$script_dir/extract_annotate_orthologues.pl $count $refnum $embl\" | awk ' { print \$4 }'`;
+	my $extractannotateorthologsid=`sbatch -d afterok:$postprocesscogsid -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=$jobid.EXANORTH --wrap=\"$script_dir/extract_annotate_orthologues.pl $count $refnum $embl\" | awk ' { print \$4 }'`;
 	chomp $extractannotateorthologsid;
 	#system "bsub -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -w \"ended($jobid.cluchk)\" $script_dir/extract_annotate_orthologues.pl $count $refnum $embl";
 	print STDERR "Submitted Ortholog extraction and annotation job $extractannotateorthologsid \n";
@@ -118,7 +119,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	if ($#filter_rerun > -1) {
 
 		write_suffix_array_slurm_script("ReRunFilterBlastArrays.sh", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		$filterblastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@filter_rerun --job-name=$jobid.REFBLA --wrap=\"./ReRunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+		$filterblastarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t $slurmtime --array=@filter_rerun --job-name=$jobid.REFBLA --wrap=\"./ReRunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
 		chomp $filterblastarrayid;
 		print STDERR "Submitted job $filterblastarrayid - to rerun Filtered Blasts @filter_rerun\n";
 		$dependency_string = $filterblastarrayid;
@@ -130,7 +131,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	if ($#blast_rerun > -1) {
 					
 		write_suffix_array_slurm_script("ReRunBlastArrays.sh", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-		$blastarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=@blast_rerun --job-name=$jobid.REUBLA --wrap=\"./ReRunBlastArrays.sh" | awk ' { print \$4 }'`;
+		$blastarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t $slurmtime --array=@blast_rerun --job-name=$jobid.REUBLA --wrap=\"./ReRunBlastArrays.sh" | awk ' { print \$4 }'`;
 		chomp $blastarrayid;
 		print STDERR "Submitted job $blastarrayid - to rerun Blasts @blast_rerun\n";
 
@@ -145,7 +146,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 		push(@blast_rerun,"0");
 	}
 	
-	my $blast_checkpointid=`sbatch -d afterok:$dependency_string -n 1 --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.REBLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blast_rerun @filter_rerun $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+	my $blast_checkpointid=`sbatch -d afterok:$dependency_string -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.REBLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blast_rerun @filter_rerun $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 	chomp $blast_checkpointid;
 
 }
