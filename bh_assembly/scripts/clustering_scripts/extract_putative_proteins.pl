@@ -1,6 +1,8 @@
 #! /usr/bin/perl -w
 use strict;
 use Bio::SeqIO;
+use File::Copy;
+use Cwd; 
 
 ###################################################################################
 # Submitted by run_clustering.pl | Submits nothing                                #
@@ -30,6 +32,7 @@ my $file      = $ARGV[0];    # original fastq file
 my $mfa       = $file;
 my $reference = $ARGV[2];    # original reference fa file
 my $mod;
+my $multifastacontigs;
 
 ########################################################################
 # FILE SETUP
@@ -74,6 +77,7 @@ $header =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.header/g;
 $embltemp =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.temp/g;
 $mod =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.mod/g;
 
+
 ########################################################################
 # VELVET and ABACAS
 # shuffle data if provided as fastq and run velvet and abacas
@@ -93,43 +97,45 @@ if ( $file =~ /_1.fastq/ ) {
     system "cat contigs.fa_"
       . "$reference.MULTIFASTA.fa contigs.fa_"
       . "$reference.contigsInbin.fas > $mfa";
-    system "cat $mfa | grep -v '>' > joined.seq";
+    system "cat $mfa > joined.seq";
     $file =~ s/_1/.fa/g;
-    system "echo \">$file\" | cat - joined.seq > ../$file";
+    system "cat joined.seq > ../$file"; # this copies over the single fasta
+    
+    #$multifastacontigs = $file;
+    #$multifastacontigs =~ s/.fa/.multifasta.fa/g;
+    #system "cat $file > ../$multifastacontigs";
+    
     chdir "$working_dir";
 }
 
 ########################################################################
 
-# add the three frame stop to the ends of the assembly
+# add the three frame stop to the ends of the assembly, 
+# produce a multifasta file (MOD) with contig breaks (">") and single joined fasta file without contig breaks (DNA)
 
-open FILE, $mfa
-  or die print STDERR
-  "Could not open file $mfa corresponding to input $file!\n";
+open FILE, "$file";
 
-open MFA, "> $mod" or croak();
-open DNA, "> $dna" or croak();
+open MOD, "> $mod" or croak(); # file with multifasta, but first contig has start, last has stop
+open DNA, "> $dna" or croak(); # file with single fasta sequence and filename as header, with start and stops
 
 my $file_header = 0;
-
 print DNA ">$file\n";
-
 my ( $bit, $end );
 
 foreach (<FILE>) {
     chomp;
     if (/^>/) {
-        print MFA "$_\n";
+        print MOD "$_\n";
     }
     elsif ( $file_header == 0 ) {
-        print MFA "TTATTTATTTA" . "$_\n";
+        print MOD "TTATTTATTTA" . "$_\n";
         $file_header = 1;
         $bit         = substr( $_, 0, 49 );
         $end         = substr( $_, 49, 11 );
         print DNA "TTATTTATTTA" . "$bit";
     }
     else {
-        print MFA "$_\n";
+        print MOD "$_\n";
         $bit = substr( $_, 0, 49 );
         print DNA "\n$end" . "$bit";
         if ( length($_) > 49 ) {
@@ -141,7 +147,7 @@ foreach (<FILE>) {
     }
 }
 
-print MFA "TAAATAAATAA\n";
+print MOD "TAAATAAATAA\n";
 
 my $line = $bit . $end . "TAAATAAATAA";
 
@@ -158,7 +164,9 @@ else {
 }
 
 close FILE;
-close MFA;
+close MOD;
+close DNA;
+print $file;
 
 # identify the positions of contig breaks
 
