@@ -14,7 +14,8 @@ import subprocess
 import os
 import collections
 from argparse import ArgumentParser
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 def flatten(l):
     """
@@ -33,7 +34,7 @@ def flatten(l):
 
 NULL_GENOTYPES = ["."]
 
-def dump_tped(db, gene, out_dir):
+def dump_tped(db, out_dir, gene):
     out_file = os.path.join(out_dir, gene + ".tped")
     if os.path.exists(out_file):
         return out_file
@@ -51,82 +52,101 @@ def dump_family(db, out_file):
     subprocess.check_call(cmd, shell=True)
     return out_file
 
-def reformat_line(line):
+def id_from_line(line):
     split_line = line.strip().split("\t")
-    chrom = split_line[0]
+    chrom = split_line[0].split("chr")[1]
     start = split_line[1]
     end = split_line[2]
-    gts = split_line[5]
-    cadd_raw = split_line[3]
-    cadd_scaled = split_line[4]
+    variant_id = split_line[3]
+    ref = split_line[4]
+    alt = split_line[5]
+    gts = split_line[-1]
     geno = [re.split('\||/', x) for x in gts.split(",")]
     geno = [["0", "0"] if any([y in NULL_GENOTYPES for y in x])
             else x for x in geno]
     genotypes = " ".join(list(flatten(geno)))
-    alleles = "|".join(set(list(flatten(geno))).difference("0"))
-    new_line = "{chrom}:{start}-{end}:{alleles}\t{cadd_raw}\t{cadd_scaled}"
+   # alleles = "|".join(set(list(flatten(geno))).difference("0"))
+    return "{chrom}:{start}-{end}:{ref}|{alt}:{variant_id}".format(**locals())
+
+def reformat_cadd_line(line):
+    id_string = id_from_line(line)
+    split_line = line.strip().split("\t")
+    cadd_raw = split_line[6]
+    cadd_scaled = split_line[7]
+    new_line = "{id_string}\t{cadd_raw}\t{cadd_scaled}"
     return new_line.format(**locals())
 
-def genewise_cadd_scores(db, gene, out_dir):
+def reformat_exon_line(line):
+    id_string = id_from_line(line)
+    split_line = line.strip().split("\t")
+    is_exon = split_line[6]
+    new_line = "{id_string}\t{is_exon}"
+    return new_line.format(**locals())
+
+def genewise_cadd_scores(db, out_dir, gene):
     out_file = os.path.join(out_dir, gene + ".cadd")
     if os.path.exists(out_file):
         return out_file
     print "Dumping CADD scores in %s to %s." % (gene, out_file)
-    cmd = ("gemini query -q 'select chrom, start, end, cadd_raw, cadd_scaled, gts from "
+    cmd = ("gemini query -q 'select chrom, start, end, variant_id, ref, alt, gts, cadd_raw, cadd_scaled from "
            "variants where gene=\"{gene}\"' {db}").format(**locals())
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     with open(out_file, "w") as out_handle:
         out_handle.write("\t".join(["id", "cadd_raw", "cadd_scaled"]) + "\n")
         for line in p.stdout:
-            out_handle.write(reformat_line(line) + "\n")
+            out_handle.write(reformat_cadd_line(line) + "\n")
     return out_file
 
+def dump_exon(db, out_dir, gene):
+    out_file = os.path.join(out_dir, gene + ".exon")
+    if os.path.exists(out_file):
+        return out_file
+    cmd = ("gemini query -q 'select chrom, start, end, variant_id, ref, alt, gts, is_exonic from "
+           "variants where gene=\"{gene}\"' {db}").format(**locals())
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    with open(out_file, "w") as out_handle:
+        out_handle.write("\t".join(["id", "is_exonic"]) + "\n")
+        for line in p.stdout:
+            out_handle.write(reformat_exon_line(line) + "\n")
+    return out_file
 
-def get_cadd_score_runner(db, out_dir):
-    def wrapper(gene):
-        return genewise_cadd_scores(db, gene, out_dir)
-    return wrapper
-
-def get_dump_tped_runner(dn, out_dir):
-    def wrapper(gene):
-        return dump_tped(db, gene, out_dir)
-    return wrapper
-
-
-def unique_genes(db):
-    cmd = ('gemini query -q "select DISTINCT gene from variants" {db}').format(**locals())
+def unique_genes(db, sex_only=False):
+    if sex_only:
+        cmd = ('gemini query -q "select DISTINCT gene from variants where chrom=\'chrX\' or chrom=\'chrY\'" {db}').format(**locals())
+    else:
+        cmd = ('gemini query -q "select DISTINCT gene from variants" {db}').format(**locals())
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     return(set([x.strip() for x in p.stdout]))
 
-
 if __name__ == "__main__":
     parser = ArgumentParser("Generate gene-wise variant TPED files and CADD scores.")
+    parser.add_argument("--out-dir", default="genewise_burden", help="Output directory")
+    parser.add_argument("--sex-only", default=False, action='store_true', 
+                        help="Only emit sex chromosomes.")
     parser.add_argument("--cores", type=int, default=1, help="Number of cores to use.")
     parser.add_argument("db", help="GEMINI database to query.")
     args = parser.parse_args()
 
-    out_dir = "genewise_burden"
+    out_dir = args.out_dir
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
     print "Calculating unique genes in the database."
-    genes = unique_genes(args.db)
+    genes = unique_genes(args.db, args.sex_only)
     print "Found %d unique genes." % len(genes)
     print "Dumping TFAM file to ad.tfam."
     dump_family(args.db, "ad.tfam")
 
-    cadd_score_runner = get_cadd_score_runner(args.db, out_dir)
-    tped_runner = get_dump_tped_runner(args.db, out_dir)
-    p = Pool(args.cores)
-    for gene in genes:
-        print "Dumping CADD scores of %s." % gene
-        p.apply_async(genewise_cadd_scores, (args.db, gene, out_dir))
-        print "Dumping TPED of variants in genes of %s." % gene
-        p.apply_async(dump_tped, (args.db, gene, out_dir))
-    p.close()
-    p.join()
+    cores_to_use = min(args.cores, cpu_count() / 2)
+    print "Using %d cores." % cores_to_use
+    p = Pool(processes=cores_to_use)
+    partial_cadd = partial(genewise_cadd_scores, args.db, out_dir)
+    partial_exon = partial(dump_exon, args.db, out_dir)
+    partial_tped = partial(dump_tped, args.db, out_dir)
+    print "Dumping CADD scores."
+    p.map(partial_cadd, genes)
+    print "Dumping exon status."
+    p.map(partial_exon, genes)
+    print "Dumping TPED."
+    p.map(partial_tped, genes)
     print "Finished."
-    # for gene in genes:
-    #     genewise_cadd_scores(args.db, gene, out_dir)
-    #     dump_tped(args.db, gene, out_dir)
-
