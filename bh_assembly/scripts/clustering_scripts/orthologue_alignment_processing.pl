@@ -12,6 +12,7 @@ my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime = $ENV{SLURMTIME};
 my $slurmmem = $ENV{SLURMMEM};
+my $slurmexclude = $ENV{SLURMEXCLUDE};
 
 # first concatenate COG reports and clear up files
 
@@ -175,18 +176,18 @@ print RUN "outputmat('$dir/baps_clustering.mat')\n";
 
 close RUN;
 
-my $bapssetupid=`sbatch --job-name=$jobid.BAPS --mem=10000 -t 60 -n 1 -p $slurmqueue --wrap=\"module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile\" | awk ' { print \$4 }'`;
+my $bapssetupid=`sbatch --job-name=$jobid.BAPS --exclude=$slurmexclude --mem=10000 -t 60 -n 1 -p $slurmqueue --wrap=\"module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile\" | awk ' { print \$4 }'`;
 chomp $bapssetupid;
 #JH system "bsub -J $jobid"."BAPS -o baps.o -e baps.e -M 10000000 -R 'select[mem>10000] rusage[mem=10000]' -q long_serial 'module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile'";
 
-my $bapsclustid=`sbatch -d afterok:$bapssetupid --job-name=$jobid.BAPCLUS --mem=1000 -t 10 -n 1 -p $slurmqueue --wrap=\"$script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt\" | awk ' { print \$4 }'`;
+my $bapsclustid=`sbatch -d afterok:$bapssetupid --job-name=$jobid.BAPCLUS --exclude=$slurmexclude  --mem=1000 -t 10 -n 1 -p $slurmqueue --wrap=\"$script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt\" | awk ' { print \$4 }'`;
 chomp $bapsclustid;
 #JH system "bsub -w \"ended($jobid"."BAPS)\" -o baps.o -e baps.e $script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt";
 
 # run phylogenetic analysis
 my $raxrand = int(rand(10000));
 
-my $phyloid=`sbatch --job-name=$jobid.PHYLO --mem=4000 -t 60 -n 1 -p $slurmqueue --wrap=\"/n/sw/odyssey-apps/RAxML-7.0.4/bin/raxmlHPC -s core_genes.out.aln -m GTRGAMMA -n all.strains -p $raxrand\" | awk ' { print \$4 }'`;
+my $phyloid=`sbatch --job-name=$jobid.PHYLO --exclude=$slurmexclude  --mem=4000 -t 60 -n 1 -p $slurmqueue --wrap=\"/n/sw/odyssey-apps/RAxML-7.0.4/bin/raxmlHPC -s core_genes.out.aln -m GTRGAMMA -n all.strains -p $raxrand\" | awk ' { print \$4 }'`;
 chomp $phyloid;
 #JH system "bsub -M 2000000 -R 'select[mem>4000] rusage[mem=4000]' -o rax.o -e rax.e -q long_serial /n/sw/odyssey-apps/RAxML-7.0.4/bin/raxmlHPC -s core_genes.out.aln -m GTRGAMMA -n all.strains -p $raxrand";
 

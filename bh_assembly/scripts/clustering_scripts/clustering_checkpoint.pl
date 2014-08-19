@@ -12,6 +12,7 @@ my $script_dir = $ENV{SCRIPT_DIR};
 my $slurmqueue = $ENV{SLURMQUEUE};
 my $slurmtime = $ENV{SLURMTIME};
 my $slurmmem = $ENV{SLURMMEM};
+my $slurmexclude = $ENV{SLURMEXCLUDE};
 
 # process input
 
@@ -61,16 +62,16 @@ if (scalar(@rerun) > 0) {
 	if ($assembly == 1) {
 		write_suffix_array_slurm_script("ReRunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
 		my $jobmem = $slurmmem*8;
-		$jobarrayid=`sbatch -p $slurmqueue --mem=$jobmem -n 1 -t $slurmtime --array=@rerun --job-name=$jobid.REGLIM --wrap=\"./ReRunJobArrays.sh\" | awk ' { print \$4 }'`;
+		$jobarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude  --mem=$jobmem -n 1 -t $slurmtime --array=@rerun --job-name=$jobid.REGLIM --wrap=\"./ReRunJobArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $jobarrayid;
 		print STDERR "Submitted job $jobarrayid - to rerun putative protein extraction jobs @rerun\n";
 	} else {
 		write_suffix_array_slurm_script("ReRunJobArrays.sh", "JobArray"); # (name of slurm job array batch script (must match in sbatch below),  prefix of indexed jobs for job array)
-		$jobarrayid=`sbatch -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=[@rerun] --job-name=$jobid.REGLIM --wrap=\"./ReRunJobArrays.sh\" | awk ' { print \$4 }'`;
+		$jobarrayid=`sbatch -p $slurmqueue --exclude=$slurmexclude  --mem=$slurmmem -n 1 -t $slurmtime --array=[@rerun] --job-name=$jobid.REGLIM --wrap=\"./ReRunJobArrays.sh\" | awk ' { print \$4 }'`;
 		chomp $jobarrayid;
 		print STDERR "Submitted job $jobarrayid - to rerun putative protein extraction jobs @rerun\n";
 	}
-	my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --mem=200 -n 1 -t 10 --job-name=$jobid\".\"RECLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
+	my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --exclude=$slurmexclude --mem=200 -n 1 -t 10 --job-name=$jobid\".\"RECLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
 	chomp $clustercheckpointid;
 	print STDERR "Resubmitted job $clustercheckpointid - to check clusters\n";
 
@@ -93,18 +94,18 @@ if (scalar(@rerun) > 0) {
 	}
 
 	# submit the concatenation script
-	my $concatjobid=`sbatch -n 1 --mem=200 -t 10 -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
+	my $concatjobid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
 	chomp $concatjobid;
 	print STDERR "Submitted job $concatjobid - concatenation script\n";
 	
 	# run BLAST comparisons
 	write_suffix_array_slurm_script("RunBlastArrays.sh", "BlastJob"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	my $blastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
+	my $blastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.UBLA --wrap=\"./RunBlastArrays.sh" | awk ' { print \$4 }'`;
 	chomp $blastarrayid;
 	print STDERR "Submitted job $blastarrayid - to run Blast\n";
 	
 	write_suffix_array_slurm_script("RunFilterBlastArrays.sh", "FilterBlast"); # (name of slurm job array batch script (must match in sbatch below), memmory, nodes, time in minutes, queue, prefix of indexed jobs for job array)
-	my $filterblastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
+	my $filterblastarrayid=`sbatch -d afterok:$concatjobid -p $slurmqueue --exclude=$slurmexclude --mem=$slurmmem -n 1 -t $slurmtime --array=1-$count --job-name=$jobid.FBLA --wrap=\"./RunFilterBlastArrays.sh" | awk ' { print \$4 }'`;
 	chomp $filterblastarrayid;
 	print STDERR "Submitted job $filterblastarrayid - to run Filtered Blast\n";
 	
@@ -117,7 +118,7 @@ if (scalar(@rerun) > 0) {
 	$" = ",";
 
 
-	my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+	my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 	chomp $blast_checkpointid;
 		
 	foreach my $num (@file_nums) {
