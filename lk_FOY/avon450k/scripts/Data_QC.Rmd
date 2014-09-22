@@ -1,0 +1,420 @@
+---
+title: "Avon450K QC Filtering"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: spacelab
+---
+
+```{r setupstate, echo=FALSE}
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=TRUE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# SETUP
+
+## Directories and Variables
+
+```{r setup}
+if(file.exists("~/Desktop/Parallels Shared Folders/")){
+  baseDir <- "~/Desktop/Parallels Shared Folders/Home/projects/lk_FOY/avon450K/"
+  } else  if(file.exists("/Users/johnhutchinson/projects")){
+    baseDir  <- "/Users/johnhutchinson/projects/lk_FOY/avon450K"
+    } else if (file.exists("/n/home08/jhutchin")){
+      baseDir <- "/net/hsphfs1/srv/export/hsphfs1/share_root/chb/projects/lk_FOY/avon450k"
+      }
+dataDir <- file.path(baseDir, "data//ARIES_data_B1361")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+```
+
+## Libraries
+
+```{r libraries}
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(data.table)
+library(ff)
+library(Illumina450ProbeVariants.db)
+library(limma)
+library(ffbase)
+```
+
+## Load Data
+
+```{r dataload, cache=TRUE}
+load(file.path(dataDir,"B1361.sampleData.releasev2_apr2014.Rdata"))
+metadata <- sampleDataForUser
+rm(sampleDataForUser)
+
+# betas
+load(file.path(dataDir, "B1361.rawBetas.F7releasev2_apr2014.Rdata"))
+betas.7 <- betas
+colnames(betas.7) <-  paste(colnames(betas.7), "7", sep="_")
+rm(betas)
+
+load(file.path(dataDir, "B1361.rawBetas.15upreleasev2_apr2014.Rdata"))
+betas.15 <- betas
+colnames(betas.15) <- paste(colnames(betas.15), "15", sep="_")
+rm(betas)
+
+betas <- cbind(betas.7, betas.15)
+rm(betas.7, betas.15)
+betas.ff <- as.ff(betas)
+rm(betas)
+
+# pvalues
+load(file.path(dataDir, "B1361.pvalues.F7releasev2_apr2014.Rdata"))
+pvals.7 <- pvals
+colnames(pvals.7) <-  paste(colnames(pvals.7), "7", sep="_")
+rm(pvals)
+
+load(file.path(dataDir, "B1361.pvalues.15upreleasev2_apr2014.Rdata"))
+pvals.15 <-pvals
+colnames(pvals.15) <- paste(colnames(pvals.15), "15", sep="_")
+rm(pvals)
+
+pvals <- cbind(pvals.7, pvals.15)
+rm(pvals.7, pvals.15)
+
+pvals.ff <- as.ff(pvals)
+rm(pvals)
+
+# cleanup
+gc()
+```
+
+# QC
+
+## SNP based correlation
+
+```{r SNPcorr, cache=TRUE}
+uncorrelated.sample.nums <- ncol(pvals.ff)
+
+betas.SNPs <- betas.ff[grep("rs", rownames(betas.ff)),]
+betas.SNPs <- as.data.frame(betas.SNPs)
+
+betas.SNPs.7 <- betas.SNPs[,grepl("_7", names(betas.SNPs))]
+betas.SNPs.7 <- betas.SNPs.7[, order(names(betas.SNPs.7))]
+
+betas.SNPs.15 <- betas.SNPs[,grep("_15", names(betas.SNPs))]
+betas.SNPs.15 <- betas.SNPs.15[, order(names(betas.SNPs.15))]
+
+rm(betas.SNPs)
+
+# drop singleton samples
+common.samples <- intersect(sub("_7", "", names(betas.SNPs.7)), sub("_15", "", names(betas.SNPs.15)))
+
+betas.SNPs.7 <- betas.SNPs.7[,paste(common.samples, "7", sep="_")]
+betas.SNPs.15 <- betas.SNPs.15[,paste(common.samples, "15", sep="_")]
+
+cor.SNPs <- apply(betas.SNPs.7,2, function(x) {
+  apply(betas.SNPs.15, 2, function(y) {
+    cor(x,y)
+  })
+})
+
+# do any samples have more than one highly correlated sample in the other sample set?
+any(apply(cor.SNPs, 1, function(x) length(which(x>0.9))>1))
+
+# are the most highly correlated samples their ID match in the other sample set?
+matches <-  apply(cor.SNPs, 1, function(x) which(x>0.9))
+all(sapply(names(unlist(matches)), function(x) {
+  y <- gsub("_7|_15", "",x)
+  y <- strsplit(y, "\\.")
+  identical(y[[1]][1],y[[1]][2])
+  }))
+
+# subset beta and pvalues to matched samples
+matched.samples <-   as.vector(unlist(sapply(names(unlist(matches)), function(x) {
+  y <- strsplit(x, "\\.")
+  return(y)
+  })))
+
+# drop unmatched samples and non-cg probes
+betas.ff <- as.ff(betas.ff[grepl("cg", row.names(betas.ff)), matched.samples])
+pvals.ff <- as.ff(pvals.ff[grepl("cg", row.names(pvals.ff)), matched.samples])
+metadata <- metadata[metadata$collaboratorID %in% unique(sub("_7|_15","", matched.samples)),]
+
+#cleanup
+rm(betas.SNPs.7, betas.SNPs.15, cor.SNPs,matches, common.samples)
+gc()
+```
+
+The process of identifying singletons and non-correlated samples removed `r uncorrelated.sample.nums-ncol(betas.ff)` samples with no correlated sample at the other time point leaving `r length(matched.samples)` individuals with a sample at both 7 and 15 years.
+
+## Detection pvalue filtering
+- reject samples where more than 1% of probes have detection pvalues >0.05
+- reject probes where more than 1% of samples have detection pvalues >0.05
+
+```{r pfilter, cache=TRUE}
+rm(matched.samples, uncorrelated.sample.nums)
+unfiltered.samples.num <- ncol(pvals.ff)
+unfiltered.probe.nums <- nrow(pvals.ff)
+# function to help find percent of samples with less than pvalues of less than 0.05 
+get.quant <- function(x){
+  ecdf(x)(0.05)
+  }
+# remove poorly detected samples
+quants.samples <- ffapply(AFUN=get.quant, 
+                          X=pvals.ff, 
+                          MARGIN=2, 
+                          RETURN=TRUE,
+                          FF_RETURN=FALSE, 
+                          BATCHSIZE=100)
+good.samples <- (1-quants.samples)<=0.01
+good.samples <- colnames(pvals.ff)[good.samples]
+
+# restrict to samples with both time points well detected
+good.samples.7 <- paste(names(which(table(sub("_7|_15", "", good.samples))==2)), "7", sep="_")
+good.samples.15 <- paste(names(which(table(sub("_7|_15", "", good.samples))==2)), "15", sep="_")
+good.samples <- c(good.samples.7, good.samples.15)
+
+# subset pvalues to these matched, well detected samples
+pvals.ff <- as.ff(pvals.ff[,good.samples])
+
+# remove poorly detected probes
+quants.probes <- ffapply(AFUN=get.quant, 
+                    X=pvals.ff, 
+                    MARGIN=1, 
+                    RETURN=TRUE,
+                    FF_RETURN=FALSE, 
+                    BATCHSIZE=20000)
+good.probes <- (1-quants.probes)<0.01
+good.probes <- row.names(pvals.ff)[good.probes]
+
+# subset pvalues to these well detected probes
+pvals.ff <- as.ff(pvals.ff[good.probes,])
+# subset beta values to these matched well detected samples and well detected probes
+betas.ff <- as.ff(betas.ff[rownames(pvals.ff),colnames(pvals.ff) ])
+# subset metadata to these matched well detected samples
+metadata <- metadata[metadata$collaboratorID %in% unique(sub("_7|_15","", colnames(pvals.ff))),]
+
+# cleanup
+rm(quants.samples, quants.probes,good.samples, good.probes, good.samples.7, good.samples.15)
+gc()
+```
+
+This process removed `r unfiltered.samples.num-ncol(pvals.ff)` samples (both time points included) and `r unfiltered.probe.nums-nrow(pvals.ff)` probes from the dataset, leaving `r ncol(pvals.ff)` samples and `r nrow(pvals.ff)` probes.
+
+This leaves `length(which(pvals.ff[1:nrow(pvals.ff),1:ncol(pvals.ff)]>0.05))` individual measurements with a detection pvalue or more than 0.05 in the entire dataset of a total of `r nrow(pvals.ff)*ncol(pvals.ff)`  measurements, or  `r (length(which(pvals.ff[1:nrow(pvals.ff),1:ncol(pvals.ff)]>0.05))/(nrow(pvals.ff)*ncol(pvals.ff)))*100`% of the total measurements.
+
+## Filter probes with SNPs
+- using Tiffany Morris's annotation package from Bioconductor, which integrates 450k probe data with 1000Genomes SNP data
+ 
+```{r snpprobes, cache=TRUE}
+rm(unfiltered.samples.num, unfiltered.probe.nums)
+unfiltered.SNP.probe.nums <- nrow(pvals.ff)
+data(probe.450K.VCs.af)
+probe.450k.variants <- data.table(probe.450K.VCs.af, keep.rownames = T)
+setnames(probe.450k.variants, "rn", "Probe_ID")
+rm(probe.450K.VCs.af)
+# drop some unnecessary fields
+probe.450k.variants[, c("probe50VC.ASN", "probe10VC.ASN", "asn.af.F","asn.af.R", "probe50VC.AFR", "probe10VC.AFR","afr.af.F", "afr.af.R","probe50VC.AMR", "probe10VC.AMR","amr.af.F", "amr.af.R") := NULL]
+# drop probes with a SNP within CpG (any allele frequency)
+num.probes.with.SNPs.CpG <- nrow(probe.450k.variants[eur.af.F>0 | eur.af.R>0,])
+probe.450k.variants <- probe.450k.variants[eur.af.F==0 & eur.af.R==0,]
+
+# drop probes with any SNPs within 10 bp of assayed CpG  with a minor allele frequency of at least 1%
+num.probes.with.SNPs.10 <- nrow(probe.450k.variants[probe10VC.EUR > 0, ])
+probe.450k.variants <- probe.450k.variants[probe10VC.EUR == 0, ]
+
+# get IDs of good probes
+good.probes <- probe.450k.variants$Probe_ID
+
+# subset beta and pvalues (subsetting probes have to be a subset of the ff data object probes to work)
+good.probes <- intersect(good.probes, row.names(pvals.ff))
+pvals.ff <- as.ff(pvals.ff[good.probes,])
+pvals.ffdf <- as.ffdf.ff_matrix(pvals.ff)
+betas.ff <- as.ff(betas.ff[good.probes, ])
+betas.ffdf <- as.ffdf.ff_matrix(betas.ff)
+
+gc()
+save.image(file.path(resultsDir, "RDATA"))
+save.ffdf(betas.ffdf, dir=file.path(resultsDir, "ff", "beta", "filtered"), overwrite=TRUE)
+save.ffdf(pvals.ffdf, dir=file.path(resultsDir, "ff", "pvals", "filtered"), overwrite=TRUE)
+```
+
+Filtering for SNPs removed `r unfiltered.SNP.probe.nums-nrow(pvals.ff)` probes, `r num.probes.with.SNPs.CpG` probes with a SNP in within the assayed CpG site itself (at any minor allele frequency) and `r num.probes.with.SNPs.10` probes with a SNP within 10bp of the assayed CpG with a minor allele frequency of more than 1%.
+
+# Analyses
+- calculate mean differences between time points
+- calcuate standard deviations of these means
+- annotate probes with Illumina annotations (HumanMethylation450 v1.2 Manifest File, aka HumanMethylation450_15017482_v1-2.csv)
+
+```{r meandiffs}
+rm(unfiltered.SNP.probe.nums,num.probes.with.SNPs.10, num.probes.with.SNPs.CpG, good.probes, pvals.ff, get.quant, probe.450k.variants, pvals.ff, pvals.ffdf)
+gc()
+
+betas.ff.7 <- as.ff(betas.ff[,grep("_7", colnames(betas.ff))])
+betas.ff.15 <- as.ff(betas.ff[,grep("_15", colnames(betas.ff))])
+
+# confirm that the sample order match between the time points
+identical(sub("_7", "",colnames(betas.ff.7)), sub("_15", "", colnames(betas.ff.15)))
+
+betas.7 <- betas.ff.7[1:nrow(betas.ff.7), 1:ncol(betas.ff.7)]
+betas.15 <- betas.ff.15[1:nrow(betas.ff.15), 1:ncol(betas.ff.15)]
+betas.7.means <- rowMeans(betas.7, na.rm=TRUE)
+betas.15.means <- rowMeans(betas.15, na.rm=TRUE)
+
+# calculate Les's requested stats
+betas.diff <- betas.15-betas.7
+betas.diff.means <- rowMeans(betas.diff, na.rm=TRUE)
+betas.diff.sds <- apply(betas.diff, 1, function(x) sd(na.omit(x)))
+betas.diff.stats <- cbind(betas.diff.means,betas.diff.sds)
+rm(betas.7, betas.15)
+
+# pull in annotations
+annots <- read.csv(file.path(metaDir, "HumanMethylation450_15017482_v1-2.csv"), skip=7)
+annots.dt <- data.table(annots)
+gc()
+
+# match annotation to "good" probesets
+annots.dt.sub <- annots.dt[match( row.names(betas.diff.stats),annots.dt$IlmnID),]
+# drop some unnecessary fields
+annots.dt.sub <- annots.dt.sub[,c("IlmnID", 
+                                  "Genome_Build", 
+                                  "CHR", 
+                                  "MAPINFO", 
+                                  "Probe_SNPs", 
+                                  "Probe_SNPs_10", 
+                                  "UCSC_RefGene_Name", 
+                                  "UCSC_RefGene_Accession",
+                                  "UCSC_RefGene_Group"), 
+                               with=FALSE]
+annots.dt.sub <- as.data.frame(annots.dt.sub)
+
+row.names(annots.dt.sub) <- annots.dt.sub$IlmnID
+annots.dt.sub$IlmnID <- NULL
+
+# merge annotations with statistics and write to file
+betas.diff.stats.annot <- cbind(annots.dt.sub, betas.diff.stats)
+
+write.table(betas.diff.stats.annot, file=file.path(resultsDir, "betas.diff.stats.annot.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+
+rm(betas.diff, betas.diff.means, betas.diff.sds, betas.diff.stats.annot, betas.ff.15, betas.ff.7)
+```
+
+# Finding Differentiall Methylated Regions
+
+## Calculate M values
+- less heteroscedastic distribution is better for statistical tests
+- theshold all beta values to between 0.001 and 0.999 to avoid non-finite M-values
+- $M=\log2(\frac{beta}{1-beta})$
+
+```{r calcM}
+# run limma on M values
+# threshold the beta values befor ecalculating M (from minfi guide)
+calcM <- function(x){
+  y=pmin(pmax(x, 0.001), 1-0.001)
+  log2(y/(1-y))
+  }
+
+# dump betas to vector so you can run ffvecapply
+betas.vec.ff <- as.ff(as.vector(betas.ff))
+# calculate M values on batches of betas
+Mvals.vec.ff <- ffvecapply(calcM(betas.vec.ff[i1:i2]), X=betas.vec.ff, RETURN=TRUE, BATCHSIZE=1e7)
+# put Mvalue vector into Mvalue matrix
+Mvals.ff <- ff(Mvals.vec.ff, dim=dim(betas.ff))
+betas.ffdf <- as.ffdf.ff_matrix(betas.ff)
+Mvals.ffdf <- as.ffdf.ff_matrix(Mvals.ff)
+row.names(Mvals.ffdf) <- row.names(betas.ffdf)
+names(Mvals.ffdf) <- names(betas.ffdf)
+save.ffdf(Mvals.ffdf, dir=file.path(resultsDir, "ff", "Mvals"), overwrite=TRUE)
+
+# cleanup
+rm(Mvals.vec.ff, betas.vec.ff)
+gc()
+```
+
+## Statistical tests
+- run paired (7 and 15 years) analyses
+
+```{r stattests}
+Mvals <- Mvals.ffdf[1:nrow(Mvals.ffdf),1:ncol(Mvals.ffdf)]
+Mvals.7 <- Mvals[,grep("_7", colnames(Mvals))]
+Mvals.15 <- Mvals[,grep("_15", colnames(Mvals))]
+
+# reorder metadata to match Mvalues
+metadata$sampleID <- paste("X", metadata$collaboratorID, "_", sub("F|up", "", metadata$time_point),sep="")
+metadata <- metadata[match(colnames(Mvals),metadata$sampleID),]
+row.names(metadata) <- metadata$sampleID
+
+# make design matrix for limma
+collabids <- metadata$collaboratorID
+timepoints <- metadata$time_point
+design <- model.matrix(~collabids+timepoints)
+
+# run limma
+fit <- lmFit(Mvals, design)
+fit2 <- eBayes(fit)
+stats <- topTable(fit2, coef="timepointsF7", p.value=1, number=nrow(Mvals))
+
+annots.sub <- annots[,c("IlmnID", 
+                                  "Genome_Build", 
+                                  "CHR", 
+                                  "MAPINFO", 
+                                  "Probe_SNPs", 
+                                  "Probe_SNPs_10", 
+                                  "UCSC_RefGene_Name", 
+                                  "UCSC_RefGene_Accession",
+                                  "UCSC_RefGene_Group"), ]
+row.names(annots.sub) <- annots.sub$IlmnID
+
+# find probes with significant and large changes
+top.probes <- row.names(subset(stats, logFC>0.4 & adj.P.Val<0.05))
+
+# annotate results and attached additional stats
+betas.means <- cbind(betas.7.means, betas.15.means)
+names(betas.means) <- c("betas.7.means","betas.15.means")
+stats.annots.top.probes <- do.call(cbind, list(stats[top.probes,], betas.means[top.probes,], betas.diff.stats[top.probes,],annots.sub[top.probes,]))
+
+# filter for CpGs at upstream or at start of gene
+stats.annots.top.upstream <- stats.annots.top.probes[grepl("TSS1500|TSS200|1stExon|5'UTR", stats.annots.top.probes$UCSC_RefGene_Group),]
+
+stats.annots.top.upstream <- stats.annots.top.upstream[order(abs(stats.annots.top.upstream$logFC)),]
+
+
+write.table(stats.annots.top.upstream, file=file.path(resultsDir, "stats.annots.top.upstream.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(stats.annots.top.probes, file=file.path(resultsDir, "stats.annots.top.all.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+
+save.image(file.path(resultsDir, "RDATA"))
+
+```
+
+## Subset to candidate regions
+- exclude 
+
+# Wilcoxon tests?
+
+pvals <- c()
+for (n in 1:nrow(Mvals.7)){
+  # drop any non finite M values from calculation
+  omit.7 <- which(!is.finite(Mvals.7[n,]))
+  omit.15 <- which(!is.finite(Mvals.15[n,]))
+  omits <- c(omit.7, omit.15)
+  if (length(omits)>0) {
+    pvals[n] <- wilcox.test(Mvals.7[n,-(omits)], Mvals.15[n,-(omits)], paired=TRUE)$p.value
+    } else {
+      pvals[n] <- wilcox.test(Mvals.7[n,], Mvals.15[n,], paired=TRUE)$p.value
+      }
+  }
+
+
+# minfi bumphunter?
+betas <- betas.ff[1:nrow(betas.ff), 1:ncol(betas.ff)]
+
+rset <- RatioSet(Beta=betas)
+pData(rset) <- metadata
+validObject(rset)
+annot.info <- c("IlluminaHumanMethylation450k", "ilmn12.hg19")
+names(annot.info) <- c("array", "annotation")
+annotation(rset) <- annot.info
+
+rset.sub <- rset[1:10000,]
+
+temp <- mapToGenome(rset.sub)
+# 
+test <- bumphunter(temp, design=design, coef=5, pickCutoff=TRUE, B=100)
+```
