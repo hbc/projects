@@ -273,8 +273,17 @@ d$depth = d$alt_depth + d$ref_depth
      scale_x_log10() + geom_point(alpha=0.3) + facet_wrap(~ transition) +
          ## scale_color_brewer(palette="Set3", name="maj -> min",
          ##                    limits=levels(d$transition)) +
-ylab("log2(alt_depth/ref_depth)") +
+ylab("log2(alt_depth/ref_depth)") + guides(colour=guide_legend(override.aes=list(alpha=1))) +
              theme_bw()
+```
+
+```{r qual-vs-ratio-plot, echo=TRUE}
+ ggplot(d, aes(QUAL, log2(ratio), color=status)) +
+     scale_x_log10() + geom_point(alpha=0.2) + facet_wrap(~ transition) +
+         ## scale_color_brewer(palette="Set3", name="maj -> min",
+         ##                    limits=levels(d$transition)) +
+ylab("log2(alt_depth/ref_depth)") +
+             theme_bw() + guides(colour = guide_legend(override.aes = list(alpha = 1)))
 ```
 For homozygous disagreements (**hom_ref->hom_alt**, etc) the overall
 depth is very low, and the ratio of alt/ref trends towards 1,
@@ -295,11 +304,99 @@ random sampling results in a incongruent call.
 kable(data.frame(t))
 ```
 
+## Most discordant SNPs are in low complexity regions
+```{r snps-low-complexity}
+lcr = read.table("square/lcr/discordant_lcr_overlap.bed", header=FALSE, sep="\t")
+colnames(lcr) = c("CHROM", "POS", "END", "alleles", "in_lcr")
+lcr$in_lcr = lcr$in_lcr > 0
+lcr = lcr[, c("CHROM", "POS", "in_lcr")]
+m = merge(d, lcr, by=c("CHROM", "POS"))
+ ggplot(m, aes(QUAL, log2(ratio), color=in_lcr)) +
+     scale_x_log10() + geom_point(alpha=0.2) + facet_wrap(~ transition) +
+         ## scale_color_brewer(palette="Set3", name="maj -> min",
+         ##                    limits=levels(d$transition)) +
+ylab("log2(alt_depth/ref_depth)") +
+             theme_bw() + guides(colour = guide_legend(override.aes = list(alpha = 1)))
+```
+
 If all of these variants are true hets which have some sampling issues causing
 an incorrect **hom_alt** or **hom_ref** call, we should expect there to be more
 **het->hom_alt** and **het->hom_ref** disagreements than **hom_ref->het** and
 **hom_alt->het** disagreements, since there has to be two samples disagreeing
 with the truth for a **hom_ref->het** transition than for a **het->hom_ref**.
+
+<!--
+# Indels
+```{r, indel-extraction}
+indels = new_concordance[!snp_index,]
+allele1 = unlist(lapply(strsplit(as.character(indels$GT), "[/||]"), "[", 1))
+allele2 = unlist(lapply(strsplit(as.character(indels$GT), "[/||]"), "[", 2))
+phased = rep(NA, nrow(indels))
+phased[grep("/", indels$GT)] = "unphased"
+phased[-grep("/", indels$GT)] = "phased"
+indels$phased = as.factor(phased)
+genotypes = rep(NA, nrow(indels))
+genotypes[allele1 == indels$REF & allele2 == indels$REF] = "hom_ref"
+genotypes[allele1 != indels$REF & allele2 != indels$REF] = "hom_alt"
+genotypes[is.na(genotypes)] = "het"
+indels$genotype = as.factor(genotypes)
+ad_ref = as.numeric(unlist(lapply(strsplit(as.character(indels$AD), ","), "[", 1)))
+ad_alt = as.numeric(unlist(lapply(strsplit(as.character(indels$AD), ","), "[", 2)))
+het_phased = indels$genotype == "het" & indels$phased == "phased"
+het_unphased = indels$genotype == "het" & indels$phased == "unphased"
+indels$ref_depth = ad_ref
+indels$alt_depth = ad_alt
+indels$ref_depth[is.na(indels$ref_depth)] = indels[is.na(indels$ref_depth),]$RO
+indels$alt_depth[is.na(indels$alt_depth)] = indels[is.na(indels$alt_depth),]$AO
+
+library(dplyr)
+indels = tbl_df(indels)
+positions = group_by(indels, CHROM, POS, REF, ALT)
+positions$GT = as.character(positions$GT)
+positions$genotype = as.character(positions$genotype)
+genotypes = summarize(positions, gt = length(unique(genotype)),
+    common_genotype = names(table(genotype)[which.max(table(genotype))]),
+    minor_genotype = names(table(genotype)[which.min(table(genotype))]))
+status_disagree = merge(indels, subset(genotypes, gt == 2),
+    by=c("CHROM", "POS", "REF", "ALT"))
+
+baseline_prop = table(indels$genotype) / sum(table(indels$genotype))
+
+
+
+variants_disagree = subset(status_disagree, common_genotype != genotype)
+variants_agree = subset(status_disagree, common_genotype == genotype)
+variants_disagree$status = "minority"
+variants_agree$status = "majority"
+```
+
+```{r indel-variant-disagreements, echo=TRUE, results='asis'}
+t = table(paste(variants_disagree$common_genotype, "->", variants_disagree$genotype))
+kable(data.frame(t))
+```
+```{r indel-variant-disagreement-setup}
+i = rbind(variants_disagree, variants_agree)
+i = subset(i, concordance == "discordant")
+i$AO = as.numeric(as.character(i$AO))
+i$RO = as.numeric(as.character(i$RO))
+i$QA = as.numeric(i$QA)
+i$transition = paste(d$common_genotype, "->", d$minor_genotype)
+i$qratio = i$QA / i$QR
+i$ratio = i$AO / i$RO
+i$ratio = i$alt_depth / i$ref_depth
+i$depth = i$alt_depth + i$ref_depth
+```
+
+```{r indel-depth-vs-ratio-plot, echo=TRUE}
+ ggplot(i, aes(depth, log2(ratio), color=status)) +
+     scale_x_log10() + geom_point(alpha=0.3) + facet_wrap(~ transition) +
+         ## scale_color_brewer(palette="Set3", name="maj -> min",
+         ##                    limits=levels(d$transition)) +
+ylab("log2(alt_depth/ref_depth)") + guides(colour=guide_legend(override.aes=list(alpha=1))) +
+             theme_bw()
+```
+-->
+
 
 
 <!--
