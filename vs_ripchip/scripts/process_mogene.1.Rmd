@@ -22,7 +22,7 @@ analystemail="jhutchin@hsph.harvard.edu"
 
 
 library(knitr)
-opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE,cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
@@ -65,9 +65,9 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 covarsfilename="covars.desc" # tab delimited file describing samples
 lowintensity.percentile=0.1
 mad.quantile.cutoff=0.1
-pvalue.cutoff=1e-8
+pvalue.cutoff=0.05
 highlight.color="green"
-lfc.cutoff=1
+lfc.cutoff=log2(1.5)
 ```
 
 ## Libraries
@@ -92,6 +92,9 @@ library(ggdendro) # for pretty dendrograms
 library(RColorBrewer) # more colors
 library(gridExtra) # for arranging multiple plots
 library(venneuler) # for venm diagrams
+library(GO.db) # database of GO terms and genes
+library(biomaRt) # large biological database
+library(sva)
 ```
 
 ## Functions
@@ -300,30 +303,33 @@ featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this wil
 # get gene symbols and entrezIDs for all probesets
 fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
 fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+numprobes <- nrow(fData(affyNorm.core))
 ```
 
 ## Filter Probesets
 Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
 
-Starting  with `r nrow(fData(affyNorm.core))` probes remaining we can filter:
+Starting  with `r numprobes` probes remaining we can filter:
 
 ### By Annotation
 - remove the control probes and probes without annotated genes
 
 ```{r filter1}
 affyNorm.core <- affyNorm.core[which(!is.na(fData(affyNorm.core)$symbol) & fData(affyNorm.core)$category=="main"),]
+numprobes <- nrow(fData(affyNorm.core))
 ```
 
-`r nrow(fData(affyNorm.core))` probes remaining
+`r numprobes` probes remaining
 
 ### By Cross Hybridization
 - some probes are annotated as potentially hybridizing to multiple targets
 
 ```{r filter2}
 affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+numprobes <- nrow(fData(affyNorm.core))
 ```
 
-`r nrow(fData(affyNorm.core))` probes remaining
+`r numprobes` probes remaining
 
 ### By Low Expression Level
 - remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
@@ -331,9 +337,10 @@ affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
 ```{r filter3, cache=TRUE}
 eset.core <- exprs(affyNorm.core)
 affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), 0.1)))),]
+numprobes <- nrow(fData(affyNorm.core))
 ```
 
-`r nrow(fData(affyNorm.core))` probes remaining
+`r numprobes` probes remaining
 
 ### By Low Variability
 - remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
@@ -343,9 +350,10 @@ eset.core <- exprs(affyNorm.core)
 rowmads <- apply(eset.core, 1, mad)
 mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
 affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+numprobes <- nrow(fData(affyNorm.core))
 ```
 
-`r nrow(fData(affyNorm.core))` probes remaining
+`r numprobes` probes remaining
 
 ---
 
@@ -423,7 +431,7 @@ fit2.core <- eBayes(fit2.core)
 
 - as calculated by Limma
 
-```{r allstats, fig.cap="", results='hide', dev="png", fig.height=12, fig.width=12, out.width='100%'}
+```{r allstats}
 all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
   contrast <- dimnames(contrast.matrix)$Contrasts[num]
   stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affyNorm.core)), genelist=fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")])
@@ -506,7 +514,6 @@ lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
 [Stau2 pulldown stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
 `r x=x+1`
 [WT1 pulldown stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
-`r x=x+1`
 
 *These summary tables contain the same information as the files above*
 
@@ -579,6 +586,305 @@ pheatmap(as.matrix(eset.of.interest),
 
 ```
 
+##Gene Ontologies
+
+Running the top 200 genes through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in multiple relevant biological processes, including GTPase regulation and neuronal projection development as well as genes involved with the microtubule and actin cytoskeletal cellular components. [Link to GO results](http://goo.gl/GyuWs3) (*this link may take a while to load*)
+
+Gene ontology enrichment analyses can yield an overwhelming number of enriched categories, many with redundant functionality. We can simplify this output by identifying the most representative subset of the terms, using metrics which measure the semantic similarity of the terms. [Revigo](http://revigo.irb.hr/) `r citep("10.1371/journal.pone.0021800")` performs such analyses, using an algortithm which forms
+
+>  groups of highly similar GO terms, where the choice of the groups’ representatives is guided by the p-values
+
+The algorithm takes into account the parent-child structure of the gene onotology database
+
+> If the p-values are quite close and one term is a child node of the other, REVIGO will tend to choose the parent term
+
+The algorithm also ytries to find more specific GO terms.
+
+> Very general GO terms, however, are always avoided as cluster representatives ... as they tend to be uninformative
+
+Revigo allows visualization of these representatives and their relations to the terms within their group  as a [treemap](http://en.wikipedia.org/wiki/Treemapping). Here the color depicts a grouping of related terms, the size of a block, it's pvalue from g:profiler and the large text the most representative gene ontology term for the related group.
+
+```{r revigotreemap, dev='png', out.width='100%'}
+##This script was autogenerated by  REVIGO from the g:profiler gene ontology data
+
+# A treemap R script produced by the REVIGO server at http://revigo.irb.hr/
+# If you found REVIGO useful in your work, please cite the following reference:
+# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
+# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+# author: Anton Kratz <anton.kratz@gmail.com>, RIKEN Omics Science Center, Functional Genomics Technology Team, Japan
+# created: Fri, Nov 02, 2012  7:25:52 PM
+# last change: Fri, Nov 09, 2012  3:20:01 PM
+
+# -----------------------------------------------------------------------------
+# If you don't have the treemap package installed, uncomment the following line:
+# install.packages( "treemap" );
+library(treemap)   							# treemap package by Martijn Tennekes
+
+# Set the working directory if necessary
+# setwd("C:/Users/username/workingdir");
+
+# --------------------------------------------------------------------------
+# Here is your data from REVIGO. Scroll down for plot configuration options.
+
+bp.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+bp.revigo.data <- rbind(c("GO:0009056","catabolic process",10.832,3.0857,0.863,0.000,"catabolism"),
+c("GO:0006793","phosphorus metabolic process",16.763,2.7011,0.772,0.235,"catabolism"),
+c("GO:0006807","nitrogen compound metabolic process",27.905,1.3969,0.835,0.291,"catabolism"),
+c("GO:0044237","cellular metabolic process",43.133,2.5031,0.783,0.201,"catabolism"),
+c("GO:0044238","primary metabolic process",44.841,1.7447,0.816,0.375,"catabolism"),
+c("GO:0046483","heterocycle metabolic process",25.780,2.3080,0.751,0.304,"catabolism"),
+c("GO:1901360","organic cyclic compound metabolic process",26.694,1.6904,0.807,0.285,"catabolism"),
+c("GO:0006725","cellular aromatic compound metabolic process",25.830,2.2000,0.751,0.353,"catabolism"),
+c("GO:0009987","cellular process",68.218,2.8601,0.996,0.000,"cellular process"),
+c("GO:0023052","signaling",26.299,2.2924,0.990,0.000,"signaling"),
+c("GO:0032502","developmental process",24.064,2.5243,0.990,0.000,"developmental process"),
+c("GO:0044699","single-organism process",62.571,2.7852,0.995,0.000,"single-organism process"),
+c("GO:0046578","regulation of Ras protein signal transduction",1.879,6.9872,0.747,0.000,"regulation of Ras protein signal transduction"),
+c("GO:0048522","positive regulation of cellular process",15.830,1.6968,0.832,0.304,"regulation of Ras protein signal transduction"),
+c("GO:0048518","positive regulation of biological process",17.954,2.3788,0.888,0.319,"regulation of Ras protein signal transduction"),
+c("GO:0023051","regulation of signaling",10.959,3.7011,0.805,0.435,"regulation of Ras protein signal transduction"),
+c("GO:0080090","regulation of primary metabolic process",22.583,4.0969,0.696,0.392,"regulation of Ras protein signal transduction"),
+c("GO:0051716","cellular response to stimulus",28.763,3.5317,0.859,0.364,"regulation of Ras protein signal transduction"),
+c("GO:0006281","DNA repair",1.576,3.0835,0.668,0.293,"regulation of Ras protein signal transduction"),
+c("GO:0048583","regulation of response to stimulus",12.516,2.7696,0.867,0.390,"regulation of Ras protein signal transduction"),
+c("GO:0035556","intracellular signal transduction",9.900,7.6655,0.746,0.344,"regulation of Ras protein signal transduction"),
+c("GO:0010646","regulation of cell communication",11.000,4.1543,0.771,0.428,"regulation of Ras protein signal transduction"),
+c("GO:0019222","regulation of metabolic process",25.262,3.5800,0.771,0.368,"regulation of Ras protein signal transduction"),
+c("GO:0050794","regulation of cellular process",43.146,5.5331,0.803,0.177,"regulation of Ras protein signal transduction"),
+c("GO:0050789","regulation of biological process",46.584,4.9101,0.876,0.452,"regulation of Ras protein signal transduction"),
+c("GO:0035637","multicellular organismal signaling",1.060,1.3372,0.872,0.231,"regulation of Ras protein signal transduction"),
+c("GO:0043087","regulation of GTPase activity",2.317,5.0376,0.383,0.124,"regulation of Ras protein signal transduction"),
+c("GO:0006139","nucleobase-containing compound metabolic process",25.135,2.7055,0.614,0.391,"regulation of Ras protein signal transduction"),
+c("GO:0065009","regulation of molecular function",9.358,2.9830,0.909,0.226,"regulation of Ras protein signal transduction"),
+c("GO:0065008","regulation of biological quality",12.554,2.5986,0.904,0.249,"regulation of Ras protein signal transduction"),
+c("GO:0065007","biological regulation",49.068,5.4498,0.993,0.000,"biological regulation"),
+c("GO:0071840","cellular component organization or biogenesis",20.072,7.5817,0.989,0.000,"cellular component organization or biogenesis"),
+c("GO:0007010","cytoskeleton organization",4.493,6.0424,0.875,0.034,"cytoskeleton organization"),
+c("GO:0055006","cardiac cell development",0.330,1.7258,0.825,0.482,"cytoskeleton organization"),
+c("GO:0048856","anatomical structure development",22.318,2.8239,0.871,0.478,"cytoskeleton organization"),
+c("GO:0031175","neuron projection development",3.242,2.5751,0.730,0.400,"cytoskeleton organization"),
+c("GO:0000902","cell morphogenesis",4.858,1.6990,0.745,0.473,"cytoskeleton organization"),
+c("GO:0030030","cell projection organization",4.817,1.8665,0.829,0.426,"cytoskeleton organization"),
+c("GO:1902582","single-organism intracellular transport",3.738,5.6021,0.859,0.048,"single-organism intracellular transport"),
+c("GO:0051235","maintenance of location",1.082,2.6946,0.894,0.301,"single-organism intracellular transport"),
+c("GO:0033036","macromolecule localization",8.113,1.6757,0.937,0.481,"single-organism intracellular transport"),
+c("GO:0051641","cellular localization",9.280,4.8327,0.936,0.415,"single-organism intracellular transport"),
+c("GO:0061061","muscle structure development",2.758,1.9706,0.855,0.051,"muscle structure development"),
+c("GO:0030029","actin filament-based process",2.689,2.4609,0.885,0.074,"actin filament-based process"),
+c("GO:0051301","cell division",2.470,1.5735,0.887,0.076,"cell division"),
+c("GO:0007017","microtubule-based process",2.570,1.8508,0.886,0.077,"microtubule-based process"),
+c("GO:0044763","single-organism cellular process",54.297,4.0496,0.855,0.090,"single-organism cellular process"),
+c("GO:0007154","cell communication",26.729,2.4101,0.835,0.182,"single-organism cellular process"),
+c("GO:0006928","cellular component movement",6.288,2.5867,0.871,0.104,"single-organism cellular process"));
+
+bp.stuff <- data.frame(bp.revigo.data);
+names(bp.stuff) <- bp.revigo.names;
+
+bp.stuff$abslog10pvalue <- as.numeric( as.character(bp.stuff$abslog10pvalue) );
+bp.stuff$freqInDbPercent <- as.numeric( as.character(bp.stuff$freqInDbPercent) );
+bp.stuff$uniqueness <- as.numeric( as.character(bp.stuff$uniqueness) );
+bp.stuff$dispensability <- as.numeric( as.character(bp.stuff$dispensability) );
+
+# by default, outputs to a PDF file
+
+# check the treemap command documentation for all possible parameters - there are a lot more
+treemap(
+	bp.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Biological Process Gene Ontology treemap",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=18
+  )
+
+################################################################################################################
+################################################################################################################
+
+cc.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+cc.revigo.data <- rbind(c("GO:0005623","cell",64.133,3.4895,0.980,0.000,"cell"),
+c("GO:0005856","cytoskeleton",0.714,9.8356,0.597,0.000,"cytoskeleton"),
+c("GO:0044464","cell part",64.133,3.5302,0.880,0.262,"cytoskeleton"),
+c("GO:0044449","contractile fiber part",0.027,3.8729,0.522,0.360,"cytoskeleton"),
+c("GO:0005634","nucleus",2.809,1.4101,0.626,0.365,"cytoskeleton"),
+c("GO:0043292","contractile fiber",0.030,3.5654,0.671,0.363,"cytoskeleton"),
+c("GO:0005622","intracellular",46.136,11.9666,0.880,0.199,"cytoskeleton"),
+c("GO:0043228","non-membrane-bounded organelle",8.439,10.0788,0.632,0.493,"cytoskeleton"),
+c("GO:0044430","cytoskeletal part",0.579,5.2204,0.537,0.469,"cytoskeleton"),
+c("GO:0005737","cytoplasm",38.159,10.9318,0.787,0.465,"cytoskeleton"),
+c("GO:0044424","intracellular part",43.664,12.2798,0.797,0.144,"cytoskeleton"),
+c("GO:0005911","cell-cell junction",0.091,5.0052,0.863,0.000,"cell-cell junction"),
+c("GO:0030054","cell junction",0.154,6.8570,0.945,0.000,"cell junction"),
+c("GO:0032991","macromolecular complex",14.462,4.6073,0.953,0.000,"macromolecular complex"),
+c("GO:0043226","organelle",16.716,5.8794,0.954,0.000,"organelle"),
+c("GO:0043234","protein complex",8.273,4.8125,0.950,0.000,"protein complex"),
+c("GO:0044456","synapse part",0.066,1.6345,0.945,0.000,"synapse part"),
+c("GO:0045202","synapse",0.094,3.0696,0.945,0.000,"synapse"),
+c("GO:0030427","site of polarized growth",0.013,1.4881,0.916,0.023,"site of polarized growth"),
+c("GO:0043005","neuron projection",0.069,3.2132,0.833,0.026,"neuron projection"),
+c("GO:0097458","neuron part",0.092,3.7423,0.911,0.027,"neuron part"),
+c("GO:0042995","cell projection",1.485,4.0405,0.900,0.035,"cell projection"));
+
+cc.stuff <- data.frame(cc.revigo.data);
+names(cc.stuff) <- cc.revigo.names;
+
+cc.stuff$abslog10pvalue <- as.numeric( as.character(cc.stuff$abslog10pvalue) );
+cc.stuff$freqInDbPercent <- as.numeric( as.character(cc.stuff$freqInDbPercent) );
+cc.stuff$uniqueness <- as.numeric( as.character(cc.stuff$uniqueness) );
+cc.stuff$dispensability <- as.numeric( as.character(cc.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  cc.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Cellular Component Gene Ontology treemap",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=18
+)
+
+
+################################################################################################################
+################################################################################################################
+
+mf.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+mf.revigo.data <- rbind(c("GO:0005083","small GTPase regulator activity",0.062,3.8539,0.606,0.000,"small GTPase regulator activity"),
+c("GO:0005085","guanyl-nucleotide exchange factor activity",0.061,4.3468,0.918,0.000,"guanyl-nucleotide exchange factor activity"),
+c("GO:0005089","Rho guanyl-nucleotide exchange factor activity",0.028,1.9355,0.847,0.000,"Rho guanyl-nucleotide exchange factor activity"),
+c("GO:0005488","binding",55.585,7.8697,0.963,0.000,"binding"),
+c("GO:0005515","protein binding",2.482,10.3883,0.863,0.000,"protein binding"),
+c("GO:0043168","anion binding",20.956,3.2291,0.845,0.196,"protein binding"),
+c("GO:0043167","ion binding",33.309,3.0132,0.867,0.109,"protein binding"),
+c("GO:0030234","enzyme regulator activity",0.437,2.4609,0.919,0.000,"enzyme regulator activity"),
+c("GO:0005543","phospholipid binding",0.064,4.0872,0.810,0.047,"phospholipid binding"),
+c("GO:0008092","cytoskeletal protein binding",0.162,7.3170,0.634,0.052,"cytoskeletal protein binding"),
+c("GO:0051018","protein kinase A binding",0.002,1.5952,0.692,0.421,"cytoskeletal protein binding"),
+c("GO:0008289","lipid binding",0.237,2.0650,0.873,0.054,"lipid binding"));
+
+mf.stuff <- data.frame(mf.revigo.data);
+names(mf.stuff) <- mf.revigo.names;
+
+mf.stuff$abslog10pvalue <- as.numeric( as.character(mf.stuff$abslog10pvalue) );
+mf.stuff$freqInDbPercent <- as.numeric( as.character(mf.stuff$freqInDbPercent) );
+mf.stuff$uniqueness <- as.numeric( as.character(mf.stuff$uniqueness) );
+mf.stuff$dispensability <- as.numeric( as.character(mf.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  mf.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Molecular Function Gene Ontology treemap",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=18
+)
+
+
+```
+
+###Specific GO terms
+
+- are any of the genes from the interaction comparison involved in cell adhesion?
+- working from Gene Ontology term for cellular senescence, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
+- here are the top 10 genes associated with cell adhesion, the full list is in the Excel file below
+
+```{r GO_annots}
+# pull in probeid to GO term mappings
+probeGOmappings <- select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
+# get probes associated with cell adhesion specific GO terms
+probeGOmappings.celladhesion <- probeGOmappings[which(probeGOmappings$GO %in% c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155")),]
+# assign probeids to gene symbols
+geneGOmappings.celladhesion <- merge(fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")], probeGOmappings.celladhesion, by.x="probesetid", by.y="PROBEID", all.y=TRUE)
+# aggregate all GO terms for individual genes
+geneGOmappings.celladhesion <- aggregate(geneGOmappings.celladhesion$GO,geneGOmappings.celladhesion['symbol'],paste,collapse=',')
+names(geneGOmappings.celladhesion) <- c("symbol", "GO")
+
+# get ranks for all genes and add to stat dataframe
+ranks <- seq(1:nrow(top.uniq.results.Stau2))
+top.uniq.results.Stau2 <- cbind(ranks, top.uniq.results.Stau2)
+
+# merge in cell adhesion specific GO term data
+top.uniq.results.Stau2 <- merge(top.uniq.results.Stau2, geneGOmappings.celladhesion, by="symbol", all.x=TRUE)
+
+
+kable(top.uniq.results.Stau2[!is.na(top.uniq.results.Stau2$GO),][1:10,], row.names=F)
+
+write.table(top.uniq.results.Stau2[!is.na(top.uniq.results.Stau2$GO),], file=file.path(resultsDir, "celladhesion.GO.genes.xls"), sep="\t", row.names=F, col.names=T) 
+```
+
+[Excel file with Cell Adhesion Genes statistics](celladhesion.GO.genes.xls)
+
+
+
+# mRNA vs. whole RNA analyses
+
+- want to examine the effect of using mRNA as input instead of whole RNA. 
+
+## Batch correction
+
+- the whole RNA and mRNA input RNA samples were run on different days
+  - as an identical sample was also run both days, we adjust for batch using ComBat `r citep("doi: 10.1093/biostatistics/kxj037")` from the [sva](http://www.bioconductor.org/packages/release/bioc/html/sva.html) package
+
+```{r combat}
+library(sva)
+# renormalize to get mRNA samples back into ExpressionSet
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+
+# Create model with batch as factor variable
+mod <- model.matrix(~as.factor(pulldown), data=pData(affyNorm.core))
+
+modcombat <- model.matrix(~1, data=pData(affyNorm.core))
+
+
+batch <- pData(affyNorm.core)$run
+# Modify expression matrix
+eset.core <- exprs(affyNorm.core)
+combat_edata <- ComBat(dat=eset.core,
+                       batch=batch,
+                       mod=modcombat,
+                       numCovs=NULL,
+                       par.prior=TRUE, 
+                       prior.plots=TRUE)
+affyNorm.core.batch <- affyNorm.core
+exprs(affyNorm.core) <- combat_edata
+
+PCAplot.eset(affyNorm.core, categories="pulldown", secondary_categories = "source", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+```
+
+Based on the low variation within the Stau2 group before batch correction (look back to the first PCA plot) there does not appear to be much need for batch correction. In fact, the PCA plot after batch correction shows an undesirable loss of signal (and averaging betweeen samples), potentially due to the lack of inclusion of a repeated input sample. Given this,  I decided to skip batch correction for this analysis.
 ----
 
 # R Session Info
