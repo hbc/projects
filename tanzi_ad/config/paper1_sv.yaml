@@ -1,0 +1,10 @@
+---
+dirs:
+  inputs: ad-paper1-sv/inputs
+  config: ad-paper1-sv/config
+inputs:
+  regions: ad-paper1-sv-regions.txt
+  families: ad-paper1-sv-families.txt
+resources:
+  basecfg: alz-joint-full/config/alz-joint-full.yaml
+  fam: /n/hsphS10/hsphfs1/chb/projects/tanzi_ad/data/metadata/tanzi-ad/fam/tanzi.gemini
