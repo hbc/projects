@@ -27,7 +27,7 @@ def add_to_database(db, fam_info):
             f = fam_info[name]
             sql = ("UPDATE samples SET family_id = ?, paternal_id = ?, maternal_id = ?, "
                    "sex = ?, phenotype = ? WHERE sample_id = ?")
-            cursor.execute(sql, (f["family_id"], f["paternal_id"], f["maternal_id"], f["sex"], f["phenotype"], row_id))
+            cursor.execute(sql, (f["family_id"], f["paternal_id"], f["maternal_id"], f["sex"], f["affected"], row_id))
     conn.commit()
     cursor.close()
 
@@ -37,7 +37,7 @@ def read_fam_file(in_file):
     with open(in_file) as in_handle:
         for line in in_handle:
             if not line.startswith("#"):
-                field = line.split(None, 7)[:7]
+                field = line.split(None, 8)[:8]
                 if len(field) > 1:
                     info = dict(zip(header, field))
                     out[info["name"]] = info
