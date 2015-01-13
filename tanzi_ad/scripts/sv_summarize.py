@@ -7,6 +7,7 @@ import collections
 import csv
 import glob
 import json
+import operator
 import os
 import sys
 
@@ -21,11 +22,25 @@ from bcbio import utils
 from bcbio.structural import ensemble
 from bcbio.variation import bedutils
 
+# Threshold variables based on manual examination of coverage plots
+#
+# Need to be in this percentage of total samples to include in final plot
 TOTAL_AFFECTED_PCT = 0.25
-AFFECTED_PCT = 0.70
-UNAFFECTED_PCT = 0.50
-MIN_AFFECTED = 3
-MAX_SIZE = 250  # kb
+# Need to be in this percentage of affected samples within a family to move along
+AFFECTED_PCT = 0.60
+# Unaffected samples with risk below this threshold are treated as true controls
+UNAFFECTED_THRESH = 0.3
+# Minimum number of affected samples to include in final plot
+MIN_AFFECTED = 5
+# Maximum size of CNV to pass on. Avoid CNV calls in deep sequenced repeat regions
+MAX_CNV_COUNT = 50
+# Maximum standard structural variant size to include. Avoids long error prone calls
+# better captured with CNVs
+MAX_SV_SIZE = 10000  # bp
+# Maximum size of calls to include
+MAX_SIZE = 300  # kb
+# Minimum size of calls to include
+MIN_SIZE = 400  # bp
 
 def main(config_file, *ensemble_files):
     sample_info = _read_samples(config_file)
@@ -48,7 +63,7 @@ def _plot_heatmap(call_csv, samples, positions, sample_info, batch_counts):
                                     for x in sorted(samples, key=sample_sort)],
                                    axis=1)
     fig = plt.figure(tight_layout=True)
-    plt.title("Shared structural variant calls for affected and unaffected individuals in families",
+    plt.title("Shared structural variant calls for affected and unaffected in regions of interest",
               fontsize=16)
     ax = sns.heatmap(sv_rect, cbar=False,
                      cmap=sns.diverging_palette(255, 1, n=3, as_cmap=True))
@@ -79,7 +94,8 @@ def _create_matrix(combo_bed, samples, sample_info, sample_files, to_exclude):
                 position = "%s:%s-%s (%.1fkb)" % (chrom, start, end, size)
                 cur_samples = collections.defaultdict(list)
                 for cursample in sample_str.split(","):
-                    val = 1 if sample_info[cursample]["phenotype"] == "affected" else -1
+                    val = (1 if sample_info[cursample]["phenotype"] == "affected"
+                           else float(sample_info[cursample]["risk"]) - 1.0)
                     cur_samples[cursample] = val
                 if not (chrom, int(start), int(end)) in to_exclude:
                     if _pass_sv(cur_samples, samples, size):
@@ -138,7 +154,10 @@ def _get_plot_data(cur_samples, samples, sample_info, kb_size):
             samples = {}
             for sample, val in sample_info.items():
                 if val["batch"] == batch:
-                    samples[sample] = val["phenotype"]
+                    phenotype = val["phenotype"]
+                    if phenotype.startswith("unaffected"):
+                        phenotype = "%s (%.2f)" % (phenotype, float(val["risk"]))
+                    samples[sample] = phenotype
             out["batches"][batch] = samples
         return out
 
@@ -164,7 +183,8 @@ def _read_samples(in_file):
     out = {}
     for data in config["details"]:
         out[str(data["description"])] = {"phenotype": tz.get_in(["metadata", "phenotype"], data),
-                                         "batch": tz.get_in(["metadata", "batch"], data)}
+                                         "batch": tz.get_in(["metadata", "batch"], data),
+                                         "risk": tz.get_in(["metadata", "risk"], data)}
     return out
 
 def _order_sample_info(info):
@@ -174,7 +194,6 @@ def _order_sample_info(info):
 
 def _combine_calls(in_files, sample_info):
     sample_files = {}
-    min_size = 250
     sample_dir = utils.safe_makedir(os.path.join(os.getcwd(), "prepped"))
 
     files_by_batch = collections.defaultdict(list)
@@ -189,8 +208,10 @@ def _combine_calls(in_files, sample_info):
                     for line in in_handle:
                         chrom, start, end, calls = line.strip().split("\t")[:4]
                         info = {"sample": descr, "phenotype": sample_info[descr]["phenotype"],
+                                "risk": sample_info[descr]["risk"],
                                 "calls": calls.split(","), "region": "%s:%s-%s" % (chrom, start, end)}
-                        if int(end) - int(start) >= min_size:
+                        is_cnv = any([x.startswith("cnv") for x in info["calls"]])
+                        if int(end) - int(start) >= MIN_SIZE and (is_cnv or int(end) - int(start) < MAX_SV_SIZE):
                             out_handle.write("\t".join([chrom, start, end, json.dumps(info)]) + "\n")
     samples_by_batch = collections.defaultdict(list)
     for s, x in sample_info.items():
@@ -223,43 +244,59 @@ def _check_support(calls, all_samples):
     Treats CNVs differently from other calls, since these are relative differences
     and will also be potentially present in unaffected samples.
     """
+    counts = {"cnv": {"affected": [], "unaffected": []},
+              "sv": {"affected": [], "unaffected": []}}
     orig_s = collections.defaultdict(list)
     for sample in all_samples:
         orig_s[sample["phenotype"]].append(sample["sample"])
     orig_s = dict(orig_s)
-    counts = {"cnv": {"affected": [], "unaffected": []},
-              "sv": {"affected": [], "unaffected": []}}
+    risks = {}
+    call_info = {}
     for call in calls:
         cnv_count = len([x for x in call["calls"] if x.startswith("cnv")])
         if cnv_count > 0:
             counts["cnv"][call["phenotype"]].append(call["sample"])
         if len(call["calls"]) - cnv_count > 0:
             counts["sv"][call["phenotype"]].append(call["sample"])
-    cnv_pass_samples = _check_support_cnv(counts["cnv"], orig_s)
-    sv_pass_samples = _check_support_sv(counts["sv"], orig_s)
+        risks[call["sample"]] = float(call["risk"])
+        call_info[call["sample"]] = call
+    cnv_pass_samples = _check_support_cnv(counts["cnv"], orig_s, call_info, risks)
+    sv_pass_samples = _check_support_sv(counts["sv"], orig_s, risks)
     return sorted(list(set(cnv_pass_samples).union(sv_pass_samples)))
 
-def _check_support_cnv(cur, orig):
-    """For CNV support check for percentage support in the affected.
-
-    Unaffected is less useful for CNVs since by definition we're looking
-    at differences.
+def _check_support_cnv(cur, orig, call_info, risks):
+    """For CNV support check for support in affected individuals.
     """
-    if len(cur["affected"]) >= len(orig["affected"]) * AFFECTED_PCT:
-        return cur["affected"]
+    pass_samples = collections.defaultdict(list)
+    total = 0
+    extra_samples = []
+    for sample in cur["affected"] + cur["unaffected"]:
+        for call in call_info[sample]["calls"]:
+            if call.startswith("cnv"):
+                count = int(call.split("_")[0].replace("cnv", ""))
+                if count < MAX_CNV_COUNT:
+                    if risks[sample] >= UNAFFECTED_THRESH:
+                        total += 1
+                        pass_samples[count].append(sample)
+                    else:
+                        extra_samples.append(sample)
+    if total >= len(orig["affected"]) * AFFECTED_PCT and len(pass_samples) > 1:
+        return reduce(operator.add, pass_samples.values()) + extra_samples
     return []
 
-def _check_support_sv(cur, orig):
+def _check_support_sv(cur, orig, risks):
     """Check for support in non-CNV called structural variants.
 
-    We'd like to see support for the call in at least the correct
-    percentage of affected in the family and not in unaffected. We
-    allow
+    Ignore calls that are also present in unaffected individuals
+    unlikely to be affected.
     """
     if len(cur["affected"]) >= len(orig["affected"]) * AFFECTED_PCT:
-        if len(orig["unaffected"]) > 0:
-            if len(cur["unaffected"]) <= len(orig["unaffected"]) * UNAFFECTED_PCT:
-                return cur["affected"] + cur["unaffected"]
+        in_unaffected = False
+        for x in cur["unaffected"]:
+            if risks[x] < UNAFFECTED_THRESH:
+                in_unaffected = True
+        if not in_unaffected:
+            return cur["affected"] + cur["unaffected"]
     return []
 
 def _merge_by_batch(batch, fnames):
@@ -283,9 +320,10 @@ def _read_manual_exclude(fnames):
         fnames = fnames[1:]
         with open(exclude_file) as in_handle:
             for line in in_handle:
-                chrom, coords = line.strip().split(":")
-                start, end = coords.split("-")
-                to_exclude.add((chrom, int(start), int(end)))
+                if line.strip():
+                    chrom, coords = line.strip().split(":")
+                    start, end = coords.split("-")
+                    to_exclude.add((chrom, int(start), int(end)))
     return fnames, to_exclude
 
 if __name__ == "__main__":
