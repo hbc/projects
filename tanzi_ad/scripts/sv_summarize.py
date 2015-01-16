@@ -173,8 +173,8 @@ def _pass_sv(cur_samples, samples, kb_size):
     n_case = len([x for x in cur_samples.values() if x > 0])
     n_control = len([x for x in cur_samples.values() if x < 0])
     return ((((n_case + n_control) >= (len(samples) * TOTAL_AFFECTED_PCT)) or
-            (n_case > MIN_AFFECTED and float(n_case) / (n_case + n_control) > TOTAL_AFFECTED_PCT) or
-            (n_control > MIN_AFFECTED and float(n_control) / (n_case + n_control) > TOTAL_AFFECTED_PCT))
+             (n_case > MIN_AFFECTED) or
+             (n_control > MIN_AFFECTED))
             and kb_size <= MAX_SIZE)
 
 def _read_samples(in_file):
@@ -280,8 +280,9 @@ def _check_support_cnv(cur, orig, call_info, risks):
                         pass_samples[count].append(sample)
                     else:
                         extra_samples.append(sample)
-    if total >= len(orig["affected"]) * AFFECTED_PCT and len(pass_samples) > 1:
-        return reduce(operator.add, pass_samples.values()) + extra_samples
+    if ((total >= len(orig["affected"]) * AFFECTED_PCT and len(pass_samples) > 1)
+          or len(extra_samples) > 1):
+        return reduce(operator.add, pass_samples.values(), []) + extra_samples
     return []
 
 def _check_support_sv(cur, orig, risks):
@@ -297,6 +298,8 @@ def _check_support_sv(cur, orig, risks):
                 in_unaffected = True
         if not in_unaffected:
             return cur["affected"] + cur["unaffected"]
+        elif len(cur["affected"]) == 0:
+            return cur["unaffected"]
     return []
 
 def _merge_by_batch(batch, fnames):
