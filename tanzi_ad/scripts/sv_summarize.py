@@ -29,7 +29,7 @@ TOTAL_AFFECTED_PCT = 0.25
 # Need to be in this percentage of affected samples within a family to move along
 AFFECTED_PCT = 0.60
 # Unaffected samples with risk below this threshold are treated as true controls
-UNAFFECTED_THRESH = 0.3
+UNAFFECTED_THRESH = 0.2
 # Minimum number of affected samples to include in final plot
 MIN_AFFECTED = 5
 # Maximum size of CNV to pass on. Avoid CNV calls in deep sequenced repeat regions
@@ -79,32 +79,35 @@ def _plot_heatmap(call_csv, samples, positions, sample_info, batch_counts):
 
 def _create_matrix(combo_bed, samples, sample_info, sample_files, to_exclude):
     out_file = "%s-df.csv" % os.path.splitext(combo_bed)[0]
+    out_bed_file = "%s-plot.bed" % os.path.splitext(combo_bed)[0]
     toplot_file = "%s-toplot.yaml" % os.path.splitext(combo_bed)[0]
     positions = []
     to_plot = []
     batch_counts = collections.defaultdict(int)
     with open(out_file, "w") as out_handle:
-        writer = csv.writer(out_handle)
-        writer.writerow(["position", "sample", "caller_support"])
-        items = []
-        with open(combo_bed) as in_handle:
-            for line in in_handle:
-                chrom, start, end, sample_str = line.strip().split("\t")
-                size = (int(end) - int(start)) / 1000.0
-                position = "%s:%s-%s (%.1fkb)" % (chrom, start, end, size)
-                cur_samples = collections.defaultdict(list)
-                for cursample in sample_str.split(","):
-                    val = (1 if sample_info[cursample]["phenotype"] == "affected"
-                           else float(sample_info[cursample]["risk"]) - 1.0)
-                    cur_samples[cursample] = val
-                if not (chrom, int(start), int(end)) in to_exclude:
-                    if _pass_sv(cur_samples, samples, size):
-                        items.append((int(chrom), int(start), position, dict(cur_samples)))
-                        plot_data = _get_plot_data(cur_samples, samples, sample_info, size)
-                        if plot_data:
-                            #_summarize_events(chrom, int(start), int(end), plot_data, sample_files)
-                            plot_data.update({"chrom": chrom, "start": int(start), "end": int(end)})
-                            to_plot.append(plot_data)
+        with open(out_bed_file, "w") as out_bed_handle:
+            writer = csv.writer(out_handle)
+            writer.writerow(["position", "sample", "caller_support"])
+            items = []
+            with open(combo_bed) as in_handle:
+                for line in in_handle:
+                    chrom, start, end, sample_str = line.strip().split("\t")
+                    size = (int(end) - int(start)) / 1000.0
+                    position = "%s:%s-%s (%.1fkb)" % (chrom, start, end, size)
+                    cur_samples = collections.defaultdict(list)
+                    for cursample in sample_str.split(","):
+                        val = (1 if sample_info[cursample]["phenotype"] == "affected"
+                               else (2.0 * (float(sample_info[cursample]["risk"]) - 0.5)))
+                        cur_samples[cursample] = val
+                    if not (chrom, int(start), int(end)) in to_exclude:
+                        if _pass_sv(cur_samples, samples, size):
+                            items.append((int(chrom), int(start), position, dict(cur_samples)))
+                            plot_data = _get_plot_data(cur_samples, samples, sample_info, size)
+                            if plot_data:
+                                out_bed_handle.write(line)
+                                #_summarize_events(chrom, int(start), int(end), plot_data, sample_files)
+                                plot_data.update({"chrom": chrom, "start": int(start), "end": int(end)})
+                                to_plot.append(plot_data)
         items.sort()
         added = set([])
         for _, _, position, cur_samples in items:
@@ -141,32 +144,27 @@ def _get_plot_data(cur_samples, samples, sample_info, kb_size):
     """
     cases = [x for x, y in cur_samples.items() if y > 0]
     controls = [x for x, y in cur_samples.items() if y < 0]
-    #if (len(cases) + len(controls) > MIN_AFFECTED
-    #      and float(len(cases)) / float(len(cases) + len(controls)) > AFFECTED_PCT
-    #      and kb_size <= MAX_SIZE):
-    if True:
-        batches = set([])
-        out = {"batches": {}}
-        for sid in cases + controls:
-            batch = sample_info[sid]["batch"]
-            batches.add(batch)
-        for batch in sorted(list(batches)):
-            samples = {}
-            for sample, val in sample_info.items():
-                if val["batch"] == batch:
-                    phenotype = val["phenotype"]
-                    if phenotype.startswith("unaffected"):
-                        phenotype = "%s (%.2f)" % (phenotype, float(val["risk"]))
-                    samples[sample] = phenotype
-            out["batches"][batch] = samples
-        return out
+    batches = set([])
+    out = {"batches": {}}
+    for sid in cases + controls:
+        batch = sample_info[sid]["batch"]
+        batches.add(batch)
+    for batch in sorted(list(batches)):
+        samples = {}
+        for sample, val in sample_info.items():
+            if val["batch"] == batch:
+                phenotype = val["phenotype"]
+                if phenotype.startswith("unaffected"):
+                    phenotype = "%s (%.2f)" % (phenotype, float(val["risk"]))
+                samples[sample] = phenotype
+        out["batches"][batch] = samples
+    return out
 
 def _pass_sv(cur_samples, samples, kb_size):
     """Determine if we should pass a structural variant for visualization.
 
     Passes:
-      - Likely affected variants: found in at least three affected individuals and
-        at least 60% of occurrences in affected.
+      - Likely affected variants: found in affected individuals.
       - Protective variants: primarily present in only unaffected
       - Common variants: found in more than 60% of total samples.
     """
@@ -280,8 +278,8 @@ def _check_support_cnv(cur, orig, call_info, risks):
                         pass_samples[count].append(sample)
                     else:
                         extra_samples.append(sample)
-    if ((total >= len(orig["affected"]) * AFFECTED_PCT and len(pass_samples) > 1)
-          or len(extra_samples) > 1):
+    if ((total >= len(orig["affected"]) * AFFECTED_PCT and len(pass_samples) > 0)
+          or (len(extra_samples) > 0 and total < 2)):
         return reduce(operator.add, pass_samples.values(), []) + extra_samples
     return []
 
@@ -298,8 +296,8 @@ def _check_support_sv(cur, orig, risks):
                 in_unaffected = True
         if not in_unaffected:
             return cur["affected"] + cur["unaffected"]
-        elif len(cur["affected"]) == 0:
-            return cur["unaffected"]
+    elif len(cur["affected"]) == 0:
+        return cur["unaffected"]
     return []
 
 def _merge_by_batch(batch, fnames):
