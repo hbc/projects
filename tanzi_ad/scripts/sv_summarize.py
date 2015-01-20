@@ -19,6 +19,7 @@ import pybedtools
 import seaborn as sns
 
 from bcbio import utils
+from bcbio.provenance import do
 from bcbio.structural import ensemble
 from bcbio.variation import bedutils
 
@@ -46,10 +47,13 @@ def main(config_file, *ensemble_files):
     sample_info = _read_samples(config_file)
     samples = _order_sample_info(sample_info)
     ensemble_files, to_exclude = _read_manual_exclude(ensemble_files)
+    gene_file, ensemble_files = _get_gene_file(ensemble_files)
     combo_bed, sample_files = _combine_calls(ensemble_files, sample_info)
-    call_df_csv, positions, batch_counts = _create_matrix(combo_bed, samples, sample_info, sample_files,
-                                                          to_exclude)
+    call_df_csv, call_bed, positions, batch_counts = _create_matrix(combo_bed, samples, sample_info, sample_files,
+                                                                    to_exclude)
     _plot_heatmap(call_df_csv, samples, positions, sample_info, batch_counts)
+    if gene_file:
+        _gene_closest(call_bed, gene_file)
 
 def _plot_heatmap(call_csv, samples, positions, sample_info, batch_counts):
     def sample_sort(x):
@@ -84,30 +88,34 @@ def _create_matrix(combo_bed, samples, sample_info, sample_files, to_exclude):
     positions = []
     to_plot = []
     batch_counts = collections.defaultdict(int)
+    with open(combo_bed) as in_handle:
+        items = []
+        plotted = []
+        for line in in_handle:
+            chrom, start, end, sample_str = line.strip().split("\t")
+            size = (int(end) - int(start)) / 1000.0
+            position = "%s:%s-%s (%.1fkb)" % (chrom, start, end, size)
+            cur_samples = collections.defaultdict(list)
+            for cursample in sample_str.split(","):
+                val = (1 if sample_info[cursample]["phenotype"] == "affected"
+                       else (2.0 * (float(sample_info[cursample]["risk"]) - 0.5)))
+                cur_samples[cursample] = val
+            if not (chrom, int(start), int(end)) in to_exclude:
+                if _pass_sv(cur_samples, samples, size):
+                    items.append((int(chrom), int(start), position, dict(cur_samples)))
+                    plot_data = _get_plot_data(cur_samples, samples, sample_info, size)
+                    if plot_data:
+                        plotted.append((chrom, int(start), line))
+                        #_summarize_events(chrom, int(start), int(end), plot_data, sample_files)
+                        plot_data.update({"chrom": chrom, "start": int(start), "end": int(end)})
+                        to_plot.append(plot_data)
+    with open(out_bed_file, "w") as out_bed_handle:
+        plotted.sort()
+        for _, _, line in plotted:
+            out_bed_handle.write(line)
     with open(out_file, "w") as out_handle:
-        with open(out_bed_file, "w") as out_bed_handle:
-            writer = csv.writer(out_handle)
-            writer.writerow(["position", "sample", "caller_support"])
-            items = []
-            with open(combo_bed) as in_handle:
-                for line in in_handle:
-                    chrom, start, end, sample_str = line.strip().split("\t")
-                    size = (int(end) - int(start)) / 1000.0
-                    position = "%s:%s-%s (%.1fkb)" % (chrom, start, end, size)
-                    cur_samples = collections.defaultdict(list)
-                    for cursample in sample_str.split(","):
-                        val = (1 if sample_info[cursample]["phenotype"] == "affected"
-                               else (2.0 * (float(sample_info[cursample]["risk"]) - 0.5)))
-                        cur_samples[cursample] = val
-                    if not (chrom, int(start), int(end)) in to_exclude:
-                        if _pass_sv(cur_samples, samples, size):
-                            items.append((int(chrom), int(start), position, dict(cur_samples)))
-                            plot_data = _get_plot_data(cur_samples, samples, sample_info, size)
-                            if plot_data:
-                                out_bed_handle.write(line)
-                                #_summarize_events(chrom, int(start), int(end), plot_data, sample_files)
-                                plot_data.update({"chrom": chrom, "start": int(start), "end": int(end)})
-                                to_plot.append(plot_data)
+        writer = csv.writer(out_handle)
+        writer.writerow(["position", "sample", "caller_support"])
         items.sort()
         added = set([])
         for _, _, position, cur_samples in items:
@@ -123,7 +131,7 @@ def _create_matrix(combo_bed, samples, sample_info, sample_files, to_exclude):
                         batch_counts[sample_info[sample]["batch"]] += 1
     with open(toplot_file, "w") as out_handle:
         yaml.safe_dump(to_plot, out_handle, default_flow_style=False, allow_unicode=False)
-    return out_file, positions, dict(batch_counts)
+    return out_file, out_bed_file, positions, dict(batch_counts)
 
 def _summarize_events(chrom, start, end, plot_data, sample_files):
     """Provide a summary of events found within a region and samples of interest.
@@ -316,7 +324,7 @@ def _read_manual_exclude(fnames):
     """Potentially find a file with manual exclusions.
     """
     to_exclude = set([])
-    if not fnames[0].endswith(".bed"):
+    if not fnames[0].endswith(".bed") and not fnames[0].find(".gtf") > 0:
         exclude_file = fnames[0]
         fnames = fnames[1:]
         with open(exclude_file) as in_handle:
@@ -326,6 +334,32 @@ def _read_manual_exclude(fnames):
                     start, end = coords.split("-")
                     to_exclude.add((chrom, int(start), int(end)))
     return fnames, to_exclude
+
+# ## Annotate BED files with Ensembl transcripts
+
+def _gene_closest(orig_bed, gene_gtf):
+    """Calculate the closest transcript to events in the input BED file.
+    """
+    sorted_gtf = "%s-sort.gtf" % utils.splitext_plus(gene_gtf)[0]
+    if not utils.file_exists(sorted_gtf):
+        cmd = ("zcat {gene_gtf} | grep -v ^# "
+               "| sort -k1,1 -k4,4n -k 5,5n > {sorted_gtf}")
+        do.run(cmd.format(**locals()), "Sort input GTF file")
+    out_file = "%s-ann%s" % utils.splitext_plus(orig_bed)
+    cmd = "bedtools closest -d -t first -a {orig_bed} -b {sorted_gtf} > {out_file}"
+    do.run(cmd.format(**locals()), "Identify closest gene")
+
+def _get_gene_file(all_files):
+    gene_file = None
+    other = []
+    for f in all_files:
+        if f.find(".gtf") > 0:
+            assert gene_file is None
+            gene_file = f
+        else:
+            other.append(f)
+    return gene_file, other
+
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
