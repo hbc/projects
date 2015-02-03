@@ -87,14 +87,17 @@ exprdata <- read.csv(file.path(dataDir, "normalized_data.csv"))
 exprdata <- as.data.frame(exprdata)
 ```
 
-## Data Munging
+## Data Transformation
+- subset data to genes with at least 10 normalized counts per sample 
+  - we can have more confidence in the results of expressed genes
 - transpose data
 - label samples by time point
-- aggregate samples by time point
+- mean aggregate counts for samples by time point
 
 ```{r }
-# subset data to genes with expression above 
-
+# subset data to genes with expression above cutoff
+exprdata <- exprdata[apply(as.matrix(exprdata[,2:ncol(exprdata)]),1, function(x) all(x>10)),]
+# munge data
 exprdata.m <- melt(exprdata)
 exprdata.t <- dcast(exprdata.m, variable ~ Gene)
 row.names(exprdata.t) <- exprdata.t$variable
@@ -122,7 +125,7 @@ write.table(aggregate.exprdata, file=file.path(dataDir, "mean.aggregated.data.tx
 
 - ran STEM with default settings except: 
   - only allowed GO categories below level 4 (default is 3c)
-  - allowed profile clustering with a correlation of 0.4t and above (default is 0.7)
+  - allowed profile clustering with a correlation of 0.5 and above (default is 0.7)
   - profile significance level cutoff was set at 0.01
 
 STEM analysis identified 16 expression profiles with a statistically higher number of genes assigned than expected at random. These 16 profiles then cluster based on similarity into 6 clusters (1 cluster with 3 profiles, 5 clusters with 2 profiles each and three singleton profiles).
