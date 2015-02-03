@@ -1,0 +1,231 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: united
+title: "Preparing data for STEM analysis"
+bibliography: "references.bib"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Danielle Gottlieb"
+clientemail="danielle.gottlieb@cardio.chboston.org"
+labPI="Gottlieb"
+lablocation="Children's Hospital"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+Pre-normalized RNA-seq data was imported (from Seidman lab) and averaged between samples for identical time points prior to import into STEM `r citep("http://www.sb.cs.cmu.edu/stem/")` 
+
+---
+
+# Setup
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries}
+library(xlsx) # for working with Excel docs
+library(reshape2) # reshaping data
+library(googleVis) # library for presenting tables
+library(pheatmap)# pretty heatmaps
+```
+
+## Variables
+
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/dg_cardiac_timeseries/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/dg_cardiac_timeseries//"
+    } else if (file.exists("/Users/johnhutchinson/projects/dg_cardiac_timeseries//")){
+    baseDir="/Users/johnhutchinson/projects/dg_cardiac_timeseries//"
+    }
+
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+pvalue.cutoff=0.01
+```
+
+---
+
+# STEM Preparation
+
+## Data import
+
+```{r importdata}
+exprdata <- read.csv(file.path(dataDir, "normalized_data.csv"))
+exprdata <- as.data.frame(exprdata)
+```
+
+## Data Munging
+- transpose data
+- label samples by time point
+- aggregate samples by time point
+
+```{r }
+# subset data to genes with expression above 
+
+exprdata.m <- melt(exprdata)
+exprdata.t <- dcast(exprdata.m, variable ~ Gene)
+row.names(exprdata.t) <- exprdata.t$variable
+exprdata.t$variable <- NULL
+row.names(exprdata.t) <- sub("_norm_", "", row.names(exprdata.t))
+ages <- unlist(lapply(strsplit(row.names(exprdata.t), "_"), function(x) x[2]))
+# reorder data columsn for later heatmaps
+exprdata <-  exprdata[,c(1,order(ages)+1)]
+# aggregate exprs by age by taking mean
+aggregate.exprdata <- aggregate(exprdata.t, by=list(ages), function(x) mean(x))
+aggregate.exprdata.m <- melt(aggregate.exprdata)
+aggregate.exprdata <- dcast(aggregate.exprdata.m, variable ~ Group.1)
+names(aggregate.exprdata)[1] <- "Gene_Symbol"
+```
+
+## Output aggregated data
+
+```{r output}
+write.table(aggregate.exprdata, file=file.path(dataDir, "mean.aggregated.data.txt"), row.names=F, col.names=T, sep="\t", quote=F)
+```
+
+---
+
+#STEM analyses
+
+- ran STEM with default settings except: 
+  - only allowed GO categories below level 4 (default is 3c)
+  - allowed profile clustering with a correlation of 0.4t and above (default is 0.7)
+  - profile significance level cutoff was set at 0.01
+
+STEM analysis identified 16 expression profiles with a statistically higher number of genes assigned than expected at random. These 16 profiles then cluster based on similarity into 6 clusters (1 cluster with 3 profiles, 5 clusters with 2 profiles each and three singleton profiles).
+ 
+In this diagram, the individual profiles are numbered and the colors represent profile clusters. Black lines within each profile represent the gene expression model profile.
+
+![STEM profiles and clusters](`r file.path(resultsDir, "STEM.all.profile.nogenes.png")`)
+
+HEre we can see the same data, but with the actual expression profiles of individual genes assigned to a model profile.
+
+![STEM profiles and clusters with gene expression patterns shown](`r file.path(resultsDir, "STEM.all.profile.genes.png")`)
+
+Looking for Gene ontology enrichment on gene sets associated with each cluster reveals differing processes enriched in each cluster.
+
+```{r mungeGOprofiles, results='hide'}
+# load in GO data
+GOfilenames <- list.files(file.path(resultsDir), pattern="GO.txt")
+GOfilenames <- file.path(resultsDir, GOfilenames)
+
+#subset to significantly enriched GO categories
+GOdata <- lapply(GOfilenames, function(x){
+  if(grepl("cluster_0", basename(x))){
+    input <- read.delim(x,skip=5, sep="\t")
+    } else if(grepl("^profile", basename(x))) {
+      input <- read.delim(x,skip=2, sep="\t")
+      } else {
+        input <- read.delim(x, skip=4, sep="\t")
+        }
+  input$Corrected.p.value <- ifelse(input$Corrected.p.value=="<0.001", 0.00099, as.numeric(as.character(input$Corrected.p.value)))
+  input$significant <- ifelse(as.numeric(as.character(input$Corrected.p.value))<pvalue.cutoff,"YES", "NO")
+  input <- subset(input, significant=="YES")
+  input$significant <- NULL
+  names(input) <- sub("^X.", "", names(input))
+  input$Corrected.p.value <- as.character(input$Corrected.p.value)
+  input$Corrected.p.value <- ifelse(input$Corrected.p.value=="0.00099", "<0.001", input$Corrected.p.value)
+  label <- sub(".txt","", x)
+  return(list(label=label, GOdata=input))
+  })
+```
+
+```{r genedatamunging, results='hide'}
+# load in GO data
+genefilenames <- list.files(file.path(resultsDir), pattern="genes.txt")
+genefilenames <- file.path(resultsDir, genefilenames)
+
+# get gene names for each cluster and grab expression data from original dataset
+genedata <- lapply(genefilenames, function(x){
+  if(grepl("cluster_0", basename(x))){
+    input <- read.delim(x, skip=5, sep="\t")
+    } else {
+      input <- read.delim(x, skip=4, sep="\t")
+      } 
+  genes <- input$Gene_Symbol
+  exprs <- exprdata[genes,]
+  label <- sub(".txt","", x)
+  return(list(label=label, genes=genes, exprs=exprs))
+  })
+```
+
+## Cluster 0 - profiles 38, 17 and 44
+- genes with these expression profiles show enrichment for GO categories associated with immune responses
+
+```{r GOcategories0, results='asis'}
+index <- intersect(intersect(grep("38",GOfilenames), grep("17", GOfilenames)), grep("44", GOfilenames))
+GOdata.gvis <- gvisTable(as.data.frame(apply(GOdata[[index]]$GOdata, 2, as.character)),, options = list(width = 1280, height=800))  
+print(GOdata.gvis, "chart")
+
+
+temp <- genedata[[8]]$exprs
+
+lapply(genedata, function(y) {
+length(which(apply(y$exprs[,2:ncol(y$exprs)], 1, function(x) all(x>100))))
+})
+
+for (x in 1:10){
+  pheatmap(log(genedata[[x]]$exprs[apply(genedata[[x]]$exprs, 1, function(y) all(y>1)),2:ncol(genedata[[x]]$exprs)]), cluster_cols = FALSE)
+}
+
+```
+
+
+
+
+## Cluster 1 - profiles 27 and 3
+## Cluster 2 - profiles 35 and 39
+## Cluster 3 - profiles 10 and 43
+## Cluster 4 - profiles 1 and 18
+## Cluster 5 - profiles 7 and 8
+## "Cluster" 6 - profile 13
+## "Cluster" 7 - profile 20
+## "Cluster" 8 - profile 40
+
+
+
+
+
+
+
+
+
+
+```{r citations, echo=FALSE}
+write.bibtex(file="references.bib")
+```
+
+
