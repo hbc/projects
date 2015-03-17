@@ -1,13 +1,11 @@
 ---
 output:
-  knitrBootstrap::bootstrap_document:
-    title: "Test file"
-    theme: amelia
-    highlight: sunburst
-    theme.chooser: TRUE
-    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: united
+title: "Finding 450K probes around genes and probes of interest"
 ---
-
 
 # Load libraries
 ```{r libraries}
@@ -79,11 +77,10 @@ bedTools.flank <- function(functionstring="bedtools flank -s", genomefile, bed1,
 
 ```
 
-
 # Set directories
 
 ```{r directories}
-baseDir <- "~/projects/ab_nucmito/"
+baseDir <- "~/projects/ab_rrbs_comparison/"
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
@@ -93,152 +90,174 @@ metaDir <- file.path(baseDir, "meta")
 - using mitochondrial data from the [microproteome site](http://www.mitoproteome.org/data/proteome/index.html)
 
 ```{r dataload}
-annots.450k <- read.csv(file.path(dataDir, "14_April_2014_Updated_humanmethylation450_15017482_v1-2.csv"), skip=7)
-annots.mito <- read.delim(file.path(dataDir, "mitoproteome.tsv"))
+annots.450K <- read.csv(file.path(dataDir, "14_April_2014_Updated_humanmethylation450_15017482_v1-2.csv"), skip=7)
+annots.refseq <- read.delim(file.path(dataDir, "refseq.genes.bed"), header=F)
+points.of.interest <- read.xlsx(file.path(dataDir, "26_Jan_2014_Udpated_450K_Results_for_John.xlsx"), sheetIndex = 1)
+points.of.interest <- points.of.interest[!is.na(points.of.interest$Type.of.Locus),]
 ```
 
-# Find genomic locations of mitochondrial genes using biomaRt
-
-## setup biomart
+# setup biomart
 
 ```{r setupbiomart}
-ensemblmart <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
+library(biomaRt)
+# use GRch37 build
+ensemblmart <-  useMart("ENSEMBL_MART_ENSEMBL",dataset="hsapiens_gene_ensembl", host="grch37.ensembl.org")
 attributes <- listAttributes(ensemblmart)
 filters <- listFilters(ensemblmart)
 ```
 
-## pull down chromosomal positions using uniprot ids from mito annotations
-- current biomart build is GRCh37
-- transcript start and ends
-- some ids have multiple transcripts, keep all
+# Data munging of regions of interest
 
-```{r getpos}
-mito.pos <- getBM(annots.mito$ACCESSION,filters="uniprot_swissprot_accession", attributes=c("uniprot_swissprot_accession","chromosome_name","transcript_start","transcript_end", "strand", "hgnc_symbol"), mart=ensemblmart)
+## separate by class
+
+```{r munging}
+genes.of.interest <- subset(points.of.interest, Type.of.Locus=="Gene")
+CpGs.of.interest <- subset(points.of.interest, Type.of.Locus=="Non-Gene")
 ```
 
-# Subset genes to those on nuclear chromosomes  
-- dicard all mitochondrial, patches and polymorphic regions
-- discard genes without annotated gene symbol
-- convert to [BED format](http://genome.ucsc.edu/FAQ/FAQformat.html#format1)
+## extract genes of interest and get corresponding regions from biomart
+- first add in new gene of interest "FHAD1"
+- used start_position and end_position attributes from biomart, which will include all isoforms
 
-```{r subset}
-chrs <- c(seq(1,22), "X", "Y")
-mito.pos <- mito.pos[mito.pos$chromosome_name %in% chrs,]
+```{r genestobed}
+genes.of.interest <- unlist(strsplit(as.character(genes.of.interest$UCSC_RefGene_Name), ";"))
+genes.of.interest <- unique(genes.of.interest)
+genes.of.interest <- c(genes.of.interest, "FHAD1", "IER3", "ALPPL2")
 
-# rearrange columns into bed format
-mito.pos$score <- 0
-mito.pos <- mito.pos[,c(2,3,4,6,7,5)]
-mito.pos$chromosome_name <- paste("chr", mito.pos$chromosome_name, sep="")
-# drop genes without known symbol
-mito.pos <- mito.pos[which(str_length(mito.pos$hgnc_symbol)>0),]
-mito.pos$strand <-   ifelse(mito.pos$strand=="-1", "-", "+")
+
+genes.of.interest.bed <- getBM(genes.of.interest, filters="hgnc_symbol", attributes=c("chromosome_name","start_position", "end_position", "strand", "hgnc_symbol" ), mart=ensemblmart)
+genes.of.interest.bed$score=100
+
+names(genes.of.interest.bed) <- c("chr", "start", "end", "strand", "name", "score")
+genes.of.interest.bed <- genes.of.interest.bed[,c("chr", "start", "end", "name", "score", "strand")]
+
+genes.of.interest.bed$strand <- ifelse(genes.of.interest.bed$strand=="1", "+", "-")
+genes.of.interest.bed$chr <- paste("chr", genes.of.interest.bed$chr, sep="")
+
+genes.of.interest.bed <- genes.of.interest.bed[!grepl("CHR", as.character(genes.of.interest.bed$chr)),]
 ```
 
-# Mitochondrial genes on nuclear chromosomes
+## convert CpGs of interest data into bed format using data supplied by Juan (from Illumina manifest)
 
-```{r printmitogenes, results='asis'}
-kable(mito.pos)
+```{r cpgstobed}
+CpGs.of.interest.bed <- CpGs.of.interest[, c("CHR", "MAPINFO", "Name")]
+names(CpGs.of.interest.bed) <- c("chr", "end", "name")
+CpGs.of.interest.bed$start <- CpGs.of.interest.bed$end -1
+CpGs.of.interest.bed$strand <- "+"
+CpGs.of.interest.bed$score <- 100
+CpGs.of.interest.bed <- CpGs.of.interest.bed[,c("chr", "start", "end", "name", "score", "strand")]
+CpGs.of.interest.bed$chr <- paste("chr", CpGs.of.interest.bed$chr, sep="")
 ```
 
-# Get coordinates of regions around nuclear mitochondrial genes
-3kb upstream of the TSS and 3Kb downstream of transcript end
+# Get coordinates of regions around  genes
+5kb upstream of the TSS and 5Kb downstream of transcript end
 
 ```{r getpromoters}
-mito.pos.flanked <- bedTools.slop(bed1 = mito.pos, opt.string = "-b 3000", genomefile = "~/projects/ab_nucmito/meta/hg19.genome")
-mito.pos.upstream <- bedTools.flank(bed1 = mito.pos, opt.string = "-l 3000 -r 0", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
-mito.pos.downstream <- bedTools.flank(bed1 = mito.pos, opt.string = "-l 0 -r 3000", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
+genes.pos.flanked <- bedTools.slop(bed1 = genes.of.interest.bed, opt.string = "-b 5000", genomefile = file.path(metaDir, "hg19.genome"))
+genes.pos.upstream <- bedTools.flank(bed1 = genes.of.interest.bed, opt.string = "-l 5000 -r 0", genomefile = file.path(metaDir, "hg19.genome"))
+genes.pos.downstream <- bedTools.flank(bed1 = genes.of.interest.bed, opt.string = "-l 0 -r 5000", genomefile = file.path(metaDir, "hg19.genome"))
 ```
 
-# Find 450K probes within flanks and genes of nuclear mitochondrial genes
+# Find 450K probes around genes and CpGs
 
 ## Extract coordinates (Human Genome build GRCh37) of 450K probes from annotation file and convert to BED format
-```{r 450kextract}
-bed.450K <- annots.450k[,c("CHR", "MAPINFO", "Name")]
+
+```{r 450Kextract}
+bed.450K <- annots.450K[,c("CHR", "MAPINFO", "Name")]
 # adjust to zero-based coordinate format
 bed.450K$start <- bed.450K$MAPINFO-1
 names(bed.450K) <- c("chr", "end", "name", "start")
 bed.450K$chr <- paste("chr", bed.450K$chr, sep="")
 bed.450K <- bed.450K[,c("chr", "start", "end", "name")]
+# subset to CpG probes
+bed.450K <- bed.450K[grep("cg", bed.450K$name),]
 ```
 
-## Overlap 450K probe coordinates with flanks of nuclear mitochondrial gene coordinates
+## Overlap 450K probe coordinates with flanks of gene coordinates
 
 ```{r overlap}
-probes450K.in.flanked.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.flanked,opt.string="-wo")
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.flanked.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
+probes450K.in.flanked.genes <- bedTools.2in(bed1=bed.450K,bed2=genes.pos.flanked,opt.string="-wo")
+probes450K.in.flanked.genes <- probes450K.in.flanked.genes[,c(1,2,3,4,8)]
+names(probes450K.in.flanked.genes) <- c("chr", "start", "end", "probeID", "overlapped_gene")
 # sort and remove duplicates
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[with(probes450K.in.flanked.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(probes450K.in.flanked.nucmitos),]
+probes450K.in.flanked.genes <- probes450K.in.flanked.genes[with(probes450K.in.flanked.genes, order(chr, start, probeID, overlapped_gene)), ]
+probes450K.in.flanked.genes <- probes450K.in.flanked.genes[!duplicated(probes450K.in.flanked.genes),]
+probes450K.in.flanked.genes <- merge(probes450K.in.flanked.genes, annots.450K, by.x="probeID", by.y="IlmnID")
+probes450K.in.flanked.genes <- probes450K.in.flanked.genes[,c(5:ncol(probes450K.in.flanked.genes))]
+names(probes450K.in.flanked.genes) <- sub("^Name$", "IllmnID", names(probes450K.in.flanked.genes))
 
 ##########################
 ##########################
-probes450K.in.upstream.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.upstream,opt.string="-wo")
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.upstream.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
+probes450K.in.upstream.genes <- bedTools.2in(bed1=bed.450K,bed2=genes.pos.upstream,opt.string="-wo")
+probes450K.in.upstream.genes <- probes450K.in.upstream.genes[,c(1,2,3,4,8)]
+names(probes450K.in.upstream.genes) <- c("chr", "start", "end", "probeID", "overlapped_gene")
 # sort and remove duplicates
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[with(probes450K.in.upstream.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[!duplicated(probes450K.in.upstream.nucmitos),]
+probes450K.in.upstream.genes <- probes450K.in.upstream.genes[with(probes450K.in.upstream.genes, order(chr, start, probeID, overlapped_gene)), ]
+probes450K.in.upstream.genes <- probes450K.in.upstream.genes[!duplicated(probes450K.in.upstream.genes),]
+probes450K.in.upstream.genes <- merge(probes450K.in.upstream.genes, annots.450K, by.x="probeID", by.y="IlmnID")
+probes450K.in.upstream.genes <- probes450K.in.upstream.genes[,c(5:ncol(probes450K.in.upstream.genes))]
+names(probes450K.in.upstream.genes) <- sub("^Name$", "IllmnID", names(probes450K.in.upstream.genes))
 
 ##########################
 ##########################
 
-probes450K.in.downstream.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.downstream,opt.string="-wo")
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.downstream.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
+probes450K.in.downstream.genes <- bedTools.2in(bed1=bed.450K,bed2=genes.pos.downstream,opt.string="-wo")
+probes450K.in.downstream.genes <- probes450K.in.downstream.genes[,c(1,2,3,4,8)]
+names(probes450K.in.downstream.genes) <- c("chr", "start", "end", "probeID", "overlapped_gene")
 # sort and remove duplicates
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[with(probes450K.in.downstream.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[!duplicated(probes450K.in.downstream.nucmitos),]
+probes450K.in.downstream.genes <- probes450K.in.downstream.genes[with(probes450K.in.downstream.genes, order(chr, start, probeID, overlapped_gene)), ]
+probes450K.in.downstream.genes <- probes450K.in.downstream.genes[!duplicated(probes450K.in.downstream.genes),]
+probes450K.in.downstream.genes <- merge(probes450K.in.downstream.genes, annots.450K, by.x="probeID", by.y="IlmnID")
+probes450K.in.downstream.genes <- probes450K.in.downstream.genes[,c(5:ncol(probes450K.in.downstream.genes))]
+names(probes450K.in.downstream.genes) <- sub("^Name$", "IllmnID", names(probes450K.in.downstream.genes))
 
 ##########################
 ##########################
 
-probes450K.in.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos,opt.string="-wo")
-probes450K.in.nucmitos <- probes450K.in.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
+probes450K.in.genes <- bedTools.2in(bed1=bed.450K,bed2=genes.of.interest.bed,opt.string="-wo")
+probes450K.in.genes <- probes450K.in.genes[,c(1,2,3,4,8)]
+names(probes450K.in.genes) <- c("chr", "start", "end", "probeID", "overlapped_gene")
 # sort and remove duplicates
-probes450K.in.nucmitos <- probes450K.in.nucmitos[with(probes450K.in.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.nucmitos <- probes450K.in.nucmitos[!duplicated(probes450K.in.nucmitos),]
+probes450K.in.genes <- probes450K.in.genes[with(probes450K.in.genes, order(chr, start, probeID, overlapped_gene)), ]
+probes450K.in.genes <- probes450K.in.genes[!duplicated(probes450K.in.genes),]
+probes450K.in.genes <- merge(probes450K.in.genes, annots.450K, by.x="probeID", by.y="IlmnID")
+probes450K.in.genes <- probes450K.in.genes[,c(5:ncol(probes450K.in.genes))]
+names(probes450K.in.genes) <- sub("^Name$", "IllmnID", names(probes450K.in.genes))
 
+```
+
+
+## Find other 450K probes within 5kb (either side) of probes of interest
+
+```{r flankprobes}
+# get coordinates flanking CpGs of interest
+CpGs.pos.flanked <- bedTools.slop(bed1 = CpGs.of.interest.bed, opt.string = "-b 5000", genomefile = file.path(metaDir, "hg19.genome"))
+# find other CpGs within flanks
+probes450K.around.CpGs <- bedTools.2in(bed1=bed.450K,bed2=CpGs.pos.flanked,opt.string="-wo")
+probes450K.around.CpGs <- probes450K.around.CpGs[,c(1,2,3,4,8)]
+
+names(probes450K.around.CpGs) <- c("chr", "start", "end", "probe.450K", "original.probe.450K.of.interest")
+
+# merge with annotations
+
+probes450K.around.CpGs <- merge(probes450K.around.CpGs, annots.450K, by.x="probe.450K", by.y="IlmnID")
+probes450K.around.CpGs <- probes450K.around.CpGs[,c(5:ncol(probes450K.around.CpGs))]
 ```
 
 # Output results
 
 ```{r output}
-kable(probes450K.in.flanked.nucmitos, row.names=F)
 setwd(resultsDir)
-write.xlsx2(probes450K.in.flanked.nucmitos, file="probes450K.in.flanked.nucmitos.xlsx")
-write.xlsx2(probes450K.in.upstream.nucmitos, file="probes450K.in.upstream.nucmitos.xlsx")
-write.xlsx2(probes450K.in.downstream.nucmitos, file="probes450K.in.downstream.nucmitos.xlsx")
-write.xlsx2(probes450K.in.nucmitos, file="probes450K.in.nucmitos.xlsx")
+write.xlsx2(probes450K.in.flanked.genes, file="probes450K.in.5kb.gene.flanks.xlsx")
+write.xlsx2(probes450K.in.upstream.genes, file="probes450K.in.5kb.upstream.of.genes.xlsx")
+write.xlsx2(probes450K.in.downstream.genes, file="probes450K.in.5kb.downstream.of.genes.xlsx")
+write.xlsx2(probes450K.in.genes, file="probes450K.in.genes.xlsx")
+write.xlsx2(probes450K.around.CpGs, file="probes450K.within.5kb.flanking.probes.of.interest.xlsx")
 ```
 
-[Excel file with results](../results/probes450K.in.flanked.nucmitos.xlsx)
-
-# Plot categorical results
-
-```{r plotcategories, dev="svg"}
-
-num.genic <- length(unique(probes450K.in.nucmitos$probeID))
-num.upstream <- length(unique(probes450K.in.upstream.nucmitos$probeID))
-num.downstream <- length(unique(probes450K.in.downstream.nucmitos$probeID))
-
-nums <- as.data.frame(c(num.upstream,num.genic, num.downstream))
-names(nums) <- "count"
-nums$category <- c("upstream","genic",  "downstream")
-nums <- within(nums, category <- factor(category,levels=c("upstream", "genic","downstream"))) # rearrange factor levels for plot
-
-
-
-pdf(file.path(resultsDir, "probe.categories.plot.pdf"))
-# plot bars and add text
-p <- ggplot(nums, aes(x = category, y = count, fill=factor(category))) +
-  geom_bar(stat="identity")+
-  scale_fill_manual(values=cbPalette)+
-  theme_bw()+ 
-  theme(legend.title=element_blank())+
-  theme(axis.title.x = element_blank())
-p+ geom_text(data=nums,aes(x=category,y=0.5*count,label=count), size=2.5) 
-dev.off()
-
+[Excel file with probes upstream of genes](../results/probes450K.in.5kb.upstream.of.genes.xlsx)
+[Excel file with probes downstream of genes](../results/probes450K.in.5kb.downstream.of.genes.xlsx)
+[Excel file with probes in genes](../results/probes450K.in.genes.xlsx)
+[Excel file with probes within 5kb of genes (including inside genes)](../results/probes450K.in.5kb.gene.flanks.xlsx)
+[Excel file with probes within 5kb of non-gene CpGs](../results/probes450K.within.5kb.flanking.probes.of.interest.xlsx)
 
