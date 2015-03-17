@@ -110,7 +110,7 @@ my $running_total = 0;
 
 my $bignum = 10000000;
 my $smallnum = 10000;
-my $queue = "long_serial";
+
 
 if ($count > 100) {
 	$bignum = int($count/100)*10000000;

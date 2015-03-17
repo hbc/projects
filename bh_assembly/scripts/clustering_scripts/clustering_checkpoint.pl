@@ -71,7 +71,7 @@ if (scalar(@rerun) > 0) {
 		chomp $jobarrayid;
 		print STDERR "Submitted job $jobarrayid - to rerun putative protein extraction jobs @rerun\n";
 	}
-	my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --exclude=$slurmexclude --mem=200 -n 1 -t 10 --job-name=$jobid\".\"RECLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
+	my $clustercheckpointid=`sbatch -d afterok:$jobarrayid --exclude=$slurmexclude --mem=200 -n 1 -t 30 --job-name=$jobid\".\"RECLUSCHK -p $slurmqueue --wrap=\"$script_dir/clustering_checkpoint.pl $count $jobid $assembly $refnum $reference\"| awk ' { print \$4 }'`;
 	chomp $clustercheckpointid;
 	print STDERR "Resubmitted job $clustercheckpointid - to check clusters\n";
 
@@ -94,7 +94,7 @@ if (scalar(@rerun) > 0) {
 	}
 
 	# submit the concatenation script
-	my $concatjobid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
+	my $concatjobid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 30 -p $slurmqueue --job-name=${jobid}.CAT --wrap=\"./concatenation_script.sh\" | awk ' { print \$4 }'`;
 	chomp $concatjobid;
 	print STDERR "Submitted job $concatjobid - concatenation script\n";
 	
@@ -118,7 +118,7 @@ if (scalar(@rerun) > 0) {
 	$" = ",";
 
 
-	my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+	my $blast_checkpointid=`sbatch -d afterok:$blastarrayid:$filterblastarrayid -n 1 --exclude=$slurmexclude --mem=200 -t 30  -p $slurmqueue --job-name=${jobid}.BLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blat_array @filter_array $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 	chomp $blast_checkpointid;
 		
 	foreach my $num (@file_nums) {
