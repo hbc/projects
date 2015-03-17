@@ -67,7 +67,7 @@ lowintensity.percentile=0.1
 mad.quantile.cutoff=0.1
 pvalue.cutoff=0.05
 highlight.color="green"
-lfc.cutoff=log2(1.5)
+lfc.cutoff=log2(2.5)
 ```
 
 ## Libraries
@@ -707,7 +707,7 @@ The algorithm takes into account the parent-child structure of the gene onotolog
 
 > If the p-values are quite close and one term is a child node of the other, REVIGO will tend to choose the parent term
 
-The algorithm also ytries to find more specific GO terms.
+The algorithm also tries to find more specific GO terms.
 
 > Very general GO terms, however, are always avoided as cluster representatives ... as they tend to be uninformative
 
@@ -1005,12 +1005,14 @@ However, these results could also  result from lower starting amounts for these 
 
 **As a whole, I'm not confident the mRNA results here are meaningful as the pulldown was performed on whole RNA and is not really directly comparable to the mRNA input.**
 
-## Kiebler Comparisons
- - are the genes pulled down in the Kielber et al. publication differnt than those seen here?
+## Kiebler/Maher/Furic Comparisons
+ - are the genes pulled down in the neural Stau2  publications differnt than those seen here?
  - this is complicated by Kiebler et al using rat genes one the rat gene array 1.0 ST arrays, but we can try to find a common set of orthologues to base our comparison on
     - first translated all genes assayed on the rat gene arrays to their mouse homologs
     - then found the genes/homologs common to both arrays
     - limited both enriched sets to these common homologs before comparing results
+  - the Maher data set is also composed of rat genes
+  
  
 ```{r kieblercompare}
 # setup biomarts for pulling in annoation translations
@@ -1020,55 +1022,59 @@ filters.rat <- listFilters(ensemblmart.rat)
 ensemblmart.mus <-  useMart("ensembl",dataset="mmusculus_gene_ensembl")
 attributes.mus <- listAttributes(ensemblmart.mus)
 filters.mus <- listFilters(ensemblmart.mus)
+ensemblmart.hsap <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
+attributes.hsap <- listAttributes(ensemblmart.hsap)
+filters.hsap <- listFilters(ensemblmart.hsap)
+setwd(resultsDir)
+save.image("RDATA")
 
-# get set of genes assayed by both microarray types as mouse ensemblids
-## pull in all genes assayed by rat gene 1.0 ST array (used for Kiebler et al.) as rat ensembl ids
-## note that we assume they did not filter out any genes/probes as there is no evidence of it in their publication
-library("ragene10sttranscriptcluster.db")
-assayed.kiebler.rat.ensemblids <- keys(ragene10sttranscriptcluster.db, "ENSEMBL")
-## translate these rat ensemblids to their mouse ensemblid homologs using biomart
-assayed.kiebler.mus.ensemblids <- getBM(assayed.kiebler.rat.ensemblids, filters="ensembl_gene_id", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat) %>% unlist(.) %>% as.vector(.)
-
-# pull in all genes assayed by mogene arrays (after filtering in this experiment)
-assayed.renal.mus.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(all.results[[1]]$stats.eset$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL
-
-# find intersection of the ensemblids that form the common background of both experiments
-common.assayed.ensemblids <- intersect(assayed.renal.mus.ensemblids, assayed.kiebler.mus.ensemblids)
-num.common.assayed.ensemblids <- length(common.assayed.ensemblids)
-
-# Now we can limit our pulldown genes from each dataset to this common set of genes
-# pull in kiebler data, translate rgd symbols to rat ensembl ids and then find mouse homolog ensembl ids
+# pull in kiebler data, translate rgd symbols to mouse homolog ensembl ids
 kiebler.data <- read.csv(file.path(dataDir, "mmc2.csv"))
-kiebler.rat.symbols <- unique(kiebler.data$Symbol)
-kiebler.rat.ensemblids <- getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="ensembl_gene_id", mart=ensemblmart.rat)
-kiebler.mus.ensemblids <- getBM(kiebler.rat.ensemblids, filters="ensembl_gene_id", attributes=c("mmusculus_homolog_ensembl_gene"), mart=ensemblmart.rat) %>% unlist(.) %>% as.vector(.)
-num.kiebler.mus.ensemblids <- length(kiebler.mus.ensemblids)
+kiebler.rat.symbols <- kiebler.data$Symbol %>% unique(.) %>% na.omit(.)
+kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+write(kiebler.mus.ensemblids,file.path(resultsDir, "kiebler.mus.ensemblids.txt"))
+
+# Maher data
+maher.data <- read.csv(file.path(dataDir, "Maher-Table S1.csv"),na.strings = c("", " "))
+maher.rat.symbols <-maher.data$symbol %>% unique(.) %>% na.omit(.)
+maher.mus.ensemblids <- as.vector(unlist(getBM(maher.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+write(maher.mus.ensemblids,file.path(resultsDir, "maher.mus.ensemblids.txt"))
+
+# Furic data
+# take union of genes pulled down by both isoforms
+furic59.data <- read.csv(file.path(dataDir, "Furic-TableS2-Stau2_59.csv"),na.strings = c("", " "))
+furic59.hsap.symbols <- na.omit(unique(furic59.data$symbol))
+furic62.data <- read.csv(file.path(dataDir, "Furic-TableS3-Stau2_62.csv"))
+furic62.hsap.symbols <- na.omit(unique(furic62.data$symbol))
+furic.hsap.symbols <- union(furic59.hsap.symbols, furic62.hsap.symbols)
+# convert human gene symbols to mouse homologs
+furic.mus.ensemblids <- as.vector(unlist(getBM(furic.hsap.symbols, filters="hgnc_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.hsap)))
+write(furic.mus.ensemblids,file.path(resultsDir, "furic.mus.ensemblids.txt"))
 
 # find ensembl ids of renal pulldown genes
 renal.data <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
-renal.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL
-num.renal.ensemblids <- length(renal.ensemblids)
+renal.mus.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
+write(renal.mus.ensemblids,file.path(resultsDir, "renal.mus.ensemblids.txt"))
+
+# all reported neural genes
+neural.mus.ensemblids <- unique(union(union(maher.mus.ensemblids, furic.mus.ensemblids), kiebler.mus.ensemblids))
+write(neural.mus.ensemblids,file.path(resultsDir, "neural.mus.ensemblids.txt"))
+
+png(file.path(resultsDir, "venneuler-2way.png"))
+plot(venneuler(c(renal=length(renal.mus.ensemblids), neural=length(neural.mus.ensemblids), "renal&neural"=length(intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)))))
+dev.off()
 
 
-# find the intersection of enriched ensembl ids
-overlap.ensemblids <- intersect(kiebler.mus.ensemblids, renal.ensemblids )
-num.overlap <- length(overlap.ensemblids)
+write(intersect(neural.mus.ensemblids, renal.mus.ensemblids), file=file.path(resultsDir, "neural-renal-enriched-genes.txt"))
 
-plot(venneuler(c(Neural=num.kiebler.mus.ensemblids, Renal=num.renal.ensemblids, "Neural&Renal"=num.overlap)))
 
-pval.overlap <-1- phyper(num.overlap, num.renal.ensemblids, num.common.assayed.ensemblids, num.kiebler.mus.ensemblids)
+
+
+
 
 
 ```
 
-Of the total `r num.common.assayed.ensemblids` homologs assayed by both experiments, the Kiebler data showed enrichment of `r num.kiebler.mus.ensemblids` homologs at a log2 fold change of at least `r lfc.cutoff` and an adjuste p-value of less than `r pvalue.cutoff` and the renal cells analysed here, `r num.renal.ensemblids` homologs. Of these enriched homologs, only `r num.overlap` were enriched in both assays, a non-significant overlap  (pvalue = `r pval.overlap`) as determined by a hypergeometric test i.e. an overlap this small could be expected to occur at random.
-
-The genes from both experiments are:
-
-```{r overlapgenes, results='asis'}
-overlap.symbols <- getBM(overlap.ensemblids, filters="ensembl_gene_id", attributes="mgi_symbol", mart=ensemblmart.mus) %>% unlist(.) %>% as.vector(.)
-kable(overlap.symbols)
-```
 
 
 ----
