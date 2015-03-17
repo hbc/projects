@@ -1,0 +1,361 @@
+---
+output:
+  html_document:
+    toc: true
+title: "Microarray of RIP-chip samples"
+theme: spacelab
+bibliography: "references.bib"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Valerie Schumacher "
+clientemail="Valerie.Schumacher@childrens.harvard.edu"
+labPI="Schumacher"
+lablocation="HMS"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+All MoGene 1.0 ST arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+---
+
+# Setup
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/"
+    } else if (file.exists("/Users/johnhutchinson/projects/vs_ripchip/")){
+    baseDir="/Users/johnhutchinson/projects/vs_ripchip/"
+    }
+
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+```
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables, echo=TRUE}
+library(knitr)
+library(oligo) # array utilities
+library(pd.mogene.1.0.st.v1)# array layout annotation
+library(mogene10sttranscriptcluster.db)
+library(arrayQualityMetrics) # array quality control reports
+library(limma) # array statistical analyses
+library(pheatmap) # pretty heatmaps
+library(plyr) # data format utility
+library(reshape2) # data format utility
+library(devtools) # install libraries from github
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(RColorBrewer)
+```
+
+## Functions
+
+```{r functions}
+# for plotting amount of variation explained by principal components
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+```
+
+---
+
+# Import Data and Metadata
+
+## Load Data
+
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- use array names to load in arrays 
+
+```{r dataload, results='hide'}
+covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+
+celFiles <- file.path(dataDir, row.names(covars))
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+sampleNames(affyRaw) <- pData(affyRaw)$sampleID
+validObject(affyRaw)
+rm(covars)
+```
+
+## Sample metadata
+
+```{r covars, results='asis', echo=FALSE}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+---
+
+# PreProcessing 
+
+## Raw Data QC
+
+- using arrayQualityMetrics library `r citep("Kauffmann_2008")`
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("pulldown", "source", "run"))
+```
+
+*[Raw Data QC Report](../results/report_raw/index.html)*
+
+The arrays look fine, no problems at all.
+
+## Normalize Data
+
+### Background Correct and Normalize with RMA
+
+- using RMA `r citep("10.1093/bioinformatics/19.2.185")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+```
+
+The arrays look good, and the clustering looks very good. 
+
+#### RMA Normalized Data QC
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("pulldown", "source", "run"))
+```
+
+[Normalized Data QC Report](../results/report_rma.core/index.html)
+
+The mRNA input sample has clear differences from the whole RNA input samples, more than can be attributed to batch effect, given how closely the *Stau2* pulldown whole RNA repeat sample from the same run clusters with the *Stau2* whole RNa samples from the first run.
+ 
+**For now, I'm only going to deal with the whole RNA samples, so I removed the second run of samples here.**
+ 
+```{r removeSHsamples}
+affyNorm.core <- affyNorm.core[,which(pData(affyNorm.core)$run=="1")]
+# drop unused levels from pData as well
+pData(affyNorm.core) <- as.data.frame(apply(pData(affyNorm.core), 2, function(x) factor(x)))
+```
+
+#### Unsupervised Clustering of RMA Normalized Data
+
+##### Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+```{r cluster1, out.width='100%'}
+plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="pulldown")
+```
+
+##### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. 
+
+```{r PCAsd1, out.width='75%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, each point depicts the amount of variation explained by each component and the line shows the cumulative amount. For this data set,  very few dimensions (3) can explain >75% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first three principal components. In the first plot, each sample group is represented by a separate color and in the second plot each sample is represented by a different color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In this plot, shape is determined by treatment and color determined by genotype.
+
+```{r pca1, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='100%'}
+PCAplot.eset(affyNorm.core, categories="pulldown", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+```
+
+There is  a high degree of clustering by pulldown type. So much so, that when you plot PC1 against PC2, both the input samples and stau2 samples largely overlap their respective sample groups. These results are consistent with a lower level of biological variation, likely resulting from the use of a single cell line for the experiment, making these replicates closer to technical replicates.
+
+---
+
+## Annotate
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+```{r features, results='hide'}
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+```
+
+
+## Filter
+Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Start with `r `r nrow(fData(affyNorm.core))` probes remaining
+
+### By Annotation
+- remove the control probes
+
+```{r filter1}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$category=="main"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3, cache=TRUE}
+eset.core <- exprs(affyNorm.core)
+affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), 0.1)))),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+eset.core <- exprs(affyNorm.core)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+---
+
+## Statistical Analyses
+
+### Limma
+
+A linear model for microarray data analysis (Limma `r citeb("http://www.bioconductor.org/packages/release/bioc/html/limma.html")) was performed on the samples to identify differentially expressed genes for comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest.
+
+#### Create appropriate design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+- in this case it looks like this, where 1-5 are the 5 non-outlier microarrays
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0 + group,  data=pData(affyNorm.core))
+# make sure the headings match
+colnames(design) <- sub("group", "", colnames(design))
+
+kable(design)
+```
+
+#### Create contrast matrix
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+I  setup three  contrasts, one to select genes that show a significant expression change between the input and pulldown Stau2 samples, one to one to select genes that show a significant expression change between the input and pulldown WT1 samples and finally, one designed to find genes that differ in how the two pulldowns differ from the input samples, or the difference of differences. In stats terms, this final contrast is called an interaction term.
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(stau2=stau2_whole-input_whole, 
+                                 wt1=wt1_whole-input_whole,
+                                 pulldown.differences=(stau2_whole-input_whole)-(wt1_whole-input_whole), 
+                                 levels=colnames(design))
+
+dimnames(contrast.matrix)$Contrasts <- gsub(" " , "", dimnames(contrast.matrix)$Contrasts)
+
+kable(contrast.matrix)
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+#### Fit a linear model
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+eset.core <- exprs(affyNorm.core)
+
+fit.core <- lmFit(eset.core, design) 
+```
+
+#### Compute estimated coefficients and standard errors for contrasts
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+#### Compute moderated t-statistics and log-odds of differential expression 
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+
+
+
+
+
+
+
+
+# References
+
+```{r writebib, results='hide', echo=FALSE, message=FALSE}
+write.bibtex(file="references.bib")
+```
