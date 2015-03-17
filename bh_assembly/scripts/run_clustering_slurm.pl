@@ -14,7 +14,7 @@ my $slurmmem = "2000";
 $ENV{SLURMMEM} = $slurmmem;
 my $slurmtime = "420";
 $ENV{SLURMTIME} = $slurmtime;
-my $slurmexclude = "nelson01,nelson02";
+my $slurmexclude = "nelson01,nelson02,hsph06";
 $ENV{SLURMEXCLUDE} = $slurmexclude;
 # random number for job submission/dependencies
 

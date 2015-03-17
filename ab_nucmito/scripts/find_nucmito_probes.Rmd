@@ -1,26 +1,23 @@
 ---
 output:
-  knitrBootstrap::bootstrap_document:
-    title: "Test file"
-    theme: amelia
-    highlight: sunburst
-    theme.chooser: TRUE
-    highlight.chooser: TRUE
+  html_document:
+    toc: true
+title: "450K probes around nuclear mitochondrial genes"
+theme: spacelab
+highlight: textmate
 ---
 
+# Setup
 
-# Load libraries
+## Load libraries
 ```{r libraries}
 library(biomaRt)
 library(knitr)
 library(stringr)
 library(xlsx)
-library(ggplot2)
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
-
 ```
 
-# Functions
+## Functions
 ```{r functions}
 bedTools.2in<-function(functionstring="bedtools intersect",bed1,bed2,opt.string="") {
   #create temp files
@@ -42,13 +39,15 @@ bedTools.2in<-function(functionstring="bedtools intersect",bed1,bed2,opt.string=
   unlink(a.file);unlink(b.file);unlink(out)
   return(res)
 }
-bedTools.slop <- function(functionstring="bedtools slop", genomefile, bed1, opt.string="") {
+bedTools.slop<-function(functionstring="bedtools slop", genomefile, bed1, opt.string="") {
   #create temp files
   a.file <- tempfile()
   out  <- tempfile()
   options(scipen=99) # not to use scientific notation when writing out
+  
   #write bed formatted dataframes to tempfile
   write.table(bed1,file=a.file,quote=F,sep="\t",col.names=F,row.names=F)
+  
   # create the command string and call the command using system()
   command <- paste(functionstring,"-i",a.file,"-g", genomefile, opt.string,">",out,sep=" ")
   cat(command,"\n")
@@ -59,28 +58,9 @@ bedTools.slop <- function(functionstring="bedtools slop", genomefile, bed1, opt.
   return(res)
   }
 
-bedTools.flank <- function(functionstring="bedtools flank -s", genomefile, bed1, opt.string="") {
-  #create temp files
-  a.file <- tempfile()
-  out  <- tempfile()
-  options(scipen=99) # not to use scientific notation when writing out  
-  #write bed formatted dataframes to tempfile
-  write.table(bed1,file=a.file,quote=F,sep="\t",col.names=F,row.names=F)
-  
-  # create the command string and call the command using system()
-  command <- paste(functionstring,"-g", genomefile, opt.string, "-i", a.file, ">", out, sep=" ")
-  cat(command,"\n")
-  try(system(command))
-  
-  res <- read.table(out,header=F)
-  unlink(a.file);unlink(out)
-  return(res)
-  }
-
 ```
 
-
-# Set directories
+## Set directories  
 
 ```{r directories}
 baseDir <- "~/projects/ab_nucmito/"
@@ -89,7 +69,7 @@ resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
 ```
 
-# Load data
+## Load data
 - using mitochondrial data from the [microproteome site](http://www.mitoproteome.org/data/proteome/index.html)
 
 ```{r dataload}
@@ -97,7 +77,11 @@ annots.450k <- read.csv(file.path(dataDir, "14_April_2014_Updated_humanmethylati
 annots.mito <- read.delim(file.path(dataDir, "mitoproteome.tsv"))
 ```
 
-# Find genomic locations of mitochondrial genes using biomaRt
+---
+
+# Analysis
+
+## Find genomic locations of mitochondrial genes using biomaRt  
 
 ## setup biomart
 
@@ -116,7 +100,7 @@ filters <- listFilters(ensemblmart)
 mito.pos <- getBM(annots.mito$ACCESSION,filters="uniprot_swissprot_accession", attributes=c("uniprot_swissprot_accession","chromosome_name","transcript_start","transcript_end", "strand", "hgnc_symbol"), mart=ensemblmart)
 ```
 
-# Subset genes to those on nuclear chromosomes  
+## Subset genes to those on nuclear chromosomes    
 - dicard all mitochondrial, patches and polymorphic regions
 - discard genes without annotated gene symbol
 - convert to [BED format](http://genome.ucsc.edu/FAQ/FAQformat.html#format1)
@@ -131,25 +115,25 @@ mito.pos <- mito.pos[,c(2,3,4,6,7,5)]
 mito.pos$chromosome_name <- paste("chr", mito.pos$chromosome_name, sep="")
 # drop genes without known symbol
 mito.pos <- mito.pos[which(str_length(mito.pos$hgnc_symbol)>0),]
-mito.pos$strand <-   ifelse(mito.pos$strand=="-1", "-", "+")
 ```
 
-# Mitochondrial genes on nuclear chromosomes
+## Mitochondrial genes on nuclear chromosomes  
 
 ```{r printmitogenes, results='asis'}
-kable(mito.pos)
+#kable(mito.pos)
+write.xlsx2(mito.pos, file="nuclear.mitochondrial.genes.xlsx")
 ```
 
-# Get coordinates of regions around nuclear mitochondrial genes
+### [Excel file with mitochondrial genes on nuclear chromosome](nuclear.mitochondrial.genes.xlsx)
+
+## Get coordinates of regions around nuclear mitochondrial genes  
 3kb upstream of the TSS and 3Kb downstream of transcript end
 
 ```{r getpromoters}
 mito.pos.flanked <- bedTools.slop(bed1 = mito.pos, opt.string = "-b 3000", genomefile = "~/projects/ab_nucmito/meta/hg19.genome")
-mito.pos.upstream <- bedTools.flank(bed1 = mito.pos, opt.string = "-l 3000 -r 0", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
-mito.pos.downstream <- bedTools.flank(bed1 = mito.pos, opt.string = "-l 0 -r 3000", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
 ```
 
-# Find 450K probes within flanks and genes of nuclear mitochondrial genes
+## Find 450K probes within flanks and genes of nuclear mitochondrial genes  
 
 ## Extract coordinates (Human Genome build GRCh37) of 450K probes from annotation file and convert to BED format
 ```{r 450kextract}
@@ -161,7 +145,7 @@ bed.450K$chr <- paste("chr", bed.450K$chr, sep="")
 bed.450K <- bed.450K[,c("chr", "start", "end", "name")]
 ```
 
-## Overlap 450K probe coordinates with flanks of nuclear mitochondrial gene coordinates
+## Overlap 450K probe coordinates with flanked nuclear mitochondrial gene coordinates
 
 ```{r overlap}
 probes450K.in.flanked.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.flanked,opt.string="-wo")
@@ -170,75 +154,21 @@ names(probes450K.in.flanked.nucmitos) <- c("chr", "start", "end", "probeID", "ov
 # sort and remove duplicates
 probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[with(probes450K.in.flanked.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(probes450K.in.flanked.nucmitos),]
-
-##########################
-##########################
-probes450K.in.upstream.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.upstream,opt.string="-wo")
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.upstream.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
-# sort and remove duplicates
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[with(probes450K.in.upstream.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.upstream.nucmitos <- probes450K.in.upstream.nucmitos[!duplicated(probes450K.in.upstream.nucmitos),]
-
-##########################
-##########################
-
-probes450K.in.downstream.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.downstream,opt.string="-wo")
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.downstream.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
-# sort and remove duplicates
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[with(probes450K.in.downstream.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.downstream.nucmitos <- probes450K.in.downstream.nucmitos[!duplicated(probes450K.in.downstream.nucmitos),]
-
-##########################
-##########################
-
-probes450K.in.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos,opt.string="-wo")
-probes450K.in.nucmitos <- probes450K.in.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
-# sort and remove duplicates
-probes450K.in.nucmitos <- probes450K.in.nucmitos[with(probes450K.in.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.nucmitos <- probes450K.in.nucmitos[!duplicated(probes450K.in.nucmitos),]
-
 ```
 
-# Output results
+---
+
+# Results
 
 ```{r output}
-kable(probes450K.in.flanked.nucmitos, row.names=F)
-setwd(resultsDir)
+#kable(probes450K.in.flanked.nucmitos, row.names=F)
 write.xlsx2(probes450K.in.flanked.nucmitos, file="probes450K.in.flanked.nucmitos.xlsx")
-write.xlsx2(probes450K.in.upstream.nucmitos, file="probes450K.in.upstream.nucmitos.xlsx")
-write.xlsx2(probes450K.in.downstream.nucmitos, file="probes450K.in.downstream.nucmitos.xlsx")
-write.xlsx2(probes450K.in.nucmitos, file="probes450K.in.nucmitos.xlsx")
 ```
 
-[Excel file with results](../results/probes450K.in.flanked.nucmitos.xlsx)
 
-# Plot categorical results
-
-```{r plotcategories, dev="svg"}
-
-num.genic <- length(unique(probes450K.in.nucmitos$probeID))
-num.upstream <- length(unique(probes450K.in.upstream.nucmitos$probeID))
-num.downstream <- length(unique(probes450K.in.downstream.nucmitos$probeID))
-
-nums <- as.data.frame(c(num.upstream,num.genic, num.downstream))
-names(nums) <- "count"
-nums$category <- c("upstream","genic",  "downstream")
-nums <- within(nums, category <- factor(category,levels=c("upstream", "genic","downstream"))) # rearrange factor levels for plot
+### [Excel file with results](probes450K.in.flanked.nucmitos.xlsx)
 
 
 
-pdf(file.path(resultsDir, "probe.categories.plot.pdf"))
-# plot bars and add text
-p <- ggplot(nums, aes(x = category, y = count, fill=factor(category))) +
-  geom_bar(stat="identity")+
-  scale_fill_manual(values=cbPalette)+
-  theme_bw()+ 
-  theme(legend.title=element_blank())+
-  theme(axis.title.x = element_blank())
-p+ geom_text(data=nums,aes(x=category,y=0.5*count,label=count), size=2.5) 
-dev.off()
 
 

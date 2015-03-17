@@ -76,7 +76,7 @@ foreach my $key (@blat_array) {
 
 if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	
-	my $cogAid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.COGA --wrap=\"./cogtriangle_run_A.sh\" | awk ' { print \$4 }'`;
+	my $cogAid=`sbatch -n 1 --exclude=$slurmexclude --mem=200 -t 120 -p $slurmqueue --job-name=$jobid.COGA --wrap=\"./cogtriangle_run_A.sh\" | awk ' { print \$4 }'`;
 	chomp $cogAid;
 	#system "bsub -o all.log -e all.err -q long_serial -J $jobid.cogA -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' ./cogtriangle_run_A.sh";
 	print STDERR "Submitted cogtriangle-A job $cogAid\n";
@@ -87,13 +87,13 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	print STDERR "Submitted cogtriangle-B job $cogBid\n";
 
 
-	my $cogCid=`sbatch -d afterok:$cogBid -n 1 --exclude=$slurmexclude --mem=$slurmmem -t 10 -p $slurmqueue --job-name=$jobid.COGC --wrap=\"./cogtriangle_run_C.sh\" | awk ' { print \$4 }'`;
+	my $cogCid=`sbatch -d afterok:$cogBid -n 1 --exclude=$slurmexclude --mem=$slurmmem -t 30 -p $slurmqueue --job-name=$jobid.COGC --wrap=\"./cogtriangle_run_C.sh\" | awk ' { print \$4 }'`;
 	chomp $cogCid;
 	#system "bsub -w \"ended($jobid.cogB)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cogC ./cogtriangle_run_C.sh";
 	print STDERR "Submitted cogtriangle-C job $cogCid\n";
 
 
-	my $postprocesscogsid=`sbatch -d afterok:$cogCid -n 1 --exclude=$slurmexclude --mem=200 -t 10 -p $slurmqueue --job-name=$jobid.PPCOGS --wrap=\"$script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum\" | awk ' { print \$4 }'`;
+	my $postprocesscogsid=`sbatch -d afterok:$cogCid -n 1 --exclude=$slurmexclude --mem=200 -t 30 -p $slurmqueue --job-name=$jobid.PPCOGS --wrap=\"$script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum\" | awk ' { print \$4 }'`;
 	chomp $postprocesscogsid;
 	#system "bsub -w \"ended($jobid.cogC)\" -o all.log -e all.err -q long_serial -M 16000000 -R 'select[mem>16000] rusage[mem=16000]' -J $jobid.cluchk $script_dir/post_process_COGs.pl all.strains.cls.out.csv ./blaf/filtered.all.strains.blast.tab all.strains.csv $refnum";
 	print STDERR "Submitted COG post-processing job $postprocesscogsid\n";
@@ -102,7 +102,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 	my $embl = $reference;
 	$embl =~ s/_1.fastq|.dna|.fasta|.seq|.fa/.embl/g;
 	
-	my $extractannotateorthologsid=`sbatch -d afterok:$postprocesscogsid -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=$jobid.EXANORTH --wrap=\"$script_dir/extract_annotate_orthologues.pl $count $refnum $embl\" | awk ' { print \$4 }'`;
+	my $extractannotateorthologsid=`sbatch -d afterok:$postprocesscogsid -n 1 --exclude=$slurmexclude --mem=200 -t 30  -p $slurmqueue --job-name=$jobid.EXANORTH --wrap=\"$script_dir/extract_annotate_orthologues.pl $count $refnum $embl\" | awk ' { print \$4 }'`;
 	chomp $extractannotateorthologsid;
 	#system "bsub -o all.log -e all.err -q $queue -M $bignum -R 'select[mem>$smallnum] rusage[mem=$smallnum]' -w \"ended($jobid.cluchk)\" $script_dir/extract_annotate_orthologues.pl $count $refnum $embl";
 	print STDERR "Submitted Ortholog extraction and annotation job $extractannotateorthologsid \n";
@@ -146,7 +146,7 @@ if ($#filter_rerun == -1 && $#blast_rerun == -1) {
 		push(@blast_rerun,"0");
 	}
 	
-	my $blast_checkpointid=`sbatch -d afterok:$dependency_string -n 1 --exclude=$slurmexclude --mem=200 -t 10  -p $slurmqueue --job-name=${jobid}.REBLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blast_rerun @filter_rerun $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
+	my $blast_checkpointid=`sbatch -d afterok:$dependency_string -n 1 --exclude=$slurmexclude --mem=200 -t 30  -p $slurmqueue --job-name=${jobid}.REBLACHK --wrap=\"$script_dir/blast_checkpoint.pl @blast_rerun @filter_rerun $count $jobid $reference $refnum\" | awk ' { print \$4 }'`;
 	chomp $blast_checkpointid;
 
 }

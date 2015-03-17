@@ -180,7 +180,7 @@ my $bapssetupid=`sbatch --job-name=$jobid.BAPS --exclude=$slurmexclude --mem=100
 chomp $bapssetupid;
 #JH system "bsub -J $jobid"."BAPS -o baps.o -e baps.e -M 10000000 -R 'select[mem>10000] rusage[mem=10000]' -q long_serial 'module load bio/BAPS;run_baps6.sh /n/sw/matlab-2010a/MATLAB_Compiler_Runtime/v713/ core_baps.runfile'";
 
-my $bapsclustid=`sbatch -d afterok:$bapssetupid --job-name=$jobid.BAPCLUS --exclude=$slurmexclude  --mem=1000 -t 10 -n 1 -p $slurmqueue --wrap=\"$script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt\" | awk ' { print \$4 }'`;
+my $bapsclustid=`sbatch -d afterok:$bapssetupid --job-name=$jobid.BAPCLUS --exclude=$slurmexclude  --mem=1000 -t 30 -n 1 -p $slurmqueue --wrap=\"$script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt\" | awk ' { print \$4 }'`;
 chomp $bapsclustid;
 #JH system "bsub -w \"ended($jobid"."BAPS)\" -o baps.o -e baps.e $script_dir/process_BAPS.pl strain.info baps_clustering.mat.txt";
 
