@@ -39,6 +39,39 @@ library(ff)
 library(Illumina450ProbeVariants.db)
 library(limma)
 library(ffbase)
+library(reshape2)
+library(ggplot2)
+cbPalette=cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+## Functions
+
+```{r functions}
+PCAplot.df <- function(df=NULL, meta.df=NULL, categories=NULL, title=NULL, colorpalette=NULL, alpha=1, numcomponents=6, size=2,  symbol=19){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  myPca.core <- prcomp(t(df))
+  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:numcomponents])
+  # SD of components
+  colors <- colorpalette[factor(as.character(unlist(meta.df[,categories])))]
+  legend_values=unique(cbind(colors, as.character(meta.df[,categories])))
+  pairs(tmpPCAData.core, col=colors, cex=size, pch=symbol, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=legend_values[,1], pt.cex=1.5, legend=legend_values[,2],  pch=21, bty="n", x.intersp=1)
+}
+
+PCAplot.sd.df <- function(df=NULL, title=NULL){
+  myPca.core <- prcomp(t(df))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
 ```
 
 ## Load Data
@@ -243,7 +276,7 @@ Filtering for SNPs removed `r unfiltered.SNP.probe.nums-nrow(pvals.ff)` probes, 
 - calcuate standard deviations of these means
 - annotate probes with Illumina annotations (HumanMethylation450 v1.2 Manifest File, aka HumanMethylation450_15017482_v1-2.csv)
 
-```{r meandiffs}
+```{r meandiffs, cache=TRUE}
 rm(unfiltered.SNP.probe.nums,num.probes.with.SNPs.10, num.probes.with.SNPs.CpG, good.probes, pvals.ff, get.quant, probe.450k.variants, pvals.ff, pvals.ffdf)
 gc()
 
@@ -303,7 +336,7 @@ rm(betas.diff, betas.diff.means, betas.diff.sds, betas.diff.stats.annot, betas.f
 - theshold all beta values to between 0.001 and 0.999 to avoid non-finite M-values
 - $M=\log2(\frac{beta}{1-beta})$
 
-```{r calcM}
+```{r calcM, cache=TRUE}
 # run limma on M values
 # threshold the beta values befor ecalculating M (from minfi guide)
 calcM <- function(x){
@@ -352,14 +385,14 @@ fit2 <- eBayes(fit)
 stats <- topTable(fit2, coef="timepointsF7", p.value=1, number=nrow(Mvals))
 
 annots.sub <- annots[,c("IlmnID", 
-                                  "Genome_Build", 
-                                  "CHR", 
-                                  "MAPINFO", 
-                                  "Probe_SNPs", 
-                                  "Probe_SNPs_10", 
-                                  "UCSC_RefGene_Name", 
-                                  "UCSC_RefGene_Accession",
-                                  "UCSC_RefGene_Group"), ]
+                        "Genome_Build", 
+                        "CHR", 
+                        "MAPINFO", 
+                        "Probe_SNPs", 
+                        "Probe_SNPs_10", 
+                        "UCSC_RefGene_Name", 
+                        "UCSC_RefGene_Accession",
+                        "UCSC_RefGene_Group"), ]
 row.names(annots.sub) <- annots.sub$IlmnID
 
 # find probes with significant and large changes
@@ -383,38 +416,69 @@ save.image(file.path(resultsDir, "RDATA"))
 
 ```
 
-## Subset to candidate regions
-- exclude 
+# Cell composition studies
 
-# Wilcoxon tests?
+```{r cellcompplots}
+cellcomps.7 <- read.csv(file.path(metaDir, "F7houseman.csv"))
+cellcomps.15 <- read.csv(file.path(metaDir, "15uphouseman.csv"))
 
-pvals <- c()
-for (n in 1:nrow(Mvals.7)){
-  # drop any non finite M values from calculation
-  omit.7 <- which(!is.finite(Mvals.7[n,]))
-  omit.15 <- which(!is.finite(Mvals.15[n,]))
-  omits <- c(omit.7, omit.15)
-  if (length(omits)>0) {
-    pvals[n] <- wilcox.test(Mvals.7[n,-(omits)], Mvals.15[n,-(omits)], paired=TRUE)$p.value
-    } else {
-      pvals[n] <- wilcox.test(Mvals.7[n,], Mvals.15[n,], paired=TRUE)$p.value
-      }
-  }
+# boxplots with ggplot
+cellcomps.7.m <- melt(cellcomps.7, id="X")
+cellcomps.7.m$age <- 7
+cellcomps.15.m <- melt(cellcomps.15, id="X")
+cellcomps.15.m$age <- 15
+cellcomps.m <- rbind(cellcomps.7.m, cellcomps.15.m)
+
+p <- ggplot(cellcomps.m, aes(y=value, x=factor(age), fill=factor(age)))+geom_boxplot()+facet_wrap(~variable, ncol=3)
+p+ ggtitle("Cell compositions of age groups")+xlab("age")+ylab("percentage")+scale_fill_discrete(name="age")+scale_x_discrete(name="")+theme(axis.ticks = element_blank(), axis.text.x = element_blank())
 
 
-# minfi bumphunter?
-betas <- betas.ff[1:nrow(betas.ff), 1:ncol(betas.ff)]
+# labelled PCA plots
+row.names(cellcomps.7) <- cellcomps.7$X
+cellcomps.7$X <- NULL
+row.names(cellcomps.7) <- paste(row.names(cellcomps.7), "7", sep="_")
+row.names(cellcomps.15) <- cellcomps.15$X
+cellcomps.15$X <- NULL
+row.names(cellcomps.15) <- paste(row.names(cellcomps.15), "15", sep="_")
 
-rset <- RatioSet(Beta=betas)
-pData(rset) <- metadata
-validObject(rset)
-annot.info <- c("IlluminaHumanMethylation450k", "ilmn12.hg19")
-names(annot.info) <- c("array", "annotation")
-annotation(rset) <- annot.info
+cellcomps <- rbind(cellcomps.7, cellcomps.15)
+cellcomp.metadata <- as.data.frame(c(rep("F7",nrow(cellcomps.7) ), rep("15up", nrow(cellcomps.15))))
+names(cellcomp.metadata) <- "age"
 
-rset.sub <- rset[1:10000,]
-
-temp <- mapToGenome(rset.sub)
-# 
-test <- bumphunter(temp, design=design, coef=5, pickCutoff=TRUE, B=100)
+PCAplot.sd.df(df=t(cellcomps))
+PCAplot.df(df=t(cellcomps), meta.df=cellcomp.metadata, categories = "age", title="PCA plot of age and cell composition", colorpalette = cbPalette[c(3,7)], alpha=0.3, numcomponents = 4, size=1, symbol=18)
 ```
+
+## Limma with Houseman-based cell composition covariates
+
+```{r limmacellcomp}
+# change cell composition matrix row.names to match metadata, subset to samples in use, merge with metadata
+row.names(cellcomps) <- paste("X", row.names(cellcomps), sep="")
+cellcomps <- cellcomps[row.names(metadata),]
+metadata <- cbind(metadata,cellcomps)
+
+# make design matrix for limma
+design.cellcomp <- model.matrix(~collabids + timepoints + CD8T + CD4T + NK + Bcell + Mono + Gran, metadata)
+
+# run limma
+fit.cellcomp <- lmFit(Mvals, design)
+fit2.cellcomp <- eBayes(fit)
+stats.cellcomp <- topTable(fit2, coef="timepointsF7", p.value=1, number=nrow(Mvals))
+
+# find probes with significant and large changes
+top.probes.cellcomp <- row.names(subset(stats.cellcomp, logFC>0.4 & adj.P.Val<0.05))
+
+# annotate results and attached additional stats
+stats.annots.top.probes.cellcomp <- do.call(cbind, list(stats[top.probes.cellcomp,], betas.means[top.probes.cellcomp,], betas.diff.stats[top.probes.cellcomp,],annots.sub[top.probes.cellcomp,]))
+
+# filter for CpGs at upstream or at start of gene
+stats.annots.top.upstream.cellcomp <- stats.annots.top.probes.cellcomp[grepl("TSS1500|TSS200|1stExon|5'UTR", stats.annots.top.probes.cellcomp$UCSC_RefGene_Group),]
+
+stats.annots.top.upstream.cellcomp <- stats.annots.top.upstream.cellcomp[order(abs(stats.annots.top.upstream.cellcomp$logFC)),]
+
+write.table(stats.annots.top.upstream.cellcomp, file=file.path(resultsDir, "stats.annots.top.upstream.cellcomp.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(stats.annots.top.probes, file=file.path(resultsDir, "stats.annots.top.all.cellcomp.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+
+save.image(file.path(resultsDir, "RDATA"))
+```
+
