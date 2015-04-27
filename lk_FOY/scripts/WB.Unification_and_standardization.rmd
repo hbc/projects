@@ -1,19 +1,30 @@
-```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/WB-unify-", cache.path="cache/WB-unify-")
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "Unification and Standardization of Sepsis Studies"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
-# UNIFICATION AND STANDARDIZATION OF STUDIES
+# UNIFICATION AND STANDARDIZATION OF SEPSIS STUDIES
 
 ---
 
-Analysis of public datasets for differential gene expression signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program.
+Analysis of public datasets for differential gene expressi  on signatures between adults and children for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. 
 
 Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
 
 The most recent update of this html document occurred: `r date()`
 
-The sections below provide code to reproduce the included results and plots. 
+The sections below provide code to reproduce the included resulsts and plots. 
 
 ----
 
@@ -28,29 +39,34 @@ library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
 library(RColorBrewer) # library for generating color palettes
 library(googleVis) # library for presenting tables
+library(stringr) #string manipulation
+library(lubridate)
 ```
 
 ## Locations of directories for data, metadata and results
 
 ```{r general_directories}
-if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY")) {
-  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY"
-  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/")) {
-    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY"
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/sepsis"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/sepsis")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/sepsis"
     } else {
-      baseDir <- "/Volumes/ody/consults/lk_FOY"
+      baseDir <- "/Volumes/ody/consults/lk_FOY/sepsis"
       }
-dataDir <- file.path(baseDir, "data")
+dataDir <- file.path(baseDir, "data", "WB")
 resultsDir <- file.path(baseDir, "results", "WB")
 metaDir <- file.path(baseDir, "meta", "WB")
 ````
 
 ----
 
-# INITIAL DOWNLOAD of METATDATA
+# CURATION and UNIFICATION OF DATA
+
 ## Obtaining metadata for all studies 
-In this section, I downloaded the metadata for all the whole blood studies Les shared in his [file](../meta/WB/MoreNormalsForPathPrint.pages)
-I used two [Bioconductor][1] libraries to interface with the [Gene Expression Omnibus][2] and [Array Express][3] databases ([GEOquery][4] and [ArrayExpress][5] respectively). 
+
+In this section, I downloaded the metadata for all the whole blood studies Les shared in his original [Sepsis/Injury Data Sets document](../meta/WB/SepsisDataSetsU133Plus2.pages) and updated  [Sepsis/Injury Data Sets document](../meta/WB/AdultSepsisDataSetsUpdateJan122014.xlsx).
+
+I used the [Bioconductor][1] library [GEOQuery][2] to interface with the [Gene Expression Omnibus][3] and the [ArrayExpress][4] library to interface with the [Array Express][5] database.
 
 ```{r database_download_libraries}
 library(GEOquery)
@@ -58,76 +74,68 @@ library(ArrayExpress)
 ```
 
 ### Load in the series IDs of the GEO studies
+
 The IDs of the GEO series (GSEs) are:
 
 ```{r GEOIDs}
-GSE.ids <- c("GSE10715","GSE11375","GSE16028","GSE16059","GSE19743","GSE3284","GSE37171","GSE14844","GSE26378","GSE26440","GSE8121","GSE9692","GSE35571","GSE46449","GSE16059","GSE25414","GSE54247","GSE53195","GSE34404","GSE42826","GSE38900","GSE47728","GSE33828","GSE53195","GSE40396","GSE45603","GSE35846","GSE48152","GSE36382","GSE33321","GSE20142","GSE40561","GSE42026","GSE22098","GSE52005","GSE3846","GSE45878","GSE41890","GSE22255","GSE47353","GSE53823","GSE21311","GSE46743","GSE42002","GSE47727","GSE16561","GSE55319","GSE48348")
-GSE.ids=sub(" .*" , "", GSE.ids)
-GSE.ids=sub(" .*" , "", GSE.ids)
-print(GSE.ids)
+GSEids <- c("GSE28750", "GSE11755", "GSE4607", "GSE13904", "GSE26440", "GSE26378", "GSE9692", "GSE36809", "GSE11375", "GSE13015","GSE10474","GSE32707","GSE40586","GSE5580","GSE22278","GSE3026","GSE3284", "GSE54514", "GSE57065")
+# GSE32707 not in barcode or pathprint database - ignored
+ 
+AEids <- c("MEXP-3621")
+print(GSEids)
+print(AEids)
 ```
 
-**There are `r length(GSE.ids)` GEO series in total**
+**This leaves `r length(GSEids)` GEO series and `r length(AEids)` Array Express studies in total**
 
 ### Data for each GEO series was downloaded via GEOquery into separate directories by series ID
 - for series with more than one dataset (GDS), I numbered the metadata files separately, according to their order in the series  metadata
 - for series with only one dataset, the metadata file contains the number "1"
 
 ```{r GEOquerypDATA, eval=FALSE}
-for (GSE.id in GSE.ids) {
+for (GSEid in GSEids) {
+  print(GSEid)
   # name of the directory receiveing the files
-  gse.dataDir=file.path(dataDir, GSE.id) 
+  gse.dataDir=file.path(dataDir, GSEid) 
   # check to see if this directory exists already 
   if (!(file.exists(gse.dataDir))) { 
     # if it does not, create it
     dir.create(gse.dataDir) 
     }
   # pull down the available series data, using exception handling (i.e. try())
-  gse <- try(getGEO(GSE.id, destdir=gse.dataDir)) 
+    gse <- try(getGEO(GSEid, destdir=gse.dataDir)) 
   # for every dataset within the series
-  for(n in 1:length(gse)){ 
+  for(n in 1:length(gse)){
     # grab the metadata
-    metadata <- pData(gse[[n]]) 
+    metadata <- pData(gse[[n]])
      # discard columns you aren't interested in
     metadata <- metadata[,!grepl("data_row_count|status|submission_date|last_update_date|channel_count|scan_protocol|data_processing|hyb_protocol|taxid_ch1|label|contact", names(metadata))]
     # filename to writout the metadata, contains the series id and the number of the dataset 
-    file.out <- paste("metadata", GSE.id, n, "tab", sep=".") 
+    file.out <- paste("metadata", GSEid, n, "tab", sep=".")
     # write out to tab-delimited file, retaining column names
-    write.table(metadata, file=file.path(gse.dataDir, file.out), quote=F, sep="\t", col.names=T, row.names=F) 
+    write.table(metadata, file=file.path(gse.dataDir, file.out), quote=F, sep="\t", col.names=T, row.names=F)
     # sleep 5 seconds between downloads so you don't hammer the GEO server, as it seems to be a bit unstable
-    Sys.sleep(5) 
+    Sys.sleep(5)
     }
   }
-```
-
-
-### Load in the Array Express IDs of the Array Express studies
-The IDs of the Array Express studies are: 
-
-```{r AEids}
-AE.ids <- c("MEXP-2917", "MEXP-3567", "MEXP-884", "MTAB-25", "TABM-666","TABM-940")
-print(AE.ids)
 ```
 
 ### Data for each Array Express series was downloaded with ArrayExpress into separate directories by series ID
 
 ```{r AEquerypData, eval=FALSE}
-for (AE.id in AE.ids) {
-  ae.dataDir=file.path(dataDir, AE.id)
+for (AEid in AEids) {
+  ae.dataDir=file.path(dataDir, AEid)
   if (!(file.exists(ae.dataDir))) {
     dir.create(ae.dataDir)
   }
-  ae <-   try(ArrayExpress(accession=paste("E", AE.id, sep="-"), path=ae.dataDir, save=TRUE,  ))
+  ae <-   try(ArrayExpress(accession=paste("E", AEid, sep="-"), path=ae.dataDir, save=TRUE  ))
   Sys.sleep(5)
 }
 ```
 
-- for the Array Express studies, there was no need to export the metadata from R as the ArrayExpress library downloads all raw data files and metadata
-  - metadata was saved in *sdrf files
-- edited all the Array Express metadata files manually for import into R
-  - removed spaces from headers
-  - converted all "#" characters to "_" characters in the main body of the table
-  - reformatted line breaks where necessary
+---
+
+## Hand Curation
 
 These GEO and ArrayExpress metadata files were then individually hand examined to determine, if available:  
 1. column headers for:
@@ -135,41 +143,446 @@ These GEO and ArrayExpress metadata files were then individually hand examined t
 - sample type (multiple if necessary)
 - age
 - gender
-- ethnicity
 - FTP location for raw data
 - microarray platform
 - series ID
 - database
+- outcome
+- sepsis stage (sepsis, septic shock or SIRS)
 2. regular expressions to identify:
 - the raw data file
 - the control samples
 
-To allow later extraction of the relevant subset of each study's metadata, these values were then compiled in a [columnID translator table](../meta/WB/columnid.translator.tab).
 
-## Preparing Curated Metadata from Les
-Les provided an Excel file with manually curated metadata for 24 studies, each with its own worksheet within the file.  
-This file was manually modified to make a [new file](../meta/WB/MasterOneAllWholeBloodU133Plus2Marchd6-JHUpdate.xlsx)  with:  
-1. a column with the study ID in every sheet
-2. consistent columns headers between sheets
+### Array Express studies
 
-Each curated study's sheet of metadata from this new Excel file was extracted into a table in the study's directory for later import into R.
+**MEXP-3621**
+- age 19-25 years of age to metadata from PI
+- replace spaces in column headers with period
 
-```{r extract_curated_metadata, eval=FALSE}
-library(gdata)
-for (sheetnum in 1:24){
-  print(sheetnum)
-  metadata <- read.xls(file.path(metaDir, "MasterOneAllWholeBloodU133Plus2Marchd6-JHUpdate.xlsx"), sheet=sheetnum)
-  study <- unique(metadata$study)
-  write.table(metadata, file=file.path(dataDir, study, paste("curated.metadata", study, "tab", sep=".")), row.names=F, col.names=T, sep="\t", quote=F)
-} 
+```{r modMEXP3621}
+metadata <- read.delim(file.path(dataDir, "MEXP-3621", "E-MEXP-3621.sdrf.txt"), sep="\t", header=T)
+metadata$agecol <- mean(19,25)
+write.table(metadata, file=file.path(dataDir, "MEXP-3621", "metadata.MEXP-3621.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+rm(metadata)
 ```
 
-## Unifying the metadata into a single file
+---
+
+### GEO studies
+
+GSE32707 not in barcode or pathprint database; ignored.
+
+#### Sepsis studies
+
+**GSE26440**
+**GSE26378**
+**GSE54514**
+
+Metadata from GSE26440,  GSE26378, GSE57065 and GSE54514 need no modifications, but the metadata filenames were modified for consistency.
+
+```{r modGSE26440_GSE26378}
+metadata <- read.delim(file.path(dataDir, "GSE26440", "metadata.GSE26440.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE26440", "metadata.GSE26440.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+metadata <- read.delim(file.path(dataDir, "GSE26378", "metadata.GSE26378.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE26378", "metadata.GSE26378.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+metadata <- read.delim(file.path(dataDir, "GSE54514", "metadata.GSE54514.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE54514", "metadata.GSE54514.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+metadata <- read.delim(file.path(dataDir, "GSE57065", "metadata.GSE57065.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE57065", "metadata.GSE57065.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+rm(metadata)
+```
+
+**Becton Dickinson Data**
+
+Metadata and data for were obtained outside of GEO from BD. Age ranges were described ast "adult", assigned an age of 40 to all samples.  Assigned platform ID (GPL570=HG-U133_Plus_2) as well.
+
+```{r modBD}
+metadata <- read.delim(file.path(dataDir, "BD", "celToPatientStatus.txt"))
+metadata$database <- "BD"
+metadata$agecol <- 40
+metadata$platform <- "GPL570"
+write.table(metadata, file=file.path(dataDir, "BD", "original.metadata.BD.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+library(readr)
+library(dplyr)
+
+# load original metadata
+setwd(file.path(dataDir, "BD" ))
+metadata <- read_tsv("original.metadata.BD.tab")
+
+# convert days to numeric form
+metadata$sepsisday <- as.numeric(gsub("D", "", metadata$Time0Day))
+metadata$sampleday <- as.numeric(gsub("D", "", metadata$Day))
+
+# magic with dplyr
+patients <- group_by(metadata, Patient)
+sepsis.metadata <- filter(patients, abs(sampleday-sepsisday)==min(abs(sampleday-sepsisday)))
+
+# output subsetted data
+write.table(sepsis.metadata, file.path(dataDir, "BD","metadata.BD.tab"), col.names = TRUE, row.names=FALSE, sep="\t", quote=F)
+```
+
+
+**For some of the other GEO metdata files, manual correction of the metadata was necessary**
+
+**GSE28750**
+  - added approximate ages (40 years) (from paper/GEO abstract?)
+
+```{r modGSE28750}  
+metadata <- read.delim(file.path(dataDir, "GSE28750", "metadata.GSE28750.1.tab"), sep="\t", header=T)
+# add ages
+metadata$agecol <- 40
+# write
+write.table(metadata, file=file.path(dataDir, "GSE28750", "metadata.GSE28750.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+**GSE11755**
+  - multiple inconsistent time points between samples made it impossible to parse automatically
+  - excluded samples including:
+    - all controls
+    - all lymphocyte and monocyte samples
+  - selected T24 samples for each individual (only consistent timepoint for all 3 samples)
+  - assign age of 10 years to samples (from paper's use of "children")
+
+```{r modGSE11755}  
+metadata <- read.delim(file.path(dataDir, "GSE11755", "metadata.GSE11755.1.tab"), 
+                       sep="\t", 
+                       header=T)
+#filter
+metadata <- metadata[!grepl("Lymphocyte|Monocyte|Control", metadata$source_name_ch1),]
+metadata <- metadata[grepl("T24",metadata$source_name_ch1 ),]
+
+# assign ages
+metadata$agecol=10
+#write
+write.table(metadata, 
+            file=file.path(dataDir, "GSE11755", "metadata.GSE11755.tab"), 
+            sep="\t", 
+            quote=F, 
+            row.names=FALSE, 
+            col.names=TRUE)
+rm(metadata)
+```
+
+**GSE13015**
+  - removed original array results of samples that were rerun
+
+```{r modGSE13015}  
+metadata.1 <- read.delim(file.path(dataDir, "GSE13015", "metadata.GSE13015.1.tab"), sep="\t", header=T)
+metadata.2 <- read.delim(file.path(dataDir, "GSE13015", "metadata.GSE13015.2.tab"), sep="\t", header=T)
+metadata <- rbind(metadata.1, metadata.2)
+rm(metadata.1, metadata.2)
+
+metadata$rerun <- grepl("Rerun", metadata$title)
+metadata$sample <- gsub("Rerun_", "", metadata$title)
+
+# sort by sample and rerun status, so that rerun sample rows come first
+metadata <- metadata[with(metadata, order(sample, -rerun)),]
+# mark duplicates, first row (rerun sample rows) will not be marked as duplicate
+nonduplicates <- !duplicated(metadata$sample)
+
+#filter metadata to non-duplicated rows 
+metadata <- metadata[nonduplicates,]
+
+# write
+write.table(metadata, file=file.path(dataDir, "GSE13015", "metadata.GSE13015.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+**GSE10474**
+- incorporate non-GEO metadata, add exact gender and age information from Les
+
+```{r modGSE10474}
+metadata <- read.delim(file.path(dataDir, "GSE10474", "metadata.GSE10474.1.tab"), sep="\t", header=T)
+les.metadata <- read.delim(file.path(dataDir, "GSE10474", "GSE10474Sepsis.txt"), sep="\t", header=T)
+# merge files by sample geo_accession number (GSM)
+metadata <- merge(metadata, les.metadata, by.x="geo_accession", by.y="Sample")
+# write
+write.table(metadata, file=file.path(dataDir, "GSE10474", "metadata.GSE10474.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata, les.metadata)
+```
+
+**GSE40586**
+- incorporate non-GEO metadata, exact age information from Les
+
+```{r modGSE40586}
+metadata <- read.delim(file.path(dataDir, "GSE40586", "metadata.GSE40586.1.tab"), sep="\t", header=T)
+les.metadata <- read.delim(file.path(metaDir, "GSE40586AgeSampleData.tab"), sep="\t", header=T)
+# merge files by sample sampleID (title)
+metadata <- merge(metadata, les.metadata, by="title", all=T)
+# write
+write.table(metadata, file=file.path(dataDir, "GSE40586", "metadata.GSE40586.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata, les.metadata)
+```
+
+**GSE4607** 
+  - CEL files, age (as birth dates and enrollment dates) and gender data for this study were obtained from PI (Hector Wong) outside of GEO so the metadata from GEO and the PI were merged, after calculating ages
+
+```{r modGSE4607}
+metadata <- read.delim(file.path(dataDir, "GSE4607", "metadata.GSE4607.1.tab"), 
+                                 sep="\t", 
+                                 header=T)
+wong.metadata <- read.delim(file.path(dataDir, "GSE4607", "Wong_metadata.GSE4607.tab"), 
+                                    sep="\t", 
+                                    header=T)
+yearconvert <- function(x, year=1968){
+  m <- year(x) %% 100
+  year(x) <- ifelse(m > year %% 100, 1900+m, 2000+m)
+  x
+}
+wong.metadata$age_years <-   as.vector(difftime(yearconvert(mdy(as.character(unlist(wong.metadata$Enrollment.Date)))),
+           yearconvert(mdy(as.character(unlist(wong.metadata$Date.of.Birth)))), 
+           unit="days")/365)
+metadata <- merge(metadata, wong.metadata, 
+                            by.x="geo_accession", 
+                            by.y="Geo.Sample.ID")
+write.table(metadata, file=file.path(dataDir, "GSE4607", "metadata.GSE4607.tab"), 
+            sep="\t", 
+            col.names=T, 
+            row.names=F)
+rm(metadata, wong.metadata)
+```
+
+**GSE9692**
+- metadata including age, gender and replicate status data for this study were obtained from PI (Hector Wong) outside of GEO so annotations detailing their locations and arrayIDs had to be added.
+- any samples also found in GSE4707 were removed here
+
+```{r modGSE9692}
+metadata <- read.delim(file.path(dataDir, "GSE9692", "metadata.GSE9692.1.tab"), sep="\t", header=T)
+# non-GEO metadata
+wong.metadata <- read.delim(file.path(dataDir, "GSE9692", "Wong_metadata.GSE9692.tab"), sep="\t", header=T)
+# remove samples already run in GSE4607
+wong.metadata <- subset(wong.metadata, wong.metadata$Also.found.in.GSE4607=="NO")
+# merge metadata sets
+metadata <- merge(metadata, wong.metadata, by.x="geo_accession", by.y="Geo.Sample.ID")
+# write to new file
+write.table(metadata, file=file.path(dataDir, "GSE9692", "metadata.GSE9692.tab"), sep="\t", col.names=T, row.names=F)
+rm(metadata, wong.metadata)
+``` 
+
+**GSE13904**
+- removed all day3 samples, whether longitudinal sample or not
+- metadata including age, gender and replicate status data for this study were obtained from PI (Hector Wong) outside of GEO so annotations detailing their locations and arrayIDs had to be added.
+- any samples also found in GSE4707 were removed here
+
+```{r modGSE13904}
+metadata <- read.delim(file.path(dataDir, "GSE13904", "metadata.GSE13904.1.tab"), sep="\t", header=T)
+#filter
+metadata <- metadata[!grepl("day3", metadata$title),]
+# non-GEO metadata
+wong.metadata <- read.delim(file.path(dataDir, "GSE13904", "Wong_metadata.GSE13904.tab"), sep="\t", header=T)
+# remove samples already run in GSE4607 or GSE9692
+wong.metadata <- subset(wong.metadata, wong.metadata$Also.found.in.GSE4607!="YES")
+wong.metadata <- subset(wong.metadata, wong.metadata$Also.Found.in.GSE9692!="YES")
+# merge metadata sets
+metadata <- merge(metadata, wong.metadata, by.x="geo_accession", by.y="Geo.Sample.ID")
+# write to new file
+write.table(metadata, file=file.path(dataDir, "GSE13904", "metadata.GSE13904.tab"), sep="\t", col.names=T, row.names=F)
+rm(metadata, wong.metadata)
+```  
+
+
+#### Trauma studies
+
+**GSE5580**
+- added genders (all male from paper) and ages (mean age of 48, from 19-70 age range in paper)
+
+```{r  modGSE5580}
+metadata <- read.delim(file.path(dataDir, "GSE5580", "metadata.GSE5580.1.tab"), sep="\t", header=T)
+# add gender column
+metadata$gendercol <- "Male"
+metadata$agecol <- 48
+# write to new file
+write.table(metadata, file=file.path(dataDir, "GSE5580", "metadata.GSE5580.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+**GSE36809**
+  - removed control samples
+  - kept only first sample in time series
+  - check which studies the samples reanalyze
+
+```{r modGSE36809}  
+metadata <- read.delim(file.path(dataDir, "GSE36809", "metadata.GSE36809.1.tab"), 
+                       sep="\t", 
+                       header=T)
+#filter controls
+metadata <- metadata[!grepl("Control", metadata$source_name_ch1),]
+
+# find lowest number of hours csince injury for each sample
+subject.hours <- ldply(strsplit(as.character(metadata$title), " "))
+# change class of hours since injury column so you can sort numerically
+class(subject.hours$V7) <- "numeric"
+# reorder dataframe so that lowest hours sincd injury is the first row for each sample
+subject.hours <- subject.hours[with(subject.hours, order(V3, V7)),]
+# mark rows with duplicated sample ID rows, will mark first row or each sample (which contains lowest hours since injury) as unduplicated
+nonduplicates <- !duplicated(subject.hours$V3)
+
+#filter metadata to non-duplicated rows 
+metadata <- metadata[nonduplicates,]
+
+#write
+write.table(metadata, file=file.path(dataDir, "GSE36809", "metadata.GSE36809.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+reanalyzed <- ldply(strsplit(as.character(metadata$relation[grep("GSM", metadata$relation)]), "Reanalysis of: "))[,2]
+
+GSEs.reanalyzed.byGSE36809 <- unique(ldply(reanalyzed, function(GSMid) {
+  GSE <- Meta(getGEO(GSMid))$series_id
+  return(GSE)
+}))
+
+GSEs.reanalyzed.byGSE36809 <- unlist(GSEs.reanalyzed.byGSE36809)[unlist(GSEs.reanalyzed.byGSE36809) %in% GSEids]
+
+
+rm(metadata, subject.hours, nonduplicates)
+
+```
+
+GSE36809 samples are also analyzed in GSE11375, keep the GSE36809 samples as they are more recent.
+
+**GSE11375** 
+  - check which studies the samples reanalyze
+  - remove samples duplicated in GSE36809
+
+```{r modGSE11375}
+metadata <- read.delim(file.path(dataDir, "GSE11375", "metadata.GSE11375.1.tab"), 
+                       sep="\t", 
+                       header=T)
+reanalyzed <-unlist(metadata[,grep("relation", names(metadata))]) 
+reanalyzed <- reanalyzed[grep("GSM", reanalyzed)]
+reanalyzed <-   ldply(strsplit(as.character(reanalyzed), "Reanalyzed by: "))[,2]
+GSEs.reanalyzed.byGSE11375 <- unique(ldply(reanalyzed, function(GSMid) {
+  GSE <- Meta(getGEO(GSMid))$series_id
+  return(GSE)
+}))
+GSEs.reanalyzed.byGSE11375 <- unlist(GSEs.reanalyzed.byGSE11375)[unlist(GSEs.reanalyzed.byGSE11375) %in% GSEids]
+rm(metadata,reanalyzed, GSEs.reanalyzed.byGSE11375 )
+```
+
+GSE11375 samples were later analyzed in GSE36809, removed the GSE11375 samples that were rerun in GSE36809.
+
+```{r modGSE11375.2}
+metadata <- read.delim(file.path(dataDir, "GSE11375", "metadata.GSE11375.1.tab"), 
+                       sep="\t", 
+                       header=T)
+# there are two columns in the metadata marking replicated samples, "relation" and "relation.1"
+# which of the columns marks the samples reanalyzed in GSE36809?
+
+# pull in the GSM values of the other studies that are replicated in GSE11375
+reanalyzed.relation <- lapply(strsplit(as.character(metadata$relation), "Reanalyzed by: "), function(n) n[2])
+reanalyzed.relation.1 <- lapply(strsplit(as.character(metadata$relation.1), "Reanalyzed by: "), function(n) n[2])
+
+# find GSE studies replicated in "relation"" column
+GSE.relation <- lapply(reanalyzed.relation, function(GSMid) {
+  if(is.na(GSMid)){
+    GSE <- NA
+    } else {
+    GSE <- try(Meta(getGEO(GSMid))$series_id, "NA")
+    }
+  return(GSE)
+})
+GSE.relation <- unique(unlist(GSE.relation))
+GSE.relation <- GSE.relation[!is.na(GSE.relation)]
+# find GSE studies replicated in teh r"relation.1" column
+GSE.relation.1 <- lapply(reanalyzed.relation.1, function(GSMid) {
+  if(is.na(GSMid)){
+    GSE <- NA
+    } else {
+    GSE <- try(Meta(getGEO(GSMid))$series_id, "NA")
+    }
+  return(GSE)
+})
+GSE.relation.1 <- unique(unlist(GSE.relation.1))
+GSE.relation.1 <- GSE.relation.1[!is.na(GSE.relation.1)]
+
+# check which columns GSE studies are in our list of GSE studies (i.e. which column has the samples run again in GSE36809?)
+if(GSE.relation %in% GSEids) {
+  colid <- "relation"
+  } else  {
+    colid <- "relation.1"
+    }
+
+# remove the samples rerun in GSE36809
+metadata <- metadata[!grepl("GSM", metadata[,colid]),]
+
+# write to file
+write.table(metadata, file=file.path(dataDir, "GSE11375", "metadata.GSE11375.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata, GSE.relation, GSE.relation.1,  reanalyzed.relation, reanalyzed.relation.1, colid)
+```
+
+#### Endotoxin studies
+
+**GSE22278**
+- manually add mean age of 29 (18-40 years of age in GEO abstract) to non-trauma (ICU) samples
+
+```{r modGSE22278}
+metadata <- read.delim(file.path(dataDir, "GSE22278", "metadata.GSE22278.1.tab"), sep="\t", header=T)
+# add column for age
+metadata$agecol <- NA
+# assign age to non-ICU samples
+metadata$agecol[!grepl("ICU", metadata$characteristics_ch1.1)] <- 29
+
+# write
+write.table(metadata, file=file.path(dataDir, "GSE22278", "metadata.GSE22278.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+**GSE3026**
+- split up gender, age range and sample desription column
+- extract gender 
+- assign mean age of mean of 18-45 years range (from GEO metadata)
+
+```{r modGSE3026}
+metadata <- read.delim(file.path(dataDir, "GSE3026", "metadata.GSE3026.1.tab"), sep="\t", header=T)
+#extract gender
+metadata$gendercol <- ldply(strsplit(as.character(metadata$characteristics_ch1), ","))[,1]
+# assign mean age
+metadata$agecol <- mean(18:45)
+write.table(metadata, file=file.path(dataDir, "GSE3026", "metadata.GSE3026.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+**GSE3284**
+- remove reanlaysis column (not applicable to these GSE studies)
+- merge mutiple GEO metadata files (1-3)
+- remove controls
+- convert age range  (18-40) from GEO metadata into exact mean age in years
+
+```{r modGSE3284}
+metadata.1 <- read.delim(file.path(dataDir, "GSE3284", "metadata.GSE3284.1.tab"), sep="\t", header=T)
+metadata.1$relation <- NULL
+metadata.2 <- read.delim(file.path(dataDir, "GSE3284", "metadata.GSE3284.2.tab"), sep="\t", header=T)
+metadata.3 <- read.delim(file.path(dataDir, "GSE3284", "metadata.GSE3284.3.tab"), sep="\t", header=T)
+# merge metadata files
+metadata <- rbind(metadata.1, rbind(metadata.2, metadata.3))
+# remove controls
+metadata <- metadata[!grepl("healthy", metadata$characteristics_ch1),]
+# add ages
+metadata$agecol <- mean(c(18,40))
+
+# write
+write.table(metadata, file=file.path(dataDir, "GSE3284", "metadata.GSE3284.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+rm(metadata)
+```
+
+## Unification
+- unifying the metadata into a single file
+
+To allow later extraction of the relevant subset of each study's metadata, these values were then compiled in a [columnID translator table](../meta/WB/columnid.translator.tab).
+
 The goal here was to obtain a metadata file that combined the downloaded metadata and the curated metadata, using the "columnID translator"" as a guide. 
 
-```{r unify_metadata}
-## load in the columnID translator
-template <- read.table(file.path(metaDir, "columnid.translator.tab"), header=T, colClasses="character", sep="\t") 
+Now we can pull all the metadata together and label variables in a consistent manner.
+
+```{r unify_metadata, eval=F}
+template <- read.delim(file.path(metaDir,"columnid.translator.tab" ))
 ## setup list to receive results, each study will be an element in the list
 output.l <- list() 
 for(rownum in 1:nrow(template)) {
@@ -177,65 +590,57 @@ for(rownum in 1:nrow(template)) {
   study <- colids$study
   print(study)
   print(rownum)
-  list.index <- colids$list.index
   database <- colids$Database
-  study.metadata <- read.delim(file.path(dataDir, study, paste("metadata", study, list.index, "tab", sep="." )), header=T, sep="\t") # pull in the study metadata for the local directory
-  ## get sampleIDs
-  if (is.na(colids$sampleID)) {sampleIDs <- rep(NA, nrow(study.metadata))} else { sampleIDs <- study.metadata[,colids$sampleID]} # if there are no sampleIDs, fill with NA
+  study.metadata <- read.delim(file.path(dataDir, study, paste("metadata", study, "tab", sep="." )), header=T, sep="\t") # pull in the study metadata for the local directory
+  
+  ## get arrayIDs
+  if (is.na(colids$arrayID)) {arrayIDs <- rep(NA, nrow(study.metadata))} else { arrayIDs <- study.metadata[,as.vector(colids$arrayID)]} # if there are no sampleIDs, fill with NA
+ 
   ## get sampletypes
-  if(is.na(colids$sampltype_col.1)){
-     ## if there is no sampletype column #1, fill with NA's
+  if(is.na(colids$sampletype_col.1)){
+    ## if there is no sampletype column #1, fill with NA's
     sampletypes=rep("control", nrow(study.metadata))
-  } else {
-    # if there is no sampletype column #2, but there is a sampletype column #1, take values from sampletype column #1
-    if(is.na(colids$sampletype_col.2)){ 
-      sampletypes <- study.metadata[,colids$sampltype_col.1]
-    } else {
-      # if there are two columns that describe the sampletype, grab them both and paste them together
-      sampletypes <- paste(study.metadata[,colids$sampltype_col.1], study.metadata[,colids$sampletype_col.2]) 
-    }
-  }
+    }   else {
+      # if there is no sampletype column #2, but there is a sampletype column #1, take values from sampletype column #1
+      if(is.na(as.vector(colids$sampletype_col.2))){ 
+        sampletypes <- study.metadata[,as.vector(colids$sampletype_col.1)]
+        } else {sample
+          # if there are two columns that describe the sampletype, grab them both and paste them together
+          sampletypes <- paste(study.metadata[,as.vector(colids$sampletype_col.1)], study.metadata[,as.vector(colids$sampletype_col.2)]) 
+          }
+      }
   # get ages, fill with NA if no column identified
-  if (is.na(colids$age_col)) {ages <- rep(NA, nrow(study.metadata))} else { ages <- study.metadata[,colids$age_col]} 
+  if (is.na(colids$age_col)) {ages <- rep(NA, nrow(study.metadata))} else { ages <- study.metadata[,as.vector(colids$age_col)]} 
   # get genders, fill with NA if no column identified   
-  if (is.na(colids$gender_col)) {genders <- rep(NA, nrow(study.metadata))} else { genders <- study.metadata[,colids$gender_col]}
-  # get ethnicities, fill with NA if no column identified   
-  if (is.na(colids$ethnicity_col)) {ethnicities <- rep(NA, nrow(study.metadata))} else { ethnicities <- study.metadata[,colids$ethnicity_col]}
+  if (is.na(colids$gender_col)) {genders <- rep(NA, nrow(study.metadata))} else { genders <- study.metadata[,as.vector(colids$gender_col)]}
   # get FTP locations of cel files, fill with NA if no column identified   
-  if (is.na(colids$CEL_FTP_col)) {CEL_FTPs <- rep(NA, nrow(study.metadata))} else { CEL_FTPs <- study.metadata[,colids$CEL_FTP_col]}
+  if (is.na(colids$CEL_FTP_col)) {CEL_FTPs <- rep(NA, nrow(study.metadata))} else { CEL_FTPs <- study.metadata[,as.vector(colids$CEL_FTP_col)]}
+  
   # get CEL regex identifiers to enable pulling from local directories, fill with NA if no column identified   
-  if (is.na(colids$CEL_regex_col)) {CEL_regexes <- rep(NA, nrow(study.metadata))} else { CEL_regexes <- study.metadata[,colids$CEL_regex_col]}
+  if (is.na(colids$CEL_regex_col)) {CEL_regexes <- rep(NA, nrow(study.metadata))} else { CEL_regexes <- study.metadata[,as.vector(colids$CEL_regex_col)]}
+  
   # get platformid, fill with NA if no column identified   
-  if (is.na(colids$platformid_col)) {platformids <- rep(NA, nrow(study.metadata))} else { platformids <- study.metadata[,colids$platformid_col]}
+  if (is.na(colids$platformid_col)) {platformids <- rep(NA, nrow(study.metadata))} else { platformids <- study.metadata[,as.vector(colids$platformid_col)]}
+  # get stages, fill with NA if no column identified   
+  if (is.na(colids$stage_col)) {stages <- rep(NA, nrow(study.metadata))} else { stages <- study.metadata[,as.vector(colids$stage_col)]}
+  # get outcomes, fill with NA if no column identified   
+  if (is.na(colids$outcome_col)) {outcomes <- rep(NA, nrow(study.metadata))} else { outcomes <- study.metadata[,as.vector(colids$outcome_col)]}
   # make dataframe
-  sample.metadata.sub <- as.data.frame(cbind(as.character(sampleIDs), as.character(sampletypes), as.character(ages), as.character(genders), as.character(ethnicities), as.character(CEL_FTPs), as.character(CEL_regexes), as.character(platformids)))
-  names(sample.metadata.sub) <- c("sampleID", "sampletype", "age", "gender", "ethnicity", "CEL_FTP", "CEL_regex", "platform")
+  sample.metadata.sub <- as.data.frame(cbind( as.character(arrayIDs), as.character(sampletypes), as.character(ages), as.character(genders), as.character(stages), as.character(outcomes), as.character(CEL_FTPs), as.character(CEL_regexes), as.character(platformids)))
+  names(sample.metadata.sub) <- c("arrayID", "sampletype", "age", "gender", "stage","outcome", "CEL_FTP", "CEL_regex", "platform")
   sample.metadata.sub$study <- study # fill in columns with study ID and database ID
   sample.metadata.sub$database <- database
   # subset to the control samples using the control sampletype regex for that study
   # adjust for cases where multiple regexes are necessary to identify a control sample
   if (is.na(colids$control_regex.2) & !is.na(colids$control_regex.1)) { 
-    sample.metadata.sub <- sample.metadata.sub[grep(colids$control_regex.1, sample.metadata.sub$sampletype),]
-  } else if (!is.na(colids$control_regex.2) & !is.na(colids$control_regex.1)){
-    sample.metadata.sub <- sample.metadata.sub[intersect(grep(colids$control_regex.1, sample.metadata.sub$sampletype), grep(colids$control_regex.2, sample.metadata.sub$sampletype)),]
-  }
-  # if curated data exists for this study, replace what you downloaded from GEO/ArrayExpress with his curated data
-  if(file.exists(file.path(dataDir, study, paste("curated.metadata", study, "tab", sep=".")))){
-    curated.metadata <- read.table(file.path(dataDir, study, paste("curated.metadata", study, "tab", sep=".")), sep="\t", header=T)
-    # find the columns you are going to replace in the original downloaded metadata
-    replace.cols <- setdiff(names(sample.metadata.sub)[names(sample.metadata.sub) %in% names(curated.metadata)], c("sampleID", "study", "database"))    
-    for (replace.col in replace.cols){
-      # convert replacement column to characters, otherwise error
-      sample.metadata.sub[,replace.col] <- as.character(sample.metadata.sub[,replace.col])
-      # subset the curation data dataframe to relevant ids 
-      curated.metadata <- curated.metadata[(curated.metadata$sampleID %in% sample.metadata.sub$sampleID),]
-      # replace the columns in the original metadata dataframe with the sampleID matched curated metadata
-      sample.metadata.sub[,replace.col][na.omit(match(curated.metadata$sampleID,sample.metadata.sub$sampleID))] <- as.character(curated.metadata[,replace.col])
-    }
-  }
+    sample.metadata.sub <- sample.metadata.sub[grep(as.vector(colids$control_regex.1), sample.metadata.sub$sampletype),]
+    } else if (!is.na(colids$control_regex.2) & !is.na(colids$control_regex.1)) {
+      sample.metadata.sub <- sample.metadata.sub[intersect(grep(as.vector(colids$control_regex.1), sample.metadata.sub$sampletype), grep(colids$control_regex.2, sample.metadata.sub$sampletype)),]
+      }
+  print(nrow(sample.metadata.sub))
   # output the control sample metadata for the study
   output.l[[rownum]] <- sample.metadata.sub 
-}
+  }
 # collapse the metadata list into a dataframe
 output <- do.call(rbind, output.l) 
 # output to file
@@ -244,22 +649,22 @@ write.table(output, file.path(metaDir, "unified.metadata.unrefined.tab"), quote=
 
 The file with the unified (but not consistent) metadata can be found [here](../meta/WB/unified.metadata.unrefined.tab)
 *(this is a tab-delimited file that can be opened in Excel)*
-The end goal is a file containing the metadata for all control samples in all studies. To generate a file that can be then be used to load in the metadata and its respective raw data later in the analysis, I also needed consistent labeling of gender, age, ethnicity, FTP location, and CEL file search terms etc. 
+The end goal is a file containing the metadata for all control samples in all studies. To generate a file that can be then be used to load in the metadata and its respective raw data later in the analysis, I also needed consistent labeling of gender, age, sepsis stage, outcome, FTP location, and CEL file search terms. 
 
-To make this file, I ran the "unified.metadata.unrefined.tab" file through [Google refine][6], merging multiple terms for the same thing into a single term. For example, terms such as "F", "Female", "Fem", and "f" were merged into the single term FEMALE. All ages were converted to years based units. For ethnicity, African Origin encompasses the terms: "African American, Afro-American, Black, African etc.". Asian encompasses the terms: "Chinese, Asian, Indian and Oriental". Caucasian encompasses the terms: " White and Caucasian".
+To make this file, I ran the "unified.metadata.unrefined.tab" file through [Google refine][6], merging multiple terms for the same thing into a single term. For example, terms such as "F", "Female", "Fem", and "f" were merged into the single term FEMALE. All ages were converted into year based units. Outcome was simplified into either "SURVIVOR" or "NONSURVIVOR. Any patients with longer term recorded outcomes such as transfer to other facilities (including nursing, rehabiliation, acute care facilities) or home were considered survivors. Sepsis stage was simplified to one of "SEPSIS", "SEPTIC SHOCK", or "SIRS". Time in stage (i.e. SIRS-day3 or Sepsis Day1) at which sample was taken was not considered. Any undefined values (gender, status etc.) were labelled "UNKNOWN". ArrayExpress platform IDs were translated into GEO platform IDs (GPLs) (i.e. A-AFFY-37 into GPL571)
 
-The unified, refined metadata file can be found [here](../meta/WB/unified-metadata-refined.04-07-13.xls)
+The unified, refined metadata file can be found [here](../meta/WB/unified.metadata.refined.tab)
 
 ---
 
-A separate python script was used to download all the GEO CEL files (using their ftp locations from the metadata file). Array Express CEL files were previously automatically downloaded alongside their metadata. 
+A separate python script was used to download all the GEO CEL files (using their ftp locations from the metadata file).
 
 
 [1]: http://www.bioconductor.org (BioC)
-[2]: http://www.ncbi.nlm.nih.gov/gds/ (GEO)
-[3]: http://www.ebi.ac.uk/arrayexpress/ (ArrayExpress)
-[4]: http://www.bioconductor.org/packages/2.11/bioc/html/GEOquery.html (GEOquery_BioC_library)
-[5]: http://www.bioconductor.org/packages/2.11/bioc/html/ArrayExpress.html (ArrayExpress_BioC_library)
+[2]: http://www.bioconductor.org/packages/2.11/bioc/html/GEOquery.html (GEOquery_BioC_library)
+[3]: http://www.ncbi.nlm.nih.gov/gds/ (GEO)
+[4]: http://bioconductor.org/packages/devel/bioc/html/ArrayExpress.html (ArrayExpress library)
+[5]: http://www.ebi.ac.uk/arrayexpress/ (Array Express site)
 [6]: https://code.google.com/p/google-refine/ (Google_Refine)
 
 
