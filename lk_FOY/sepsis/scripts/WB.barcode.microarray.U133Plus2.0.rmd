@@ -33,7 +33,6 @@ The sections below provide code to reproduce the included results and plots.
 ## General purpose R libraries necessary for analysis
 
 ```{r barcode_general_libraries}
-source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
@@ -61,9 +60,8 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 
 ## Load in raw and [RMA][1] normalized AffyBatch microarray data.
 
-```{r barcode_load_affybatch, echo=FALSE, eval=TRUE}
+```{r barcode_load_affybatch, eval=TRUE}
 load(file.path(resultsDir, "RDATA.mic.norm.no.outliers"))
-
 load(file.path(resultsDir, "RDATA.mic.raw.no.outliers"))
 ```
 
@@ -81,8 +79,6 @@ From their site, [The Gene Expression Barcode][3]
 ```{r barcode_libraries}
 # frozen RMA and barcoding library
 library(frma) 
-# previously analyzed dataset from same array
-library(hgu133plus2frmavecs)
 # for pretty dendrograms
 library(ggdendro)
 # for contrast matrix
@@ -99,11 +95,10 @@ Using the [frma][5] Bioconductor libraray. As described in *McCall MN, Bolstad B
 
 Used the same samples as the previous generic microarray analysis.
 
-```{r barcode_frma_run, cache=TRUE, eval=TRUE}
+```{r barcode_frma_run, eval=FALSE}
 mic.frma <- frma(mic.raw, summarize="random_effect")
 bc <- barcode(mic.frma) 
-save.image(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
-q()
+save(list=c("mic.frma", "bc"), file=file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
 ```
 
 ```{r barcode_load_frma, echo=FALSE}
@@ -112,11 +107,10 @@ load(file.path(resultsDir, "RDATA.frma.normalized.U133Plus2.0"))
 ```
 
 ## Compare hierarchal clustering  before and after barcoding
-- strong improvement in clustering
 
-```{r barcode_clustering, fig.width=12, fig.height=12}
+```{r barcode_clustering, fig.width=12, fig.height=12, cache=TRUE}
 dimnames(bc)[[2]] <- sampleNames(mic.frma)
-rma.exprs <- exprs(mic.norm.eset)
+rma.exprs <- exprs(mic.norm)
 colnames(rma.exprs) <- pData(mic.frma)$stage
 myDist.pre <- dist(t(rma.exprs))
 myTree.pre <- hclust(myDist.pre)
@@ -161,16 +155,14 @@ p.bc
 rm(p.pre, p.bc, ddata.bc, dhc.bc, myTree.bc, myDist.bc, ddata.pre, dhc.pre, myTree.pre, myDist.pre, rma.exprs )
 ```
 
-**The improvement from frma normalization is striking.**
-
 #### Setup design and contrast matrices 
 
 Same setup as for the previous limma analysis.
 
 ```{r barcode_design}
-design <- model.matrix(~ -1+factor(pData(mic.norm.eset)$stage))
+design <- model.matrix(~ -1+factor(pData(mic.norm)$stage))
 # make sure the headings match
-colnames(design) <- sub("factor\\(pData\\(mic.norm.eset\\)\\$stage\\)", "", colnames(design))
+colnames(design) <- sub("factor\\(pData\\(mic.norm\\)\\$stage\\)", "", colnames(design))
 ```
 
 ```{r barcode_contrastmatrix}
@@ -212,7 +204,7 @@ In the first passs I allowd relatively more intra-group entropy (<`r intra.entro
 ```{r barcode_heatmap_annotation_colors}
 # annotation colors
 pd <- pData(mic.frma)
-study_colors <- c(cbPalette[1:8])
+study_colors <- c(cbPalette, "#000000", "#FF0000")
 names(study_colors) <- unique(unlist(pd$study))
 stage_colors <- c("white", "darkgrey", "black")
 names(stage_colors) <- unique(unlist(pd$stage))
@@ -222,7 +214,7 @@ ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_co
 ```
 
 
-```{r barcode_diff_heatmap0.3, fig.width=18, fig.height=18}
+```{r barcode_diff_heatmap0.3}
 # filter and output heatmap for each contrast
 for (n in 1:3) {
   contrast <- dimnames(contrast.matrix)$Contrasts[n]
@@ -273,22 +265,28 @@ for (n in 1:3) {
     # both genders
     
     plot.new()
+    svg(filename=file.path(resultsDir, paste("barcode.heatmap.0.3", contrast, "svg", sep=".")), width=8, height=11)
     pheatmap(bc.contrast.sub, 
              color=c("blue", "red"), 
              cluster_rows=TRUE, 
              cluster_cols=FALSE, 
              show_colnames=F, 
              show_rownames=showrownames_var, 
-             fontsize=18, 
-             fontsize_row=10, 
+             fontsize=10, 
+             fontsize_row=8, 
+             cellwidth=1,
              annotation=heatmap.annots, 
              annotation_colors=ann_colors, 
              legend_breaks=c(0,1), 
-             main=paste("Barcoded Intensities for ", contrast, " comparison - Unclustered",  sep=""))
-    
-    }
+             main=paste(contrast, " - Unclustered",  sep=""))
+    dev.off()
+        }
   }
 ```
+
+![adult-child barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.3.adult-child.svg)
+![adult-neonate barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.3.adult-neonate.svg)
+![neonate-child barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.3.neonate-child.svg)
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
@@ -307,8 +305,81 @@ Here, I imposed stricter criteria for intra-group entropy (<`r intra.entropycuto
 
 You can see from the heatmaps that there are fewer study specific effects. As you can see, the tradeoff is that you get fewer genes to work with.
 
-```{r barcode_diff_heatmap0.25, ref.label='barcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```{r barcode_diff_heatmap0.29}
+# filter and output heatmap for each contrast
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  bc.contrast <- bc[,pData(mic.frma)$stage %in% c(stage.1, stage.2)]
+  pData.contrast <- pData(mic.frma)[pData(mic.frma)$stage %in% c(stage.1, stage.2),] 
+  f.contrast <- as.factor(pData.contrast$stage)
+  entropies.stage = adply(bc.contrast, 1, function(n) {
+    by(n, f.contrast, function(x) binaryEntropy(x))
+    })
+  row.names(entropies.stage) <- entropies.stage$X1
+  entropies.stage$X1 <- NULL
+  entropies.stage <- as.matrix(entropies.stage)
+  mode(entropies.stage) <- "numeric"
+  entropies.contrast <- apply(bc.contrast, 1, binaryEntropy)
+  # filter genes by intra-group and across group entropy
+  bc.contrast.sub <- bc.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+  dim(bc.contrast.sub)
+  if (nrow(bc.contrast.sub)>0) {
+    # remove any AFFY control probes
+    if (any(grepl("AFFX", row.names(bc.contrast.sub)))){
+      bc.contrast.sub <- bc.contrast.sub[!(grepl("AFFX", row.names(bc.contrast.sub))),]  
+      }
+    ## output to file
+    output <- as.data.frame(bc.contrast.sub)
+    probeID <- row.names(output)
+    symbol <- unlist(mget(row.names(output), hgu133plus2SYMBOL, ifnotfound=NA))
+    output.entropies.stage <- entropies.stage[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+    output.entropies.stage <- output.entropies.stage[row.names(bc.contrast.sub),]
+    output.entropies.contrast <- entropies.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff]
+    output.entropies.contrast <- output.entropies.contrast[row.names(bc.contrast.sub)]
+    output <- cbind(probeID, cbind(symbol, cbind(output.entropies.stage, cbind(output.entropies.contrast, output))))
+    names(output)[3:5] <- c(paste("intra", c(stage.1,stage.2), "entropy", sep="_" ), "overall_entropy")
+    write.table(output, file.path(resultsDir, paste("U133_2.0Plus.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+    ## Heatmaps
+    # annotations for heatmaps
+    heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage", "gender")]
+    heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+    row.names(heatmap.annots) <- heatmap.annots$arrayID
+    heatmap.annots$arrayID <- NULL
+    # row labels - add gene symbol to probeset id
+    row.names(bc.contrast.sub) <- paste(as.vector(unlist(mget(row.names(bc.contrast.sub), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(bc.contrast.sub), ")", sep="")
+    # decide if you are going to show row labels in heatamp
+    if(nrow(bc.contrast.sub)>100){showrownames_var <-  FALSE}else{showrownames_var <- TRUE}
+    # both genders
+    
+    svg(filename=file.path(resultsDir, paste("barcode.heatmap.0.29", contrast, "svg", sep=".")), width=8, height=11)
+    plot.new()
+    pheatmap(bc.contrast.sub, 
+             color=c("blue", "red"), 
+             cluster_rows=TRUE, 
+             cluster_cols=FALSE, 
+             show_colnames=F, 
+             show_rownames=showrownames_var, 
+             fontsize=12, 
+             fontsize_row=8, 
+             cellwidth=1,
+             annotation=heatmap.annots, 
+             annotation_colors=ann_colors, 
+             legend_breaks=c(0,1), 
+             main=paste(contrast, " - Unclustered",  sep=""))
+    dev.off()
+    
+    }
+  }
 ```
+
+![adult-child barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.29.adult-child.svg)
+![adult-neonate barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.29.adult-neonate.svg)
+![neonate-child barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.29.neonate-child.svg)
+
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
@@ -323,14 +394,85 @@ inter.entropycutoff <- 0.30
 
 We can reduce the intra-group entropy even further to  (<`r intra.entropycutoff`).
 
-```{r barcode_diff_heatmap0.2, ref.label='barcode_diff_heatmap0.3', fig.width=18, fig.height=18}
+```{r barcode_diff_heatmap0.2,  fig.width=18, fig.height=18}
+for (n in 1:3) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[n]
+  contrast <- gsub(" ", "", contrast)
+  stage.1 <- unlist(strsplit(contrast, "-"))[1]
+  stage.2 <- unlist(strsplit(contrast, "-"))[2]
+  # get subset of barcoded data and stages
+  bc.contrast <- bc[,pData(mic.frma)$stage %in% c(stage.1, stage.2)]
+  pData.contrast <- pData(mic.frma)[pData(mic.frma)$stage %in% c(stage.1, stage.2),] 
+  f.contrast <- as.factor(pData.contrast$stage)
+  entropies.stage = adply(bc.contrast, 1, function(n) {
+    by(n, f.contrast, function(x) binaryEntropy(x))
+    })
+  row.names(entropies.stage) <- entropies.stage$X1
+  entropies.stage$X1 <- NULL
+  entropies.stage <- as.matrix(entropies.stage)
+  mode(entropies.stage) <- "numeric"
+  entropies.contrast <- apply(bc.contrast, 1, binaryEntropy)
+  # filter genes by intra-group and across group entropy
+  bc.contrast.sub <- bc.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+  dim(bc.contrast.sub)
+  if (nrow(bc.contrast.sub)>0) {
+    # remove any AFFY control probes
+    if (any(grepl("AFFX", row.names(bc.contrast.sub)))){
+      bc.contrast.sub <- bc.contrast.sub[!(grepl("AFFX", row.names(bc.contrast.sub))),]  
+      }
+    ## output to file
+    output <- as.data.frame(bc.contrast.sub)
+    probeID <- row.names(output)
+    symbol <- unlist(mget(row.names(output), hgu133plus2SYMBOL, ifnotfound=NA))
+    output.entropies.stage <- entropies.stage[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff,]
+    output.entropies.stage <- output.entropies.stage[row.names(bc.contrast.sub),]
+    output.entropies.contrast <- entropies.contrast[entropies.stage[,stage.1]<=intra.entropycutoff  & entropies.stage[,stage.2]<=intra.entropycutoff & entropies.contrast>=inter.entropycutoff]
+    output.entropies.contrast <- output.entropies.contrast[row.names(bc.contrast.sub)]
+    output <- cbind(probeID, cbind(symbol, cbind(output.entropies.stage, cbind(output.entropies.contrast, output))))
+    names(output)[3:5] <- c(paste("intra", c(stage.1,stage.2), "entropy", sep="_" ), "overall_entropy")
+    write.table(output, file.path(resultsDir, paste("U133_2.0Plus.barcode.entropy.cutoff", intra.entropycutoff, contrast, "xls", sep=".")), sep="\t", row.names=F, col.names=T)
+    ## Heatmaps
+    # annotations for heatmaps
+    heatmap.annots <- pData.contrast[,c("arrayID", "study", "stage", "gender")]
+    heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+    row.names(heatmap.annots) <- heatmap.annots$arrayID
+    heatmap.annots$arrayID <- NULL
+    # row labels - add gene symbol to probeset id
+    row.names(bc.contrast.sub) <- paste(as.vector(unlist(mget(row.names(bc.contrast.sub), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(bc.contrast.sub), ")", sep="")
+    # decide if you are going to show row labels in heatamp
+    if(nrow(bc.contrast.sub)>100){showrownames_var <-  FALSE}else{showrownames_var <- TRUE}
+    # both genders
+    
+    svg(filename=file.path(resultsDir, paste("barcode.heatmap.0.275", contrast, "svg", sep=".")), height=11, width=8)
+    plot.new()
+    pheatmap(bc.contrast.sub, 
+             color=c("blue", "red"), 
+             cluster_rows=TRUE, 
+             cluster_cols=FALSE, 
+             show_colnames=F, 
+             show_rownames=showrownames_var, 
+             fontsize=12, 
+             fontsize_row=8,
+             cellwidth=1,
+             annotation=heatmap.annots, 
+             annotation_colors=ann_colors, 
+             legend_breaks=c(0,1), 
+             main=paste(contrast, " - Unclustered",  sep=""))
+    dev.off()
+    
+    }
+  }
 ```
+
+![adult-child barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.275.adult-child.svg)
+![adult-neonate barcode heatmap](../results/WB/U133Plus2/barcode.heatmap.0.275.adult-neonate.svg)
+
 
 #### Excel files with probeIDs, gene symbols, entropy values and barcoded expression values for each comparison
 
 [Adult vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-child.xls)  
 [Adult vs. Neonate](../results/WB/U133Plus2//U133_2.0Plus.barcode.entropy.cutoff.0.275.adult-neonate.xls)  
-[Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.barcode.entropy.cutoff.0.275.neonate-child.xls)
+
 
 [1]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
 [2]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)

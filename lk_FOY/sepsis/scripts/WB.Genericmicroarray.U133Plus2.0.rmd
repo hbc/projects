@@ -1,9 +1,16 @@
-```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", 
-               echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, 
-               tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), 
-               fig.path="figure/WB-U133Plus2-microarray-", 
-               cache.path="cache/WB-U133Plus2-microarray-")
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "Standard Microarray Analysis of U133Plus2.0 Sepsis Studies"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
@@ -25,7 +32,7 @@ The sections below provide code to reproduce the included results and plots.
 
 # GENERAL SETUP
 
-## General purpose R libraries necessary for analysis
+## General R libraries
 
 ```{r general_libraries}
 source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
@@ -34,10 +41,11 @@ library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
 library(RColorBrewer) # library for generating color palettes
 library(googleVis) # library for presenting tables
-source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
+library(CHBUtils)
 ```
 
-## Locations of directories for data, metadata and results
+## Data locations
+-  directories for data, metadata and results
 
 
 ```{r general_directories}
@@ -80,7 +88,8 @@ That metadata file is [here](../meta/WB/unified.metadata.refined.U133Plus2.0.tab
 
 ## Setup
 
-### Load [Bioconductor][1] libraries for the microarray analysis 
+### Microarray libraries
+- from [Bioconductor][1]
 
 ```{r microarray_analysis_libraries}
 # to parse the CEL files and work with intensity values
@@ -95,7 +104,7 @@ library(pheatmap)
 library(hgu133plus2.db) 
 ```
 
-### Setup some more variables for the microarray analyses
+### Analysis variables
 - color palette for plots
 - age ranges and names of the groups  
   - neonate = 0-4 years
@@ -112,20 +121,22 @@ neonate.age.range <- c(0,4)
 # THESE CANNOT OVERLAP!
 ```
 
-### Load and parse the unified, refined and subsetted metadata file 
+### Metadata
+- load and parse the unified, refined and subsetted metadata file 
 - to make a covariate table that allows you to load the CEL files using the [affy][2] Bioconductor library
 - this table has the CEL file location in the first column, without a header
 - the other columns contain the sampleIDs, ages, genders,ethnicities and respective studies
 
 - also limit samples to those wihtin the age ranges described above and label each with their "stage"
 
-```{r covariatedataframe}
+```{r covariatedataframe, cache=TRUE}
 # U1332.0Plus only for now
 covartemplate.file <- "unified.metadata.refined.U133Plus2.0.tab"
 covartemplate <- read.table(file.path(metaDir,covartemplate.file ), 
                             header=T, 
                             colClasses="character", 
                             sep="\t")
+
 # convert character ages to numeric to allow numeric subsetting 
 covartemplate$age <- as.numeric(covartemplate$age) 
 
@@ -191,15 +202,17 @@ covars <- covars[order(covars$stage),]
 covars <- covars[!is.na(covars$stage),]
 ```
 
-### Load CEL files
+### CEL files
 
 ```{r load_data, eval=FALSE}
+covars <- covars[!(grepl("1088831.cel", covars$CELfileloc)),]
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
 ```
 
 ## Quality Control and Normalization
 
-### Array QC checks on raw data with [ArrayQualityMetrics][3]
+### Raw QC
+- array QC checks on raw data with [ArrayQualityMetrics][3]
 
 ```{r rawQC, eval=FALSE}
 arrayQualityMetrics(expressionset=mic.raw, 
@@ -211,31 +224,33 @@ arrayQualityMetrics(expressionset=mic.raw,
 
 [Raw Data QC Report](../results/WB/U133Plus2/QCreport_raw/index.html)
 
-### Remove outlier arrays
-Arrays that failed array intensity, RLE or NUSE analyses during raw data QC were excluded.
+### Raw outliers
+- arrays that failed array intensity, RLE or NUSE analyses during raw data QC were excluded.
 
 ```{r exclude_from_raw, eval=FALSE}
 # subset ExpressionSet to studies that are NOT the following
-exclude.arrays <- c("GSM901488_t10941827.CEL", "GSM901590_t6435853.CEL", "GSM901596_t30233480.CEL", "GSM901635_t12826796.CEL", "GSM901715_t31323988.CEL", "GSM901751_t27248819.CEL", "GSM901787_t33629137.CEL", "GSM901822_t23737198.CEL", "1092761.cel", "1091261.cel", "1090861.cel", "01_0013_A1.CEL", "01_0026_A1_HG_U133_Plus_2.CEL", "GSM648590_01_0013_A1.CEL", "GSM648596_01_0026_A1_HG_U133_Plus_2.CEL", "GSM648718_26_260611A_HG_U133.2.CEL", "GSM244499.CEL", "26_260611A_HG_U133.2.CEL", "05_0011_A1_HG_U133_Plus_2.CEL", "15_0007A1_HG_U133_Plus_2.CEL", "09_0002A1_HG_U133_Plus_2.CEL", "06_0001_A2.CEL", "05_0008A1_HG_U133_Plus_2.CEL", "11_0021A_HG_U133_Plus_2.CEL", "GSM648643_05_0008A1_HG_U133_Plus_2.CEL", "GSM648645_05_0011_A1_HG_U133_Plus_2.CEL", "GSM648647_06_0001_A2.CEL", "GSM648656_09_0002A1_HG_U133_Plus_2.CEL", "GSM648682_11_0054A_HG_U133.2.CEL", "GSM648704_15_0007A1_HG_U133_Plus_2.CEL", "GSM648706_15_0017A_HG_U133_2.CEL")
+exclude.arrays <-c("GSM901488","GSM901590","GSM901596","GSM901715","GSM901822","M036","GSM1373917","GSM102993","GSM648590","GSM648596","GSM648718","GSM244499","GSM102983","GSM102984","GSM102998","GSM103013","GSM103015","GSM103057","GSM648643","GSM648645","GSM648647","GSM648682","GSM648704","GSM648706")
 
 mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
 # change the sample names to more informative
 sampleNames(mic.raw) <- as.vector(unlist(pData(mic.raw)$arrayID))
 ```
 
-### Normalize all arrays using [RMA][4]
+### Normalize 
+- all arrays using [RMA][4]
 
 ```{r normalize_RMA, eval=FALSE}
-mic.norm.eset <- rma(mic.raw,
+mic.norm <- rma(mic.raw,
                      normalize=TRUE,
                      background=TRUE)
 ```
 
 
-### Array QC checks on normalized data with ArrayQualityMetrics
+### Normalized QC
+- array QC checks on normalized data with ArrayQualityMetrics
 
 ```{r normQC, eval=FALSE}
-arrayQualityMetrics(expressionset=mic.norm.eset, 
+arrayQualityMetrics(expressionset=mic.norm, 
                     outdir=file.path(resultsDir, "QCreport_norm"), 
                     force=TRUE,
                     do.logtransform=FALSE, 
@@ -244,44 +259,46 @@ arrayQualityMetrics(expressionset=mic.norm.eset,
 
 [Normalized Data QC Report](../results/WB/U133Plus2/QCreport_norm/index.html)
 
-### Remove any remaining outlier samples
-GSM901535, M033, M060, M129, GSM103067, GSM647548, GSM647628, GSM103048, GSM647574, GSM647597, GSM647600, GSM350178
+### Normalized outliers
 
 ```{r drop_outliers, eval=FALSE}
 # subset ExpressionSet to samples that are NOT the following
-exclude.arrays <- c("GSM901535", "M033", "M060", "M129", "GSM103067", "GSM647548", "GSM647628", "GSM103048", "GSM647574", "GSM647597", "GSM647600", "GSM350178")
-        
+exclude.arrays <- c("GSM901535","GSM901787","M099","M144","M173","GSM102978","GSM103067","GSM647548","GSM647628","GSM103007","GSM103048","GSM648656","GSM647529","GSM647574","GSM647597","GSM647600","GSM350178")
+    
 mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
+save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw.no.outliers"))
 ```
 
-### Renormalize data
+### Renormalize without outliers
 
 ```{r normalize_RMA2, eval=FALSE}
-mic.norm.eset <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save(list=c("mic.raw", "mic.norm.eset"), file=file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
+mic.norm <- rma(mic.raw, normalize=TRUE, background=TRUE)
+save(list="mic.norm", file=file.path(resultsDir, "RDATA.mic.norm.no.outliers"))
 ```
 
 
 ```{r load_affybatch, echo=FALSE}
 # this is a hack to get around knitr having memory issues with loading and parsing CEL files
 # instead of having knitr do the CEL file manipulation, do it interactively and save out an RDATA object that you can load into the final knitr run
-load(file.path(resultsDir, "RDATA.raw_and_normalized_microarray.data_U133Plus2.0" ))
+load(file.path(resultsDir, "RDATA.mic.norm.no.outliers"))
 ```
 
-### Metadata for remaining U133Plus2.0 studies
+### Metadata 
+- for remaining U133Plus2.0 studies
 
 ```{r print_metadata, results='asis'}
-pd <- pData(mic.norm.eset)
+pd <- pData(mic.norm)
 pd.gvis <- gvisTable(as.data.frame(apply(pd, 2, as.character)), options=list(width=960))  
 print(pd.gvis, "chart")
 # rename the samples with the arrayID (to get rid of weird array names)
-sampleNames(mic.norm.eset) <- as.vector(unlist(pData(mic.norm.eset)$arrayID))
+sampleNames(mic.norm) <- as.vector(unlist(pData(mic.norm)$arrayID))
 ```
 
-### Output Expression Values for ALL Genes and Samples
+### ALL  Expression Values
+- for ALL Genes and Samples
 
-```{r allexprs}
-exprs.all <-exprs(mic.norm.eset)
+```{r allexprs, cache=TRUE}
+exprs.all <-exprs(mic.norm)
 probeIDs <- row.names(exprs.all)
 
 symbols <- unlist(mget(rownames(exprs.all), hgu133plus2SYMBOL, ifnotfound=NA))
@@ -304,10 +321,10 @@ To perform limma, we construct two matrices. The design matrix provides a repres
 - a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
 
 ```{r design, results="asis"}
-design <- model.matrix(~ 0+stage, data=pData(mic.norm.eset))
+design <- model.matrix(~ 0+stage, data=pData(mic.norm))
 # make sure the headings match
 colnames(design) <- sub("stage", "", colnames(design))
-design.gvis <- gvisTable(as.data.frame(apply(rownames2col(design,"ID"), 2, as.character)), options=list(width=640))  
+design.gvis <- gvisTable(as.data.frame(apply(row2colnames(design,"ID"), 2, as.character)), options=list(width=640))  
 print(design.gvis, "chart")
 ```
 
@@ -318,7 +335,7 @@ print(design.gvis, "chart")
 
 ```{r contrastmatrix, results='asis'}
 contrast.matrix <- makeContrasts(adult-child,adult-neonate,neonate-child, levels=dimnames(design)[[2]])
-contrast.gvis <- gvisTable(as.data.frame(apply(rownames2col(contrast.matrix,"contrast"), 2, as.character)), options=list(width=240, height=120))  
+contrast.gvis <- gvisTable(as.data.frame(apply(row2colnames(contrast.matrix,"contrast"), 2, as.character)), options=list(width=240, height=120))  
 print(contrast.gvis, "chart")
 ```
 
@@ -332,7 +349,7 @@ These matrices are used to fit a linear model to the data. The linear model is a
 - for each gene based on the given series of arrays
 
 ```{r linearmodel}
-exprs.norm <- exprs(mic.norm.eset)
+exprs.norm <- exprs(mic.norm)
 fit.exprs <- lmFit(exprs.norm, design) 
 ```
 
@@ -352,10 +369,10 @@ fit2.exprs <- eBayes(fit2.exprs)
 ### Calculate statistics for comparisons
 - generate statistics describing level of differential expression of genes, as sorted by unadjusted pvalue
 
-```{r calcstats, results='hide'}
+```{r calcstats, results='hide', cache=TRUE}
 stats.exprs <- lapply(seq(1,3,1), function(n) {
   contrast <- dimnames(fit2.exprs$contrasts)$Contrasts[n]
-  pd.contrast <- pData(mic.norm.eset)[apply(design[,colnames(design) %in% names(which(abs(contrast.matrix[,contrast])==1))]==1, 1,any),]
+  pd.contrast <- pData(mic.norm)[apply(design[,colnames(design) %in% names(which(abs(contrast.matrix[,contrast])==1))]==1, 1,any),]
   # calculate statistics for this contrast for ALL genes
   stats.contrast <- topTable(fit2.exprs, coef=n, adjust="fdr", sort.by="p", number=nrow(exprs.norm), genelist=row.names(exprs.norm)) 
   # get expression levels for these genes in the samples involved in this contrast
@@ -387,7 +404,8 @@ stats.exprs <- lapply(seq(1,3,1), function(n) {
 [Adult vs. Neonate](../results/WB/U133Plus2/U133_2.0Plus.stats.exprs.adult-neonate.xls)  
 [Neonate vs. Child](../results/WB/U133Plus2/U133_2.0Plus.stats.exprs.neonate-child.xls) 
 
-### Heatmaps of top 100 differentially expressed genes
+### Heatmaps
+- of top differentially expressed genes
 - for each pairwise comparison
 
 Here I first looked for genes with at least a 2 fold change in expression and an adjusted pvalue <0.1. The results were sorted by the unadjusted pvalue and the top 100 taken for the heatmaps.
@@ -396,7 +414,7 @@ There is one heatmap for each comparison  with both genders and unknown genders 
 
 *note that the differentially expressed genes clustered in these heatmaps are based on comparisons that include both genders* 
 
-```{r heatmaps, fig.width=18, fig.height=18, out.width='100%'}
+```{r heatmaps}
 for(n in 1:3){
   # get the names of the stages that are being compared in this comparison
   contrast <- stats.exprs[[n]]$contrast
@@ -422,7 +440,7 @@ for(n in 1:3){
   row.names(heatmap.annots) <- heatmap.annots$arrayID
   heatmap.annots$arrayID <- NULL
   # heatmap annotation colors
-  study_colors <- c(cbPalette, "#FF0000")
+  study_colors <- c(cbPalette, "#FF0000", "#00FF00")
   names(study_colors) <- unique(unlist(pd.contrast$study))
   stage_colors <- c("white", "darkgrey", "black")
   names(stage_colors) <- unique(unlist(pd.contrast$stage))
@@ -430,23 +448,32 @@ for(n in 1:3){
   names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
   ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
   ## Heatmaps
+  svg(filename = paste("DE_heatmap", gsub(" ", "", contrast), "svg", sep="."), width=8, height=11)
+  plot.new()
   pheatmap(as.matrix(top.exprs.contrast), 
            annotation=heatmap.annots, 
            color=rev(brewer.pal(11,"RdBu")), 
            cluster_cols = FALSE,
            main=paste(contrast,  "- Unclustered", sep=""), 
            show_colnames=F, 
-           fontsize=24, 
-           fontsize_row=10,
-           annotation_colors=ann_colors) 
+           fontsize=12, 
+           fontsize_row=8,
+           annotation_colors=ann_colors, 
+           cellwidth=1 ) 
+  dev.off()
   }
 ```
 
-### Heatmaps for all top 100 differentially expressed genes from each pairwise comparison in all samples
+![adult-child heatmap](../results/WB/U133Plus2/DE_heatmap.adult-child.svg)
+![adult-neonate heatmap](../results/WB/U133Plus2/DE_heatmap.adult-neonate.svg)
+![neonate-child heatmap](../results/WB/U133Plus2/DE_heatmap.neonate-child.svg)
+
+### Heatmaps - ALL studies
+- for all top 100 differentially expressed genes from each pairwise comparison in all samples
 - wanted to see if patterns were consistent across all the age groups
 - combined the top hits from all three comparisons, and looked at their expression patterns in all samples
 
-```{r heatmaps_all_samples, fig.width=18, fig.height=36}
+```{r heatmaps_all_samples}
 top.IDs <- unique(unlist(lapply(stats.exprs, function(n) {
   stats.exprs.contrast <- n$stats.exprs.contrast
   top.stats.exprs.contrast <- subset(stats.exprs.contrast, abs(logFC)>=1 & adj.P.Val<=0.1)
@@ -467,13 +494,13 @@ top.exprs.union <- exprs.norm[top.IDs,]
 # row labels - add gene symbol to probeset id
 row.names(top.exprs.union) <- paste(as.vector(unlist(mget(row.names(top.exprs.union), hgu133plus2SYMBOL, ifnotfound=NA))), " (" ,row.names(top.exprs.union), ")", sep="")
 # annotations
-pd <- pData(mic.norm.eset)
+pd <- pData(mic.norm)
 heatmap.annots <- pd[,c("arrayID", "study", "stage", "gender")]
 heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
 row.names(heatmap.annots) <- heatmap.annots$arrayID
 heatmap.annots$arrayID <- NULL
 # annotation colors
-  study_colors <- c(cbPalette, "#FF0000")
+  study_colors <- c(cbPalette, "#FF0000", "#00FF00")
   names(study_colors) <- unique(unlist(pd$study))
   stage_colors <- c("white", "darkgrey", "black")
   names(stage_colors) <- unique(unlist(pd$stage))
@@ -481,19 +508,25 @@ heatmap.annots$arrayID <- NULL
   names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
   ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
 ## Heatmaps
+svg(filename = "allheatmap.svg", width=8, height=11)
+plot.new()
+
 pheatmap(as.matrix(top.exprs.union), 
          annotation=heatmap.annots, 
          color=rev(brewer.pal(11,"RdBu")), 
          cluster_cols = FALSE, 
          main="All Comparisons, All Samples - Unclustered", 
          show_colnames=F, 
-         fontsize=24,
+         fontsize=12,
          fontsize_row=8,
-         annotation_colors=ann_colors)
+         annotation_colors=ann_colors,
+         cellwidth=1)
 
 
 ```
 
+
+![all heatmap](../results/WB/U133Plus2/allheatmap.svg)
 
 [1]: http://www.bioconductor.org (BioC)
 [2]: http://www.bioconductor.org/packages/release/bioc/html/affy.html (affy)
