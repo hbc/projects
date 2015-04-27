@@ -1,9 +1,16 @@
-```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", 
-               echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, 
-               tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), 
-               fig.path="figure/WB-pathprint_multi-", 
-               cache.path="cache/WB-pathprint_multi-")
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "Pathprint Analysis of Multiplatform Sepsis Studies"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
@@ -34,10 +41,7 @@ library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
 library(RColorBrewer) # library for generating color palettes
 library(googleVis) # library for presenting tables
-source("http://dl.dropboxusercontent.com/u/4253254/Resources/functions.r")
-#library(devtools) # install libraries from github
-#install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
-#library(dplyr)
+library(CHBUtils)
 ```
 
 ## Locations of directories for data, metadata and results
@@ -103,8 +107,9 @@ if (any(c(any(seq(adult.age.range[1], adult.age.range[2]) %in% seq(child.age.ran
 refined.metadata <- read.delim(file.path(metaDir, "unified.metadata.refined.tab"))
 refined.metadata <- refined.metadata[!is.na(refined.metadata$age), ]
 refined.metadata <- refined.metadata[refined.metadata$platform %in% names(platform.thresholds), ]
-write.table(refined.metadata, file.path(metaDir, "unified.metadata.refined.pathprint_plaforms.tab"), quote = F, sep = "\t", 
-    row.names = F, col.names = T)
+# remove 1088631.cel
+refined.metadata <- refined.metadata[!(refined.metadata$CEL_regex=="1088631.cel"),]
+write.table(refined.metadata, file.path(metaDir, "unified.metadata.refined.pathprint_plaforms.tab"), quote = F, sep = "\t", row.names = F, col.names = T)
 ```
 
 That revised metadata file is [here](../meta/WB/unified.metadata.refined.pathprint_plaforms.tab)
@@ -125,9 +130,7 @@ sample.indices <- c(neonate.indices, children.indices, adult.indices)
 covars <- covars[sample.indices, ]
 # label samples with their stage as determined by age don't need to specify adult ranges, as we limited the dataset above
 # to neonates, children and adults
-covars$stage <- ifelse(covars$age <= max(neonate.age.range), "neonate", ifelse(covars$age >= min(child.age.range) & covars$age <= 
-    max(child.age.range), "child", ifelse(covars$age >= min(adult.age.range) & covars$age <= max(adult.age.range), "adult", 
-    NA)))
+covars$stage <- ifelse(covars$age <= max(neonate.age.range), "neonate", ifelse(covars$age >= min(child.age.range) & covars$age <= max(child.age.range), "child", ifelse(covars$age >= min(adult.age.range) & covars$age <= max(adult.age.range), "adult", NA)))
 covars <- covars[order(covars$stage), ]
 # remove unclassified samples
 covars <- covars[!is.na(covars$stage), ]
@@ -135,7 +138,7 @@ write.table(covars, file.path(metaDir, "unified.metadata.refined.pathprint_plafo
     row.names = F, col.names = T)
 ```
 
-That revised metadata file is [here](../meta/WB/"unified.metadata.refined.pathprint_plaforms.targetted.samples.tab)
+That revised metadata file is [here](../meta/WB/unified.metadata.refined.pathprint_plaforms.targetted.samples.tab)
 
 ### Download Expression data from GEO
 - for each GEO study
@@ -147,7 +150,7 @@ That revised metadata file is [here](../meta/WB/"unified.metadata.refined.pathpr
 GSE13015 and GSE3284 have more than one platform per experiment, so need to handle those instances
 Also processed GSE54514 separately for now (data not into GEO as of `r date()`).
 
-```{r pathprintdata, results='hide'}
+```{r pathprintdata, results='hide', cache=TRUE}
 pathprint.GPLs <- names(platform.thresholds)
 covars.GEO <- covars[which(covars$database == "GEO"), ]
 fingerprints.GEO.l <- lapply(unique(covars.GEO$study), function(GSE) {
@@ -233,8 +236,11 @@ save(list = "fingerprints.AE", file = file.path(resultsDir, "pathprints.AE.RData
 
 ```{r pathprintBD, results='hide'}
 covars.BD <- covars[which(covars$database == "BD"), ]
+
 row.names(covars.BD) <- covars.BD$arrayID
+
 celfiles.BD <- as.character(covars.BD$CEL_regex)
+
 # load CEL files
 affyraw.BD <- ReadAffy(filenames = file.path(dataDir, "BD", celfiles.BD), phenoData = covars.BD)
 # change names to match covars$arrayID
@@ -294,9 +300,8 @@ contrast.matrix <- makeContrasts(adult - child, adult - neonate, neonate - child
 ### Heatmaps
 - clustered by both column (sample) and row (pathway)
 
-#### Setup annotations
-
-```{r pathprint_heatmap_colors}
+#### SEtup annotations
+```{r heatmapannots}
 # annotation colors
 study_colors <- rep(cbPalette, 2)[1:18]
 names(study_colors) <- unique(unlist(pd$study))
@@ -308,6 +313,7 @@ genders[is.na(genders)] <- "unknown"
 names(gender_colors) <- unique(unlist(genders))
 ann_colors = list(study = study_colors, stage = stage_colors, gender = gender_colors)
 ```
+
 
 #### Make comparisons and plot
 
@@ -352,14 +358,20 @@ for (n in 1:3) {
     row.names(heatmap.annots) <- heatmap.annots$arrayID
     heatmap.annots$arrayID <- NULL
     # getting the annotations and annotation colors to play nice
-    heatmap.annots <- as.matrix(heatmap.annots)
-    heatmap.annots[, "gender"][is.na(as.vector(heatmap.annots[, "gender"]))] <- "unknown"
+        
     # both genders
     if (nrow(fingerprints.contrast.sub) > 0) {
-        pheatmap(fingerprints.contrast.sub, color = c("blue", "white", "red"), cluster_rows = T, cluster_cols = T, show_colnames = F, 
-            annotation = heatmap.annots, legend_breaks = c(-1, 0, 1), main = paste("Pathways for ", contrast, "comparison - clustered", 
-                sep = " "), fontsize = 14, fontsize_row = 10, annotation_colors = ann_colors)
-    }
+      pheatmap(fingerprints.contrast.sub, color = c("blue", "white", "red"), 
+               cluster_rows = T, 
+               cluster_cols = T, 
+               show_colnames = F, 
+               annotation_col = heatmap.annots, 
+               legend_breaks = c(-1, 0, 1), 
+               main = paste("Pathways for ", contrast, "comparison - clustered", sep = " "), 
+               fontsize = 14, 
+               fontsize_row = 10,    
+              annotation_colors = ann_colors)
+      }
 }
 ```
 
@@ -424,7 +436,7 @@ for (n in 1:3) {
     row.names(heatmap.annots) <- heatmap.annots$arrayID
     heatmap.annots$arrayID <- NULL
     # getting the annotations and annotation colors to play nice
-    heatmap.annots <- as.matrix(heatmap.annots)
+   # heatmap.annots <- as.matrix(heatmap.annots)
     heatmap.annots[, "gender"][is.na(as.vector(heatmap.annots[, "gender"]))] <- "unknown"
     # both genders
     if (nrow(fingerprints.contrast.sub) > 0) {
@@ -497,7 +509,6 @@ for (n in 1:3) {
     row.names(heatmap.annots) <- heatmap.annots$arrayID
     heatmap.annots$arrayID <- NULL
     # getting the annotations and annotation colors to play nice
-    heatmap.annots <- as.matrix(heatmap.annots)
     heatmap.annots[, "gender"][is.na(as.vector(heatmap.annots[, "gender"]))] <- "unknown"
     # both genders
     if (nrow(fingerprints.contrast.sub) > 0) {
@@ -510,7 +521,7 @@ for (n in 1:3) {
 
 
 
-```{r pathtable}
+```{r pathtable,eval=FALSE}
 n=1
 contrast <- gsub(" ", "", contrast)
 stage.1 <- unlist(strsplit(contrast, "-"))[1]

@@ -67,7 +67,7 @@ lowintensity.percentile=0.1
 mad.quantile.cutoff=0.1
 pvalue.cutoff=0.05
 highlight.color="green"
-lfc.cutoff=log2(2.5)
+lfc.cutoff=log2(1.5)
 ```
 
 ## Libraries
@@ -1028,51 +1028,90 @@ filters.hsap <- listFilters(ensemblmart.hsap)
 setwd(resultsDir)
 save.image("RDATA")
 
+
 # pull in kiebler data, translate rgd symbols to mouse homolog ensembl ids
 kiebler.data <- read.csv(file.path(dataDir, "mmc2.csv"))
+kiebler.data <- subset(kiebler.data, adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff)
 kiebler.rat.symbols <- kiebler.data$Symbol %>% unique(.) %>% na.omit(.)
 kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
 write(kiebler.mus.ensemblids,file.path(resultsDir, "kiebler.mus.ensemblids.txt"))
 
-# Maher data
-maher.data <- read.csv(file.path(dataDir, "Maher-Table S1.csv"),na.strings = c("", " "))
-maher.rat.symbols <-maher.data$symbol %>% unique(.) %>% na.omit(.)
-maher.mus.ensemblids <- as.vector(unlist(getBM(maher.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
-write(maher.mus.ensemblids,file.path(resultsDir, "maher.mus.ensemblids.txt"))
-
-# Furic data
-# take union of genes pulled down by both isoforms
-furic59.data <- read.csv(file.path(dataDir, "Furic-TableS2-Stau2_59.csv"),na.strings = c("", " "))
-furic59.hsap.symbols <- na.omit(unique(furic59.data$symbol))
-furic62.data <- read.csv(file.path(dataDir, "Furic-TableS3-Stau2_62.csv"))
-furic62.hsap.symbols <- na.omit(unique(furic62.data$symbol))
-furic.hsap.symbols <- union(furic59.hsap.symbols, furic62.hsap.symbols)
-# convert human gene symbols to mouse homologs
-furic.mus.ensemblids <- as.vector(unlist(getBM(furic.hsap.symbols, filters="hgnc_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.hsap)))
-write(furic.mus.ensemblids,file.path(resultsDir, "furic.mus.ensemblids.txt"))
+# Kusek data
+kusek.data <- read.csv(file.path(dataDir, "Kusek_Cell_Stem_Cell_2013.csv"),na.strings = c("", " "), skip=2)
+kusek.data <- subset(kusek.data, Adjusted.p.value<0.05 & Fold.change..UP.in.Stau2.vs.Input.>2^lfc.cutoff)
+kusek.mus.symbols <- as.character(unlist(kusek.data$Gene.Symbol))
+kusek.mus.ensemblids <- as.vector(unlist(getBM(kusek.mus.symbols, filters="mgi_symbol", attributes="ensembl_gene_id", mart=ensemblmart.mus)))
+num.kusek.mus.ensemblids <- length(kusek.mus.ensemblids)
+write(kusek.mus.ensemblids, file.path(resultsDir, "kusek.mus.ensemblids.txt"))
 
 # find ensembl ids of renal pulldown genes
 renal.data <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
 renal.mus.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
+num.renal.mus.ensemblids <- length(renal.mus.ensemblids)
 write(renal.mus.ensemblids,file.path(resultsDir, "renal.mus.ensemblids.txt"))
 
-# all reported neural genes
-neural.mus.ensemblids <- unique(union(union(maher.mus.ensemblids, furic.mus.ensemblids), kiebler.mus.ensemblids))
-write(neural.mus.ensemblids,file.path(resultsDir, "neural.mus.ensemblids.txt"))
+#overlaps
+kusek.renal.overlap <- intersect(renal.mus.ensemblids, kusek.mus.ensemblids)
+num.kusek.renal.overlap <- length(kusek.renal.overlap)
+kusek.kiebler.overlap <- intersect(kusek.mus.ensemblids, kiebler.mus.ensemblids)
+num.kusek.kiebler.overlap <- length(kusek.kiebler.overlap)
+kiebler.renal.overlap <- intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)
+num.kiebler.renal.overlap <- length(kiebler.renal.overlap)
+kusek.renal.kiebler.overlap <- intersect(kusek.renal.overlap, kusek.kiebler.overlap)
+num.kusek.renal.kielber.overlap <- length(kusek.renal.kiebler.overlap)
 
-png(file.path(resultsDir, "venneuler-2way.png"))
-plot(venneuler(c(renal=length(renal.mus.ensemblids), neural=length(neural.mus.ensemblids), "renal&neural"=length(intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)))))
+
+
+
+#plot overlaps
+svg(filename="Venneuler-Renal.Kusek.Kiebler.svg", width=7.5,height=10, pointsize=2)
+plot(venneuler(c(Kusek=length(kusek.mus.ensemblids), Renal=length(renal.mus.ensemblids), Kiebler=length(kiebler.mus.ensemblids), "Kusek&Renal"=length(kusek.renal.overlap), "Kusek&Kiebler"=length(kusek.kiebler.overlap), "Kiebler&Renal"=length(kiebler.renal.overlap), "Kusek&Kiebler&Renal"=length(kusek.renal.kiebler.overlap) )))
 dev.off()
 
+# combine overlap IDs
 
-write(intersect(neural.mus.ensemblids, renal.mus.ensemblids), file=file.path(resultsDir, "neural-renal-enriched-genes.txt"))
+overlap.probeids <- unique(c(kusek.renal.overlap, kiebler.renal.overlap))
+
+# annotate datasets with mus ensembl_ids and subset to overlapped probeids
+kusek.mus.ensemblids.symbols <- getBM(as.vector(unlist(kusek.data$Gene.Symbol)), filters="mgi_symbol", attributes=c("mgi_symbol", "ensembl_gene_id"), mart=ensemblmart.mus)
+kusek.data <- merge(kusek.mus.ensemblids.symbols, kusek.data, by.x="mgi_symbol", by.y="Gene.Symbol", all=TRUE)
+kusek.data <- kusek.data[,c("ensembl_gene_id", "Adjusted.p.value", "Fold.change..UP.in.Stau2.vs.Input.")]
+names(kusek.data)[2:3] <- c("kusek.adj.p.val", "kusek.fold.change") 
 
 
+kiebler.rat.ensemblids.symbols <- getBM(as.vector(unlist(kiebler.data$Symbol)), filters="rgd_symbol", attributes=c( "rgd_symbol","ensembl_gene_id"), mart=ensemblmart.rat)
+kiebler.mus.ensemblids.rat.ensemblids<- getBM(as.vector(unlist(kiebler.data$Symbol)), filters="rgd_symbol", attributes=c( "mmusculus_homolog_ensembl_gene","ensembl_gene_id"), mart=ensemblmart.rat)
+kiebler.mus.ensemblids.symbols <- merge(kiebler.rat.ensemblids.symbols, kiebler.mus.ensemblids.rat.ensemblids)
+kiebler.mus.ensemblids.symbols$ensembl_gene_id <- NULL
+kiebler.data <- merge(kiebler.mus.ensemblids.symbols, kiebler.data, by.x="rgd_symbol", by.y="Symbol")
+kiebler.data <- kiebler.data[,c("mmusculus_homolog_ensembl_gene", "adj.P.Val", "Fold.change")]
+names(kiebler.data) <- c("ensembl_gene_id", "kiebler.adj.p.val", "kiebler.fold.change") 
 
 
+renal.mus.ensemblids.probeids <- getBM(as.vector(unlist(renal.data$probesetid)),filters="affy_mogene_1_0_st_v1", attributes=c("affy_mogene_1_0_st_v1", "ensembl_gene_id"), mart=ensemblmart.mus )
+renal.data <- merge(renal.mus.ensemblids.probeids, renal.data, by.x="affy_mogene_1_0_st_v1", by.y="probesetid")
+
+# subset all data sets to probes found in overlaps
+renal.data <- renal.data[renal.data$ensembl_gene_id %in% overlap.probeids,]
 
 
+overlap.renal.data <- merge(merge(renal.data, kiebler.data, by="ensembl_gene_id", all.x=TRUE), kusek.data, by="ensembl_gene_id", all.x=TRUE)
+overlap.renal.data$enriched_in_neural_study <- ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & !(is.na(overlap.renal.data$kusek.fold.change)), "BOTH",
+                                                      ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & is.na(overlap.renal.data$kusek.fold.change), "KIEBLER",
+                                                             ifelse(is.na(overlap.renal.data$kiebler.fold.change) & !(is.na(overlap.renal.data$kusek.fold.change)), "KUSEK", "NA")))
 
+
+library(xlsx)
+
+
+write.xlsx(overlap.renal.data, file=file.path(resultsDir, "Probe.data.for.genes.also.enriched.in.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1")
+
+
+#output kusek kiebler overlap data
+kiebler.kusek.overlap.data <- merge(kiebler.data, kusek.data)
+kiebler.kusek.overlap.data <- merge(getBM(kiebler.kusek.overlap.data$ensembl_gene_id, filters="ensembl_gene_id", attributes=c("ensembl_gene_id", "mgi_symbol"), mart=ensemblmart.mus), kiebler.kusek.overlap.data)
+
+write.xlsx(kiebler.kusek.overlap.data, file=file.path(resultsDir, "Enrichment.data.for.genes.enriched.in.both.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1")
 ```
 
 

@@ -1,5 +1,16 @@
-```{r setup, echo=FALSE}
-opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/sepsis-unify-", cache.path="cache/sepsis-unify-")
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "Unification and Standardization of Sepsis Studies"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
@@ -67,7 +78,7 @@ library(ArrayExpress)
 The IDs of the GEO series (GSEs) are:
 
 ```{r GEOIDs}
-GSEids <- c("GSE28750", "GSE11755", "GSE4607", "GSE13904", "GSE26440", "GSE26378", "GSE9692", "GSE36809", "GSE11375", "GSE13015","GSE10474","GSE32707","GSE40586","GSE5580","GSE22278","GSE3026","GSE3284", "GSE54514")
+GSEids <- c("GSE28750", "GSE11755", "GSE4607", "GSE13904", "GSE26440", "GSE26378", "GSE9692", "GSE36809", "GSE11375", "GSE13015","GSE10474","GSE32707","GSE40586","GSE5580","GSE22278","GSE3026","GSE3284", "GSE54514", "GSE57065")
 # GSE32707 not in barcode or pathprint database - ignored
  
 AEids <- c("MEXP-3621")
@@ -169,7 +180,7 @@ GSE32707 not in barcode or pathprint database; ignored.
 **GSE26378**
 **GSE54514**
 
-Metadata from GSE26440,  GSE26378 and GSE54514 need no modifications, but the metadata filenames were modified for consistency.
+Metadata from GSE26440,  GSE26378, GSE57065 and GSE54514 need no modifications, but the metadata filenames were modified for consistency.
 
 ```{r modGSE26440_GSE26378}
 metadata <- read.delim(file.path(dataDir, "GSE26440", "metadata.GSE26440.1.tab"), sep="\t", header=T)
@@ -180,6 +191,9 @@ write.table(metadata, file=file.path(dataDir, "GSE26378", "metadata.GSE26378.tab
 
 metadata <- read.delim(file.path(dataDir, "GSE54514", "metadata.GSE54514.1.tab"), sep="\t", header=T)
 write.table(metadata, file=file.path(dataDir, "GSE54514", "metadata.GSE54514.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+metadata <- read.delim(file.path(dataDir, "GSE57065", "metadata.GSE57065.1.tab"), sep="\t", header=T)
+write.table(metadata, file=file.path(dataDir, "GSE57065", "metadata.GSE57065.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
 
 rm(metadata)
 ```
@@ -193,7 +207,25 @@ metadata <- read.delim(file.path(dataDir, "BD", "celToPatientStatus.txt"))
 metadata$database <- "BD"
 metadata$agecol <- 40
 metadata$platform <- "GPL570"
-write.table(metadata, file=file.path(dataDir, "BD", "metadata.BD.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+write.table(metadata, file=file.path(dataDir, "BD", "original.metadata.BD.tab"), sep="\t", quote=F, row.names=FALSE, col.names=TRUE)
+
+library(readr)
+library(dplyr)
+
+# load original metadata
+setwd(file.path(dataDir, "BD" ))
+metadata <- read_tsv("original.metadata.BD.tab")
+
+# convert days to numeric form
+metadata$sepsisday <- as.numeric(gsub("D", "", metadata$Time0Day))
+metadata$sampleday <- as.numeric(gsub("D", "", metadata$Day))
+
+# magic with dplyr
+patients <- group_by(metadata, Patient)
+sepsis.metadata <- filter(patients, abs(sampleday-sepsisday)==min(abs(sampleday-sepsisday)))
+
+# output subsetted data
+write.table(sepsis.metadata, file.path(dataDir, "BD","metadata.BD.tab"), col.names = TRUE, row.names=FALSE, sep="\t", quote=F)
 ```
 
 

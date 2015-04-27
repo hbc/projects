@@ -1,3 +1,27 @@
+<<<<<<< Updated upstream
+=======
+
+## ----setup, echo=FALSE, warning=FALSE, message=FALSE---------------------
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Benyam Kind "
+clientemail="bkinde@gmail.com"
+labPI="Michael Greenberg"
+lablocation="HMS"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+
+
+## ----variables-----------------------------------------------------------
+## Setup Data and Results directory variables
+>>>>>>> Stashed changes
 if(file.exists("/n/hsphS10/hsphfs1/chb/projects/mg_spikeins/")){
   baseDir="/n/hsphS10/hsphfs1/chb/projects/mg_spikeins/"
     } else if (file.exists("/Users/johnhutchinson/projects/mg_spikeins/")){
@@ -17,7 +41,10 @@ pvalue.cutoff=0.25
 
 
 ## ----libraries_variables, echo=TRUE--------------------------------------
+<<<<<<< Updated upstream
 library(knitr)
+=======
+>>>>>>> Stashed changes
 library(affy) # for loess normalization
 library(oligo) # array utilities
 library(pd.mogene.2.0.st) # array layout annotation
@@ -139,6 +166,7 @@ PCAplot.eset(affyNorm.core, categories1="genotype", categories2="treatment", tit
 
 ## ----quantro-------------------------------------------------------------
 library(doParallel)
+<<<<<<< Updated upstream
 cl <- makeCluster(16)
 registerDoParallel(cl)
 
@@ -147,3 +175,16 @@ stopCluster(cl)
 save.image(file.path(resultsDir, "RDATA"))
 
 q()
+=======
+cl <- makeCluster(8)
+registerDoParallel(cl)
+qtest <- quantro(object=exprs(affyRaw), groupFactor=as.vector(pData(affyRaw)$group), B=10000)
+stopCluster(cl)
+
+save.image(file.path(resultDir, "RDATA"))
+
+
+## ----writebib, results='hide', echo=FALSE, message=FALSE-----------------
+write.bibtex(file="references.bib")
+
+>>>>>>> Stashed changes

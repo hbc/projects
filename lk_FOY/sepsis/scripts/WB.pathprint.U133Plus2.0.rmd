@@ -1,3 +1,13 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "Pathprint Analysis of U133Pluse2 Sepsis Studies"
+---
+
 ```{r setup, echo=FALSE}
 opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), fig.path="figure/WB-U133Plus2-pathprint-", cache.path="cache/WB-U133Plus2-pathprint-")
 options(width=200)
