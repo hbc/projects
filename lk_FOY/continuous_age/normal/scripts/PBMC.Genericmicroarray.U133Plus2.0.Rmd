@@ -1,0 +1,355 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+title: "PBMC Microarray Analyses - Age as a Continous Variable"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+# STANDARD MICROARRAY ANALYSES OF U133PLUS2.0 STUDIES
+
+---
+
+Analysis of public datasets for differential gene expression signatures as an outcome of age for [Les Kobzik](mailto:LKOBZIK@hsph.harvard.edu) as part of the DARPA 7-day Biodefense Program. PBMC samples only.
+
+Contact [John Hutchinson](mailto:jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+----
+
+# GENERAL SETUP
+
+## Libraries
+- general purpose R libraries necessary for analysis
+
+```{r general_libraries}
+source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
+library(xtable) # table generation for reports
+library(plyr) # library for iteratively working with data structures
+library(ggplot2) # library for plotting 
+library(RColorBrewer) # library for generating color palettes
+library(googleVis) # library for presenting tables
+library(CHBUtils)
+```
+
+## Variables
+- locations of directories for data, metadata and results
+
+```{r general_directories}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/lk_FOY/continuous_age/normal")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/lk_FOY/continuous_age/normal"
+  }  else if (file.exists("/Volumes/home08/jhutchin/consults/lk_FOY/continuous_age/normal")) {
+    baseDir <- "/Volumes/home08/jhutchin/consults/lk_FOY/continuous_age/normal"
+    } else {
+      baseDir <- "/Volumes/ody/consults/lk_FOY/continuous_age/normal"
+      }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results", "PBMC")
+metaDir <- file.path(baseDir, "meta", "PBMC")
+
+# colorblind friendly palette
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+```
+
+----
+
+# Microarray Analysis
+- only looking at the HG-U133-2.0 Plus arrays, so confirmed that the unified metadata file only has studies with this array (GPL570 for GEO studies, A-AFFY-44 for Array Express studies)
+- subsetted to samples for which we have gender, age and raw data
+
+```{r subset_data}
+refined.metadata <- read.delim(file.path(metaDir,"unified.metadata.refined.tab"))
+U133.Plus2.data <- refined.metadata[which(!is.na(refined.metadata$age) & !is.na(refined.metadata$gender) & !is.na(refined.metadata$CEL_regex) & grepl("GPL570|A-AFFY-44", refined.metadata$platform)),]
+
+write.table(U133.Plus2.data, file.path(metaDir, "unified-metadata-refined_U133Plus2.0.tab"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(U133.Plus2.data, file.path(metaDir, "unified-metadata-refined_U133Plus2.0.xls"), sep="\t", row.names=F, col.names=T)
+```
+
+That metadata file is [here](../meta/PBMC/unified-metadata-refined_U133Plus2.0.xls)
+
+These studies were dropped for lack of age and/or gender data:
+`r setdiff(unique(refined.metadata$study), unique(U133.Plus2.data$study))`
+
+## Setup
+
+### [Bioconductor][1] libraries 
+- for the microarray analysis 
+
+```{r microarray_analysis_libraries}
+# to parse the CEL files and work with intensity values
+library(affy) 
+# for QC reports
+library(arrayQualityMetrics)
+# library to do stats 
+library(limma) 
+# pretty heatmaps
+library(pheatmap) 
+# annotations for the hgU1332.0Plus array
+library(hgu133plus2.db) 
+```
+
+### Parse metadata
+- load and parse the unified, refined and subsetted metadata file 
+- to make a covariate table that allows you to load the CEL files using the [affy][2] Bioconductor library
+- this table has the CEL file location in the first column, without a header
+- the other columns contain the sampleIDs, ages, genders,ethnicities and respective studies
+
+```{r covariatedataframe, results='hide'}
+# U1332.0Plus only for now
+covartemplate.file <- "unified-metadata-refined_U133Plus2.0.tab" 
+covartemplate <- read.table(file.path(metaDir,covartemplate.file ), header=T, colClasses="character", sep="\t")
+covartemplate <- as.matrix(covartemplate)
+covars <- aaply(covartemplate, 1, function(n){
+  # pull out the info you need piece by piece
+    sampleID <- n[1] 
+  age <- n[3]
+  gender <- n[4]
+  ethnicity=n[5]
+  CELregex <- n[7]
+  CELFTP <- n[6]
+  study=n[9]
+    print(sampleID)
+  if (is.na(n[10])) {
+    CELfileloc <- file.path(dataDir, study, CELregex) 
+    } else if (n[10]=="GEO"){
+      # for GEO studies, get the CEL file name from the FTP locaiton in the metadata file
+      CELfileloc <- file.path(dataDir,study, sub(".gz", "", basename(as.character(CELFTP)))) 
+      } else {
+        # for ArrayExpress or nonGEO studies, get the CEL file name directly from the CEL file regex in the metadata file
+        CELfileloc <- file.path(dataDir, study, CELregex) 
+        }
+  if(!file.exists(CELfileloc)){
+    # check if the CEL file is actually where its supposed to be, if not notify and move on
+    print(paste(CELfileloc, "does not exist", sep=" ")) 
+    break
+    } else {
+      # if CEL file is where its supposed to be, add location to covariate table
+      return(list(CELfileloc=CELfileloc, ID=sampleID, age=age, gender=gender, ethnicity=ethnicity, study=study)) 
+      }
+  })
+covars <- as.data.frame(covars)
+covars$age <- as.numeric(covars$age)
+row.names(covars) <- basename(as.character(covars$CELfileloc))
+```
+
+### Load CEL files
+
+```{r load_data, eval=FALSE}
+mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
+save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw"))
+```
+
+## Quality Control and Normalization
+
+### Raw Data QC
+- array QC checks on raw data with [ArrayQualityMetrics][3]
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=mic.raw, outdir=file.path(resultsDir, "QCreport_raw"), force=TRUE, do.logtransform=TRUE, intgroup=c("gender", "study"))
+````
+
+[Raw Data QC Report](../results/PBMC/QCreport_raw/index.html)
+
+```{r loadesetraw, eval=FALSE, echo=FALSE}
+# hack to get around reloading raw data into eset
+load(file.path(resultsDir, "RDATA.mic.raw"))
+```
+
+### Remove outliers
+- individual arrays that failed array intensity, RLE or NUSE analyses during raw data QC were excluded. Studies where the majority of samples failed were also removed.
+- consider dropping GSE20307, as it has wider RLE and higher NUSE distributions than the other studies
+
+```{r exclude_from_raw, eval=FALSE}
+# subset ExpressionSet to studies that are NOT the following
+exclude.arrays <- c("GSM340214.CEL","GSM733834.CEL")
+
+mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
+```
+
+### Normalize 
+- using [RMA][4]
+
+```{r normalize_RMA, eval=FALSE}
+mic.norm.eset <- rma(mic.raw,
+                     normalize=TRUE,
+                     background=TRUE)
+save(list="mic.norm.eset", file=file.path(resultsDir, "RDATA.mic.norm.eset"))
+```
+
+### Normalized Data QC
+- array QC checks on normalized data with ArrayQualityMetrics
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=mic.norm.eset, 
+                    outdir=file.path(resultsDir, "QCreport_norm"), 
+                    force=TRUE,
+                    do.logtransform=FALSE, 
+                    intgroup=c("gender", "study"))
+```
+
+[Normalized Data QC Report](../results/PBMC/QCreport_raw/index.html)
+
+```{r loadesetnorm, eval=TRUE, echo=FALSE}
+# hack to get around reloading raw data into eset
+load(file.path(resultsDir, "RDATA.mic.norm.eset"))
+```
+
+```{r dropnormoutliers, eval=TRUE}
+exclude.outliers <-"GSM844204.CEL"
+mic.norm.eset <- mic.norm.eset[,which(!(row.names(pData(mic.norm.eset)) %in% exclude.outliers))]
+```
+
+### Metadata Summary
+- for remaining U133Plus2.0 studies
+
+```{r print_metadata}
+# rename the samples with the arrayID (to get rid of weird array names)
+sampleNames(mic.norm.eset) <- as.vector(unlist(pData(mic.norm.eset)$ID))
+
+pd <- pData(mic.norm.eset)
+pd.out <- apply(pd, 2, as.character)
+write.table(pd.out, file.path(resultsDir, "metadata.summary.xls"), sep="\t", row.names=F, col.names=T)
+```
+
+**[Metadata Summary](../results/PBMC/metadata.summary.xls)**
+
+## Differential Expression Analyses
+
+### Limma
+
+A linear model for microarray data analysis [Limma][5] was performed on the samples to identify genes which vary with age.Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we fit a linear model to the gene expresison data using age as a continuous variable, and compute moderated t-statistics and log-odds of age-variant expression by empirical Bayes shrinkage of the standard errors towards a common value.
+
+```{r design}
+design <- model.matrix(~age, data=pData(mic.norm.eset))
+fit1 <- lmFit(exprs(mic.norm.eset), design)
+fit2<-eBayes(fit1)
+```
+
+### Statistics of gene expression
+
+```{r calcstats, cache=TRUE, results='hide'}
+# reorder data by age
+mic.norm.age.ordered <- mic.norm.eset[,order(pData(mic.norm.eset)$age)]
+# get symbols for probes
+symbols <- unlist(mget(featureNames(mic.norm.age.ordered), hgu133plus2SYMBOL, ifnotfound=NA))
+
+# output stats 
+stats <- topTable(fit2,coef=2, number=nrow(fit2))
+stats$symbols <- symbols
+stats <- as.matrix(stats)
+mode(stats) <- "character"
+
+eset <- exprs(mic.norm.age.ordered)
+# reorder probes from expression data to match stats data
+eset <- eset[dimnames(stats)[[1]],]
+eset <- as.matrix(eset)
+mode(eset) <- "character"
+
+pd <- pData(mic.norm.age.ordered)
+pd$CELfileloc <- NULL
+pd$ethnicity <- NULL
+pd.t <- t(pd)
+mode(pd.t) <- "character"
+
+# bolt metadata onto expression data
+pd.eset <- rbind(pd.t, eset)
+
+# setup stats data with dummy data for metadata rows
+NA.block <- as.data.frame(t(replicate(4, rep(NA, ncol(stats)))))
+NA.block <- as.matrix(NA.block)
+mode(NA.block) <- "character"
+dimnames(NA.block)[[2]] <- dimnames(stats)[[2]]
+dimnames(NA.block)[[1]] <- dimnames(pd.t)[[1]]
+
+pd.stats <- rbind(NA.block, stats)
+
+stats.pd.exprs <- cbind(pd.stats, pd.eset)
+
+write.table(stats.pd.exprs, file.path(resultsDir, "stats.metadata.exprs.xls"), sep="\t", row.names=F, col.names=T)
+write.table(stats, file.path(resultsDir, "stats.xls"), sep="\t", row.names=F, col.names=T)
+write.table(pd.eset, file.path(resultsDir, "metadata.exprs.xls"), sep="\t", row.names=F, col.names=T)
+```
+
+#### Excel files with statistics, metadata and normalized sample intensities for all genes and samples for age as a continuous variable
+
+#### The statistics summary tables contain the following information: 
+- logFC is the log2-fold change relative to unit age
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Val is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+
+**[Statistics, metadata and expression levels](../results/PBMC/stats.metadata.exprs.xls)**
+
+**[Just the statistics](../results/PBMC/stats.xls)**
+
+**[Just the metadata and expression levels](../results/PBMC/metadata.exprs.xls)**
+
+```{r prepheatmaps}
+# annotate ages into 5 -year bins
+library(Hmisc)
+pData(mic.norm.age.ordered)$agebins <- cut2(pData(mic.norm.age.ordered)$age, seq(0,100, by=5))
+```
+
+### Heatmaps
+
+```{r heatmap, eval=FALSE, results='hide'}
+# heatmap data
+tophits <- row.names(topTable(fit2, coef=2, p.value = 0.05, number=75))
+symbols.tophits <- unlist(mget(tophits, hgu133plus2SYMBOL, ifnotfound=NA))
+eset.tophits <- exprs(mic.norm.age.ordered)[tophits,]
+row.names(eset.tophits) <- paste(row.names(eset.tophits), symbols.tophits, sep=" - ")
+
+# heatmap annotations
+pd <- pData(mic.norm.age.ordered)
+heatmap.annots <- pd[,c("ID", "study", "agebins", "gender")]
+heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+row.names(heatmap.annots) <- heatmap.annots$ID
+heatmap.annots$ID <- NULL
+
+svg(filename=file.path(resultsDir, "heatmap.age.ordered.svg"), width=10, height=11)
+pheatmap(eset.tophits, 
+         annotation=heatmap.annots, 
+         cluster_cols = FALSE,
+         show_colnames=F, 
+         fontsize=12, 
+         fontsize_row=8, 
+         main = "Ordered by age",
+         cellwidth=1.25,
+         width=10)
+dev.off()
+
+svg(filename=file.path(resultsDir, "heatmap.clustered.svg"), width=10, height=11)
+pheatmap(eset.tophits, 
+        annotation=heatmap.annots, 
+        cluster_cols = TRUE,
+        show_colnames=F, 
+        fontsize=12, 
+        fontsize_row=8,
+        main="Clustered",
+        cellwidth=1.25, 
+        width=10)
+dev.off()
+```
+
+![age ordered heatmap](../results/PBMC/heatmap.age.ordered.svg)
+![clustered  heatmap](../results/PBMC/heatmap.clustered.svg)
+
+[1]: http://www.bioconductor.org (BioC)
+[2]: http://www.bioconductor.org/packages/release/bioc/html/affy.html (affy)
+[3]: http://www.bioconductor.org/packages/2.10/bioc/html/arrayQualityMetrics.html (arrayQualityMetrics)
+[4]: http://bioinformatics.oxfordjournals.org/content/19/2/185 (RMA)
+[5]: http://www.bioconductor.org/packages/release/bioc/html/limma.html (limma)
