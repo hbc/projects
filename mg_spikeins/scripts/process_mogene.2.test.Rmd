@@ -1,0 +1,741 @@
+---
+output:
+  html_document:
+    toc: true
+    theme: spacelab
+title: "Microarray Analysis Using ERCC Spike-ins"
+bibliography: "references.bib"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Benyam Kind "
+clientemail="bkinde@gmail.com"
+labPI="Michael Greenberg"
+lablocation="HMS"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE,cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+All MoGene 2.0 ST arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")`, normalized with RMA `r citep("10.1093/biostatistics/4.2.249")` and renormalized using a Loess regression on the ERCC spikein probes in a similar manner to Loven et al. `r citep("10.1016/j.cell.2012.10.012")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+---
+
+# Setup
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/mg_spikeins/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/mg_spikeins/"
+    } else if (file.exists("/Users/johnhutchinson/projects/mg_spikeins/")){
+    baseDir="/Users/johnhutchinson/projects/mg_spikeins/"
+    }
+
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.1
+lfc.cutoff=1
+highlight.color="cyan"
+```
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables, echo=TRUE}
+library(knitr)
+library(affy) # for loess normalization
+library(oligo) # array utilities
+library(pd.mogene.2.0.st) # array layout annotation
+library(mogene20sttranscriptcluster.db) # array probe to gene annotations
+library(arrayQualityMetrics) # array quality control reports
+library(limma) # array statistical analyses
+library(pheatmap) # pretty heatmaps
+library(plyr) # data format utility
+library(reshape2) # data format utility
+library(devtools) # install libraries from github
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+install_git("git://github.com/stephaniehicks/quantro")
+library(quantro)
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(RColorBrewer)
+library(gridExtra)
+library(venneuler)
+```
+
+## Functions
+
+```{r functions}
+PCAplot.eset <- function(eset=NULL, categories1=NULL, categories2=NULL,title=NULL, colorpalette=NULL, alpha=1, numcomponents=4){
+  alpha <- sprintf("%x", ceiling(alpha*255))
+  colorpalette <- paste(colorpalette, alpha, sep="")
+  eset.core <- exprs(eset) 
+  myPca.core <- prcomp(t(eset.core))
+  tmpPCAData.core <- as.data.frame(myPca.core$x[,1:numcomponents])
+  pd <- pData(eset)
+  colors <- colorpalette[factor(as.character(unlist(pd[,categories1])))]
+  numcat2s <- length(unique(as.character(unlist(pd[,categories2])))) 
+  shapes <- c(21:25)[1:numcat2s][factor(as.character(unlist(pd[,categories2])))]
+  pairs(tmpPCAData.core, bg=colors, col="#606060", cex=2, pch=shapes, main=title, oma=c(8,5,5,14))
+  legend("right", cex=0.7, col="#606060", pt.bg=colors, pt.cex=1.5, legend=paste(pd[,categories1], pd[,categories2], sep="-"),  pch=shapes, bty="n", x.intersp=1)
+}
+
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+
+fmt <- function(){ 
+  function(x) format(x,nsmall = 1,scientific = FALSE)
+}
+
+# makes a volconao plot with a highlighted area of interest flanked by density plots of the adjusted pvalues and log2 fold changes
+volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray", point.size=2) {
+  # get range of log fold change and p-value values to setup plot borders
+  range.lfc <- c(floor(min(stats$logFC)), ceiling(max(stats$logFC)))
+  range.pval <- c(floor(min(-log10(stats$adj.P.Val))), ceiling(max(-log10(stats$adj.P.Val))))
+  
+  #make top plot - density plot with fold changes
+  lfcd <- as.data.frame(cbind(density(stats$logFC)$x, density(stats$logFC)$y))
+  hist_top <- ggplot(data=stats, aes(x=logFC))+
+    geom_density(color=line.colour)+
+    geom_ribbon(data=subset(lfcd, V1>lfc.cutoff),aes(x=V1,ymax=V2),ymin=0,fill=shade.colour, alpha=shade.alpha)+
+    theme_bw()+ 
+    theme(axis.title.x=element_blank())+
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
+    scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
+    scale_y_continuous(labels=fmt())
+  
+  # make blank plot
+  empty <- ggplot()+geom_point(aes(1,1), colour="white")+
+    theme(panel.grid=element_blank(),
+          axis.ticks=element_blank(), 
+          panel.background=element_blank(), 
+          axis.text.x=element_blank(),  
+          axis.text.y=element_blank(),          
+          axis.title.x=element_blank(), 
+          axis.title.y=element_blank()
+          )
+  
+  #make scatter volcano plot
+  scat.poly.up <- with(stats, data.frame(x=as.numeric(c(lfc.cutoff,  lfc.cutoff, max(range.lfc),max(range.lfc))), y=as.numeric(c(-log10(pval.cutoff), max(range.pval), max(range.pval),-log10(pval.cutoff)))))
+  scat.poly.down <- with(scat.poly.up, data.frame(x=(-1*x), y=y))
+  
+  scatter <- ggplot(data=stats, aes(x=logFC, y=-log10(adj.P.Val))) +
+    geom_point(alpha=point.alpha, pch=21, fill=point.colour, color=point.outline.colour, size=point.size) +
+    geom_polygon(data=scat.poly.up, aes(x=x,y=y), fill=shade.colour, alpha=shade.alpha) +
+    geom_polygon(data=scat.poly.down, aes(x=x,y=y), fill=shade.colour, alpha=shade.alpha)  +
+    xlab("log2 fold change") + ylab("-log10(adjusted p-value)") +
+    theme_bw()+
+    theme(legend.position="none") +
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
+    scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
+    scale_y_continuous(labels=fmt(), limits = range.pval)
+  
+  # make right plot - density plot of adjusted pvalues
+  pvald <- as.data.frame(cbind(density(-log10(stats$adj.P.Val))$x, density(-log10(stats$adj.P.Val))$y))
+  hist_right <- ggplot(data=stats, aes(x=-log10(adj.P.Val)))+
+    geom_density(color=line.colour)+
+    geom_ribbon(data=subset(pvald, V1>-log10(pval.cutoff)),aes(x=V1,ymax=V2),ymin=0,fill=shade.colour, alpha=shade.alpha)+
+    theme_bw()+coord_flip()+
+    scale_x_continuous(limits = range.pval)+
+    theme(axis.title.y=element_blank())+ 
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm"))
+  
+  # plot all plots
+  pp.logfc <- ggplotGrob(hist_top)
+  pp.empty <- ggplotGrob(empty)
+  pp.volc <- ggplotGrob(scatter)
+  pp.pval  <- ggplotGrob(hist_right)
+  grid.arrange(main=title,arrangeGrob(pp.logfc,pp.volc, heights=c(1,3),ncol=1),
+               arrangeGrob(pp.empty,pp.pval,  heights=c(1,3),ncol=1), 
+               ncol=2, widths=c(3,1))
+  } 
+```
+
+---
+
+# Import Data and Metadata
+
+## Load Data
+
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- use array names to load in arrays 
+
+```{r dataload, results='hide'}
+covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+
+celFiles <- file.path(dataDir, row.names(covars))
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+sampleNames(affyRaw) <- pData(affyRaw)$sampleID
+validObject(affyRaw)
+rm(covars)
+```
+
+## Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+---
+
+# PreProcessing 
+
+## Raw Data 
+### Raw Data QC
+
+- using arrayQualityMetrics library `r citep("Kauffmann_2008")`
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype", "treatment"))
+```
+
+[Raw Data QC Report](../results/report_raw/index.html)
+
+The arrays look good.
+
+## Background Correct and Normalize with RMA
+
+- using RMA `r citep("10.1093/bioinformatics/19.2.185")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+```
+
+### RMA Normalized Data QC
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE)
+```
+
+[Normalized Data QC Report](../results/report_rma.core/index.html)
+ 
+**As we are only interested here in the mice housed in darkness, I removed the standard housing samples here.**
+ 
+```{r removeSHsamples}
+affyNorm.core <- affyNorm.core[,which(pData(affyNorm.core)$treatment!="SH")]
+
+pData(affyNorm.core) <- as.data.frame(apply(pData(affyNorm.core), 2, function(x) factor(x)))
+```
+
+### Unsupervised Clustering of RMA Normalized Data
+
+#### Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+Labels are treatments and genotypes highlighted in red and blue. 
+
+```{r cluster1, out.width='100%'}
+plot_dendro(affyNorm.core, title="", labels.colname="treatment", colors.colname="genotype")
+```
+
+#### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. 
+
+```{r PCAsd1, out.width='75%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, 5 dimensions explain only about ~62.5% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up 
+the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first four principal components. In the first plot, each sample group is represented by a separate color and in the second plot each sample is represented by a different color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In this plot, shape is determined by treatment and color determined by genotype.
+
+```{r pca1, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='100%'}
+PCAplot.eset(affyNorm.core, categories1="genotype", categories2="treatment", title="", colorpalette=cbPalette, numcomponents=4)
+```
+
+There is some degree of clustering by both genotype and treatment, but it is not complete. Renormalizing the arrays with the ERCC spike-in controls may help with this.
+
+## ERCC Spike-In Probe Re-Normalization
+
+### Identifying ERCC Probes from Annotations
+
+```{r erccannots}
+annots <- read.csv(file.path(metaDir, "MoGene-2_0-st-v1.na34.mm10.transcript.csv"), skip=23)
+erccindices <- which(grepl("ercc", annots$category))
+erccprobesets <- as.character(annots$probeset_id[erccindices])
+```
+
+### Loess Re-Normalization
+
+From *Revisiting Global Gene Expression Analysis* `r citep("10.1016/j.cell.2012.10.012")`
+
+>  We used a loess regression to renormalize these MAS5 normalized probe set values by using only the spike-in probe sets to fit the loess. The affy package provides a function, loess.normalize, which will perform loess regression on a matrix of values (defined by using the parameter mat) and allows for the user to specify which subset of data to use when fitting the loess (defined by using the parameter subset, see the affy package documentation for further details). For this appli- cation, the parameters mat and subset were set as the MAS5- normalized values and the row indices of the ERCC control probe sets, respectively.
+
+I tried to do the same thing. Though  the arrays were initially normzlized with RMA in our case instead of MAS5, the results should be comparable, as MAS5 and RMA mainly differ in how they treat mismatch probes (which the Mogene arrays don't have).
+
+```{r loessnorm, results='hide'}
+eset.core <- exprs(affyNorm.core)
+eset.corr.loess <- normalize.loess(eset.core, subset=erccindices, log.it=FALSE)
+affyLoess.core <- affyNorm.core
+exprs(affyLoess.core) <- eset.corr.loess
+```
+
+### ERCC spikein probe levels before and after normalization
+
+```{r spikeinlevels, out.width='100%'}
+affyRaw.core <- rma(affyRaw,background = FALSE, normalize=FALSE)
+eset.ercc.raw <- as.data.frame(exprs(affyRaw.core)[erccprobesets,])
+
+# sort probesets by mean intensity
+eset.ercc.raw$means <- rowMeans(eset.ercc.raw)
+eset.ercc.raw <- eset.ercc.raw[order(eset.ercc.raw$means),]
+eset.ercc.raw$means <- NULL
+eset.ercc.raw$probeid <- row.names(eset.ercc.raw)
+
+
+# get ordered data for the ERCC probesets from normalized datasets
+eset.ercc.rma <- as.data.frame(exprs(affyNorm.core)[row.names(eset.ercc.raw),])
+eset.ercc.rma$probeid <- row.names(eset.ercc.rma)
+eset.ercc.loess <- as.data.frame(exprs(affyLoess.core)[row.names(eset.ercc.raw),])
+eset.ercc.loess$probeid <- row.names(eset.ercc.loess)
+
+# plot distributions of ercc probes
+eset.ercc.raw.m <- melt(eset.ercc.raw)
+eset.ercc.raw.m$probeid <- factor(eset.ercc.raw.m$probeid, levels = row.names(eset.ercc.raw))
+eset.ercc.raw.m$group <- as.vector(unlist(lapply(strsplit(as.character(eset.ercc.raw.m$variable), "_"), function(x) paste(x[1], x[2], sep="_"))))
+ggplot(eset.ercc.raw.m, aes(y=value, x=probeid, color=group))+geom_point(stat="identity", alpha=0.5)+theme_bw()+ theme(axis.text.x  = element_text(angle=-60, vjust=0.5, size=6))+ggtitle("ERCC probe intensities -raw Data")+ylab("log transformed intensity")
+
+eset.ercc.rma.m <- melt(eset.ercc.rma)
+eset.ercc.rma.m$probeid <- factor(eset.ercc.rma.m$probeid, levels = row.names(eset.ercc.rma))
+eset.ercc.rma.m$group <- as.vector(unlist(lapply(strsplit(as.character(eset.ercc.rma.m$variable), "_"), function(x) paste(x[1], x[2], sep="_"))))
+ggplot(eset.ercc.rma.m, aes(y=value, x=probeid, color=group))+geom_point(stat="identity", alpha=0.5)+theme_bw()+ theme(axis.text.x  = element_text(angle=-60, vjust=0.5, size=5))+ggtitle("ERCC probe intensities -RMA normalized Data")+ylab("log transformed intensity")
+
+eset.ercc.loess.m <- melt(eset.ercc.loess)
+eset.ercc.loess.m$probeid <- factor(eset.ercc.loess.m$probeid, levels = row.names(eset.ercc.loess))
+eset.ercc.loess.m$group <- as.vector(unlist(lapply(strsplit(as.character(eset.ercc.loess.m$variable), "_"), function(x) paste(x[1], x[2], sep="_"))))
+ggplot(eset.ercc.loess.m, aes(y=value, x=probeid, color=group))+geom_point(stat="identity", alpha=0.5)+theme_bw()+ theme(axis.text.x  = element_text(angle=-60, vjust=0.5, size=5))+ggtitle("ERCC probe intensities - Loess normalized Data")+ylab("log transformed intensity")
+```
+
+The Loess normalization based on the ERCC probes does reduce the inter-sample variation of the ERCC probes themselves.
+
+#### Unsupervised Clustering of Loess Re-Normalized Data
+
+##### Hierarchical Clustering
+
+Labels are treatments and genotypes highlighted in red and blue. 
+
+```{r cluster2, out.width='100%'}
+plot_dendro(affyLoess.core, title="", labels.colname="treatment", colors.colname="genotype")
+```
+
+If anything, the dendrogram looks worse after Loess-based renormalization.
+
+##### Principal Component Analysis (PCA)
+
+```{r PCAsd2, out.width='75%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, 5 dimensions again explain only about ~62.5% of the variation observed in the samples.
+
+```{r pca2, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='100%'}
+PCAplot.eset(affyNorm.core, categories1="genotype", categories2="treatment", title="Genotypes", colorpalette=cbPalette, numcomponents=4)
+```
+
+### Assessing Need for ERCC Spike-in renormalization u
+ 
+  - using quantro `r citep("https://github.com/stephaniehicks/quantro")`
+
+  - the Loess re-normalization doesn't appear to hav done anything to help differentiate the sample classes, raising the qeustion if it is really necessary 
+   
+  - can  assess this is with the Quantro library from Stephanie Hicks in the Irizarray lab  which tests for global expression changes
+
+#### Run quantro
+- with 1000 permutations 
+
+**Quantro will do a couple of things:**
+One, it will perform an ANOVA to test if the medians of the distributions are different across groups. Differences across groups could be attributed to unwanted technical variation (such as batch effects) or real global biological variation.
+
+Two, a test for global differences between the distributions across groups which returns a test statistic called quantroStat. This test statistic is a ratio of two variances and is similar to the idea of ANOVA. The main idea is to compare the variability of distributions within groups relative to between groups. If the variability between groups is sufficiently larger than the variability within groups, then this suggests global adjustment methods may not be applicable.
+
+The quantro analysis was run on the raw data from all sample groups, including the standard housing samples.
+
+```{r quantro, eval=FALSE, echo=TRUE}
+library(doParallel)
+cl <- makeCluster(8)
+registerDoParallel(cl)
+qtest <- quantro(object=exprs(affyRaw), groupFactor=as.vector(pData(affyRaw)$group), B=1000)
+stopCluster(cl)
+
+save(list="qtest", file=file.path(resultsDir,  "RDATA.quantro"))
+```
+
+```{r load, eval=TRUE, echo=FALSE}
+load(file.path(resultsDir, "RDATA.quantro"))
+```
+
+#### Assess quantro results
+
+```{r quatroassess}
+qtest
+```
+
+**Some explanation of terms:**
+
+**quantroStat**
+  - a test statistic comprised of a ratio of the mean squared error between groups of distributions (MSbetween) to the mean squared error within groups of distributions (MSwithin)
+  - essentially a measure of how overall similar the various groups's distributions
+
+quantroPvalperm 
+  - a permutation based p-value associated with the proportion of times the test statistics resulting from the permuted samples were larger than quantroStat
+  - this measure tells you how often you would get a quantroStat statistic as high as you did at random, as measured by permutation testign with random assignment of samples to sample groups. 
+  
+  
+We can visualize the permutation testing results as a histogram, with the location of the actual observed statistic plotted as a red line.
+
+```{r quantroplot}
+library(quantro)
+quantroPlot(qtest)
+permsuccessnum <- quantroPvalPerm(qtest)
+```
+
+Here, we can see that only 
+`r permsuccessnum`
+out of 1000 random permutations of the sample group assignments had a quantroStat higher than observed in the original data. These results provide evidence that there are some global changes in expression between the different sample groups.
+
+---
+
+## Annotate
+
+Thus far, we have largely been working with the probesets, without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+```{r features, results='hide'}
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+```
+
+---
+
+## Filter
+Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Start with `r nrow(fData(affyNorm.core))` probes remaining
+
+### By Annotation
+- remove the control probes and probes without annotated genes
+
+```{r filter1}
+affyNorm.core <- affyNorm.core[which(!is.na(fData(affyNorm.core)$symbol) & fData(affyNorm.core)$category=="main"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3, cache=TRUE}
+eset.core <- exprs(affyNorm.core)
+affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), lowintensity.percentile)))),]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+### By Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+eset.core <- exprs(affyNorm.core)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+```
+
+`r nrow(fData(affyNorm.core))` probes remaining
+
+---
+
+# Statistical Analyses
+
+## Limma
+
+A linear model for microarray data analysis (Limma `r citeb("http://www.bioconductor.org/packages/release/bioc/html/limma.html")) was performed on the samples to identify differentially expressed genes for various comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest.
+
+### Design 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+
+```{r design, results="asis"}
+design <- model.matrix(~ 0 + group,  data=pData(affyNorm.core))
+# make sure the headings match
+colnames(design) <- sub("group", "", colnames(design))
+
+kable(design)
+```
+
+#### Contrasts
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+I  setup three  contrasts, one to select genes that show a significant expression change after light exposure in the wild-type samples, one to one to select genes that show a significant expression change after light exposure in the knock-in samples and and finally, one to show how the wildteyp and knockin samples differ in their gene expression changes after light expousre, or the difference in  differences. In stats terms, this final contrast is called an interaction term.
+
+```{r contrastmatrix, results='asis'}
+contrast.matrix <- makeContrasts(wildtypeLE=WT_DR-WT_DR6LE, 
+                                 knockin=KI_DR-KI_DR6LE,
+                                 wt_ki_differences=(WT_DR-WT_DR6LE)-(KI_DR-KI_DR6LE), 
+                                 levels=colnames(design))
+
+kable(contrast.matrix)
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+#### Linear model
+
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+eset.core <- exprs(affyNorm.core)
+fit.core <- lmFit(eset.core, design) 
+```
+
+**Compute estimated coefficients and standard errors for contrasts**
+
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+#### Bayes shrinkage
+
+**Compute moderated t-statistics and log-odds of differential expression**
+
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+## Results
+
+### Statistics
+
+- as calculated by Limma
+
+```{r allstats}
+all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affyNorm.core)), genelist=fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")])
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+
+  eset <- exprs(affyNorm.core)
+  eset  <-  eset[match(stats$probesetid, row.names(eset)),]
+  stats.eset <- cbind(stats, eset)
+  return(list(contrast=contrast, stats.eset=stats.eset))
+  })
+
+
+# output all results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(all.results[[num]]$stats.eset)
+  write.table(out.stats, file=file.path(resultsDir, paste("all.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+#### Statistics and expression levels of all genes for these comparisons
+
+*Note that for all these files, I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+`r x=1`
+[wildtype light exposure stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+1`
+[knockin light exposure stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+1`
+[differences in response - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+**These summary tables contain the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 8 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+### Identifying Genes Differentially Expressed After Light Exposure
+
+#### Volcano plots
+
+Here we can visulize the relationship between the fold changes in expression observed for the two genotypes after light exposure.  Our best candidate genes will not only have a statistically significant difference in gene expression between the two sample groups (as measured adjusted pvlaue) but also a large change (as measured by the log2 fold change). We are interested in both genes that increase and decrease in expression after light exposure.
+
+**Each of these plots contains 3 subplots:**
+
+1) Bottom left - the volcano plot, a scatter plot with the observed log2fold changes (extremes are better) plotted against the -log10 adjusted pvalues (higher is better). For these contrasts, we are looking for genes that are enriched in the pulldown, genes that have at least an adjusted pvalue of `r pvalue.cutoff` and a log 2 fold change more than `r lfc.cutoff` are highlighted with a `r highlight.color` box.   
+
+2) Upper left - a density plot (smoothed histogram) of the log2 fold changes observed for the contrast, the part of the distribution above `r lfc.cutoff` is highlighted under the curve in `r highlight.color`.  
+
+3) Lower right - a density plot (smoothed histogram) of the adjusted pvalued observed for the contrast, the part of the distribution above `r pvalue.cutoff` is highlighted under the curve in `r highlight.color`. Note that for this plot, this highlight also included genes enriched in the input samples.
+
+```{r ggplotexps, out.width='100%', dev="png"}
+volcano_density_plot(stats=all.results[[1]]$stats.eset, pval.cutoff = pvalue.cutoff, lfc.cutoff=lfc.cutoff, shade.colour = highlight.color, shade.alpha = 0.25, point.colour = "orange", point.outline.colour = "darkorange", point.alpha = 0.5, point.size=5)
+volcano_density_plot(stats=all.results[[2]]$stats.eset, pval.cutoff = pvalue.cutoff, lfc.cutoff=lfc.cutoff, shade.colour = highlight.color, shade.alpha = 0.25, point.colour = "orange", point.outline.colour = "darkorange", point.alpha = 0.5, point.size=5)
+```
+
+Using these pvalue and log2 fold change cutoffs we can identify which genes are showing enrichment after light exposure in the two genetic backgrounds. The cutoffs I have picked here (pvalue<`r pvalue.cutoff` and log2foldchange>`r lfc.cutoff`) are within accepted range, if a bit stringent, but are arbitrary. 
+
+**If you want to change these cutoffs to be more or less stringent, you can filter the Excel files above by adj.P.Val and logFC in Excel.**
+
+For these cutoffs: 
+`r x=1`
+- the `r all.results[[x]]$contrast` contrast, has `r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` enriched probesets probing `r length(unique(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol))` genes.
+`r x=x+1`
+- the `r all.results[[x]]$contrast` contrast, has `r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` enriched probesets probing `r length(unique(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol))` genes.
+
+#### Statistics and expression levels for just these differentially expressed genes
+
+```{r ouputtop, results='hide'}
+# output top results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(subset(all.results[[num]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))
+  write.table(out.stats, file=file.path(resultsDir, paste("top.enriched.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+*Note that, once again, for all these files I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+`r x=1`
+[Wildtype light exposure stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+1`
+[Knockin light exposure stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+*These summary tables contain the same information as the files above*
+
+### Identifying genes that are affected differently by light exposure for the two genotypes.
+
+So far, we've only examined the effect of light exposure and kept the two genotypes separate (i.e. the first two contrasts we setup in the Limma contrast matrix above). Here, we want to find genes that are only affected by light expousre in a single genotype background.
+
+We can first compare the effect of light expousre withhin the two separate genotypes by examining how many genes uniquely show differential expression after light exposure within each genotype.
+
+```{r venn}
+top.probesets.wt <- subset(all.results[[1]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
+top.probesets.ki <- subset(all.results[[2]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
+top.probesets.intersect <- intersect(top.probesets.wt, top.probesets.ki)
+top.genes.wt <- subset(all.results[[1]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
+top.genes.ki <- subset(all.results[[2]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
+top.genes.intersect <- intersect(top.genes.wt, top.genes.ki)
+test <- venneuler(c(wildtype=length(top.genes.wt),knockin=length(top.genes.ki),"wildtype&knockin"=length(top.genes.intersect)))
+test$labels <- paste(test$labels, " (", c(length(top.genes.wt), length(top.genes.ki)), " genes)", sep="")
+plot(test)
+```
+
+Here, there are `r length(top.probesets.intersect)` probesets representing `r length(top.genes.intersect)` genes that are pulled down by both Stau2 and WT1.
+
+This is a crude and non-statistically valid method of looking for these diffferences as it is heavily reliant and your chosen cutoffs (i.e. a gene may make it into the top group for one contrast but be just outside the top group for the other contrast) as well as potentially biased by inconsistent variation between the groups examined (for example, if one contrast has more power you will find false positive differences between the group's responses).
+
+Indeed, looking at heatmaps for the top differentiall expressed genes for both these contrasts, it is apparent that there is substantial differential expression occuring for both comparisons, i.e. the genotypes react similarily to light exposure.
+
+```{r heatmaps1, dev='png'}
+top.results.wt <- subset(all.results[[1]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+eset.of.interest <- top.results.wt[,c(sampleNames(affyNorm.core), "symbol")]
+eset.of.interest$probeset_symbol <- paste(row.names(eset.of.interest), eset.of.interest$symbol, sep="-")
+eset.of.interest$symbol <- NULL
+eset.of.interest <- col2rownames(eset.of.interest, "probeset_symbol", TRUE)
+sub("whole_", "", names(eset.of.interest))
+
+pheatmap(as.matrix(eset.of.interest), 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         cluster_cols = FALSE, 
+         cluster_rows = TRUE,
+         main="Genes enriched after light exposure in wildtype animals", 
+         fontsize=12,
+         fontsize_row=12,
+         show_colnames=TRUE, 
+         cellwidth=40)
+
+top.results.ki <- subset(all.results[[2]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+eset.of.interest <- top.results.ki[,c(sampleNames(affyNorm.core), "symbol")]
+eset.of.interest$probeset_symbol <- paste(row.names(eset.of.interest), eset.of.interest$symbol, sep="-")
+eset.of.interest$symbol <- NULL
+eset.of.interest <- col2rownames(eset.of.interest, "probeset_symbol", TRUE)
+sub("whole_", "", names(eset.of.interest))
+
+pheatmap(as.matrix(eset.of.interest), 
+         #color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         cluster_cols = FALSE, 
+         cluster_rows = TRUE,
+         main="Genes enriched after light exposure in knockin animals", 
+         fontsize=12,
+         fontsize_row=12,
+         show_colnames=TRUE, 
+         cellwidth=40)
+```
+
+A more rigorous statistic method  is to calculate the interaction term of the linear regression we performed with Limma. This incorporates information from all the samples involved and give an accurate asessment of the differences in response between the two groups. As noted earlier, the third contrast we ran in Limma is this interaction term or difference in differences.
+
