@@ -35,7 +35,6 @@ The sections below provide code to reproduce the included results and plots.
 ## General R libraries
 
 ```{r general_libraries}
-source("http://bioconductor.org/biocLite.R") # BioConductor script necessary for installing new BioC libraries with biocLite()
 library(xtable) # table generation for reports
 library(plyr) # library for iteratively working with data structures
 library(ggplot2) # library for plotting 
@@ -205,8 +204,9 @@ covars <- covars[!is.na(covars$stage),]
 ### CEL files
 
 ```{r load_data, eval=FALSE}
-covars <- covars[!(grepl("1088831.cel", covars$CELfileloc)),]
+covars <- covars[!(grepl("1088631.cel", covars$CELfileloc)),]
 mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
+save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw.ori"))
 ```
 
 ## Quality Control and Normalization
@@ -215,7 +215,7 @@ mic.raw <- ReadAffy(filenames=as.character(covars$CELfileloc), phenoData=covars)
 - array QC checks on raw data with [ArrayQualityMetrics][3]
 
 ```{r rawQC, eval=FALSE}
-arrayQualityMetrics(expressionset=mic.raw, 
+  arrayQualityMetrics(expressionset=mic.raw, 
                     outdir=file.path(resultsDir, "QCreport_raw"), 
                     force=TRUE, 
                     do.logtransform=TRUE, 
@@ -229,20 +229,19 @@ arrayQualityMetrics(expressionset=mic.raw,
 
 ```{r exclude_from_raw, eval=FALSE}
 # subset ExpressionSet to studies that are NOT the following
-exclude.arrays <-c("GSM901488","GSM901590","GSM901596","GSM901715","GSM901822","M036","GSM1373917","GSM102993","GSM648590","GSM648596","GSM648718","GSM244499","GSM102983","GSM102984","GSM102998","GSM103013","GSM103015","GSM103057","GSM648643","GSM648645","GSM648647","GSM648682","GSM648704","GSM648706")
-
-mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
+exclude.arrays <-c("M036","GSM1373917","GSM102978","GSM102993","GSM103049","GSM648590","GSM648596","GSM647548","GSM244499","GSM102997","GSM102998","GSM103013","GSM103015","GSM103057","GSM103060","GSM648591","GSM648628","GSM648643","GSM648647","GSM648682","GSM648704","GSM648706","GSM647529","GSM647530","GSM647532","GSM647594","GSM647597")
+mic.raw <- mic.raw[,which(!(pData(mic.raw)$arrayID %in% exclude.arrays))]
 # change the sample names to more informative
 sampleNames(mic.raw) <- as.vector(unlist(pData(mic.raw)$arrayID))
+save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw.no.raw.outliers"))
 ```
 
 ### Normalize 
 - all arrays using [RMA][4]
 
 ```{r normalize_RMA, eval=FALSE}
-mic.norm <- rma(mic.raw,
-                     normalize=TRUE,
-                     background=TRUE)
+mic.norm <- rma(mic.raw,normalize=TRUE,background=TRUE)
+save(list="mic.norm", file=file.path(resultsDir, "RDATA.mic.norm.no.raw.outliers"))
 ```
 
 
@@ -254,7 +253,7 @@ arrayQualityMetrics(expressionset=mic.norm,
                     outdir=file.path(resultsDir, "QCreport_norm"), 
                     force=TRUE,
                     do.logtransform=FALSE, 
-                    intgroup=c("stage", "study")
+                    intgroup=c("stage", "study"))
 ```
 
 [Normalized Data QC Report](../results/WB/U133Plus2/QCreport_norm/index.html)
@@ -263,24 +262,24 @@ arrayQualityMetrics(expressionset=mic.norm,
 
 ```{r drop_outliers, eval=FALSE}
 # subset ExpressionSet to samples that are NOT the following
-exclude.arrays <- c("GSM901535","GSM901787","M099","M144","M173","GSM102978","GSM103067","GSM647548","GSM647628","GSM103007","GSM103048","GSM648656","GSM647529","GSM647574","GSM647597","GSM647600","GSM350178")
+exclude.arrays <- c("GSM648718","GSM647628","GSM102983","GSM102984","GSM103007","GSM648645","GSM648656","GSM647531","GSM647561","GSM647573","GSM647574","GSM647600")
     
-mic.raw <- mic.raw[,which(!(row.names(pData(mic.raw)) %in% exclude.arrays))]
-save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw.no.outliers"))
+mic.raw <- mic.raw[,which(!(pData(mic.raw)$arrayID) %in% exclude.arrays)]
+save(list="mic.raw", file=file.path(resultsDir, "RDATA.mic.raw.no.raw.or.norm.outliers"))
 ```
 
 ### Renormalize without outliers
 
 ```{r normalize_RMA2, eval=FALSE}
 mic.norm <- rma(mic.raw, normalize=TRUE, background=TRUE)
-save(list="mic.norm", file=file.path(resultsDir, "RDATA.mic.norm.no.outliers"))
+save(list="mic.norm", file=file.path(resultsDir, "RDATA.mic.norm.no.raw.no.norm.outliers"))
 ```
 
 
 ```{r load_affybatch, echo=FALSE}
 # this is a hack to get around knitr having memory issues with loading and parsing CEL files
 # instead of having knitr do the CEL file manipulation, do it interactively and save out an RDATA object that you can load into the final knitr run
-load(file.path(resultsDir, "RDATA.mic.norm.no.outliers"))
+load(file.path(resultsDir, "RDATA.mic.norm.no.raw.no.norm.outliers"))
 ```
 
 ### Metadata 
@@ -440,7 +439,7 @@ for(n in 1:3){
   row.names(heatmap.annots) <- heatmap.annots$arrayID
   heatmap.annots$arrayID <- NULL
   # heatmap annotation colors
-  study_colors <- c(cbPalette, "#FF0000", "#00FF00")
+  study_colors <- cbPalette
   names(study_colors) <- unique(unlist(pd.contrast$study))
   stage_colors <- c("white", "darkgrey", "black")
   names(stage_colors) <- unique(unlist(pd.contrast$stage))
@@ -448,7 +447,7 @@ for(n in 1:3){
   names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
   ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
   ## Heatmaps
-  svg(filename = paste("DE_heatmap", gsub(" ", "", contrast), "svg", sep="."), width=8, height=11)
+  svg(filename = file.path(resultsDir, paste("DE_heatmap", gsub(" ", "", contrast), "svg", sep=".")), width=8, height=11)
   plot.new()
   pheatmap(as.matrix(top.exprs.contrast), 
            annotation=heatmap.annots, 
@@ -500,7 +499,7 @@ heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
 row.names(heatmap.annots) <- heatmap.annots$arrayID
 heatmap.annots$arrayID <- NULL
 # annotation colors
-  study_colors <- c(cbPalette, "#FF0000", "#00FF00")
+  study_colors <- cbPalette
   names(study_colors) <- unique(unlist(pd$study))
   stage_colors <- c("white", "darkgrey", "black")
   names(stage_colors) <- unique(unlist(pd$stage))
@@ -508,7 +507,7 @@ heatmap.annots$arrayID <- NULL
   names(gender_colors) <- c("MALE", "UNKNOWN", "FEMALE")
   ann_colors = list(gender=gender_colors, study = study_colors, stage = stage_colors)
 ## Heatmaps
-svg(filename = "allheatmap.svg", width=8, height=11)
+svg(filename = file.path(resultsDir, "allheatmap.svg"), width=8, height=11)
 plot.new()
 
 pheatmap(as.matrix(top.exprs.union), 
@@ -521,7 +520,7 @@ pheatmap(as.matrix(top.exprs.union),
          fontsize_row=8,
          annotation_colors=ann_colors,
          cellwidth=1)
-
+dev.off()
 
 ```
 
