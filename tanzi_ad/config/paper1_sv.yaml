@@ -2,6 +2,8 @@
 dirs:
   inputs: ad-paper1-sv/inputs
   config: ad-paper1-sv/config
+configs:
+  template: svcall-template.yaml
 inputs:
   regions: ad-paper1-sv-regions.txt
   families: ad-paper1-sv-families.txt

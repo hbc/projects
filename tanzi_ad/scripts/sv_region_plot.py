@@ -60,7 +60,7 @@ def main(toplot_file, final_dir):
                         plt.close()
 
 def calc_coverage_df(descr, chrom, start, end, final_dir, out_base, name):
-    pad = 1000
+    pad = 100
     cov_file = "%s-%s.bed" % (os.path.splitext(out_base)[0], descr)
     coord_file = os.path.join(os.path.dirname(cov_file), "coords-%s_%s_%s.bed" % (chrom, start, end))
     with open(coord_file, "w") as out_handle:

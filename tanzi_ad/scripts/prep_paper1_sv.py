@@ -5,7 +5,10 @@ Usage:
   cd /n/hsphS10/hsphfs2/tanzi_recalled
   prep_paper1_sv.py <config_file>
 """
+import csv
+import math
 import os
+import subprocess
 import sys
 
 import toolz as tz
@@ -19,8 +22,23 @@ def main(config_file):
         families = set([x.strip() for x in in_handle])
     fnames = read_base_config(tz.get_in(["resources", "basecfg"], config))
     samples = prep_sample_info(tz.get_in(["resources", "fam"], config), fnames, families)
-    import pprint
-    pprint.pprint(samples)
+    write_config_file(samples, tz.get_in(["dirs", "inputs"], config), tz.get_in(["inputs", "regions"], config),
+                      tz.get_in(["dirs", "config"], config), tz.get_in(["configs", "template"], config))
+
+def write_config_file(samples, input_dir, region_file, config_dir, template):
+    region_file = os.path.relpath(_convert_to_bed(os.path.join(input_dir, region_file)), config_dir)
+    template_file = os.path.join(config_dir, template)
+    meta_file = os.path.join(config_dir, "%s.csv" % input_dir.split("/")[0])
+    bams = []
+    with open(meta_file, "w") as out_handle:
+        writer = csv.writer(out_handle)
+        keys = ["description", "batch", "sex", "age", "apoe", "onset", "phenotype"]
+        writer.writerow(["samplename"] + keys + ["variant_regions"])
+        for sample in sorted(samples, key=lambda x: (x["batch"], x["description"])):
+            bams.append(sample["file"])
+            writer.writerow([os.path.basename(sample["file"])] + [sample[k] for k in keys] +
+                            [region_file])
+    subprocess.check_call(["bcbio_nextgen.py", "-w", "template", template_file, meta_file] + bams)
 
 def prep_sample_info(fam_file, fnames, families):
     out = []
@@ -33,6 +51,20 @@ def prep_sample_info(fam_file, fnames, families):
                             "phenotype": _get_affected(affected),
                             "age": age, "onset": onset, "apoe": _get_apoe(apoe)})
     return out
+
+def _convert_to_bed(in_file):
+    """Convert file of regions to process into BED, rounding to 10kb on either side.
+    """
+    scale = 10000
+    out_file = "%s.bed" % os.path.splitext(in_file)[0]
+    with open(out_file, "w") as out_handle:
+        with open(in_file) as in_handle:
+            for line in in_handle:
+                chrom, start, end = line.strip().split()
+                start = int(math.floor(float(start) / scale) * scale)
+                end = int(math.ceil(float(end) / scale) * scale)
+                out_handle.write("%s\t%s\t%s\n" % (chrom, start, end))
+    return out_file
 
 def _get_sex(sex):
     coding = {"1": "male", "2": "female"}
