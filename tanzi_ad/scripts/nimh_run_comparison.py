@@ -15,6 +15,8 @@ def main(wgs_file, array_file, ref_file):
     wgs_file = os.path.abspath(wgs_file)
     array_file = os.path.abspath(array_file)
     samples = _find_samples([wgs_file, array_file])
+    wgs_samples = _find_samples([wgs_file])
+    _write_samples_used(wgs_samples, samples)
     out_file = "%s-comparison.csv" % os.path.splitext(wgs_file)[0]
     with open(out_file, "w") as out_handle:
         writer = csv.writer(out_handle)
@@ -50,6 +52,15 @@ def _parse_metrics(in_vcf):
             elif sum(wgs) > 0:
                 metrics["extra"] += 1
     return metrics
+
+def _write_samples_used(wgs_samples, array_samples):
+    out_file = "talz-wgs-array-comparison-samples.csv"
+    array_samples = set(array_samples)
+    with open(out_file, "w") as out_handle:
+        writer = csv.writer(out_handle)
+        writer.writerow(["sample", "inarray"])
+        for s in wgs_samples:
+            writer.writerow([s, "1" if s in array_samples else "0"])
 
 def _run_comparison(sample, orig_wgs_file, orig_array_file, ref_file):
     wgs_file = _subset_sample(orig_wgs_file, sample)
