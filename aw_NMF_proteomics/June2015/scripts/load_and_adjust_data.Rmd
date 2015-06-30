@@ -1,0 +1,87 @@
+---
+title: "Phospho-proteomic Raw Data Normalization"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: journal
+    css: custom.css
+---
+  
+```{r setupstate, echo=FALSE}
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=TRUE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+options(width=200)
+```
+
+# SETUP
+
+## Directories and Variables
+
+```{r setup}
+if(file.exists("/Users/johnhutchinson/projects")){
+  baseDir  <- "/Users/johnhutchinson/projects/aw_NMF_proteomics/Mar2015/"
+  } else if (file.exists("/n/home08/jhutchin")){
+    baseDir <- "/net/hsphfs1/srv/export/hsphfs1/share_root/chb/projects/aw_NMF_proteomics/Mar2015/"
+    }
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+```
+
+## Libraries
+
+```{r libraries}
+library(reshape2)
+library(ggplot2)
+library(readr )
+library(dplyr)
+```
+
+## Load Data
+
+```{r loaddata}
+rawdata.set1 <- read.csv(file.path(dataDir, "Set1", "Set1-Summary-2.csv"))
+rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
+```
+
+# Data Summarize
+
+## Summarize/Collapse all identical phospho-residues 
+- sum values for identical phosphoresidues found on same proteins
+
+```{r summarizephospresidues}
+sumdata.set1 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set1, sum)
+sumdata.set2 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set2, sum)
+```
+
+## Normalize samples to minimum total signal sample
+- scale values of samples so all samples have same total intensity scores
+
+```{r normvalues}
+# calc total intensities for each sample
+colsums.set1 <- colSums(sumdata.set1[, grep("Summed", names(sumdata.set1))])
+colsums.set2 <- colSums(sumdata.set2[, grep("Summed", names(sumdata.set2))])
+
+# calc multiplier modifier for each samples, based on sample with total lowest intensity
+mods.set1 <- 1/(colsums.set1/min(colsums.set1))
+mods.set2 <- 1/(colsums.set2/min(colsums.set2))
+
+# normalize summed data with multiplier modifier
+normed.sums.set1 <- as.data.frame(t(t(sumdata.set1[,grep("Summed", names(sumdata.set1))])*mods.set1))
+normed.sums.set2 <- as.data.frame(t(t(sumdata.set2[,grep("Summed", names(sumdata.set2))])*mods.set2))
+
+# add normalized data to non-normed data
+names(normed.sums.set1) <- sub("Summed", "Normed", names(normed.sums.set1))
+data.set1 <- cbind(sumdata.set1, normed.sums.set1)
+
+names(normed.sums.set2) <- sub("Summed", "Normed", names(normed.sums.set2))
+data.set2 <- cbind(sumdata.set2, normed.sums.set2)
+```
+
+# Output to files
+
+```{r output}
+write.csv(data.set1, file=file.path(dataDir, "Set1", "normalized.data.JH.csv"))
+write.csv(data.set2, file=file.path(dataDir, "Set2", "normalized.data.JH.csv"))
+```
