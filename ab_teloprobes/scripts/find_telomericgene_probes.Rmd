@@ -2,7 +2,7 @@
 output:
   html_document:
     toc: true
-title: "450K probes around nuclear mitochondrial genes"
+title: "450K probes upstream of genes involved in telomere function"
 theme: spacelab
 highlight: textmate
 ---
@@ -39,7 +39,7 @@ bedTools.2in<-function(functionstring="bedtools intersect",bed1,bed2,opt.string=
   unlink(a.file);unlink(b.file);unlink(out)
   return(res)
 }
-bedTools.slop<-function(functionstring="bedtools slop", genomefile, bed1, opt.string="") {
+bedTools.flank<-function(functionstring="bedtools flank", genomefile, bed1, opt.string="") {
   #create temp files
   a.file <- tempfile()
   out  <- tempfile()
@@ -63,77 +63,80 @@ bedTools.slop<-function(functionstring="bedtools slop", genomefile, bed1, opt.st
 ## Set directories  
 
 ```{r directories}
-baseDir <- "~/projects/ab_nucmito/"
+baseDir <- "~/Work/projects/ab_teloprobes/"
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
 ```
 
 ## Load data
-- using mitochondrial data from the [microproteome site](http://www.mitoproteome.org/data/proteome/index.html)
+- using list of genes involved with telomeric functions [from Diddier](../data/Telomere_Genes.csv)
 
 ```{r dataload}
 annots.450k <- read.csv(file.path(dataDir, "14_April_2014_Updated_humanmethylation450_15017482_v1-2.csv"), skip=7)
-annots.mito <- read.delim(file.path(dataDir, "mitoproteome.tsv"))
+annots.telo <- read.csv(file.path(dataDir, "Telomere_Genes.csv"), header=F)
 ```
 
 ---
 
 # Analysis
 
-## Find genomic locations of mitochondrial genes using biomaRt  
+## Find genomic locations of telomeric function genes using biomaRt  
 
 ## setup biomart
 
 ```{r setupbiomart}
-ensemblmart <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
+# make sure you're using hg19 build of biomart to match the 450k probe annotations
+ensemblmart <-  useMart("ENSEMBL_MART_ENSEMBL",dataset="hsapiens_gene_ensembl", host="grch37.ensembl.org")
 attributes <- listAttributes(ensemblmart)
 filters <- listFilters(ensemblmart)
 ```
 
-## pull down chromosomal positions using uniprot ids from mito annotations
+## pull down chromosomal positions using gene ids from telomeric annotations
 - current biomart build is GRCh37
 - transcript start and ends
-- some ids have multiple transcripts, keep all
+- if ids have multiple transcripts, keep all for now, we will combine their upstream probes later
 
 ```{r getpos}
-mito.pos <- getBM(annots.mito$ACCESSION,filters="uniprot_swissprot_accession", attributes=c("uniprot_swissprot_accession","chromosome_name","transcript_start","transcript_end", "strand", "hgnc_symbol"), mart=ensemblmart)
+annots.telo <- annots.telo[,1:2]
+names(annots.telo) <- c("description", "symbol")
+telo.pos <- getBM(annots.telo$symbol,filters="hgnc_symbol", attributes=c("chromosome_name","transcript_start","transcript_end", "strand", "hgnc_symbol"), mart=ensemblmart)
 ```
 
-## Subset genes to those on nuclear chromosomes    
-- dicard all mitochondrial, patches and polymorphic regions
-- discard genes without annotated gene symbol
+## Subset genes to well annotated regions
+- dicard all telochondrial, patches and polymorphic regions
 - convert to [BED format](http://genome.ucsc.edu/FAQ/FAQformat.html#format1)
 
 ```{r subset}
 chrs <- c(seq(1,22), "X", "Y")
-mito.pos <- mito.pos[mito.pos$chromosome_name %in% chrs,]
+telo.pos <- telo.pos[telo.pos$chromosome_name %in% chrs,]
 
 # rearrange columns into bed format
-mito.pos$score <- 0
-mito.pos <- mito.pos[,c(2,3,4,6,7,5)]
-mito.pos$chromosome_name <- paste("chr", mito.pos$chromosome_name, sep="")
-# drop genes without known symbol
-mito.pos <- mito.pos[which(str_length(mito.pos$hgnc_symbol)>0),]
+telo.pos$score <- 0
+telo.pos <- telo.pos[,c(1,2,3,5,6,4)]
+telo.pos$chromosome_name <- paste("chr", telo.pos$chromosome_name, sep="")
+
+telo.pos$strand <- ifelse(telo.pos$strand=="-1", "-", "+")
 ```
 
-## Mitochondrial genes on nuclear chromosomes  
+## Telomeric Function Genes Locations
 
-```{r printmitogenes, results='asis'}
-#kable(mito.pos)
-write.xlsx2(mito.pos, file="nuclear.mitochondrial.genes.xlsx")
+```{r printtelogenes, results='asis'}
+#kable(telo.pos)
+write.table( telo.pos, file.path(resultsDir, file="telomeric.function.gene.locations.xls"), sep="\t", quote=F, row.names=F, col.names=T)
 ```
 
-### [Excel file with mitochondrial genes on nuclear chromosome](nuclear.mitochondrial.genes.xlsx)
+### [Telomeric function gene locations](telomeric.function.gene.locations.xls)
 
-## Get coordinates of regions around nuclear mitochondrial genes  
-3kb upstream of the TSS and 3Kb downstream of transcript end
+## Get coordinates of regions upstream of telomeric function genes  
+3kb upstream of the transcript start
 
 ```{r getpromoters}
-mito.pos.flanked <- bedTools.slop(bed1 = mito.pos, opt.string = "-b 3000", genomefile = "~/projects/ab_nucmito/meta/hg19.genome")
+telo.pos$transcript_end <- telo.pos$transcript_start
+telo.pos.flanked <- bedTools.flank(bed1 = telo.pos, opt.string = "-l 3000 -s -r 0", genomefile ="~/Work/projects/ab_teloprobes/meta/hg19.genome")
 ```
 
-## Find 450K probes within flanks and genes of nuclear mitochondrial genes  
+## Find 450K probes upstream of genes involved in telomeric function
 
 ## Extract coordinates (Human Genome build GRCh37) of 450K probes from annotation file and convert to BED format
 ```{r 450kextract}
@@ -145,15 +148,15 @@ bed.450K$chr <- paste("chr", bed.450K$chr, sep="")
 bed.450K <- bed.450K[,c("chr", "start", "end", "name")]
 ```
 
-## Overlap 450K probe coordinates with flanked nuclear mitochondrial gene coordinates
+## Overlap 450K probe coordinates with regions upstream of genes involved in telomeric function
 
 ```{r overlap}
-probes450K.in.flanked.nucmitos <- bedTools.2in(bed1=bed.450K,bed2=mito.pos.flanked,opt.string="-wo")
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[,c(1,2,3,4,8)]
-names(probes450K.in.flanked.nucmitos) <- c("chr", "start", "end", "probeID", "overlapped_gene")
+probes450K.in.flanked.telos <- bedTools.2in(bed1=bed.450K,bed2=telo.pos.flanked,opt.string="-wo")
+probes450K.in.flanked.telos <- probes450K.in.flanked.telos[,c(1,2,3,4,8)]
+names(probes450K.in.flanked.telos) <- c("chr", "start", "end", "probeID", "upstream_of_gene")
 # sort and remove duplicates
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[with(probes450K.in.flanked.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
-probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(probes450K.in.flanked.nucmitos),]
+probes450K.in.flanked.telos <- probes450K.in.flanked.telos[with(probes450K.in.flanked.telos, order(chr, start, probeID, upstream_of_gene)), ]
+probes450K.in.flanked.telos <- probes450K.in.flanked.telos[!duplicated(probes450K.in.flanked.telos),]
 ```
 
 ---
@@ -161,12 +164,12 @@ probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(pro
 # Results
 
 ```{r output}
-#kable(probes450K.in.flanked.nucmitos, row.names=F)
-write.xlsx2(probes450K.in.flanked.nucmitos, file="probes450K.in.flanked.nucmitos.xlsx")
+#kable(probes450K.in.flanked.telos, row.names=F)
+write.table(probes450K.in.flanked.telos, file=file.path(resultsDir, "probes450K.in.flanked.telos.xls"), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
 
-### [Excel file with results](probes450K.in.flanked.nucmitos.xlsx)
+### [Excel file with results](probes450K.in.flanked.telos.xls)
 
 
 
