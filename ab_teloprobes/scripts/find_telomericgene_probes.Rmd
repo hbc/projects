@@ -123,10 +123,10 @@ telo.pos$strand <- ifelse(telo.pos$strand=="-1", "-", "+")
 
 ```{r printtelogenes, results='asis'}
 #kable(telo.pos)
-write.table( telo.pos, file.path(resultsDir, file="telomeric.function.gene.locations.xls"), sep="\t", quote=F, row.names=F, col.names=T)
+write.table( telo.pos, file=file.path(resultsDir, "telomeric.function.gene.locations.xls"), sep="\t", quote=F, row.names=F, col.names=T)
 ```
 
-### [Telomeric function gene locations](telomeric.function.gene.locations.xls)
+### [Telomeric function gene locations](../results/telomeric.function.gene.locations.xls)
 
 ## Get coordinates of regions upstream of telomeric function genes  
 3kb upstream of the transcript start
@@ -169,7 +169,7 @@ write.table(probes450K.in.flanked.telos, file=file.path(resultsDir, "probes450K.
 ```
 
 
-### [Excel file with results](probes450K.in.flanked.telos.xls)
+### [Excel file with results](../results/probes450K.in.flanked.telos.xls)
 
 
 
