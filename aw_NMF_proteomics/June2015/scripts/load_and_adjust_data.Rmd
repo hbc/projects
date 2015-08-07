@@ -19,10 +19,10 @@ options(width=200)
 ## Directories and Variables
 
 ```{r setup}
-if(file.exists("/Users/johnhutchinson/projects")){
-  baseDir  <- "/Users/johnhutchinson/projects/aw_NMF_proteomics/Mar2015/"
+if(file.exists("/Users/johnhutchinson/Work/projects")){
+  baseDir  <- "/Users/johnhutchinson/Work/projects/aw_NMF_proteomics/June2015/"
   } else if (file.exists("/n/home08/jhutchin")){
-    baseDir <- "/net/hsphfs1/srv/export/hsphfs1/share_root/chb/projects/aw_NMF_proteomics/Mar2015/"
+    baseDir <- "/net/hsphfs1/srv/export/hsphfs1/share_root/chb/projects/aw_NMF_proteomics/June2015/"
     }
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
@@ -36,11 +36,20 @@ library(reshape2)
 library(ggplot2)
 library(readr )
 library(dplyr)
+library(pheatmap)
+library(ggdendro)
+library(CHBUtils)
+library(edgeR)
+library(plyr)
+library(RUVSeq)
+library(sva)
+library(limma)
 ```
 
 ## Load Data
 
 ```{r loaddata}
+rawdata.set0 <- read.csv(file.path(dataDir, "Set0", "Set0-Summary-2.csv"))
 rawdata.set1 <- read.csv(file.path(dataDir, "Set1", "Set1-Summary-2.csv"))
 rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
 ```
@@ -51,37 +60,169 @@ rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
 - sum values for identical phosphoresidues found on same proteins
 
 ```{r summarizephospresidues}
+sumdata.set0 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set0, sum)
 sumdata.set1 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set1, sum)
 sumdata.set2 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set2, sum)
 ```
 
+## Data exploration
+
+```{r dataexplore}
+# remove any rows with zero counts for all samples
+sumdata.set0 <- sumdata.set0[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set0))], 1, function(x) all(x==0))),]
+sumdata.set1 <- sumdata.set1[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set1))], 1, function(x) all(x==0))),]
+sumdata.set2 <- sumdata.set2[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set2))], 1, function(x) all(x==0))),]
+
+# merge datasets together - all phospho sites
+sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"), all=TRUE)
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"), all=TRUE)
+sumdata <- sumdata.set.0.1.2
+names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
+sumdata.m <- melt(sumdata, id.vars=c("GeneName", "Protein.Relative.Modifications.1"))
+ggplot(sumdata.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()+ggtitle("Summed counts, all phospho sites")
+
+
+# merge datasets together - only common phospho sites
+sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
+sumdata <- sumdata.set.0.1.2
+names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
+sumdata.m <- melt(sumdata, id.vars=c("GeneName", "Protein.Relative.Modifications.1"))
+ggplot(sumdata.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()+ggtitle("Summed counts, common phospho sites")
+```
+
 ## Normalize samples to minimum total signal sample
-- scale values of samples so all samples have same total intensity scores
+- first try simple method based on adjusting for total output for each sample
+- scale values of samples so all samples have same total intensity scores for common phospho sites
 
 ```{r normvalues}
-# calc total intensities for each sample
-colsums.set1 <- colSums(sumdata.set1[, grep("Summed", names(sumdata.set1))])
-colsums.set2 <- colSums(sumdata.set2[, grep("Summed", names(sumdata.set2))])
+# using just total count norm
+## merge datasets together - only common phospho sites
+sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
+sumdata <- sumdata.set.0.1.2
+names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
+## calc total intensities for each sample
+colsums <- colSums(sumdata[, grep("Summed", names(sumdata))])
+## calc multiplier modifier for each samples, based on sample with total lowest intensity
+mods<- 1/(colsums/min(colsums))
+## normalize summed data with multiplier modifier
+normed.sums <- as.data.frame(t(t(sumdata[,grep("Summed", names(sumdata))])*mods))
+## add normalized data to non-normed data
+names(normed.sums) <- sub("Summed", "Normed", names(normed.sums))
+data <- cbind(sumdata, normed.sums)
+normed.data <- cbind(data[,1:2], data[,grep("Normed", names(data))])
+normed.data$gene_phosphosite <- paste(normed.data$GeneName, normed.data$Protein.Relative.Modifications.1, sep="_")
+row.names(normed.data) <- normed.data$gene_phosphosite
+normed.data <- normed.data[,grep("Normed", names(normed.data))]
 
-# calc multiplier modifier for each samples, based on sample with total lowest intensity
-mods.set1 <- 1/(colsums.set1/min(colsums.set1))
-mods.set2 <- 1/(colsums.set2/min(colsums.set2))
+# plot normed results
+normed.data.m <- melt(normed.data)
 
-# normalize summed data with multiplier modifier
-normed.sums.set1 <- as.data.frame(t(t(sumdata.set1[,grep("Summed", names(sumdata.set1))])*mods.set1))
-normed.sums.set2 <- as.data.frame(t(t(sumdata.set2[,grep("Summed", names(sumdata.set2))])*mods.set2))
-
-# add normalized data to non-normed data
-names(normed.sums.set1) <- sub("Summed", "Normed", names(normed.sums.set1))
-data.set1 <- cbind(sumdata.set1, normed.sums.set1)
-
-names(normed.sums.set2) <- sub("Summed", "Normed", names(normed.sums.set2))
-data.set2 <- cbind(sumdata.set2, normed.sums.set2)
+ggplot(normed.data.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()
+heatmap(as.matrix(normed.dat))
+myDist <- dist(t(normed.data))
+myTree <- hclust(myDist)
+dhc <- as.dendrogram(myTree)
+ggdendrogram(dhc)
 ```
+
+
+## Using edgeR
+- using  a library deigned for count data from RNA-seq, trying to see if it is effective for phosph-proteomic results
+- adjusts for both total "library" size and RNA composition effects i.e. will compensate for outlier RNAs that might use up a significant proportion of the results, to avoid undersampling of of other genes in the sample
+
+>The calcNormFactors function normalizes for RNA composition by finding a set of scaling
+factors for the library sizes that minimize the log-fold changes between the samples for most
+genes.
+
+```{r edgeRnorm}
+# merge datasets together - all phospho sites
+sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"), all=TRUE)
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"), all=TRUE)
+sumdata <- sumdata.set.0.1.2
+names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
+
+# prep for edgeR import
+phosphosites <- paste(sumdata[,1], sumdata[,2], sep="_")
+sumdata <- cbind(phosphosites, sumdata[, grep("umm", names(sumdata))])
+row.names(sumdata) <- sumdata$phosphosites
+sumdata$phosphosites <- NULL
+sumdata[is.na(sumdata)] <- 0
+
+# import into edgeR object and calc norm factors
+sumdata.dge <- DGEList(counts=sumdata)
+calcNormFactors(sumdata.dge)
+
+# output normed data adjusted for library size and 
+normed.data.edger <- cpm(sumdata.dge)
+
+# subset to commmon phospho sites
+normed.data.edger <- normed.data.edger[row.names(normed.data.edger) %in% row.names(normed.data),]
+normed.data.edger <- as.data.frame(normed.data.edger)
+
+# plot normed results
+normed.data.edger.m <- melt(normed.data.edger)
+
+ggplot(normed.data.edger.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()
+heatmap(as.matrix(normed.data.edger))
+myDist <- dist(t(normed.data.edger))
+myTree <- hclust(myDist)
+dhc <- as.dendrogram(myTree)
+ggdendrogram(dhc)
+
+
+
+
+```
+
+
+
+```{r svaseq}
+metadata <- laply(strsplit(names(normed.data), "\\."), function(x) {
+  sample <- x[2]
+  batch <- x[3]
+  return(list(sample=sample, batch=batch))
+  })
+metadata <- as.data.frame(metadata)
+metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | metadata$sample==128, "D1", "D4")
+
+
+
+
+
+set = newSeqExpressionSet(as.matrix(normed.data), phenoData = data.frame(metadata, row.names=colnames(normed.data)))
+group <- pData(set)$sampleclass
+dat0 <- counts(set)
+
+## Estimate batch with pca
+ldat0 = log(dat0 + 1)
+batch_pca = svd(ldat0 - rowMeans(ldat0))$v[,1]
+
+
+
+## Estimate batch with ruv empirical controls
+## this procedure follows the RUVSeq vignette
+## http://www.bioconductor.org/packages/devel/bioc/vignettes/RUVSeq/inst/doc/RUVSeq.pdf
+
+y <- DGEList(counts=dat0, group=x)
+y <- calcNormFactors(y, method="upperquartile")
+y <- estimateGLMCommonDisp(y, design)
+y <- estimateGLMTagwiseDisp(y, design)
+
+fit <- glmFit(y, design)
+lrt <- glmLRT(fit, coef=2)
+
+controls=rank(lrt$table$LR) <= 400
+batch_ruv_emp <- RUVg(dat0, controls, k=1)$W
+
+
+```
+
 
 # Output to files
 
 ```{r output}
-write.csv(data.set1, file=file.path(dataDir, "Set1", "normalized.data.JH.csv"))
-write.csv(data.set2, file=file.path(dataDir, "Set2", "normalized.data.JH.csv"))
+write.csv(normed.data, file=file.path(dataDir, "Set1", "normalized.data.libraray.size.csv"))
+write.csv(normed.data.edger, file=file.path(dataDir, "Set2", "normalized.data.edgeR.csv"))
 ```
