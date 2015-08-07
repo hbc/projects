@@ -17,12 +17,13 @@ options(width=200)
 # SETUP
 
 ## Directories and Variables
+- either local or using Odyssey
 
 ```{r setup}
 if(file.exists("/Users/johnhutchinson/Work/projects")){
   baseDir  <- "/Users/johnhutchinson/Work/projects/aw_NMF_proteomics/June2015/"
-  } else if (file.exists("/n/home08/jhutchin")){
-    baseDir <- "/net/hsphfs1/srv/export/hsphfs1/share_root/chb/projects/aw_NMF_proteomics/June2015/"
+  } else if (file.exists("/n/home08/")){
+    baseDir <- "/n/hsphS10/hsphfs1/chb/projects/aw_NMF_proteomics/June2015"
     }
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
@@ -48,6 +49,8 @@ library(limma)
 
 ## Load Data
 
+There are three separate datasets, each with the same data classes in each. 
+
 ```{r loaddata}
 rawdata.set0 <- read.csv(file.path(dataDir, "Set0", "Set0-Summary-2.csv"))
 rawdata.set1 <- read.csv(file.path(dataDir, "Set1", "Set1-Summary-2.csv"))
@@ -57,7 +60,8 @@ rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
 # Data Summarize
 
 ## Summarize/Collapse all identical phospho-residues 
-- sum values for identical phosphoresidues found on same proteins
+- same phospho-proteomic site can be represented in the data by a different peptide
+  - assuming they are all coming from the same origin, makes sense to just sum the values for identical phosphoresidues found on same proteins
 
 ```{r summarizephospresidues}
 sumdata.set0 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set0, sum)
@@ -65,14 +69,22 @@ sumdata.set1 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, 
 sumdata.set2 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set2, sum)
 ```
 
-## Data exploration
+## Data Clean
+- some lines have no signal, dropped them
 
-```{r dataexplore}
+```{r dataclean}
 # remove any rows with zero counts for all samples
 sumdata.set0 <- sumdata.set0[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set0))], 1, function(x) all(x==0))),]
 sumdata.set1 <- sumdata.set1[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set1))], 1, function(x) all(x==0))),]
 sumdata.set2 <- sumdata.set2[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set2))], 1, function(x) all(x==0))),]
+```
 
+## Data exploration
+- exploring best way to combine the different sets of data
+  - not all sets detected the same phosphoproteomic sites
+    - does it make a difference is we merge the datasets using only common phosphoproteomic sites or should we use all of them?
+
+```{r dataexplore}
 # merge datasets together - all phospho sites
 sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"), all=TRUE)
 sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"), all=TRUE)
@@ -91,7 +103,10 @@ sumdata.m <- melt(sumdata, id.vars=c("GeneName", "Protein.Relative.Modifications
 ggplot(sumdata.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()+ggtitle("Summed counts, common phospho sites")
 ```
 
-## Normalize samples to minimum total signal sample
+- really can't see any reason to keep all the sites for this, might be important if we decide to use the edgeR method of normalization?
+- going forward with just the common sites before normalization
+ 
+## Normalize total counts for each sample
 - first try simple method based on adjusting for total output for each sample
 - scale values of samples so all samples have same total intensity scores for common phospho sites
 
@@ -131,10 +146,9 @@ ggdendrogram(dhc)
 ## Using edgeR
 - using  a library deigned for count data from RNA-seq, trying to see if it is effective for phosph-proteomic results
 - adjusts for both total "library" size and RNA composition effects i.e. will compensate for outlier RNAs that might use up a significant proportion of the results, to avoid undersampling of of other genes in the sample
+  - here I used all the phosphoproteomic sites, as edgeR adjusts for "RNA" composition, and excluding "RNAs" might skew that in unexpected ways
 
->The calcNormFactors function normalizes for RNA composition by finding a set of scaling
-factors for the library sizes that minimize the log-fold changes between the samples for most
-genes.
+>The calcNormFactors function normalizes for RNA composition by finding a set of scaling factors for the library sizes that minimize the log-fold changes between the samples for most genes.
 
 ```{r edgeRnorm}
 # merge datasets together - all phospho sites
@@ -170,11 +184,30 @@ myDist <- dist(t(normed.data.edger))
 myTree <- hclust(myDist)
 dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
-
-
-
-
 ```
+
+Both normlaization methods are insufficient to overcome the batch run effect ie. they are still clustering by batch. While we could account for batch in the differential "expression" equation we can't do this for NMF, we instead require a pre-adjusted matrix. 
+
+## Batch correction
+
+Using either SVAseq or RUVseq
+
+Batch here corresponds to "Set". 
+For sample classes, you can either load in the metadata, or just work off the sample numbers. 
+
+The metadata is a bit confusing,with different terms used for the same sample types.
+
+resting bone marrow == RBM == unmobilized ==  D1
+peripheral mobilized == PM == mobilized_spleen ==  D4
+
+You'll notice that the same sample types are loaded in the same slots for all 3 assays.
+
+i.e. Summed126 is consistently the same sample type
+
+So, 
+
+resting bone marrow == RBM == unmobilized ==  D1 == 126,127 & 128
+peripheral mobilized == PM == mobilized_spleen ==  D4 == 129,130 & 131
 
 
 
