@@ -54,6 +54,8 @@ library(edgeR)
 library(plyr)
 library(RUVSeq)
 library(limma)
+library(knitr)
+library(NMF)
 ```
 
 ## Load Data
@@ -287,4 +289,71 @@ write.csv(all_de, file=file.path("limma.voom.csv"))
 - finding "metagenes"
 - using normalized and batch corrected data
 
+## NMF Variables
+```{r nmfvars}
+TRAIN=50
+RUN=1250
+mad.cutoff=0.5
+
+minnumfeatures=25
+```
+
+
+
+The first four components explain ~87.5% of the sample differences for both approaches to the data, and when compared pairwise,  the first two components easily separate out the cell types.
+
+## NMF Preparation
+
+### Estimating the factorization rank
+From ["An introduction to NMF package"](http://nmf.r-forge.r-project.org/vignettes/NMF-vignette.pdf)
+
+>A critical parameter in NMF is the factorization rank r. It determines the number of metagenes used
+to approximate the target matrix. Given a NMF method and the target matrix, a common way of
+deciding on r is to try different values, compute some quality measure of the results, and choose
+the best value according to this quality criteria.
+
+#### Using metrics:
+
+From ["An introduction to NMF package"](http://nmf.r-forge.r-project.org/vignettes/NMF-vignette.pdf (NMF vignette))
+
+>(Brunet et al. 2004) proposed to take the first value of r for which the cophenetic coefficient starts
+decreasing, (Hutchins et al. 2008) suggested to choose the first value where the RSS curve presents
+an inflection point, and (Frigyesi et al. 2008) considered the smallest value at which the decrease
+in the RSS is lower than the decrease of the RSS obtained from random data.
+
+```{r estimrank}
+# drop weird rows with all negative numbers or only zeroes
+eset.corr <- normed.suv
+eset.corr <- eset.corr[apply(eset.corr, 1, function(x) all(x>0)),]
+
+groups.corr <-  as.factor(metadata$sampleclass)
+
+estim.corr <- nmf(eset.corr, 2:5, nrun = TRAIN, seed = 123456, .options='v-p') #disable parallel compute
+plot(estim.corr)
+```
+
+These results suggest there are at 2 metagenes might separate all the classes as  there isn't a clear  inflection point of the rss or cophenetic curves.
+
+Even for random data, increasing factorization ranks lead to more variables to fit the data, possibly leading to overfitting the data. Too assess this, we can run the same metrics after randomly permuting the data, and comparing the performance of the original and randomized datasets. 
+
+```{r overfitcheck, results='hide',warning=FALSE, message=FALSE, error=FALSE,cache=TRUE}
+# shuffle original data to look for overfitting
+eset.corr.rand <- randomize(eset.corr)
+# estimate quality measures from the shuffled data (use default NMF algorithm)
+estim.corr.rand <- nmf(eset.corr.rand, 2:5, nrun = TRAIN, seed = 12345, .options="v-p")
+# plot measures on same graph
+plot(estim.corr, estim.corr.rand)
+```
+
+In the plots above, the solid lines represent the actual data while the dotted lines represent the same data after random shuffling by permuting the rows of each column, using a different permutation each time. These results show that overfitting is not an issue.
+
+#### Qualitative assessment
+
+We can also examine heatmaps of the consensus matrix for each value of the factorization rank to see if the clusters (or consensus blocks) obtained correspond to the known cell types.
+
+```{r estimatefactoriziationrank.qualitative, results='hide'}
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+consensusmap(estim.corr, annCol=list(samplegroups=as.character(unlist(eset.corr$group_short ))),annColors=list(samplegroups=cbPalette[1:3]), labCol=groups.corr, labRow=groups.corr, scale="row", color='-RdYlBu2:200')
+```
 
