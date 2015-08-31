@@ -332,7 +332,7 @@ estim.corr <- nmf(eset.corr, 2:5, nrun = TRAIN, seed = 123456, .options='v-p') #
 plot(estim.corr)
 ```
 
-These results suggest there are at 2 metagenes might separate all the classes as  there isn't a clear  inflection point of the rss or cophenetic curves.
+These results suggest that 2 metagenes might separate all the classes as there isn't a clear  inflection point for the rss or cophenetic curves.
 
 Even for random data, increasing factorization ranks lead to more variables to fit the data, possibly leading to overfitting the data. Too assess this, we can run the same metrics after randomly permuting the data, and comparing the performance of the original and randomized datasets. 
 
@@ -355,5 +355,31 @@ We can also examine heatmaps of the consensus matrix for each value of the facto
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
 consensusmap(estim.corr, annCol=list(samplegroups=as.character(unlist(eset.corr$group_short ))),annColors=list(samplegroups=cbPalette[1:3]), labCol=groups.corr, labRow=groups.corr, scale="row", color='-RdYlBu2:200')
+```
+
+You can clearly see that 2 metagenes separate the groups well.
+
+### Choosing an algorithm
+
+To this point, I have been using the default (*brunet*) algorithm for the gross tuning of NMF; we can further fine tune NMF by choosing an alternate algorithm.
+ 
+To do so, I ran NMF on the data using four of the most popular algorithms (with error tracking enabled), and compared the error plots. In these error plots, each track is normalized so that its first value equals one, and stops at the iteration where the method's convergence criterion was fulfilled; algorithms that converge at lower objective values are optimal.
+
+```{r comparealgs, cache=TRUE, results="hide", message=FALSE, error=FALSE,warning=FALSE}
+res.multi.method.2 <- nmf(eset.corr, 2, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "tv-p")
+plot(res.multi.method.2, main="NMF residuals - 2 metagenes")
+```
+
+Here, the *nsMMF* algorirthm works best. The nsNMF approach has the slight benefit of creating 'sparse' metagenes which are easier to interpret functionally, so I proceeded with this algorithm.
+
+## Complete NMF Algorithm
+
+The NMF analyses so far have used a low number of iterations (<50) so may not be completely accurate,. Here I ran NMF with `r RUN` iterations to allow the algorithm to fully converge and yield as accurate a result as possible.
+
+```{r fullNMF, eval=TRUE}
+res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv-p")
+
+# save precomputed NMF values, hack to avoid using caching
+save(list="res.final.2", file=file.path(resultsDir,  "RDATA.res.final.2"))
 ```
 
