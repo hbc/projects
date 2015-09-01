@@ -217,7 +217,7 @@ So,
 resting bone marrow == RBM == unmobilized ==  D1 == 126,127 & 128
 peripheral mobilized == PM == mobilized_spleen ==  D4 == 129,130 & 131
 
-```{r svaseq}
+```{r setupmetadata}
 metadata <- laply(strsplit(names(normed.data), "\\."), function(x) {
   sample <- x[2]
   batch <- x[3]
@@ -225,8 +225,10 @@ metadata <- laply(strsplit(names(normed.data), "\\."), function(x) {
 })
 metadata <- as.data.frame(metadata)
 metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | metadata$sample==128, "D1", "D4")
+```
 
 
+```{r RUVseq}
 set = newSeqExpressionSet(as.matrix(normed.data.edger))
 difference <- matrix(data=c(c(1:3,7:9,13:15), c(4:6,10:12,16:18)), byrow=TRUE, nrow=2)
 batch_ruv_emp <- RUVs(as.matrix(normed.data.edger), rownames(normed.data.edger), k=2, difference)
@@ -242,6 +244,11 @@ myTree <- hclust(myDist, method = "ward.D2")
 dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
 ```
+
+```{r loadbatchcorrected}
+load(file.path(resultsDir, "batch.corrected.counts"))
+```
+
 
 # Differential "Expression"
  - using limma voom
@@ -283,6 +290,7 @@ write.csv(all_de, file=file.path("limma.voom.csv"))
 - using normalized and batch corrected data
 
 ## NMF Variables
+
 ```{r nmfvars}
 TRAIN=50
 RUN=1250
@@ -290,7 +298,6 @@ mad.cutoff=0.5
 
 minnumfeatures=25
 ```
-
 
 
 The first four components explain ~87.5% of the sample differences for both approaches to the data, and when compared pairwise,  the first two components easily separate out the cell types.
@@ -321,7 +328,7 @@ eset.corr <- eset.corr[apply(eset.corr, 1, function(x) all(x>0)),]
 
 groups.corr <-  as.factor(metadata$sampleclass)
 
-estim.corr <- nmf(eset.corr, 2:5, nrun = TRAIN, seed = 123456, .options='v-p') #disable parallel compute
+estim.corr <- nmf(eset.corr, 2:5, nrun = TRAIN, seed = 123456, .options='v') #allow parallel compute
 plot(estim.corr)
 ```
 
@@ -333,7 +340,7 @@ Even for random data, increasing factorization ranks lead to more variables to f
 # shuffle original data to look for overfitting
 eset.corr.rand <- randomize(eset.corr)
 # estimate quality measures from the shuffled data (use default NMF algorithm)
-estim.corr.rand <- nmf(eset.corr.rand, 2:5, nrun = TRAIN, seed = 12345, .options="v-p")
+estim.corr.rand <- nmf(eset.corr.rand, 2:5, nrun = TRAIN, seed = 12345, .options="v")
 # plot measures on same graph
 plot(estim.corr, estim.corr.rand)
 ```
@@ -370,7 +377,7 @@ Here, the *nsMMF* algorirthm works best. The nsNMF approach has the slight benef
 The NMF analyses so far have used a low number of iterations (<50) so may not be completely accurate,. Here I ran NMF with `r RUN` iterations to allow the algorithm to fully converge and yield as accurate a result as possible.
 
 ```{r fullNMF, eval=TRUE}
-res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv-p")
+res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv")
 
 # save precomputed NMF values, hack to avoid using caching
 save(list="res.final.2", file=file.path(resultsDir,  "RDATA.res.final.2"))
