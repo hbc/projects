@@ -21,11 +21,6 @@ options(width=200,bitmapType = 'cairo')
 
 # SETUP
 
-```{r myR, echo=FALSE}
-source("~/repos/myRfunctions/transactions.R")
-```
-
-
 ## Directories and Variables
 - either local or using Odyssey
 
@@ -222,13 +217,11 @@ So,
 resting bone marrow == RBM == unmobilized ==  D1 == 126,127 & 128
 peripheral mobilized == PM == mobilized_spleen ==  D4 == 129,130 & 131
 
-
-
 ```{r svaseq}
 metadata <- laply(strsplit(names(normed.data), "\\."), function(x) {
-sample <- x[2]
-batch <- x[3]
-return(list(sample=sample, batch=batch))
+  sample <- x[2]
+  batch <- x[3]
+  return(list(sample=sample, batch=batch))
 })
 metadata <- as.data.frame(metadata)
 metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | metadata$sample==128, "D1", "D4")
