@@ -1,13 +1,12 @@
 ---
 output:
-  knitrBootstrap::bootstrap_document:
-    theme: readable
-    highlight: zenburn
-    theme.chooser: TRUE
-    highlight.chooser: TRUE
   html_document:
     toc: true
-    highlight: zenburn
+    toc_depth: 3
+    theme: journal
+css: custom.css
+title: "NMF analysis of proteomic data - Set1"
+theme: united
 ---
 
 last update `r date()`
@@ -63,7 +62,7 @@ rawdata.set1 <- read.csv(file.path(dataDir, "Set1", "Set1-Summary-2.csv"))
 rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
 ```
 
-# Data Summarize
+# Data Summarize and Explore
 
 ## Summarize/Collapse all identical phospho-residues
 - same phospho-proteomic site can be represented in the data by a different peptide
@@ -150,6 +149,7 @@ dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
 ```
 
+The data is still clustering more by batch than by sample class. 
 
 ## Using edgeR
 - using  a library deigned for count data from RNA-seq, trying to see if it is effective for phosph-proteomic results
@@ -198,24 +198,14 @@ Both normlaization methods are insufficient to overcome the batch run effect ie.
 
 # Batch correction
 
-Using either SVAseq or RUVseq
+Using  [RUVseq](http://www.nature.com/nbt/journal/v32/n9/full/nbt.2931.html)
 
 Batch here corresponds to "Set".
 For sample classes, you can either load in the metadata, or just work off the sample numbers.
 
-The metadata is a bit confusing,with different terms used for the same sample types.
-
 resting bone marrow == RBM == unmobilized ==  D1
 peripheral mobilized == PM == mobilized_spleen ==  D4
 
-You'll notice that the same sample types are loaded in the same slots for all 3 assays.
-
-i.e. Summed126 is consistently the same sample type
-
-So,
-
-resting bone marrow == RBM == unmobilized ==  D1 == 126,127 & 128
-peripheral mobilized == PM == mobilized_spleen ==  D4 == 129,130 & 131
 
 ```{r setupmetadata}
 metadata <- laply(strsplit(names(normed.data), "\\."), function(x) {
@@ -228,7 +218,7 @@ metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | meta
 ```
 
 
-```{r RUVseq}
+```{r RUVseq, eval=FALSE}
 set = newSeqExpressionSet(as.matrix(normed.data.edger))
 difference <- matrix(data=c(c(1:3,7:9,13:15), c(4:6,10:12,16:18)), byrow=TRUE, nrow=2)
 batch_ruv_emp <- RUVs(as.matrix(normed.data.edger), rownames(normed.data.edger), k=2, difference)
@@ -245,13 +235,13 @@ dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
 ```
 
-```{r loadbatchcorrected}
+```{r loadbatchcorrected, echo=FALSE}
 load(file.path(resultsDir, "batch.corrected.counts"))
 ```
 
 
 # Differential "Expression"
- - using limma voom
+ - using [limma voom](http://www.genomebiology.com/2014/15/2/R29)
 
 ```{r limma, results='asis'}
 row.names(metadata) = names(sumdata.dge$counts)
@@ -272,17 +262,19 @@ kable(summary(decideTests(dat.bayes)))
 all_de = topTable(dat.bayes, coef="condition", number = Inf)
 ```
 
+Table above shows how many phospho-proteomics sites are differentially "expresssed" between the cell types. 
+
 ## Output to files
 
 ```{r output}
-write.csv(normed.suv, file=file.path("normalized.data.suvseq.csv"))
-write.csv(all_de, file=file.path("limma.voom.csv"))
+write.csv(normed.suv, file=file.path(resultsDir, "normalized.data.suvseq.csv"))
+write.csv(all_de, file=file.path(resultsDir, "limma.voom.csv"))
 # write.csv(normed.data.edger, file=file.path(dataDir, "Set2", "normalized.data.edgeR.csv"))
 ```
 
-[normalized matrix](`r get_report_links("normalized.data.suvseq.csv")`)
+[normalized matrix](../results/normalized.data.suvseq.csv)
 
-[differential expression](`r get_report_links("limma.voom.csv")`)
+[differential expression](../results/limma.voom.csv)
 
 
 # NMF Analysis
@@ -354,7 +346,7 @@ We can also examine heatmaps of the consensus matrix for each value of the facto
 ```{r estimatefactoriziationrank.qualitative, results='hide'}
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
-consensusmap(estim.corr, annCol=list(samplegroups=as.character(unlist(eset.corr$group_short ))),annColors=list(samplegroups=cbPalette[1:3]), labCol=groups.corr, labRow=groups.corr, scale="row", color='-RdYlBu2:200')
+consensusmap(estim.corr, annCol=list(samplegroups=as.character(unlist(groups.corr))),annColors=list(samplegroups=cbPalette[1:3]), labCol=groups.corr, labRow=groups.corr, scale="row", color='-RdYlBu2:200')
 ```
 
 You can clearly see that 2 metagenes separate the groups well.
@@ -366,7 +358,7 @@ To this point, I have been using the default (*brunet*) algorithm for the gross 
 To do so, I ran NMF on the data using four of the most popular algorithms (with error tracking enabled), and compared the error plots. In these error plots, each track is normalized so that its first value equals one, and stops at the iteration where the method's convergence criterion was fulfilled; algorithms that converge at lower objective values are optimal.
 
 ```{r comparealgs, cache=TRUE, results="hide", message=FALSE, error=FALSE,warning=FALSE}
-res.multi.method.2 <- nmf(eset.corr, 2, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "tv-p")
+res.multi.method.2 <- nmf(eset.corr, 2, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "tv")
 plot(res.multi.method.2, main="NMF residuals - 2 metagenes")
 ```
 
@@ -382,4 +374,56 @@ res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv")
 # save precomputed NMF values, hack to avoid using caching
 save(list="res.final.2", file=file.path(resultsDir,  "RDATA.res.final.2"))
 ```
+
+```{r fullNMFload, echo=FALSE}
+# load precomputed NMF values, hack to avoid using caching
+load(file.path(resultsDir,  "RDATA.res.final.2"))
+```
+
+We can look at the final results in various ways:
+
+The consensus matrix plot is similar to the previous plot, just with more iterations. It shows how well the calculated metagenes cluster the samples.
+
+```{r rank2consensumap}
+consensusmap(res.final.2,  annCol=list(samplegroups=as.character(unlist(groups.corr))),  labCol=groups.corr, labRow=groups.corr, annColors=list(samplegroups=cbPalette[1:2], basis=cbPalette[5:6], consensus=brewer.pal(3, "Spectral")))
+```
+
+### NMF Metagene Feature Extraction
+
+The "Metagene Components"" plots indicate the contributions of a gene to the individual metagenes. 
+
+Here I first plotted all genes that contribute to any metagene.
+
+```{r rank2basismap, cache=TRUE}
+basismap(res.final.2, scale="r1",annColors=list(basis=cbPalette[5:6], consensus=brewer.pal(2, "Spectral")), main="Metagene Components - All Contributing Genes") # shows metagenes in relation to samples
+```
+
+#### All NMF Metagene Features
+
+We can extract the genes that make a contribution to the different metagenes. In the Excel files below, I included all genes that contribute to a metagene.
+
+```{r rank2.metagenes}
+fs2 <- featureScore(res.final.2) # get all the feature scores which measure specificity to which a gene contributes to a metagene
+f2 <- extractFeatures(res.final.2) # extract the the 50 most features with the highest specifciity for each of the metagenes
+
+# dataframe to present the metagene features that includes both the metagene annotations and the featurescores
+metagene2.1 <- cbind(fData(eset.corr)[f2[[1]],], fs2[f2[[1]]]) 
+names(metagene2.1)[ncol(metagene2.1)] <- "featurescore"
+metagene2.2 <- cbind(fData(eset.corr)[f2[[2]],], fs2[f2[[2]]]) 
+names(metagene2.2)[ncol(metagene2.2)] <- "featurescore"
+
+write.table(as.matrix(metagene2.1), file=file.path(resultsDir, paste("metagene", 1, "xls", sep=".")), sep="\t", quote=F)
+write.table(as.matrix(metagene2.2), file=file.path(resultsDir, paste("metagene", 2, "xls", sep=".")), sep="\t", quote=F)
+
+## get unique annotations for genes (NMF returns number referenced IDs) in metagenes
+unique.metagenesymbols <- lapply(f2, function(x) {
+					   genenames <- unique(unlist(fData(eset.corr)[x,"GeneName"]))
+					     return(genenames)
+					     })
+## get number of unique genes in each metagene
+numgenes <- unlist(lapply(unique.metagenesymbols, length))
+```
+
+[Excel file of metagene number 1 features](../results/6plex_1/metagene.1.xls)  
+[Excel file of metagene number 2 features](../results/6plex_1/metagene.2.xls)  
 
