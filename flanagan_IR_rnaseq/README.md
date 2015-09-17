@@ -1,0 +1,1 @@
+All the raw data and analysis files for the RNA-Seq component of this project can be found on Orchestra at `/n/data1/cores/bcbio/flanagan-chipseq2rna/rnaseq/`. This projects folder only contains the Rmd files for the RNA-Seq component.

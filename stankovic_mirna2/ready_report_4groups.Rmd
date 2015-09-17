@@ -1,0 +1,218 @@
+---
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+
+```{r setup, echo=FALSE, message=FALSE}
+library(knitr)
+
+library(ggplot2)
+library(reshape)
+library(DESeq2)
+library(genefilter)
+library(CHBUtils)
+library(gtools)
+library(gridExtra)
+library(devtools)
+library(dplyr)
+library(isomiRs)
+
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", fig.width=6,fig.heigh=6,
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='', bootstrap.show.code=FALSE)
+
+root_path = "/Users/rkhetani/Dropbox/HBC\ consults/Stankovic"
+root_file = paste0(root_path,"/report/")
+
+condition = "condition"
+```
+
+```{r render, eval=FALSE, echo=FALSE}
+library(rmarkdown)
+library(knitrBootstrap)
+# render("report.rmd")
+```
+
+```{r load}
+setwd(root_path)
+files = read.table("summary_re_4groups.csv", sep=",",header=T,colClasses = "character")
+
+samples = files[,"sample_id"]
+
+names_stats = files[,"size_stats"]
+names(names_stats) = samples
+
+groups = files[,"group"]
+names(groups) = samples
+
+summarydata = data.frame(row.names=samples,samples=samples,group=groups)
+design <- data.frame(row.names=files$sample_id, condition=files$group)
+
+```
+
+# Exploratory analysis
+
+In this section we will see descriptive figures about quality of the data, 
+reads with adapter, reads mapped to miRNAs, reads mapped to other small RNAs. 
+
+## Size distribution
+
+### After adapter removal, we can plot the size distribution of the small RNAs.
+
+```{r adapter,fig.width=10}
+tab = data.frame()
+for (sample in samples){
+    d = read.table(names_stats[sample], sep=" ")
+    tab = rbind(tab, d %>% mutate(sample=sample, group=groups[sample]))
+}
+
+reads_adapter = tab %>% group_by(sample, group) %>% summarise(total=sum(V2))
+ggplot(reads_adapter, aes(x=sample,y=total,fill=group)) +
+    geom_bar(stat="identity", position = "dodge") +
+    ggtitle("total number of reads with adapter") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+ggplot(tab, aes(x=V1,y=V2,fill=sample)) +
+    geom_bar(stat="identity", position = "dodge") +
+    facet_wrap(~group, ncol=2)+
+    ggtitle("size distribution") +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+## miRNA
+
+### Total miRNA expression annotated with mirbase
+
+```{r mirna,results='hide'}
+mi_files = files[,"miraligner"]
+row.names(design) = samples
+
+obj <- IsomirDataSeqFromFiles(files = mi_files, design = design ,header = T, cov = 1)
+```
+
+```{r mirna-mirbase}
+ggplot( data.frame(sample=colnames(counts(obj)), total=colSums(counts(obj)))) +
+    geom_bar(aes(x=sample,y=total), stat='identity')+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+mirna_step <- as.data.frame(colSums(counts(obj)))
+```
+
+### Distribution of mirna expression
+
+```{r depth}
+ggplot(melt(counts(obj))) +
+    geom_boxplot(aes(x=X2,y=value))+
+    scale_y_log10()+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+### Cumulative distribution of miRNAs
+
+```{r cum}
+
+cs <- as.data.frame(apply(counts(obj),2,cumsum))
+cs$pos <- 1:nrow(cs)
+
+ggplot((melt(cs,id.vars = "pos")))+
+    geom_point(aes(x=pos,y=value,color=variable))+
+    scale_y_log10()
+```
+
+## Other small RNA
+
+The data was analyzed with [seqcluster](http://seqcluster.readthedocs.org/)
+
+This tools used all reads, uniquely mapped and multi-mapped reads. The first
+step is to cluster sequences in all locations they overlap. The second step is to 
+create meta-clusters: is the unit that merge all clusters that share the 
+same sequences. This way the output are meta-clusters, common sequences that could
+come from different region of the genome.
+
+
+### Genome covered
+
+```{r genome-covered, results='asis'}
+cov_stats <- read.table(file.path(root_path, "align", "seqs_clean_rmlw.bam_cov.tsv"),sep="\t",check.names = F)
+
+kable(cov_stats[cov_stats$V1=="genome",] %>% select(coverage=V2,ratio_genome=V5))
+
+```
+
+The normal value for data with strong small RNA signal is: 0.0002
+
+### Classification
+
+Number of reads in the data after each step
+
+```{r reads-track}
+reads_stats <- read.table(file.path(root_path, "seqcluster", "cluster", "read_stats.tsv"),sep="\t",check.names = F)
+ggplot(reads_stats, aes(x=V2, y=V1, fill=V3)) + 
+    geom_bar(stat = 'identity', position = 'dodge') +
+    labs(list(x="samples", y="reads")) +
+    scale_fill_brewer("steps", palette = 'Set1')+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+```{r cluster}
+clus <- read.table(files[1,"clusters"],header=T,sep="\t",row.names=1, check.names = FALSE)
+ann <- clus[,2]
+toomany <- clus[,1]
+clus_ma <- clus[,3:ncol(clus)]
+clus_ma = clus_ma[,row.names(design)]
+```
+
+
+Check complex meta-clusters: This kind of event happens when there are small RNA over the whole genome, and all repetitive small RNAs map to thousands of places and sharing many sequences in many positions.
+
+(If any meta-cluster is > 40% of the total data, maybe it is worth adding some filters like: minimum number of counts `-e` or `--min--shared` in `seqcluster prepare`)
+
+```{r complex-meta-clusters}
+clus_ma_norm = sweep(clus_ma, 2, colSums(clus_ma), "/")
+head(clus_ma_norm[toomany>0.00001,])
+```
+
+
+#### Contribution by class:
+
+rmsk (repeat masked) in the figure legend stands for genomic areas with Repeats 
+
+```{r cluster_type,eval=TRUE}
+rRNA <- colSums(clus_ma[grepl("rRNA",ann) & grepl("miRNA",ann)==F,])
+miRNA <- colSums(clus_ma[grepl("miRNA",ann),])
+tRNA <- colSums(clus_ma[grepl("tRNA",ann) & grepl("rRNA",ann)==F & grepl("repeat",ann)==F & grepl("miRNA",ann)==F,])
+rmsk <- colSums(clus_ma[grepl("repeat",ann) & grepl("rRNA",ann)==F & grepl("miRNA",ann)==F,])
+total <- colSums(clus_ma)
+
+dd <- data.frame(samples=names(rRNA),
+                 rRNA=rRNA,
+                 miRNA=miRNA,
+                 tRNA=tRNA,
+                 rmsk=rmsk,
+                 total=total)
+
+ggplot(melt(dd)) +
+    geom_bar(aes(x=samples,y=value,fill=variable),
+             stat='identity',
+             position="dodge")+
+    scale_fill_brewer(palette = "Set1")+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+dd_norm = dd
+dd_norm[,2:5] = sweep(dd[,2:5],1,dd[,6],"/")
+ggplot(melt(dd_norm[,1:5])) +
+    geom_bar(aes(x=samples,y=value,fill=variable),
+             stat='identity',
+             position="dodge")+
+    scale_fill_brewer(palette = "Set1")+
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+    labs(list(title="Relative proportion of small RNAs",y="% reads"))
+```
+

@@ -1,0 +1,254 @@
+---
+title: "RNA-seq: expression differences in interneurons from WT vs FGF7 knockout (KO) mice"
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_depth: 4
+    fig_caption: true
+    fig_width: 8
+    fig_height: 6
+author: "Radhika Khetani"
+---
+```{r setup, echo=FALSE}
+# Setup report details
+clientname="Hisashi Umemori"
+clientemail="Hisashi.Umemori@childrens.harvard.edu"
+analystname="Radhika Khetani"
+analystemail="rkhetani@hsph.harvard.edu"
+```
+
+RNA-Seq data analysis for `r clientname` (`r clientemail`). 
+Contact `r analystname` (`r analystemail`) for additional details. 
+Request from client was:
+> Generate list of differentially expressed genes in interneurons isolated from FGF7 knockout mice versus interneurons isolated from WT.
+
+```{r setup1, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='', bootstrap.show.code=FALSE)
+library(rmarkdown)
+library(knitrBootstrap)
+```
+
+## Workflow
+* Load in expression data and metadata
+* Extract relevant information
+* Make requested comparisons (DESeq2)
+* Perform basic GO analysis with gProfileR
+
+## Setup
+
+### Bioconductor and R libraries used
+
+```{r setup2, echo=TRUE}
+library(ggplot2)
+library(gplots)
+library(RColorBrewer)
+library(CHBUtils)
+library(ggdendro)
+library(grid)
+library(reshape)
+library(gridExtra)
+library(DESeq2)
+library(Biobase)
+library(gProfileR)
+library(pheatmap)
+source("~/Documents/revigo.R")
+library(treemap)
+```
+
+```{r load,echo=FALSE}
+baseDir <- "/Users/rkhetani/Dropbox/HBC consults/Umemori-RNA-seq/bcbio-run-5samples/DESeq2/"
+dataDir <- paste(baseDir, "/data", sep="")
+resultsDir <- paste(baseDir, "/results", sep="")
+metaDir <- paste(baseDir, "/meta", sep="")
+
+data <- read.delim(file.path(dataDir, 'combined.counts'), header=T, sep="\t", row.names=1, as.is=T) 
+meta <- read.delim(file.path(metaDir, 'exp_design.txt'), header=T, sep="\t", row.names=1)
+
+project_summary = "/Users/rkhetani/Dropbox/HBC consults/Umemori-RNA-seq/bcbio-run-5samples/2015-07-07_project-metadata-bcbio-5samples/project-summary.csv"
+
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+# this is a list of all non user-supplied metadata columns that could appear
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
+    "rRNA.rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate",
+    "Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped",
+    "rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.",
+    "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
+    "complexity", "X5.3.bias")
+```
+
+```{r heatmap function,echo=FALSE}
+get_heatmap_fn = function(summarydata) {
+    # return the pheatmap function with or without metadata
+    metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+    if(ncol(metadata) == 0) {
+       return(pheatmap)
+    }
+    else {
+    # rownames(metadata) = summarydata$Name
+    heatmap_fn = function(data, ...) {
+        pheatmap(data, annotation=metadata, ...)
+    }
+    return(heatmap_fn)
+}}
+heatmap_fn = get_heatmap_fn(summarydata)    
+```
+
+## Quality checks on the count data
+The [QC report on the raw counts](https://dl.dropboxusercontent.com/u/74036176/Umemori-qc-summary-5samples-rerun.html) was generated after removing the outlier Dec4KO-2, and after downsampling Oct20WT from (~40million pairs to ~11million pairs). The sample selection and downsampling was performed based on the [initial QC report](https://dl.dropboxusercontent.com/u/74036176/Umemori-qc-summary.html).
+
+In this report some of the QC plots are repeated for context.
+
+### PCA
+PCA (principal components analysis) is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expresson levels for all genes and transforms it in principal component space, reducing each sample into one point (as coordinates within that space). This allows us to separate samples according to expression variation, and identify potential outliers, as we did with the [MDS plot](https://dl.dropboxusercontent.com/u/74036176/Umemori-qc-summary-5samples-rerun.html#MDS_plot_of_TMM_normalized_counts) in the previous report. PCA and MDS analysis are somewhat similar but the underlying calculations are very different. 
+In both types of analyses the idea is that replicates from each group should cluster together, but in this experiment neither method shows us tight clustering of the replicates. 
+
+```{r pca, fig.align='center'}
+pca_matrix <- prcomp(t(data))$x
+df <- cbind(meta, pca_matrix[,c('PC1', 'PC2')])
+
+ggplot(df, aes(PC1, PC2, color = group)) + 
+  geom_text(aes(PC1, PC2, label = row.names(df)), size = 5, hjust=0.1, vjust=0.1) +
+  scale_x_continuous(expand = c(0.3,  0.3))
+```
+
+### Sample-to-sample correlation heatmap
+This is same as one of the figures in the initial QC report. The correlations between samples are not that great, but the WT and KO samples are loosely clustered together.
+
+```{r heatmaps, fig.align='center'}
+heatmap_fn(cor(data, method="pearson"))
+```
+
+## Differential Expression
+Differential expression analysis was performed using the DESeq2 package.
+
+**65 genes are upregulated in KO**, **and 5 genes are downregulated in KO**, at an adjusted p-value (padj) threshold of 0.1. 
+(padj = p-value after applying the multiple test correction)
+```{r deseq2, fig.align='center'}
+eset <- new("ExpressionSet", exprs=as.matrix(data))
+meta$group <- relevel(meta$group, ref="WT")
+pData(eset) <- meta
+
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), design = ~ group)
+dds <- DESeq(dds)
+
+res <- results(dds)
+p.cutoff <- 0.1
+res$threshold <- as.logical(res$padj < p.cutoff)
+summary(res)
+```
+
+### Volcano plots
+The plot represents each gene with a dot. The fold change (log2) is plotted on the x-axis and the adjusted p-value (log10, p-value adjusted/corrected for multiple testing) is on the y-axis. The purple dots represent the 70 genes that are differentially expressed.
+```{r volcano, fig.align='center'}
+df <- data.frame(res)
+ggplot(data=df, aes(x=log2FoldChange, y=-log10(padj), colour = threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16) +
+  xlim(c(-10,10)) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  ggtitle('WT vs KO') +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+### MA plot
+Similar to the volcano plot, the MA plot is a great way to visualize the comparative expression metrics for a two group comparison. The x–axis is the average/mean expression over all the samples and the y axis is the log2 fold change between WT and KO. The red dots represent the 70 genes that are differentially expressed.
+
+```{r MAplot, fig.align='center'}
+plotMA(res, main="MA plot, alpha=0.1", ylim=c(-2,2))
+```
+
+```{r leaving-out, eval=FALSE, echo=FALSE}
+### Final summary and results
+#write.csv(as.data.frame(res), file="/Users/rkhetani/Dropbox/HBC consults/Umemori-RNA-seq/bcbio-run-5samples/DESeq2/data/results.csv")
+#hist(sig.genes.all$log2FoldChange)
+#hist(res$log2FoldChange)
+
+## Plotting normalized counts of DE genes
+plot.names <- c("")
+for(i in sig.genes)
+{
+new <- plotCounts(dds, gene=i, intgroup="group", returnData=T)
+newplot <- ggplot(new, aes(x=group, y=count)) +
+            geom_point(position=position_jitter(w=0.1,h=0)) +
+            theme(axis.text.x = element_text(size = rel(0.75))) +
+            theme(title = element_text(size = rel(0.5))) +
+            labs(title=i)
+assign(paste(i,"plot", sep="_"), newplot)
+plot.names <- c(plot.names, print(paste(i,"plot", sep="_")))
+rm(new)
+rm(newplot)
+}
+plot.names <- unique(plot.names)
+#grid.arrange(ENSMUSG00000034701_plot,ENSMUSG00000048482_plot,ENSMUSG00000024883_plot,ENSMUSG00000026826_plot,ENSMUSG00000027208_plot,ENSMUSG00000031425_plot,ENSMUSG00000032854_plot,ENSMUSG00000028785_plot,ENSMUSG00000030067_plot,ENSMUSG00000068566_plot,ENSMUSG00000078816_plot,ENSMUSG00000030376_plot,ENSMUSG00000036634_plot,ENSMUSG00000030518_plot,ENSMUSG00000048644_plot,ENSMUSG00000038173_plot,ENSMUSG00000037852_plot,ENSMUSG00000049556_plot,ENSMUSG00000098973_plot,ENSMUSG00000032517_plot,ENSMUSG00000056427_plot,ENSMUSG00000006782_plot,ENSMUSG00000025372_plot,ENSMUSG00000048251_plot,ENSMUSG00000022454_plot,ENSMUSG00000050821_plot,ENSMUSG00000043557_plot,ENSMUSG00000041607_plot,ENSMUSG00000036098_plot,ncol=5,nrow=6)
+
+#grid.arrange(ENSMUSG00000026235_plot,ENSMUSG00000006403_plot,ENSMUSG00000053963_plot,ENSMUSG00000026826_plot,ENSMUSG00000035033_plot,ENSMUSG00000048482_plot,ENSMUSG00000027208_plot,ENSMUSG00000038400_plot,ENSMUSG00000031425_plot,ENSMUSG00000025658_plot,ENSMUSG00000037625_plot,ENSMUSG00000027971_plot,ENSMUSG00000032854_plot,ENSMUSG00000028161_plot,ENSMUSG00000090125_plot,ENSMUSG00000028785_plot,ENSMUSG00000043635_plot,ENSMUSG00000051339_plot,ENSMUSG00000056966_plot,ENSMUSG00000090063_plot,ENSMUSG00000059187_plot,ENSMUSG00000030067_plot,ENSMUSG00000030226_plot,ENSMUSG00000068566_plot,ENSMUSG00000078816_plot,ENSMUSG00000030376_plot,ENSMUSG00000036634_plot,ENSMUSG00000009687_plot,ENSMUSG00000055078_plot,ENSMUSG00000030518_plot,ENSMUSG00000030772_plot,ENSMUSG00000052889_plot,ENSMUSG00000019831_plot,ENSMUSG00000034818_plot,ENSMUSG00000019960_plot,ENSMUSG00000048644_plot,ENSMUSG00000038173_plot,ENSMUSG00000031559_plot,ENSMUSG00000037852_plot,ENSMUSG00000031833_plot,ENSMUSG00000031778_plot,ENSMUSG00000033579_plot,ENSMUSG00000033594_plot,ENSMUSG00000012405_plot,ENSMUSG00000003469_plot,ENSMUSG00000049556_plot,ENSMUSG00000032373_plot,ENSMUSG00000098973_plot,ENSMUSG00000032517_plot,ENSMUSG00000032532_plot,ENSMUSG00000056427_plot,ENSMUSG00000038255_plot,ENSMUSG00000006782_plot,ENSMUSG00000046215_plot,ENSMUSG00000025372_plot,ENSMUSG00000041773_plot,ENSMUSG00000048251_plot,ENSMUSG00000022602_plot,ENSMUSG00000033006_plot,ENSMUSG00000022454_plot,ENSMUSG00000009569_plot,ENSMUSG00000050821_plot,ENSMUSG00000022935_plot,ENSMUSG00000067629_plot,ENSMUSG00000043557_plot,ENSMUSG00000052229_plot,ENSMUSG00000041607_plot,ENSMUSG00000024883_plot,ENSMUSG00000036098_plot,ENSMUSG00000033863_plot,ncol=10,nrow=7)
+
+#getting gene names for the ensembl gene ids
+
+library(biomaRt)
+mart<- useDataset("mmusculus_gene_ensembl", useMart("ensembl"))
+counts.norm <- counts(dds, normalized=T)
+
+gene.names <- getBM(
+  filters= "ensembl_id", 
+  attributes= c("ensembl_id", "gene_symbol"),
+  values= row.names(counts.norm),
+  mart= mart)
+
+ens.id <- row.names(counts.norm)
+GeneName <- gene.names[match(ens.id,gene.names$ensembl_gene_id),"external_gene_name"]
+new <- data.frame(counts.norm,GeneName)
+write.table(new, "../Dropbox/HBC consults/Umemori-RNA-seq//bcbio-run-5samples/DESeq2/data/normalized_counts.txt", sep="\t")
+
+```
+
+### gprofiler
+Taking our list of significant genes we ran it through [gProfileR](http://biit.cs.ut.ee/gprofiler/), a tool that performs statistical enrichment analysis to find over-representation of information like Gene Ontology terms, biological pathways, regulatory DNA elements, human disease gene annotations, and protein-protein interaction networks.
+
+We took the results from gprofiler and used the significant (fdr>=0.05) GO terms as input to [REVIGO](http://revigo.irb.hr/) to visualize the most prominent processes and reduce redundancy of terms. Each rectangle is a single cluster representative. The representatives are joined into ‘superclusters’ of loosely related terms, visualized with different colors. Size of the rectangles may be adjusted to reflect either the p-value, or the frequency of the GO term in the underlying GOA database.
+
+```{r functional, fig.align='center'}
+sig.genes.all <- res[which(res$padj < p.cutoff),]
+sig.genes <- rownames(sig.genes.all)
+
+query <- unique(sig.genes)
+  
+gprofiler_results  <-   gprofiler(query = query, 
+            organism = "mmusculus",
+            ordered_query = F, 
+            exclude_iea = F, 
+            max_p_value = 0.05, 
+            max_set_size = 0,
+            correction_method = "fdr",
+            hier_filtering = "none", 
+            domain_size = "annotated",
+            custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep('GO:', allterms)]
+pvals <- gprofiler_results$p.value[grep('GO:', allterms)]
+GO.pval <- cbind(gprofiler_results$term.id,gprofiler_results$p.value)
+runRevigo(GOs, pvals)
+```
+
+
+## Files for download
+Below we have listed links to the various files generated in this report which will be useful for any downstream analysis.
+
+### Data Files
+* Normalized expression matrix [here](./data/normalized_counts.txt)
+
+### DE results
+* Complete [table of results](./results/DESeq2-results.txt)
+* Table with results of only the [significant genes](./results/significant.genes.txt)
+
+### Functional enrichment results
+* Table of [gprofiler results](./results/gprofiler_results.txt)

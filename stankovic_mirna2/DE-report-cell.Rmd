@@ -1,0 +1,333 @@
+---
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+
+```{r setup1, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='', bootstrap.show.code=FALSE)
+```
+
+```{r setup2}
+library(knitr)
+
+library(ggplot2)
+library(reshape)
+library(DESeq2)
+library(genefilter)
+library(CHBUtils)
+library(gtools)
+library(gridExtra)
+library(devtools)
+library(dplyr)
+library(isomiRs)
+library(stringr)
+
+root_path = "/Users/rkhetani/Dropbox/HBC\ consults/Stankovic/"
+root_file = paste0(root_path,"/report/")
+
+condition = "condition"
+```
+
+```{r render,eval=FALSE, echo=FALSE}
+library(rmarkdown)
+library(knitrBootstrap)
+# render("report.rmd")
+```
+
+```{r load}
+#setwd(root_path)
+files = read.table("/Users/rkhetani/Dropbox/HBC\ consults/Stankovic/summary_re_cell.csv", sep=",",header=T,colClasses = "character")
+
+samples = files[,"sample_id"]
+
+names_stats = files[,"size_stats"]
+names(names_stats) = samples
+
+groups = files[,"group"]
+names(groups) = samples
+
+summarydata = data.frame(row.names=samples,samples=samples,group=groups)
+design <- data.frame(row.names=files$sample_id, condition=files$group)
+
+options(width = 100) 
+```
+
+# DE - cells_post-filtering
+
+All differential expression analysis was performed on raw count matrices for miRNAs, isomirs and clusters, that were filtered as follows:
+
+Any row that did not have at least 2 samples with at least 3 counts, from at least one condition (poor hearing or good hearing) were removed (in the count matrices each row represents a distinct miRNA or isomir or cluster & each column represents a specific sample).
+
+
+```{r de-setup}
+ library(DESeq2)
+ library(DEGreport)
+ library(vsn)
+```
+
+```{r deseq2-handler}
+ 
+ filter_handle <- function(res){
+     res_nona <- res[!is.na(res$padj),]
+     keep <- res_nona$padj < 0.1 
+     res_nona[keep,]
+ }
+
+ handle_deseq2 = function(dds, summarydata, column) {
+   all_combs = combn(levels(summarydata[,column]), 2, simplify=FALSE)
+   all_results = list()
+   contrast_strings = list()
+   for(comb in all_combs) {
+     contrast_string = paste(comb, collapse="_vs_")
+     contrast = c(column, comb)
+     res = results(dds, contrast=contrast)
+     res = res[order(res$padj),]
+     all_results = c(all_results, res)
+     contrast_strings = c(contrast_strings, contrast_string)
+   }
+   names(all_results) = contrast_strings
+   return(all_results)
+ }
+
+ plot_MA = function(res){
+     for(i in seq(length(res))) {
+         plotMA(res[[i]])
+         title(paste("MA plot for contrast", names(res)[i]))
+     }
+ }
+
+ plot_volcano = function(res){
+     for(i in seq(length(res))) {
+         stats = as.data.frame(res[[i]][,c(2,6)])
+         p = volcano_density_plot(stats, title=names(res)[i], lfc.cutoff=1)
+         print(p)
+     }
+ }
+
+ do_de = function(raw, summarydata, condition){
+     dss = DESeqDataSetFromMatrix(countData = raw[rowMeans(raw)>3,],
+                        colData = summarydata,
+                        design = ~ condition)
+     dss = DESeq(dss)
+     plotDispEsts(dss)
+     dss
+ }
+
+ do_norm = function(dss, root_path, prefix){
+     rlog_ma = assay(rlog(dss))
+     # vst_ma = assay(varianceStabilizingTransformation(dss))
+     count_ma = counts(dss, normalized=TRUE)
+     raw = counts(dss, normalized=FALSE)
+     fn_log = paste0(root_file, prefix, "log_matrix.txt")
+     write.table(rlog_ma,fn_log,sep="\t")
+     # write.table(vst_ma,fn_log,sep="\t")
+     fn_count = paste0(root_file, prefix, "count_matrix.txt")
+     write.table(count_ma,fn_count,sep="\t")
+     fn_raw = paste0(root_file, prefix, "raw_matrix.txt")
+     write.table(count_ma,fn_raw,sep="\t")
+ }
+
+```
+
+## mirna
+#### Dispersion-plot
+
+```{r de}
+cell.mirna <- read.table("/Users/rkhetani/Dropbox/HBC\ consults/Stankovic/filtered\ counts/cell_count_atleast2gt3_mirna.txt", sep="\t",header=T, row.names=1)
+cell.mirna <- cell.mirna[,c(1,6,2,3,4,5,7,8,9)]
+dds = do_de(cell.mirna, design, condition)
+```
+
+```{r tables}
+ do_norm(dds, root_path, "mirna_")
+```
+
+#### MA-plot
+ 
+```{r DESeq-output, results='asis'}
+ all_results = handle_deseq2(dds, design, condition)
+ plot_MA(all_results)
+```
+
+#### Volcano-plot
+
+```{r DESeq-volcano, results='hide'}
+ plot_volcano(all_results)
+```
+
+#### Differentially expressed miRNAs
+3 differentially expressed miRNAs observed at an adjusted p-value threshold of < 0.1.
+
+```{r DE-miRNA,tidy=TRUE}
+mirna.result <- results(dds)
+summary(mirna.result)
+mirna.result[order(mirna.result$padj)[1:3],]
+```
+
+```{r DE-miRNA-plot, results='hide'}
+d <- plotCounts(dds, gene="hsa-miR-6798-3p", intgroup="condition", returnData=TRUE)
+mirna1 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-6798-3p") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(axis.text.x = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+xlab("") +
+scale_y_log10(breaks=c(1,10,15))
+
+d <- plotCounts(dds, gene="hsa-miR-192-5p", intgroup="condition", returnData=TRUE)
+mirna2 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-192-5p") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(axis.text.x = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+ylab("") +
+scale_y_log10(breaks=c(2000, 3000, 4000))
+
+d <- plotCounts(dds, gene="hsa-miR-431-5p", intgroup="condition", returnData=TRUE)
+mirna3 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-431-5p") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(axis.text.x = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+xlab("") +
+ylab("") +
+scale_y_log10(breaks=c(250, 500, 1000))
+
+grid.arrange(mirna1, mirna2, mirna3, ncol=3, main=str_wrap("Distribution of normalized counts between conditions for the 3 differentially expressed miRNAs", width=60))
+dev.off()
+
+```
+
+
+## isomir
+#### Dispersion-plot
+
+```{r de-iso}
+cell.isomir <- read.table("/Users/rkhetani/Dropbox/HBC\ consults/Stankovic/filtered\ counts/cell_count_atleast2gt3_isomirs.txt", sep="\t",header=T, row.names=1)
+cell.isomir <- cell.isomir[,c(1,6,2,3,4,5,7,8,9)]
+dds = do_de(cell.isomir, design, condition)
+```
+
+```{r tables-iso}
+ do_norm(dds, root_path, "isomirs_")
+```
+
+#### MA-plot
+ 
+```{r DESeq-output-iso, results='asis'}
+ all_results = handle_deseq2(dds, design, condition)
+ plot_MA(all_results)
+```
+
+#### Volcano-plot
+
+```{r DESeq-volcano-iso, results='hide'}
+ plot_volcano(all_results)
+```
+
+#### Differentially expressed isomirs
+4 differentially expressed isomirs observed at an adjusted p-value threshold of < 0.1.
+
+```{r DE-isomir,tidy=TRUE}
+isomir.result <- results(dds)
+summary(isomir.result)
+isomir.result[order(isomir.result$padj)[1:4],]
+```
+
+```{r DE-isomir-plot, results='hide'}
+d <- plotCounts(dds, gene="hsa-miR-224-5p.iso.t50.t3:d-T.ad:u-T.mm:0", intgroup="condition", returnData=TRUE)
+isomir1 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-224-5p.iso.t50.t3:d-T.ad:u-T.mm:0") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(plot.title = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+xlab("") +
+scale_y_log10(breaks=c(1,10,50))
+
+d <- plotCounts(dds, gene="hsa-miR-431-5p.iso.t50.t3:u-A.ad:0.mm:0", intgroup="condition", returnData=TRUE)
+isomir2 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-431-5p.iso.t50.t3:u-A.ad:0.mm:0") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(plot.title = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+xlab("") +
+ylab("") +
+scale_y_log10(breaks=c(200, 400, 600))
+
+d <- plotCounts(dds, gene="hsa-miR-192-5p.iso.t50.t3:d-A.ad:0.mm:0", intgroup="condition", returnData=TRUE)
+isomir3 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-192-5p.iso.t50.t3:d-A.ad:0.mm:0") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(plot.title = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+scale_y_log10(breaks=c(75, 100,150))
+
+d <- plotCounts(dds, gene="hsa-miR-192-5p.ref.t50.t3:0.ad:0.mm:0", intgroup="condition", returnData=TRUE)
+isomir4 <- ggplot(d, aes(x=condition, y=count)) +
+labs(title="hsa-miR-192-5p.ref.t50.t3:0.ad:0.mm:0") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(plot.title = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+ylab("") +
+scale_y_log10(breaks=c(1500,2000,2500))
+
+grid.arrange(isomir1, isomir2, isomir3, isomir4, nrow=2, ncol=2, main=str_wrap("Distribution of normalized counts between conditions for the 4 differentially expressed isomirs", width=60))
+dev.off()
+```
+
+
+## clusters
+#### Dispersion-plot
+```{r de-c}
+cell.clus <- read.table("/Users/rkhetani/Dropbox/HBC\ consults/Stankovic/filtered\ counts/cell_count_atleast2gt3_clusters.txt", sep="\t",header=T, row.names=1)
+cell.clus <- cell.clus[,c(1,6,2,3,4,5,7,8,9)]
+dds = do_de(cell.clus, design, condition)
+```
+
+```{r tables-c}
+ do_norm(dds, root_path, "clusters_")
+```
+
+#### MA-plot
+ 
+```{r DESeq-output-c, results='asis'}
+ all_results = handle_deseq2(dds, design, condition)
+ plot_MA(all_results)
+```
+
+#### Volcano-plot
+
+```{r DESeq-volcano-c, results='hide'}
+ plot_volcano(all_results)
+```
+
+#### Differentially expressed clusters
+3 differentially expressed clusters observed at an adjusted p-value threshold of < 0.1.
+
+```{r DE-cluster,tidy=TRUE}
+clus.result <- results(dds)
+summary(clus.result)
+clus.result[order(clus.result$padj)[1],]
+# draw.heatmap.clus <- cell.clus[row.names(clus.result[order(clus.result$padj)[c(1:3)],]),]
+# pheatmap(as.matrix(draw.heatmap.clus), color= cbPalette, annotation=design, cellheight=30, cellwidth = 30, breaks = c(100, 500, 25000, 50000, 60000))
+```
+
+```{r DE-cluster-plot, results='hide'}
+d <- plotCounts(dds, gene="495", intgroup="condition", returnData=TRUE)
+ggplot(d, aes(x=condition, y=count)) +
+labs(title="cluster #495") +
+geom_point(position=position_jitter(w=0.1,h=0)) +
+theme(axis.text.x = element_text(size = rel(0.75))) +
+theme(title = element_text(size = rel(0.90))) +
+xlab("") +
+scale_y_log10(breaks=c(25,100,400))
+```
