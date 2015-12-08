@@ -5,7 +5,7 @@ output:
     toc_depth: 3
     theme: journal
 css: custom.css
-title: "NMF analysis of proteomic data - Set1"
+title: "NMF analysis of proteomic data - 3 Sets"
 theme: united
 ---
 
@@ -197,6 +197,29 @@ ggdendrogram(dhc)
 ```
 
 Both normlaization methods are insufficient to overcome the batch run effect ie. they are still clustering by batch. While we could account for batch in the differential "expression" equation we can't do this for NMF, we instead require a pre-adjusted matrix.
+
+# Mean Phosphorulation change
+- looking at ratio fo D4 to D1 counts for every gene
+
+```{r meanchange}
+temp0 <- tbl_df(sumdata.set0)
+temp1 <- tbl_df(sumdata.set1)
+temp2 <- tbl_df(sumdata.set2)
+
+means0 <- temp0 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
+stats0 <- means0  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio), na.rm=T)
+means1 <- temp1 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
+stats1 <- means1  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio, na.rm=T))
+means2 <- temp2 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
+stats2 <- means2  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio, na.rm=T))
+
+
+write.table(means0, file=file.path(resultsDir, "Set0_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
+write.table(means1, file=file.path(resultsDir, "Set1_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
+write.table(means2, file=file.path(resultsDir, "Set2_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
+```
+
+
 
 # Batch correction
 
