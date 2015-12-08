@@ -1,0 +1,123 @@
+---
+title: "Correlation Analysis"
+output:
+  pdf_document:
+    fig_width: 8
+    fig_height: 10
+  mainfont: arial
+---
+
+
+```{r setup, echo=FALSE}
+options(width=200)
+library(knitr)
+opts_chunk$set(tidy=TRUE, cache=TRUE, echo=TRUE, highlight=TRUE, figalign="center", warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
+
+clientname="Andrew Gagne"
+clientname2="Steve DePalma"
+clientemail="agagne@genome.med.harvard.edu"
+lablocation="Biopolymers Facility"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+---
+
+Correlation of bcbio.RNAseq results with previous results for `r clientname` (`r clientemail`), at `r lablocation` using data from the Seidman lab  (`r clientname2`).  Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+# METHODS SUMMARY
+
+
+There are two sets of raw reads data to compare:
+
+1) bcbio data: counts generated for individual genes (using the Ensembl GTF annotation) from the Star aligments
+This dataset was generated with [bcbio][1], all reads were trimmed to remove adapter sequences and low quality calls.  Trimmed reads were aligned with [Star][2] and gene specific read counts for [Ensembl gene annotations][3] determined with the featureCounts program from the [subread][4] suite. 
+
+
+2) previous data: counts generated for individual genes and samples from `r clientname2`
+
+The sections below provide code to reproduce the post-counting results and plots. 
+
+---
+
+# SETUP
+
+## Libraries
+
+Bioconductor and R libraries used to process and visualize the data
+
+```{r libraries}
+library(plyr)
+library(reshape2)
+library(ggplot2)
+library(biomaRt)
+library(devtools)
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils)
+library(knitr)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+```
+
+## Variables
+
+Working directories, cutoffs and other variables necessary to the analysis.
+
+```{r variables}
+if (file.exists("/n/hsphS10/hsphfs1/chb/projects/seidman_rnaseq")) {
+  baseDir <- "/n/hsphS10/hsphfs1/chb/projects/seidnman_rnaseq"
+  } else if (file.exists("/Users/johnhutchinson/projects/seidman_rnaseq")){
+    baseDir <- "/Users/johnhutchinson/projects/seidman_rnaseq"
+    } else {
+      baseDir <- "/Volumes/ody/projects/seidman_rnaseq"
+      }
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+dataDir <- file.path(baseDir, "project/final/2014-04-24_project")
+annotated.count.file <- file.path(dataDir, "combined.counts")
+
+bcbio.counts.file <-file.path(dataDir, "annotated_combined.counts") 
+prev.counts.file <- file.path(baseDir, "data/previous_results/LA_E14.5_LA_P0_LA_P10_LA_P3_LV_E14.5_LV_P0_LV_P10_LV_P3_RA_E14.5_RA_P0_RA_P10_RA_P3_RV_E14.5_RV_P0_RV_P10_RV_P3.expr")
+```
+
+---
+
+# DATA IMPORT
+
+```{r dataload_and_reshape, results='asis'}
+prev.counts <- read.delim(prev.counts.file, sep="\t", header=T, row.names=1)
+```
+
+---
+
+# DATA PREPROCESS
+
+```{r munge}
+pvals <- prev.counts[,grep("pvalue", names(prev.counts))]
+pvals <- apply(pvals, 2, p.adjust)
+pvals <- melt(pvals)
+names(pvals) <- c("gene", "contrast", "pval")
+pvals$contrast <- sub("pvalue.", "", pvals$contrast)
+pvals$gene <- NULL
+
+lfcs <- prev.counts[,grep("fold", names(prev.counts))]
+lfcs <- melt(lfcs)
+names(lfcs) <- c("contrast", "logfc")
+lfcs$contrast <- sub("fold.", "", lfcs$contrast)
+
+identical(lfcs$contrast, pvals$contrast)
+
+stats <- cbind(lfcs, pvals)
+stats[,3] <- NULL
+```
+
+----
+
+# COMPARE
+
+```{r compare, results='asis'}
+counts <- table(stats[which(stats$logfc>1 & stats$pval<1e-100),"contrast"])
+kable(as.data.frame(counts[which(counts>300)]))
+```
