@@ -18,10 +18,10 @@ options(width=200)
 library(biomaRt)
 library(knitr)
 library(stringr)
-library(xlsx)
 library(ggplot2)
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 library(rtracklayer)
+library(dplyr)
 
 ```
 
@@ -88,7 +88,7 @@ bedTools.flank <- function(functionstring="bedtools flank -s", genomefile, bed1,
 # Set directories
 
 ```{r directories}
-baseDir <- "~/projects/ab_nucmito/"
+baseDir <- "~/Work/projects/ab_nucmito/"
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
@@ -128,9 +128,9 @@ miRNA <- miRNA[!duplicated(miRNA[,c("start", "end", "chr")]),]
 3kb upstream of the TSS and 3Kb downstream of transcript end
 
 ```{r getpromoters}
-miRNA.flanked <- bedTools.slop(bed1 = miRNA, opt.string = "-b 3000", genomefile = "~/projects/ab_nucmito/meta/hg19.genome")
-miRNA.upstream <- bedTools.flank(bed1 = miRNA, opt.string = "-l 3000 -r 0", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
-miRNA.downstream <- bedTools.flank(bed1 = miRNA, opt.string = "-l 0 -r 3000", genomefile = "~/projects/ab_nucmito/meta//hg19.genome")
+miRNA.flanked <- bedTools.slop(bed1 = miRNA, opt.string = "-b 3000", genomefile = "~/Work/projects/ab_nucmito/meta/hg19.genome")
+miRNA.upstream <- bedTools.flank(bed1 = miRNA, opt.string = "-l 3000 -r 0", genomefile = "~/Work/projects/ab_nucmito/meta//hg19.genome")
+miRNA.downstream <- bedTools.flank(bed1 = miRNA, opt.string = "-l 0 -r 3000", genomefile = "~/Work/projects/ab_nucmito/meta//hg19.genome")
 ```
 
 # Find 450K probes within flanks and genes of miRNAs
@@ -159,6 +159,7 @@ names(probes450K.in.flanked.miRNAs) <- c("chr", "start", "end", "probeID", "over
 # sort and remove duplicates
 probes450K.in.flanked.miRNAs <- probes450K.in.flanked.miRNAs[with(probes450K.in.flanked.miRNAs, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.flanked.miRNAs <- probes450K.in.flanked.miRNAs[!duplicated(probes450K.in.flanked.miRNAs),]
+probes450K.in.flanked.miRNAs <- probes450K.in.flanked.miRNAs %>% tbl_df() %>% inner_join(., annots.450k, by=c("probeID"="IlmnID"))
 
 ##########################
 ##########################
@@ -168,6 +169,7 @@ names(probes450K.in.upstream.miRNAs) <- c("chr", "start", "end", "probeID", "ove
 # sort and remove duplicates
 probes450K.in.upstream.miRNAs <- probes450K.in.upstream.miRNAs[with(probes450K.in.upstream.miRNAs, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.upstream.miRNAs <- probes450K.in.upstream.miRNAs[!duplicated(probes450K.in.upstream.miRNAs),]
+probes450K.in.upstream.miRNAs <- probes450K.in.upstream.miRNAs %>% tbl_df() %>% inner_join(., annots.450k, by=c("probeID"="IlmnID"))
 
 ##########################
 ##########################
@@ -178,6 +180,7 @@ names(probes450K.in.downstream.miRNAs) <- c("chr", "start", "end", "probeID", "o
 # sort and remove duplicates
 probes450K.in.downstream.miRNAs <- probes450K.in.downstream.miRNAs[with(probes450K.in.downstream.miRNAs, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.downstream.miRNAs <- probes450K.in.downstream.miRNAs[!duplicated(probes450K.in.downstream.miRNAs),]
+probes450K.in.downstream.miRNAs <- probes450K.in.downstream.miRNAs %>% tbl_df() %>% inner_join(., annots.450k, by=c("probeID"="IlmnID"))
 
 ##########################
 ##########################
@@ -188,6 +191,7 @@ names(probes450K.in.miRNAs) <- c("chr", "start", "end", "probeID", "overlapped_g
 # sort and remove duplicates
 probes450K.in.miRNAs <- probes450K.in.miRNAs[with(probes450K.in.miRNAs, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.miRNAs <- probes450K.in.miRNAs[!duplicated(probes450K.in.miRNAs),]
+probes450K.in.miRNAs <- probes450K.in.miRNAs %>% tbl_df() %>% inner_join(., annots.450k, by=c("probeID"="IlmnID"))
 
 ```
 
@@ -195,16 +199,17 @@ probes450K.in.miRNAs <- probes450K.in.miRNAs[!duplicated(probes450K.in.miRNAs),]
 
 ```{r output}
 setwd(resultsDir)
-write.xlsx2(probes450K.in.flanked.miRNAs, file="probes450K.in.flanked.miRNAs.xlsx")
-write.xlsx2(probes450K.in.upstream.miRNAs, file="probes450K.upstream.of.miRNAs.xlsx")
-write.xlsx2(probes450K.in.downstream.miRNAs, file="probes450K.downstream.of.miRNAs.xlsx")
-write.xlsx2(probes450K.in.miRNAs, file="probes450K.in.miRNAs.xlsx")
+
+write.table(probes450K.in.flanked.miRNAs, file=file.path(resultsDir, "probes450K.in.flanked.miRNAs.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(probes450K.in.upstream.miRNAs, file=file.path(resultsDir, "probes450K.upstream.of.miRNAs.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(probes450K.in.downstream.miRNAs, file=file.path(resultsDir, "probes450K.downstream.of.miRNAs.xls"), quote=F, sep="\t", row.names=F, col.names=T)
+write.table(probes450K.in.miRNAs, file=file.path(resultsDir, "probes450K.in.miRNAs.xls"), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
-##[Excel file with all results](../results/probes450K.in.flanked.miRNAs.xlsx)
-##[Excel file with upstream results](../results/probes450K.upstream.of.miRNAs.xlsx)
-##[Excel file with downstream results](../results/probes450K.downstream.of.miRNAs.xlsx)
-##[Excel file within miRNA results](../results/probes450K.in.miRNAs.xlsx)
+##[Excel file with all results](../results/probes450K.in.flanked.miRNAs.xls)
+##[Excel file with upstream results](../results/probes450K.upstream.of.miRNAs.xls)
+##[Excel file with downstream results](../results/probes450K.downstream.of.miRNAs.xls)
+##[Excel file within miRNA results](../results/probes450K.in.miRNAs.xls)
 
 # Plot categorical results
 

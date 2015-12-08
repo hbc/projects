@@ -14,7 +14,7 @@ highlight: textmate
 library(biomaRt)
 library(knitr)
 library(stringr)
-library(xlsx)
+library(dplyr)
 ```
 
 ## Functions
@@ -63,7 +63,7 @@ bedTools.slop<-function(functionstring="bedtools slop", genomefile, bed1, opt.st
 ## Set directories  
 
 ```{r directories}
-baseDir <- "~/projects/ab_nucmito/"
+baseDir <- "~/Work/projects/ab_nucmito/"
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
@@ -86,7 +86,7 @@ annots.mito <- read.delim(file.path(dataDir, "mitoproteome.tsv"))
 ## setup biomart
 
 ```{r setupbiomart}
-ensemblmart <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
+ensemblmart <-  useMart("ENSEMBL_MART_ENSEMBL",dataset="hsapiens_gene_ensembl", host="grch37.ensembl.org")
 attributes <- listAttributes(ensemblmart)
 filters <- listFilters(ensemblmart)
 ```
@@ -121,16 +121,16 @@ mito.pos <- mito.pos[which(str_length(mito.pos$hgnc_symbol)>0),]
 
 ```{r printmitogenes, results='asis'}
 #kable(mito.pos)
-write.xlsx2(mito.pos, file="nuclear.mitochondrial.genes.xlsx")
+write.table(mito.pos, file=file.path(resultsDir, "nuclear.mitochondrial.genes.xls"), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
-### [Excel file with mitochondrial genes on nuclear chromosome](nuclear.mitochondrial.genes.xlsx)
+### [Excel file with mitochondrial genes on nuclear chromosome](../results/nuclear.mitochondrial.genes.xls)
 
 ## Get coordinates of regions around nuclear mitochondrial genes  
 3kb upstream of the TSS and 3Kb downstream of transcript end
 
 ```{r getpromoters}
-mito.pos.flanked <- bedTools.slop(bed1 = mito.pos, opt.string = "-b 3000", genomefile = "~/projects/ab_nucmito/meta/hg19.genome")
+mito.pos.flanked <- bedTools.slop(bed1 = mito.pos, opt.string = "-b 3000", genomefile = "~/Work/projects/ab_nucmito/meta/hg19.genome")
 ```
 
 ## Find 450K probes within flanks and genes of nuclear mitochondrial genes  
@@ -154,6 +154,8 @@ names(probes450K.in.flanked.nucmitos) <- c("chr", "start", "end", "probeID", "ov
 # sort and remove duplicates
 probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[with(probes450K.in.flanked.nucmitos, order(chr, start, probeID, overlapped_gene)), ]
 probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(probes450K.in.flanked.nucmitos),]
+
+probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos %>% tbl_df() %>% inner_join(., annots.450k, by=c("probeID"="IlmnID"))
 ```
 
 ---
@@ -162,11 +164,11 @@ probes450K.in.flanked.nucmitos <- probes450K.in.flanked.nucmitos[!duplicated(pro
 
 ```{r output}
 #kable(probes450K.in.flanked.nucmitos, row.names=F)
-write.xlsx2(probes450K.in.flanked.nucmitos, file="probes450K.in.flanked.nucmitos.xlsx")
+write.table(probes450K.in.flanked.nucmitos, file=file.path(resultsDir, "probes450K.in.flanked.nucmitos.xls"), quote=F, sep="\t", row.names=F, col.names=T)
 ```
 
 
-### [Excel file with results](probes450K.in.flanked.nucmitos.xlsx)
+### [Excel file with results](../results/probes450K.in.flanked.nucmitos.xls)
 
 
 
