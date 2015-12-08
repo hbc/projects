@@ -1,0 +1,1136 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    theme: united
+title: "Microarray of RIP-chip samples"
+bibliography: "references.bib"
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Valerie Schumacher "
+clientemail="Valerie.Schumacher@childrens.harvard.edu"
+labPI="Schumacher"
+lablocation="HMS"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+All MoGene 1.0 ST arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+---
+
+# Setup
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/"
+    } else if (file.exists("/Users/johnhutchinson/projects/vs_ripchip/")){
+    baseDir="/Users/johnhutchinson/projects/vs_ripchip/"
+    }
+
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=log2(1.5)
+```
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables}
+library(knitr) # for simple tables
+library(oligo) # array utilities
+library(pd.mogene.1.0.st.v1)# array layout annotation
+library(mogene10sttranscriptcluster.db)
+library(arrayQualityMetrics) # array quality control reports
+library(limma) # array statistical analyses
+library(pheatmap) # pretty heatmaps
+library(plyr) # data format utility
+library(reshape2) # data format utility
+library(devtools) # install libraries from github
+install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
+library(CHBUtils) # some homegrown functions
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(RColorBrewer) # more colors
+library(gridExtra) # for arranging multiple plots
+library(venneuler) # for venm diagrams
+library(GO.db) # database of GO terms and genes
+library(biomaRt) # large biological database
+library(sva)
+library(magrittr)
+library(lattice)
+library(RRHO)
+library(biomaRt)
+```
+
+## Functions
+
+```{r functions}
+# for plotting amount of variation explained by principal components
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+
+# used for formatting labels on ggplots
+fmt <- function(){ 
+  function(x) format(x,nsmall = 1,scientific = FALSE)
+}
+
+# makes a volconao plot with a highlighted area of interest flanked by density plots of the adjusted pvalues and log2 fold changes
+volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray") {
+  # get range of log fold change and p-value values to setup plot borders
+  range.lfc <- c(floor(min(stats$logFC)), ceiling(max(stats$logFC)))
+  range.pval <- c(floor(min(-log10(stats$adj.P.Val))), ceiling(max(-log10(stats$adj.P.Val))))
+  
+  #make top plot - density plot with fold changes
+  lfcd <- as.data.frame(cbind(density(stats$logFC)$x, density(stats$logFC)$y))
+  hist_top <- ggplot(data=stats, aes(x=logFC))+
+    geom_density(color=line.colour)+
+    geom_ribbon(data=subset(lfcd, V1>lfc.cutoff),aes(x=V1,ymax=V2),ymin=0,fill=shade.colour, alpha=shade.alpha)+
+    theme_bw()+ 
+    theme(axis.title.x=element_blank())+
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
+    scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
+    scale_y_continuous(labels=fmt())
+  
+  # make blank plot
+  empty <- ggplot()+geom_point(aes(1,1), colour="white")+
+    theme(panel.grid=element_blank(),
+          axis.ticks=element_blank(), 
+          panel.background=element_blank(), 
+          axis.text.x=element_blank(),  
+          axis.text.y=element_blank(),          
+          axis.title.x=element_blank(), 
+          axis.title.y=element_blank()
+          )
+  
+  #make scatter volcano plot
+  scat.poly.up <- with(stats, data.frame(x=as.numeric(c(lfc.cutoff,  lfc.cutoff, max(range.lfc),max(range.lfc))), y=as.numeric(c(-log10(pval.cutoff), max(range.pval), max(range.pval),-log10(pval.cutoff)))))
+  
+  scatter <- ggplot(data=stats, aes(x=logFC, y=-log10(adj.P.Val))) +
+    geom_point(alpha=point.alpha, pch=21, fill=point.colour, color=point.outline.colour) +
+    geom_polygon(data=scat.poly.up, aes(x=x,y=y), fill=shade.colour, alpha=shade.alpha) +
+    xlab("log2 fold change") + ylab("-log10(adjusted p-value)") +
+    theme_bw()+
+    theme(legend.position="none") +
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
+    scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
+    scale_y_continuous(labels=fmt(), limits = range.pval)
+  
+  # make right plot - density plot of adjusted pvalues
+  pvald <- as.data.frame(cbind(density(-log10(stats$adj.P.Val))$x, density(-log10(stats$adj.P.Val))$y))
+  hist_right <- ggplot(data=stats, aes(x=-log10(adj.P.Val)))+
+    geom_density(color=line.colour)+
+    geom_ribbon(data=subset(pvald, V1>-log10(pval.cutoff)),aes(x=V1,ymax=V2),ymin=0,fill=shade.colour, alpha=shade.alpha)+
+    theme_bw()+coord_flip()+
+    scale_x_continuous(limits = range.pval)+
+    theme(axis.title.y=element_blank())+ 
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm"))
+  
+  # plot all plots
+  pp.logfc <- ggplotGrob(hist_top)
+  pp.empty <- ggplotGrob(empty)
+  pp.volc <- ggplotGrob(scatter)
+  pp.pval  <- ggplotGrob(hist_right)
+  grid.arrange(main=title,arrangeGrob(pp.logfc,pp.volc, heights=c(1,3),ncol=1),
+               arrangeGrob(pp.empty,pp.pval,  heights=c(1,3),ncol=1), 
+               ncol=2, widths=c(3,1))
+  } 
+
+
+##############################################################
+# ROC
+# Given a gene set of true positives use ROC to evaluate how well the ranked list of gene scores identifies them
+# Input: a gene set (list of identifers)
+# Input: a data frame of all genes tested. Genes should be listed by the same identifier used in gene set and 
+#        minimum of one column required specifying a gene score. Genes should be ordered with best gene score at top. 
+# Input: a number indicating which column of dataset contains the score value
+##############################################################
+rocRanked <- function(geneSet, dataSet, plot=TRUE){
+  
+  sorted<-dataSet
+  remove<-which(geneSet %in% row.names(sorted) == FALSE)
+  
+  n.genes<-length(row.names(sorted))
+  n.validate<-length(geneSet)-length(remove)
+  predict<-numeric()
+  
+  for (i in 1:n.genes){
+    
+    if(row.names(sorted)[i] %in% geneSet == TRUE){
+      val<-1
+    }else {val<-0}
+    predict<-c(predict, val)
+  }
+  
+  n.vector<-length(predict)
+  xVec<-0
+  yVec<-0
+  x<-0
+  y<-0
+  
+  # Ranking method: incrementing each axis for each of the genes in the ranked list
+  for (i in 1:n.vector){
+    
+    if(predict[i] == 1){
+      y<-y+1
+      xVec<-c(xVec, x)
+      yVec<-c(yVec, y)   
+    }else if(predict[i] == 0){
+      x<-x+1
+      xVec<-c(xVec, x)
+      yVec<-c(yVec, y)   
+    }
+  }
+  
+  if (plot) 
+    plot(xVec, yVec, xlab="FP", ylab="TP", pch=".", type="s", main="ROC evaluation")
+  
+  # Calculating AUC
+  top<-sum(yVec)
+  bottom<-(n.genes-length(remove))*(n.validate)
+  AUC<-top/bottom
+  return(AUC)
+}
+```
+
+---
+
+# Import Data and Metadata
+
+## Data
+
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- use array names to load in arrays 
+
+```{r dataload, results='hide'}
+covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+
+celFiles <- file.path(dataDir, row.names(covars))
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars 
+sampleNames(affyRaw) <- pData(affyRaw)$sampleID
+validObject(affyRaw)
+rm(covars)
+```
+
+## Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+---
+
+# PreProcessing 
+
+## Raw Data 
+
+### Quality Control
+
+- using arrayQualityMetrics library `r citep("Kauffmann_2008")`
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("pulldown", "source", "run"))
+```
+
+[Raw Data QC Report](../results/report_raw/index.html)
+
+The arrays look fine, no problems at all.
+
+## RMA Normalized Data
+
+- background correct and normalize data with RMA `r citep("10.1093/bioinformatics/19.2.185")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+```
+
+### Quality Control
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("pulldown", "source", "run"))
+```
+
+[Normalized Data QC Report](../results/report_rma.core/index.html)
+
+The arrays look good, and the clustering looks very good. 
+
+### Unsupervised Clustering of RMA Normalized Data
+
+#### Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+Here, I've fist highlighted which input sample was mRNA, and then highlighted the different pulldown categories. 
+
+```{r cluster1, out.width='100%'}
+plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="source")
+plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="pulldown")
+```
+
+#### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. This [Youtube slideshow](https://www.youtube.com/watch?v=BfTMmoDFXyE) gives a pretty good basic explanation of what PCA is doing.
+
+```{r PCAsd1, out.width='75%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, each point depicts the amount of variation explained by each component and the line shows the cumulative amount. For this data set,  very few dimensions (3) can explain >75% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first three principal components. In the first plot, each sample group is represented by a separate color and in the second plot each sample is represented by a different color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In these plots, I have once again first highlighted the RNA source (mRNA or whole RNA) and then highlighted the individual pulldown categories.
+
+```{r pca1, out.width='100%'}
+PCAplot.eset(affyNorm.core, categories="source", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+PCAplot.eset(affyNorm.core, categories="pulldown", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+```
+
+There is  a high degree of clustering by pulldown type. So much so, that when you plot PC1 against PC2, both the input samples and stau2 samples largely overlap their respective sample groups. These results are consistent with a lower level of biological variation, likely resulting from the use of a single cell line for the experiment, making these replicates closer to technical replicates. The single input sample outlier is the mRNA sample.
+
+These unsupervised clustering resutls reveal that the mRNA input sample has clear differences from the whole RNA input samples, more than can be attributed to batch effect, given how closely the *Stau2* pulldown whole RNA repeat sample from the same run clusters with the *Stau2* whole RNA samples from the first run.
+
+---
+
+## Batch Correction
+
+The whole RNA and mRNA input RNA samples were run on different days and may show batch effects. As an identical sample was also run both days, we can try adjusting for batch using ComBat r citep("doi: 10.1093/biostatistics/kxj037") from the sva package and see if it improves the data clustering. 
+
+```{r batch}
+library(sva)
+
+# Create model with batch as factor variable
+mod <- model.matrix(~as.factor(pulldown), data=pData(affyNorm.core))
+
+modcombat <- model.matrix(~1, data=pData(affyNorm.core))
+
+batch <- pData(affyNorm.core)$run
+# Modify expression matrix
+eset.core <- exprs(affyNorm.core)
+combat_edata <- ComBat(dat=eset.core,
+                       batch=batch,
+                       mod=modcombat,
+                       numCovs=NULL,
+                       par.prior=TRUE, 
+                       prior.plots=TRUE)
+affyNorm.core.batch <- affyNorm.core
+exprs(affyNorm.core.batch) <- combat_edata
+
+PCAplot.eset(affyNorm.core.batch, categories="source", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+PCAplot.eset(affyNorm.core.batch, categories="pulldown", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+```
+
+Based on the low variation within the Stau2 group before batch correction (look back to the first PCA plot) there does not appear to be much need for batch correction. In fact, the PCA plot after batch correction shows an undesirable loss of signal (and averaging betweeen samples), potentially due to the lack of inclusion of a repeated input sample. Given this, I decided to skip batch correction for this analysis.
+
+Continuing forward, I removed the repeated Stau2 whole RNA sample.
+
+```{r removerepeat}
+pd <- pData(affyNorm.core)
+affyNorm.core <- affyNorm.core[,!(pd$sampleID=="stau2-whole-3" & pd$run==2)]
+
+# drop unused levels from pData as well
+pData(affyNorm.core) <- as.data.frame(apply(pData(affyNorm.core), 2, function(x) factor(x)))
+```
+
+---
+
+## Annotate
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+```{r features, results='hide'}
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+numprobes <- nrow(fData(affyNorm.core))
+```
+
+## Filter Probesets
+Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Starting  with `r numprobes` probes remaining we can filter:
+
+### By Annotation
+- remove the control probes and probes without annotated genes
+
+```{r filter1}
+affyNorm.core <- affyNorm.core[which(!is.na(fData(affyNorm.core)$symbol) & fData(affyNorm.core)$category=="main"),]
+numprobes <- nrow(fData(affyNorm.core))
+```
+
+`r numprobes` probes remaining
+
+### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+numprobes <- nrow(fData(affyNorm.core))
+```
+
+`r numprobes` probes remaining
+
+### By Low Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3}
+eset.core <- exprs(affyNorm.core)
+affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), 0.1)))),]
+numprobes <- nrow(fData(affyNorm.core))
+```
+
+`r numprobes` probes remaining
+
+### By Low Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+eset.core <- exprs(affyNorm.core)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+numprobes <- nrow(fData(affyNorm.core))
+```
+
+`r numprobes` probes remaining
+
+---
+
+# Statistical Analyses
+
+## Limma
+
+A linear model for microarray data analysis (Limma `r citep("http://www.bioconductor.org/packages/release/bioc/html/limma.html")`) was performed on the samples to identify differentially expressed genes for comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest.
+
+### Design 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+
+```{r design2, results="asis"}
+design <- model.matrix(~ 0 + group,  data=pData(affyNorm.core))
+# make sure the headings match
+library(magrittr) # fun with pipes
+colnames(design) %>% sub("group", "", .) %>% sub("-", "_", .) -> colnames(design)
+kable(design)
+```
+
+### Contrasts
+- to perform specified pairwise comparisons
+- in this table, columns are contrasts/comparisons and rows are sample groups
+-  a zero denotes that the sample group is not involved in the contrast, a 1 denotes that it has higher expression in the contrast and a -1 denotes lower expression in the contrast
+
+I  setup four  contrasts, two to select genes that show a significant expression change between the input (both mRNA and whole RNA) and pulldown Stau2 samples and two to select genes that show a significant expression change between the input (both mRNA and whole RNA) and pulldown WT1 samples.
+
+```{r contrastmatrix2, results='asis'}
+contrast.matrix <- makeContrasts(stau2_whole=stau2_whole-input_whole, 
+                                 stau2_mRNA=stau2_whole-input_mrna,
+                                 wt1_whole=wt1_whole-input_whole,
+                                 wt1_mRNA=wt1_whole-input_mrna,
+                                 levels=colnames(design))
+dimnames(contrast.matrix)$Contrasts <- gsub(" " , "", dimnames(contrast.matrix)$Contrasts)
+kable(contrast.matrix)
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+### Linear model
+
+- for each gene based on the given series of arrays
+
+```{r linearmodel}
+eset.core <- exprs(affyNorm.core)
+fit.core <- lmFit(eset.core, design) 
+```
+
+**Compute estimated coefficients and standard errors for contrasts**
+
+```{r contrastfit}
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+```
+
+### Bayes shrinkage
+
+**Compute moderated t-statistics and log-odds of differential expression**
+
+- by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r bayes}
+fit2.core <- eBayes(fit2.core) 
+```
+
+--- 
+
+# Results
+
+## Statistics
+
+- as calculated by Limma
+
+```{r allstats}
+all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affyNorm.core)), genelist=fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")])
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+  eset <- exprs(affyNorm.core)
+  eset  <-  eset[match(stats$probesetid, row.names(eset)),]
+  stats.eset <- cbind(stats, eset)
+  return(list(contrast=contrast, stats.eset=stats.eset))
+  })
+
+# output all results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(all.results[[num]]$stats.eset)
+  write.table(out.stats, file=file.path(resultsDir, paste("all.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+### Statistics and expression levels of all genes for these comparisons
+
+*Note that for all these files, I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+`r x=1`
+[Stau2 whole RNA pulldown stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+2`
+[WT1 whole RNA pulldown stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+**These summary tables contain the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 8 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+## Identifying Genes Enriched by RBP pulldown
+
+### Volcano plots
+
+Here we can visulize the relationship between the fold changes in expression observed for the different pulldowns. Our best candidate genes will not only have a statistically significant difference in gene expression between the two sample groups (as measured adjusted pvlaue) but also a large change (as measured by the log2 fold change). We are also only interested in genes that are enriched after pulldown, not those that are higher in the input samples.
+
+**Each of these plots contains 3 subplots:**
+
+1) Bottom left - the volcano plot, a scatter plot with the observed log2fold changes (extremes are better) plotted against the -log10 adjusted pvalues (higher is better). For these contrasts, we are looking for genes that are enriched in the pulldown, genes that have at least an adjusted pvalue of `r pvalue.cutoff` and a log 2 fold change more than `r lfc.cutoff` are highlighted with a green box.   
+
+2) Upper left - a density plot (smoothed histogram) of the log2 fold changes observed for the contrast, the part of the distribution above `r lfc.cutoff` is highlighted under the curve in `r highlight.color`.  
+
+3) Lower right - a density plot (smoothed histogram) of the adjusted pvalued observed for the contrast, the part of the distribution above `r pvalue.cutoff` is highlighted under the curve in `r highlight.color`. Note that for this plot, this highlight also included genes enriched in the input samples.
+
+```{r ggplotexps, out.width='100%', dev="png"}
+volcano_density_plot(stats=all.results[[1]]$stats.eset, title="Stau2 whole RNA pulldown vs. input", lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color )          
+volcano_density_plot(stats=all.results[[3]]$stats.eset, title="WT1 whole RNA pulldown vs. input" , lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color)          
+```
+
+Using these pvalue and log2 fold change cutoffs we can identify which genes are showing enrichment in the two pulldowns. The cutoffs I have picked here (pvalue<`r pvalue.cutoff` and log2foldchange>`r lfc.cutoff`) are within accepted range, if a bit stringent, but are arbitrary. 
+
+**If you want to change these cutoffs to be more or less stringent, you can filter the Excel files above by adj.P.Val and logFC in Excel.**
+
+For these cutoffs: 
+`r x=1`
+- the `r all.results[[x]]$contrast` contrast, has `r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` enriched probesets probing `r length(unique(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol))` genes.
+`r x=x+2`
+- the `r all.results[[x]]$contrast` contrast, has `r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` enriched probesets probing `r length(unique(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol))` genes.
+
+### Statistics and expression levels for just these differentially expressed genes
+
+```{r ouputtop, results='hide'}
+# output top results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(subset(all.results[[num]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))
+  write.table(out.stats, file=file.path(resultsDir, paste("top.enriched.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+*Note that, once again, for all these files I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+`r x=1`
+[Stau2 whole RNA pulldown stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+`r x=x+2`
+[WT1 whole RNA pulldown stats - top enriched genes](../results/top.enriched.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+*These summary tables contain the same information as the files above*
+
+## Removing genes that bind non-specifically to Stau2.
+
+We can first compare the pulldowns by examining how many genes are pulled down by each protein.
+
+```{r venn}
+top.probesets.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
+top.probesets.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
+top.probesets.intersect <- intersect(top.probesets.Stau2, top.probesets.WT1)
+top.genes.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
+top.genes.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
+top.genes.intersect <- intersect(top.genes.Stau2, top.genes.WT1)
+plot(venneuler(c(WT1=length(top.genes.WT1),Stau2=length(top.genes.Stau2),"WT1&Stau2"=length(top.genes.intersect))))
+```
+
+Here, there are `r length(top.probesets.intersect)` probesets representing `r length(top.genes.intersect)` genes that are pulled down by both Stau2 and WT1.
+
+Any genes that are pulled down by both proteins can be considered non-specific and be eliminated from the Stau2 pulldown results. 
+
+```{r uniqStau2}
+top.results.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+top.uniq.results.Stau2 <- top.results.Stau2[!(top.results.Stau2$probesetid %in% top.probesets.intersect),]
+write.table(top.uniq.results.Stau2, file=file.path(resultsDir, "top.genes.stats.exprs.Stau2-no_non_specific_binding.xls"), sep ="\t", row.names=F, col.names=T)
+```
+
+Removing the genes enriched by the WT1 pulldown leaves us with `r nrow(top.uniq.results.Stau2)` probesets representing `r length(unique(top.uniq.results.Stau2$symbol))` genes.
+
+**[Stau2 whole RNA pulldown stats - enriched genes (without non-specific binding)](../results/top.genes.stats.exprs.Stau2-no_non_specific_binding.xls)**
+
+We can do the same thing to get the more WT1 specific genes.
+
+```{r uniqWT1}
+top.results.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+top.uniq.results.WT1 <- top.results.WT1[!(top.results.WT1$probesetid %in% top.probesets.intersect),]
+write.table(top.uniq.results.WT1, file=file.path(resultsDir, "top.genes.stats.exprs.WT1-no_non_specific_binding.xls"), sep ="\t", row.names=F, col.names=T)
+```
+
+Removing the genes enriched by the Stau2 pulldown leaves us with `r nrow(top.uniq.results.WT1)` probesets representing `r length(unique(top.uniq.results.WT1$symbol))` genes.
+
+**[WT1 whole RNA pulldown stats - enriched genes (without non-specific binding)](../results/top.genes.stats.exprs.WT1-no_non_specific_binding.xls)**
+
+### Heatmaps of genes specifically bound by Stau2
+
+```{r heatmaps, out.width='100%', dev='png', fig.height=11, fig.width=8.5}
+# microarray intensities fwith rows labelle diwht probeset and gene
+eset.of.interest <- top.uniq.results.Stau2[,c(sampleNames(affyNorm.core), "symbol")]
+eset.of.interest$probeset_symbol <- paste(row.names(eset.of.interest), eset.of.interest$symbol, sep="-")
+eset.of.interest$symbol <- NULL
+eset.of.interest <- col2rownames(eset.of.interest, "probeset_symbol", TRUE)
+sub("whole_", "", names(eset.of.interest))
+
+# annotations
+pd <- pData(affyNorm.core)
+heatmap.annots <- pd[,c("sampleID", "pulldown")]
+heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
+
+row.names(heatmap.annots) <- heatmap.annots$sampleID
+heatmap.annots$sampleID <- NULL
+
+# annotation colors
+pulldown_colors <- c(cbPalette[1:3] )
+names(pulldown_colors) <- unique(unlist(pd$pulldown))
+ann_colors = list(pulldown = pulldown_colors)
+## Heatmaps
+
+pheatmap(as.matrix(eset.of.interest), 
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = TRUE,
+         main="Genes enriched after pulldown with Stau2", 
+         fontsize=12,
+         fontsize_row=7,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         cellwidth=40)
+```
+
+## Gene Ontologies
+
+Running the top 200 genes through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in multiple relevant biological processes, including GTPase regulation and neuronal projection development as well as genes involved with the microtubule and actin cytoskeletal cellular components. [Link to GO results](http://goo.gl/BcouBe) (*this link may take a while to load*)
+
+Gene ontology enrichment analyses can yield an overwhelming number of enriched categories, many with redundant functionality. We can simplify this output by identifying the most representative subset of the terms, using metrics which measure the semantic similarity of the terms. [Revigo](http://revigo.irb.hr/) `r citep("10.1371/journal.pone.0021800")` performs such analyses, using an algortithm which forms
+
+>  groups of highly similar GO terms, where the choice of the groups’ representatives is guided by the p-values
+
+The algorithm takes into account the parent-child structure of the gene onotology database
+
+> If the p-values are quite close and one term is a child node of the other, REVIGO will tend to choose the parent term
+
+The algorithm also tries to find more specific GO terms.
+
+> Very general GO terms, however, are always avoided as cluster representatives ... as they tend to be uninformative
+
+Revigo allows visualization of these representatives and their relations to the terms within their group  as a [treemap](http://en.wikipedia.org/wiki/Treemapping). Here the color depicts a grouping of related terms, the size of a block, it's pvalue from g:profiler and the large text the most representative gene ontology term for the related group.
+
+```{r revigotreemap, dev='png', out.width='100%'}
+##This script was autogenerated by  REVIGO from the g:profiler gene ontology data
+
+# A treemap R script produced by the REVIGO server at http://revigo.irb.hr/
+# If you found REVIGO useful in your work, please cite the following reference:
+# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
+# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+# author: Anton Kratz <anton.kratz@gmail.com>, RIKEN Omics Science Center, Functional Genomics Technology Team, Japan
+# created: Fri, Nov 02, 2012  7:25:52 PM
+# last change: Fri, Nov 09, 2012  3:20:01 PM
+
+# -----------------------------------------------------------------------------
+# If you don't have the treemap package installed, uncomment the following line:
+# install.packages( "treemap" );
+library(treemap)   							# treemap package by Martijn Tennekes
+
+# Set the working directory if necessary
+# setwd("C:/Users/username/workingdir");
+
+# --------------------------------------------------------------------------
+# Here is your data from REVIGO. Scroll down for plot configuration options.
+
+bp.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+bp.pval.revigo.data <- rbind(c("GO:0009987","cellular process",68.218,3.3726,0.996,0.000,"cellular process"),
+c("GO:0023052","signaling",26.299,2.7375,0.990,0.000,"signaling"),
+c("GO:0032502","developmental process",24.064,2.1972,0.990,0.000,"developmental process"),
+c("GO:0044699","single-organism process",62.571,3.6073,0.995,0.000,"single-organism process"),
+c("GO:0046578","regulation of Ras protein signal transduction",1.879,7.3883,0.751,0.000,"regulation of Ras protein signal transduction"),
+c("GO:0048522","positive regulation of cellular process",15.830,1.9914,0.830,0.304,"regulation of Ras protein signal transduction"),
+c("GO:0048518","positive regulation of biological process",17.954,2.7190,0.885,0.319,"regulation of Ras protein signal transduction"),
+c("GO:0023051","regulation of signaling",10.959,4.0000,0.808,0.435,"regulation of Ras protein signal transduction"),
+c("GO:0080090","regulation of primary metabolic process",22.583,4.5376,0.698,0.392,"regulation of Ras protein signal transduction"),
+c("GO:0051716","cellular response to stimulus",28.763,4.0311,0.861,0.364,"regulation of Ras protein signal transduction"),
+c("GO:0006281","DNA repair",1.576,3.3382,0.673,0.293,"regulation of Ras protein signal transduction"),
+c("GO:0048583","regulation of response to stimulus",12.516,3.0580,0.865,0.390,"regulation of Ras protein signal transduction"),
+c("GO:0035556","intracellular signal transduction",9.900,8.4789,0.749,0.344,"regulation of Ras protein signal transduction"),
+c("GO:0010646","regulation of cell communication",11.000,4.4660,0.771,0.428,"regulation of Ras protein signal transduction"),
+c("GO:0019222","regulation of metabolic process",25.262,4.0462,0.774,0.368,"regulation of Ras protein signal transduction"),
+c("GO:0050794","regulation of cellular process",43.146,6.1549,0.801,0.177,"regulation of Ras protein signal transduction"),
+c("GO:0050789","regulation of biological process",46.584,5.5200,0.873,0.452,"regulation of Ras protein signal transduction"),
+c("GO:0043087","regulation of GTPase activity",2.317,5.3840,0.382,0.124,"regulation of Ras protein signal transduction"),
+c("GO:0006139","nucleobase-containing compound metabolic process",25.135,2.7496,0.620,0.391,"regulation of Ras protein signal transduction"),
+c("GO:0065009","regulation of molecular function",9.358,3.3915,0.906,0.226,"regulation of Ras protein signal transduction"),
+c("GO:0065008","regulation of biological quality",12.554,2.5229,0.902,0.249,"regulation of Ras protein signal transduction"),
+c("GO:0050896","response to stimulus",36.212,1.5031,0.992,0.000,"response to stimulus"),
+c("GO:0051179","localization",22.125,1.4353,0.990,0.000,"localization"),
+c("GO:0065007","biological regulation",49.068,5.9031,0.993,0.000,"biological regulation"),
+c("GO:0071840","cellular component organization or biogenesis",20.072,8.0665,0.989,0.000,"cellular component organization or biogenesis"),
+c("GO:0007010","cytoskeleton organization",4.493,5.8069,0.868,0.034,"cytoskeleton organization"),
+c("GO:0055006","cardiac cell development",0.330,1.6021,0.816,0.482,"cytoskeleton organization"),
+c("GO:0048856","anatomical structure development",22.318,2.7258,0.859,0.478,"cytoskeleton organization"),
+c("GO:0031175","neuron projection development",3.242,2.9245,0.716,0.400,"cytoskeleton organization"),
+c("GO:0000902","cell morphogenesis",4.858,1.7375,0.728,0.473,"cytoskeleton organization"),
+c("GO:0030030","cell projection organization",4.817,2.2457,0.824,0.426,"cytoskeleton organization"),
+c("GO:1902582","single-organism intracellular transport",3.738,5.4895,0.862,0.048,"single-organism intracellular transport"),
+c("GO:0051235","maintenance of location",1.082,2.8539,0.893,0.301,"single-organism intracellular transport"),
+c("GO:0033036","macromolecule localization",8.113,2.0570,0.938,0.481,"single-organism intracellular transport"),
+c("GO:0051641","cellular localization",9.280,5.2823,0.938,0.415,"single-organism intracellular transport"),
+c("GO:0061061","muscle structure development",2.758,1.4976,0.848,0.051,"muscle structure development"),
+c("GO:0030029","actin filament-based process",2.689,2.3251,0.886,0.074,"actin filament-based process"),
+c("GO:0007017","microtubule-based process",2.570,1.6421,0.887,0.077,"microtubule-based process"),
+c("GO:0044763","single-organism cellular process",54.297,4.8962,0.857,0.090,"single-organism cellular process"),
+c("GO:0007154","cell communication",26.729,2.8601,0.835,0.182,"single-organism cellular process"),
+c("GO:0006793","phosphorus metabolic process",16.763,2.9547,0.777,0.235,"single-organism cellular process"),
+c("GO:0044237","cellular metabolic process",43.133,2.7471,0.789,0.167,"single-organism cellular process"),
+c("GO:0044238","primary metabolic process",44.841,1.6696,0.823,0.375,"single-organism cellular process"),
+c("GO:0009056","catabolic process",10.832,2.4365,0.868,0.201,"single-organism cellular process"),
+c("GO:0046483","heterocycle metabolic process",25.780,2.3556,0.757,0.304,"single-organism cellular process"),
+c("GO:1901360","organic cyclic compound metabolic process",26.694,1.7423,0.813,0.285,"single-organism cellular process"),
+c("GO:0006725","cellular aromatic compound metabolic process",25.830,2.2480,0.757,0.353,"single-organism cellular process"),
+c("GO:0006928","cellular component movement",6.288,2.2277,0.872,0.104,"single-organism cellular process"));
+
+bp.pval.stuff <- data.frame(bp.pval.revigo.data);
+names(bp.pval.stuff) <- bp.pval.revigo.names;
+
+bp.pval.stuff$abslog10pvalue <- as.numeric( as.character(bp.pval.stuff$abslog10pvalue) );
+bp.pval.stuff$freqInDbPercent <- as.numeric( as.character(bp.pval.stuff$freqInDbPercent) );
+bp.pval.stuff$uniqueness <- as.numeric( as.character(bp.pval.stuff$uniqueness) );
+bp.pval.stuff$dispensability <- as.numeric( as.character(bp.pval.stuff$dispensability) );
+
+treemap(
+	bp.pval.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Biological Process Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+  )
+
+################################################################################################################
+################################################################################################################
+
+################################################################################################################
+################################################################################################################
+
+cc.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+cc.pval.revigo.data <- rbind(c("GO:0005623","cell",70.582,2.9830,0.984,0.000,"cell"),
+c("GO:0005911","cell-cell junction",2.022,5.1186,0.875,0.000,"cell-cell junction"),
+c("GO:0015629","actin cytoskeleton",2.210,4.6840,0.625,0.000,"actin cytoskeleton"),
+c("GO:0044464","cell part",70.582,3.0223,0.881,0.229,"actin cytoskeleton"),
+c("GO:0044449","contractile fiber part",1.023,4.3706,0.540,0.390,"actin cytoskeleton"),
+c("GO:0005634","nucleus",25.095,1.3170,0.765,0.264,"actin cytoskeleton"),
+c("GO:0044446","intracellular organelle part",20.949,3.0752,0.698,0.215,"actin cytoskeleton"),
+c("GO:0043292","contractile fiber",1.185,3.5952,0.668,0.397,"actin cytoskeleton"),
+c("GO:0005622","intracellular",57.970,11.1765,0.883,0.181,"actin cytoskeleton"),
+c("GO:0043228","non-membrane-bounded organelle",14.673,10.0419,0.834,0.115,"actin cytoskeleton"),
+c("GO:0005737","cytoplasm",39.220,10.6819,0.813,0.301,"actin cytoskeleton"),
+c("GO:0044424","intracellular part",55.725,11.4841,0.815,0.104,"actin cytoskeleton"),
+c("GO:0043229","intracellular organelle",47.635,6.9031,0.754,0.346,"actin cytoskeleton"),
+c("GO:0044422","organelle part",21.945,4.3820,0.827,0.193,"actin cytoskeleton"),
+c("GO:0030054","cell junction",3.527,7.0434,0.947,0.000,"cell junction"),
+c("GO:0032991","macromolecular complex",21.735,4.2013,0.957,0.000,"macromolecular complex"),
+c("GO:0043226","organelle",50.948,6.1965,0.973,0.000,"organelle"),
+c("GO:0043234","protein complex",18.606,4.6696,0.955,0.000,"protein complex"),
+c("GO:0044456","synapse part",1.757,1.9208,0.946,0.000,"synapse part"),
+c("GO:0045202","synapse",2.906,3.1079,0.947,0.000,"synapse"),
+c("GO:0030427","site of polarized growth",0.506,1.6073,0.913,0.023,"site of polarized growth"),
+c("GO:0097458","neuron part",4.585,3.2013,0.902,0.030,"neuron part"),
+c("GO:0043005","neuron projection",3.659,2.6556,0.844,0.032,"neuron projection"),
+c("GO:0042995","cell projection",7.172,3.3990,0.899,0.036,"cell projection"));
+
+cc.pval.stuff <- data.frame(cc.pval.revigo.data);
+names(cc.pval.stuff) <- cc.pval.revigo.names;
+
+cc.pval.stuff$abslog10pvalue <- as.numeric( as.character(cc.pval.stuff$abslog10pvalue) );
+cc.pval.stuff$freqInDbPercent <- as.numeric( as.character(cc.pval.stuff$freqInDbPercent) );
+cc.pval.stuff$uniqueness <- as.numeric( as.character(cc.pval.stuff$uniqueness) );
+cc.pval.stuff$dispensability <- as.numeric( as.character(cc.pval.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  cc.pval.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Cellular Component Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+
+################################################################################################################
+################################################################################################################
+mf.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+mf.pval.revigo.data <- rbind(c("GO:0005083","small GTPase regulator activity",0.815,4.0783,0.619,0.000,"small GTPase regulator activity"),
+c("GO:0005085","guanyl-nucleotide exchange factor activity",1.026,4.6799,0.919,0.000,"guanyl-nucleotide exchange factor activity"),
+c("GO:0005089","Rho guanyl-nucleotide exchange factor activity",0.476,2.1209,0.851,0.000,"Rho guanyl-nucleotide exchange factor activity"),
+c("GO:0005488","binding",59.485,7.8697,0.967,0.000,"binding"),
+c("GO:0030234","enzyme regulator activity",3.572,2.4225,0.921,0.000,"enzyme regulator activity"),
+c("GO:0032403","protein complex binding",3.448,7.0783,0.788,0.000,"protein complex binding"),
+c("GO:0051018","protein kinase A binding",0.127,1.5952,0.824,0.143,"protein complex binding"),
+c("GO:0003779","actin binding",1.878,4.8153,0.676,0.195,"protein complex binding"),
+c("GO:0008092","cytoskeletal protein binding",3.677,6.9136,0.788,0.215,"protein complex binding"),
+c("GO:0019899","enzyme binding",4.427,4.3820,0.785,0.223,"protein complex binding"),
+c("GO:0005543","phospholipid binding",1.157,4.7905,0.789,0.054,"phospholipid binding"),
+c("GO:0043168","anion binding",12.108,3.1637,0.815,0.306,"phospholipid binding"),
+c("GO:0008289","lipid binding",2.115,2.5100,0.861,0.058,"lipid binding"),
+c("GO:0005515","protein binding",33.844,10.8386,0.853,0.095,"protein binding"),
+c("GO:0043167","ion binding",25.818,2.8125,0.850,0.173,"protein binding"));
+
+mf.pval.stuff <- data.frame(mf.pval.revigo.data);
+names(mf.pval.stuff) <- mf.pval.revigo.names;
+
+mf.pval.stuff$abslog10pvalue <- as.numeric( as.character(mf.pval.stuff$abslog10pvalue) );
+mf.pval.stuff$freqInDbPercent <- as.numeric( as.character(mf.pval.stuff$freqInDbPercent) );
+mf.pval.stuff$uniqueness <- as.numeric( as.character(mf.pval.stuff$uniqueness) );
+mf.pval.stuff$dispensability <- as.numeric( as.character(mf.pval.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  mf.pval.stuff,
+  index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Molecular Function Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+```
+
+### Specific GO terms
+
+- are any of the genes from the interaction comparison involved in cell adhesion?
+- working from Gene Ontology term for cellular senescence, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
+- here are the top 10 genes associated with cell adhesion, the full list is in the Excel file below
+
+```{r GO_annots}
+# pull in probeid to GO term mappings
+probeGOmappings <- select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
+# get probes associated with cell adhesion specific GO terms
+probeGOmappings.celladhesion <- probeGOmappings[which(probeGOmappings$GO %in% c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155")),]
+# assign probeids to gene symbols
+geneGOmappings.celladhesion <- merge(fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")], probeGOmappings.celladhesion, by.x="probesetid", by.y="PROBEID", all.y=TRUE)
+# aggregate all GO terms for individual genes
+geneGOmappings.celladhesion <- aggregate(geneGOmappings.celladhesion$GO,geneGOmappings.celladhesion['symbol'],paste,collapse=',')
+names(geneGOmappings.celladhesion) <- c("symbol", "GO")
+
+# get ranks for all genes and add to stat dataframe
+ranks <- seq(1:nrow(top.uniq.results.Stau2))
+top.uniq.results.Stau2 <- cbind(ranks, top.uniq.results.Stau2)
+
+# merge in cell adhesion specific GO term data
+top.uniq.results.Stau2 <- merge(top.uniq.results.Stau2, geneGOmappings.celladhesion, by="symbol", all.x=TRUE)
+
+
+kable(top.uniq.results.Stau2[!is.na(top.uniq.results.Stau2$GO),][1:10,], row.names=F)
+
+write.table(top.uniq.results.Stau2[!is.na(top.uniq.results.Stau2$GO),], file=file.path(resultsDir, "celladhesion.GO.genes.xls"), sep="\t", row.names=F, col.names=T) 
+```
+
+[Excel file with Cell Adhesion Genes statistics](celladhesion.GO.genes.xls)
+
+## mRNA vs. whole RNA analyses
+
+- want to examine the effect of using mRNA as input instead of whole RNA. 
+- using the contrast we ran above for mRNA input vs. Stau2 whole RNA pulldown, we can compare the enriched genes with those obtained with just whole RNA samples
+- here I compared the genes with at least a  log2 fold change of `r lfc.cutoff` in both contrasts
+
+```{r mRNA comparison, dev='png', out.width='75%'}
+mRNA.logfc.symbols <- subset(all.results[[2]]$stats.eset, logFC>lfc.cutoff)$symbol
+mRNA.logfc.symbols.unique <- unique(mRNA.logfc.symbols)
+num.mRNA.logfc.symbols.unique <- length(mRNA.logfc.symbols.unique)
+
+wholeRNA.logfc.symbols <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff)$symbol
+wholeRNA.logfc.symbols.unique <- unique(wholeRNA.logfc.symbols)
+num.wholeRNA.logfc.symbols.unique <- length(wholeRNA.logfc.symbols.unique)
+
+logfc.symbols.unique.overlap <- intersect(wholeRNA.logfc.symbols.unique, mRNA.logfc.symbols.unique)
+num.overlap <- length(intersect(wholeRNA.logfc.symbols.unique, mRNA.logfc.symbols.unique))
+```
+
+There are `r num.wholeRNA.logfc.symbols.unique` unique genes enriched enriched at least `r 2^lfc.cutoff`-fold in the Stau2 pulldown versus the whole RNA input.
+There are `r num.mRNA.logfc.symbols.unique` unique genes enriched enriched at least `r 2^lfc.cutoff`-fold in the Stau2 pulldown versus the mRNA input.
+
+There are `r num.overlap` genes enriched at this level in both comparisons.
+
+We can visualize this overlap with a Venn diagram and see that there is a large overlap between teh two lists of enriched genes (mRNA and whole RNA based). 
+
+```{r visualizeoverlap}
+plot(venneuler(c(mRNA=num.mRNA.logfc.symbols.unique, wholeRNA=num.wholeRNA.logfc.symbols.unique, "mRNA&wholeRNA"=num.overlap)))
+totalassayed <- length(unique(all.results[[1]]$stats.eset$symbol))
+pval.overlap <-1- phyper(num.overlap, num.mRNA.logfc.symbols.unique, totalassayed, num.wholeRNA.logfc.symbols.unique)
+```
+
+The probability of seeing an overlap this large by chance is `r pval.overlap`.
+
+These results suggest that while there may be a few genes that are different between the two approaches, taken as a whole, the genes pulled down by mRNA or whole RNA are not significantly different.
+
+I tried to see if there were any particular genes that show differential enrichment in the mRNA or whole RNA pulldowns by examining the enrichment levels of individual genes with these two approaches.
+
+```{r bestmRNAwholeRNAcandidates}
+logFCs <- merge(all.results[[1]]$stats.eset[,c("symbol","logFC")], all.results[[2]]$stats.eset[,c("symbol", "logFC")], by="symbol", suffixes=c(".wholeRNA", ".mRNA"))
+ggplot(logFCs, aes(x=logFC.wholeRNA, y=logFC.mRNA))+geom_point(alpha=0.15, size=3)+
+xlab("whole RNA log2FC")+ylab("mRNA log2FC")+ xlim(c(-4,4))+ ylim(c(-4,4))+geom_abline(intercept=0, slope=1, col="darkgrey", alpha=0.5)
+```
+
+This plot suggests that there are some mRNAs that are pulled down better than their whole RNA counterpart. 
+However, these results could also  result from lower starting amounts for these genes in the mRNA input than the whole RNA input, combined with saturation of the Stau2 protein pulldown during pulldown. 
+
+**As a whole, I'm not confident the mRNA results here are meaningful as the pulldown was performed on whole RNA and is not really directly comparable to the mRNA input.**
+
+## Kiebler/Maher/Furic Comparisons
+ - are the genes pulled down in the neural Stau2  publications differnt than those seen here?
+ - this is complicated by Kiebler et al using rat genes one the rat gene array 1.0 ST arrays, but we can try to find a common set of orthologues to base our comparison on
+    - first translated all genes assayed on the rat gene arrays to their mouse homologs
+    - then found the genes/homologs common to both arrays
+    - limited both enriched sets to these common homologs before comparing results
+  - the Maher data set is also composed of rat genes
+  
+ 
+```{r kieblercompare}
+# setup biomarts for pulling in annoation translations
+ensemblmart.rat <-  useMart("ensembl",dataset="rnorvegicus_gene_ensembl")
+attributes.rat <- listAttributes(ensemblmart.rat)
+filters.rat <- listFilters(ensemblmart.rat)
+ensemblmart.mus <-  useMart("ensembl",dataset="mmusculus_gene_ensembl")
+attributes.mus <- listAttributes(ensemblmart.mus)
+filters.mus <- listFilters(ensemblmart.mus)
+ensemblmart.hsap <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
+attributes.hsap <- listAttributes(ensemblmart.hsap)
+filters.hsap <- listFilters(ensemblmart.hsap)
+setwd(resultsDir)
+save.image("RDATA")
+
+
+# pull in kiebler data, translate rgd symbols to mouse homolog ensembl ids
+kiebler.data <- read.csv(file.path(dataDir, "mmc2.csv"))
+kiebler.data <- subset(kiebler.data, adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff)
+kiebler.rat.symbols <- kiebler.data$Symbol %>% unique(.) %>% na.omit(.)
+kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+write(kiebler.mus.ensemblids,file.path(resultsDir, "kiebler.mus.ensemblids.txt"))
+
+# Kusek data
+kusek.data <- read.csv(file.path(dataDir, "Kusek_Cell_Stem_Cell_2013.csv"),na.strings = c("", " "), skip=2)
+kusek.data <- subset(kusek.data, Adjusted.p.value<0.05 & Fold.change..UP.in.Stau2.vs.Input.>2^lfc.cutoff)
+kusek.mus.symbols <- as.character(unlist(kusek.data$Gene.Symbol))
+kusek.mus.ensemblids <- as.vector(unlist(getBM(kusek.mus.symbols, filters="mgi_symbol", attributes="ensembl_gene_id", mart=ensemblmart.mus)))
+num.kusek.mus.ensemblids <- length(kusek.mus.ensemblids)
+write(kusek.mus.ensemblids, file.path(resultsDir, "kusek.mus.ensemblids.txt"))
+
+# find ensembl ids of renal pulldown genes
+renal.data <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+renal.mus.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
+num.renal.mus.ensemblids <- length(renal.mus.ensemblids)
+write(renal.mus.ensemblids,file.path(resultsDir, "renal.mus.ensemblids.txt"))
+
+#overlaps
+kusek.renal.overlap <- intersect(renal.mus.ensemblids, kusek.mus.ensemblids)
+num.kusek.renal.overlap <- length(kusek.renal.overlap)
+kusek.kiebler.overlap <- intersect(kusek.mus.ensemblids, kiebler.mus.ensemblids)
+num.kusek.kiebler.overlap <- length(kusek.kiebler.overlap)
+kiebler.renal.overlap <- intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)
+num.kiebler.renal.overlap <- length(kiebler.renal.overlap)
+kusek.renal.kiebler.overlap <- intersect(kusek.renal.overlap, kusek.kiebler.overlap)
+num.kusek.renal.kielber.overlap <- length(kusek.renal.kiebler.overlap)
+
+
+
+
+#plot overlaps
+svg(filename="Venneuler-Renal.Kusek.Kiebler.svg", width=7.5,height=10, pointsize=2)
+plot(venneuler(c(Kusek=length(kusek.mus.ensemblids), Renal=length(renal.mus.ensemblids), Kiebler=length(kiebler.mus.ensemblids), "Kusek&Renal"=length(kusek.renal.overlap), "Kusek&Kiebler"=length(kusek.kiebler.overlap), "Kiebler&Renal"=length(kiebler.renal.overlap), "Kusek&Kiebler&Renal"=length(kusek.renal.kiebler.overlap) )))
+dev.off()
+
+# combine overlap IDs
+
+overlap.probeids <- unique(c(kusek.renal.overlap, kiebler.renal.overlap))
+
+# annotate datasets with mus ensembl_ids and subset to overlapped probeids
+kusek.mus.ensemblids.symbols <- getBM(as.vector(unlist(kusek.data$Gene.Symbol)), filters="mgi_symbol", attributes=c("mgi_symbol", "ensembl_gene_id"), mart=ensemblmart.mus)
+kusek.data <- merge(kusek.mus.ensemblids.symbols, kusek.data, by.x="mgi_symbol", by.y="Gene.Symbol", all=TRUE)
+kusek.data <- kusek.data[,c("ensembl_gene_id", "Adjusted.p.value", "Fold.change..UP.in.Stau2.vs.Input.")]
+names(kusek.data)[2:3] <- c("kusek.adj.p.val", "kusek.fold.change") 
+
+
+kiebler.rat.ensemblids.symbols <- getBM(as.vector(unlist(kiebler.data$Symbol)), filters="rgd_symbol", attributes=c( "rgd_symbol","ensembl_gene_id"), mart=ensemblmart.rat)
+kiebler.mus.ensemblids.rat.ensemblids<- getBM(as.vector(unlist(kiebler.data$Symbol)), filters="rgd_symbol", attributes=c( "mmusculus_homolog_ensembl_gene","ensembl_gene_id"), mart=ensemblmart.rat)
+kiebler.mus.ensemblids.symbols <- merge(kiebler.rat.ensemblids.symbols, kiebler.mus.ensemblids.rat.ensemblids)
+kiebler.mus.ensemblids.symbols$ensembl_gene_id <- NULL
+kiebler.data <- merge(kiebler.mus.ensemblids.symbols, kiebler.data, by.x="rgd_symbol", by.y="Symbol")
+kiebler.data <- kiebler.data[,c("mmusculus_homolog_ensembl_gene", "adj.P.Val", "Fold.change")]
+names(kiebler.data) <- c("ensembl_gene_id", "kiebler.adj.p.val", "kiebler.fold.change") 
+
+
+renal.mus.ensemblids.probeids <- getBM(as.vector(unlist(renal.data$probesetid)),filters="affy_mogene_1_0_st_v1", attributes=c("affy_mogene_1_0_st_v1", "ensembl_gene_id"), mart=ensemblmart.mus )
+renal.data <- merge(renal.mus.ensemblids.probeids, renal.data, by.x="affy_mogene_1_0_st_v1", by.y="probesetid")
+
+# subset all data sets to probes found in overlaps
+renal.data <- renal.data[renal.data$ensembl_gene_id %in% overlap.probeids,]
+
+
+overlap.renal.data <- merge(merge(renal.data, kiebler.data, by="ensembl_gene_id", all.x=TRUE), kusek.data, by="ensembl_gene_id", all.x=TRUE)
+overlap.renal.data$enriched_in_neural_study <- ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & !(is.na(overlap.renal.data$kusek.fold.change)), "BOTH",
+                                                      ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & is.na(overlap.renal.data$kusek.fold.change), "KIEBLER",
+                                                             ifelse(is.na(overlap.renal.data$kiebler.fold.change) & !(is.na(overlap.renal.data$kusek.fold.change)), "KUSEK", "NA")))
+
+
+library(xlsx)
+
+
+write.xlsx(overlap.renal.data, file=file.path(resultsDir, "Probe.data.for.genes.also.enriched.in.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1")
+
+
+#output kusek kiebler overlap data
+kiebler.kusek.overlap.data <- merge(kiebler.data, kusek.data)
+kiebler.kusek.overlap.data <- merge(getBM(kiebler.kusek.overlap.data$ensembl_gene_id, filters="ensembl_gene_id", attributes=c("ensembl_gene_id", "mgi_symbol"), mart=ensemblmart.mus), kiebler.kusek.overlap.data)
+
+write.xlsx(kiebler.kusek.overlap.data, file=file.path(resultsDir, "Enrichment.data.for.genes.enriched.in.both.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1")
+```
+
+
+
+----
+
+# R Session Info
+
+(useful if replicating these results)
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+---
+
+# References
+
+```{r writebib, results='hide', echo=FALSE, message=FALSE}
+write.bibtex(file="references.bib")
+```
+
