@@ -4,7 +4,7 @@ output:
     toc: true
     toc_depth: 2
     theme: united
-title: "Microarray of RIP-chip samples"
+title: "Splicing Microarray Analysis of TPRM6 Knockout Samples"
 bibliography: "references.bib"
 ---
 
@@ -13,12 +13,14 @@ library(knitcitations)
 cleanbib()
 options("citation_format" = "pandoc")
 
-clientname="Valerie Schumacher "
-clientemail="Valerie.Schumacher@childrens.harvard.edu"
-labPI="Schumacher"
-lablocation="HMS"
+arraytype="GeneChip® Human Transcriptome Array 2.0"
+clientname="Nora Renthal"
+clientemail="Nora.Renthal@childrens.harvard.edu"
+labPI="Clapham"
+lablocation="Children's Hospital"
 analystname="John Hutchinson"
 analystemail="jhutchin@hsph.harvard.edu"
+sponsor="Harvard NeuroDiscovery Center"
 
 
 library(knitr)
@@ -30,6 +32,8 @@ options(width=200)
 
 Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
 
+This analysis was subsidized by `r sponsor`.
+
 Contact `r analystname` (`r analystemail`) for additional details.
 
 The most recent update of this html document occurred: `r date()`
@@ -40,7 +44,7 @@ The sections below provide code to reproduce the included results and plots.
 
 # Methods Summary  
 
-All MoGene 1.0 ST arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+All `arraytype` arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
 
 ---
 
@@ -51,10 +55,12 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-if(file.exists("/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/")){
-  baseDir="/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/"
-    } else if (file.exists("/Users/johnhutchinson/projects/vs_ripchip/")){
-    baseDir="/Users/johnhutchinson/projects/vs_ripchip/"
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/"
+    } else if (file.exists("/Users/johnhutchinson/Work/projects/dc_splicingarray/")){
+    baseDir="/Users/johnhutchinson/Work/projects/dc_splicingarray/"
+    } else {
+      print("Can't find base directory")
     }
 
 dataDir <- file.path(baseDir, "data")
@@ -62,12 +68,12 @@ metaDir <- file.path(baseDir, "meta")
 resultsDir <- file.path(baseDir, "results")
 
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
-covarsfilename="covars.desc" # tab delimited file describing samples
+covarsfilename="covars.csv" # tab delimited file describing samples
 lowintensity.percentile=0.1
 mad.quantile.cutoff=0.1
 pvalue.cutoff=0.05
 highlight.color="green"
-lfc.cutoff=log2(1.5)
+lfc.cutoff=log2(2)
 ```
 
 ## Libraries
@@ -75,10 +81,10 @@ lfc.cutoff=log2(1.5)
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
 
 ```{r libraries_variables}
-library(knitr) # for simple tables
 library(oligo) # array utilities
-library(pd.mogene.1.0.st.v1)# array layout annotation
-library(mogene10sttranscriptcluster.db)
+library(pd.hta.2.0)# array layout annotation
+library(hta20stprobeset.db)
+library(hta20sttranscriptcluster.db)
 library(arrayQualityMetrics) # array quality control reports
 library(limma) # array statistical analyses
 library(pheatmap) # pretty heatmaps
@@ -90,15 +96,10 @@ library(CHBUtils) # some homegrown functions
 library(ggplot2) # pretty graphs
 library(ggdendro) # for pretty dendrograms
 library(RColorBrewer) # more colors
-library(gridExtra) # for arranging multiple plots
-library(venneuler) # for venm diagrams
-library(GO.db) # database of GO terms and genes
 library(biomaRt) # large biological database
-library(sva)
-library(magrittr)
+library(dplyr)
 library(lattice)
-library(RRHO)
-library(biomaRt)
+
 ```
 
 ## Functions
@@ -151,7 +152,7 @@ volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distri
           axis.text.y=element_blank(),          
           axis.title.x=element_blank(), 
           axis.title.y=element_blank()
-          )
+    )
   
   #make scatter volcano plot
   scat.poly.up <- with(stats, data.frame(x=as.numeric(c(lfc.cutoff,  lfc.cutoff, max(range.lfc),max(range.lfc))), y=as.numeric(c(-log10(pval.cutoff), max(range.pval), max(range.pval),-log10(pval.cutoff)))))
@@ -184,63 +185,9 @@ volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distri
   grid.arrange(main=title,arrangeGrob(pp.logfc,pp.volc, heights=c(1,3),ncol=1),
                arrangeGrob(pp.empty,pp.pval,  heights=c(1,3),ncol=1), 
                ncol=2, widths=c(3,1))
-  } 
+} 
 
 
-##############################################################
-# ROC
-# Given a gene set of true positives use ROC to evaluate how well the ranked list of gene scores identifies them
-# Input: a gene set (list of identifers)
-# Input: a data frame of all genes tested. Genes should be listed by the same identifier used in gene set and 
-#        minimum of one column required specifying a gene score. Genes should be ordered with best gene score at top. 
-# Input: a number indicating which column of dataset contains the score value
-##############################################################
-rocRanked <- function(geneSet, dataSet, plot=TRUE){
-  
-  sorted<-dataSet
-  remove<-which(geneSet %in% row.names(sorted) == FALSE)
-  
-  n.genes<-length(row.names(sorted))
-  n.validate<-length(geneSet)-length(remove)
-  predict<-numeric()
-  
-  for (i in 1:n.genes){
-    
-    if(row.names(sorted)[i] %in% geneSet == TRUE){
-      val<-1
-    }else {val<-0}
-    predict<-c(predict, val)
-  }
-  
-  n.vector<-length(predict)
-  xVec<-0
-  yVec<-0
-  x<-0
-  y<-0
-  
-  # Ranking method: incrementing each axis for each of the genes in the ranked list
-  for (i in 1:n.vector){
-    
-    if(predict[i] == 1){
-      y<-y+1
-      xVec<-c(xVec, x)
-      yVec<-c(yVec, y)   
-    }else if(predict[i] == 0){
-      x<-x+1
-      xVec<-c(xVec, x)
-      yVec<-c(yVec, y)   
-    }
-  }
-  
-  if (plot) 
-    plot(xVec, yVec, xlab="FP", ylab="TP", pch=".", type="s", main="ROC evaluation")
-  
-  # Calculating AUC
-  top<-sum(yVec)
-  bottom<-(n.genes-length(remove))*(n.validate)
-  AUC<-top/bottom
-  return(AUC)
-}
 ```
 
 ---
@@ -249,12 +196,12 @@ rocRanked <- function(geneSet, dataSet, plot=TRUE){
 
 ## Data
 
-- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+- load in phenotypes and array names from metadata file (`r covarsfilename`) in "meta" directory
   - this file contains the names and descriptions of CEL files contained in the data directory 
 - use array names to load in arrays 
 
 ```{r dataload, results='hide'}
-covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+covars <- read.csv(file.path(metaDir, covarsfilename), row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
 
 celFiles <- file.path(dataDir, row.names(covars))
 affyRaw <- read.celfiles(celFiles)
@@ -282,7 +229,7 @@ kable(pData(affyRaw))
 - using arrayQualityMetrics library `r citep("Kauffmann_2008")`
 
 ```{r rawQC, eval=FALSE}
-arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("pulldown", "source", "run"))
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype", "replicate"))
 ```
 
 [Raw Data QC Report](../results/report_raw/index.html)
@@ -296,7 +243,7 @@ The arrays look fine, no problems at all.
 - summarize probesets on the gene ('core') level
 
 ```{r normalize, results='hide'}
-affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+affyNorm.core <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
 ```
 
 ### Quality Control
