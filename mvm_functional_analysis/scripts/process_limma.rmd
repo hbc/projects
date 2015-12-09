@@ -4,7 +4,7 @@ output:
     toc: true
     toc_depth: 2
     theme: united
-title: "Splicing Microarray Analysis of TPRM6 Knockout Samples"
+title: "Functional analysis of sheep microarray data"
 bibliography: "references.bib"
 ---
 
@@ -13,14 +13,14 @@ library(knitcitations)
 cleanbib()
 options("citation_format" = "pandoc")
 
-arraytype="GeneChip® Human Transcriptome Array 2.0"
-clientname="Nora Renthal"
-clientemail="Nora.Renthal@childrens.harvard.edu"
-labPI="Clapham"
-lablocation="Children's Hospital"
+arraytype="Agilent platform G4813A-019921"
+clientname="Marco Lessa"
+clientemail="MLESSA@mgh.harvard.edu"
+labPI="Vidal"
+lablocation="MGH"
 analystname="John Hutchinson"
 analystemail="jhutchin@hsph.harvard.edu"
-sponsor="Harvard NeuroDiscovery Center"
+sponsor="Harvard Catalyst"
 
 
 library(knitr)
@@ -44,7 +44,7 @@ The sections below provide code to reproduce the included results and plots.
 
 # Methods Summary  
 
-All `arraytype` arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+All `arraytype` arrays were already processed and probesets annotated. Annotations were updated when possible and differentially expressed genes identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
 
 ---
 
@@ -55,10 +55,10 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-if(file.exists("/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/")){
-  baseDir="/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/"
-    } else if (file.exists("/Users/johnhutchinson/Work/projects/dc_splicingarray/")){
-    baseDir="/Users/johnhutchinson/Work/projects/dc_splicingarray/"
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/mvm_functional_analysis/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/mvm_functional_analysis/"
+    } else if (file.exists("/Users/johnhutchinson/Work/projects/mvm_functional_analysis/")){
+    baseDir="/Users/johnhutchinson/Work/projects/mvm_functional_analysis/"
     } else {
       print("Can't find base directory")
     }
@@ -81,11 +81,6 @@ lfc.cutoff=log2(2)
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
 
 ```{r libraries_variables}
-library(oligo) # array utilities
-library(pd.hta.2.0)# array layout annotation
-library(hta20stprobeset.db)
-library(hta20sttranscriptcluster.db)
-library(arrayQualityMetrics) # array quality control reports
 library(limma) # array statistical analyses
 library(pheatmap) # pretty heatmaps
 library(plyr) # data format utility
@@ -99,7 +94,7 @@ library(RColorBrewer) # more colors
 library(biomaRt) # large biological database
 library(dplyr)
 library(lattice)
-
+library(readr)
 ```
 
 ## Functions
@@ -196,15 +191,16 @@ volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distri
 
 ## Data
 
-- load in phenotypes and array names from metadata file (`r covarsfilename`) in "meta" directory
-  - this file contains the names and descriptions of CEL files contained in the data directory 
-- use array names to load in arrays 
-
+- load in phenotypes and normalized, annotated array data
+  
+  
 ```{r dataload, results='hide'}
 covars <- read.csv(file.path(metaDir, covarsfilename), row.names=1) # simple tab delimited file with CEL file in first column (no heading for this column) and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
 
-celFiles <- file.path(dataDir, row.names(covars))
-affyRaw <- read.celfiles(celFiles)
+data <- read_csv(file.path(dataDir, "sheep_exp-modified-DataExploration.csv"))
+
+
+
 pData(affyRaw) <- covars 
 sampleNames(affyRaw) <- pData(affyRaw)$sampleID
 validObject(affyRaw)
@@ -220,44 +216,7 @@ kable(pData(affyRaw))
 
 ---
 
-# PreProcessing 
-
-## Raw Data 
-
-### Quality Control
-
-- using arrayQualityMetrics library `r citep("Kauffmann_2008")`
-
-```{r rawQC, eval=FALSE}
-arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype", "replicate"))
-```
-
-[Raw Data QC Report](../results/report_raw/index.html)
-
-The arrays look fine, no problems at all.
-
-## RMA Normalized Data
-
-- background correct and normalize data with RMA `r citep("10.1093/bioinformatics/19.2.185")`
-
-- summarize probesets on the gene ('core') level
-
-```{r normalize, results='hide'}
-affyNorm.core <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
-```
-
-### Quality Control
-- using arrayQualityMetrics library
-
-```{r normQC, eval=FALSE}
-arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("pulldown", "source", "run"))
-```
-
-[Normalized Data QC Report](../results/report_rma.core/index.html)
-
-The arrays look good, and the clustering looks very good. 
-
-### Unsupervised Clustering of RMA Normalized Data
+### Unsupervised Clustering of Normalized Data
 
 #### Hierarchical Clustering
 The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
