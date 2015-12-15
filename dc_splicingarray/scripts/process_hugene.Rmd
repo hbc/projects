@@ -22,7 +22,6 @@ analystname="John Hutchinson"
 analystemail="jhutchin@hsph.harvard.edu"
 sponsor="Harvard NeuroDiscovery Center"
 
-
 library(knitr)
 opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
@@ -50,32 +49,6 @@ All `arraytype` arrays were processed using the 'oligo' BioConductor package `r 
 
 # Setup
 
-## Variables
-Working directories, files and other variables necessary to the analysis.
-
-```{r variables}
-## Setup Data and Results directory variables
-if(file.exists("/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/")){
-  baseDir="/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/"
-    } else if (file.exists("/Users/johnhutchinson/Work/projects/dc_splicingarray/")){
-    baseDir="/Users/johnhutchinson/Work/projects/dc_splicingarray/"
-    } else {
-      print("Can't find base directory")
-    }
-
-dataDir <- file.path(baseDir, "data")
-metaDir <- file.path(baseDir, "meta")
-resultsDir <- file.path(baseDir, "results")
-
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
-covarsfilename="covars.csv" # tab delimited file describing samples
-lowintensity.percentile=0.1
-mad.quantile.cutoff=0.1
-pvalue.cutoff=0.05
-highlight.color="green"
-lfc.cutoff=log2(2)
-```
-
 ## Libraries
 
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
@@ -88,19 +61,47 @@ library(hta20sttranscriptcluster.db)
 library(arrayQualityMetrics) # array quality control reports
 library(limma) # array statistical analyses
 library(pheatmap) # pretty heatmaps
-library(plyr) # data format utility
-library(reshape2) # data format utility
 library(devtools) # install libraries from github
 install_git("git://github.com/hbc/CHBUtils.git") # misc personal utilities
 library(CHBUtils) # some homegrown functions
 library(ggplot2) # pretty graphs
 library(ggdendro) # for pretty dendrograms
-library(RColorBrewer) # more colors
 library(biomaRt) # large biological database
 library(dplyr)
-library(lattice)
-
 ```
+
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray/")){
+  baseDir="/n/hsphS10/hsphfs1/chb/projects/dc_splicingarray"
+    } else if (file.exists("/Users/johnhutchinson/Work/projects/dc_splicingarray/")){
+    baseDir="/Users/johnhutchinson/Work/projects/dc_splicingarray"
+    } else {
+      print("Can't find base directory")
+    }
+
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.csv" # tab delimited file describing samples
+
+ensemblmart <- useMart("ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl", host="www.ensembl.org")
+attributes <- listAttributes(ensemblmart)
+filters <- listFilters(ensemblmart)
+
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=log2(2)
+```
+
 
 ## Functions
 
@@ -188,6 +189,16 @@ volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distri
 } 
 
 
+QCarray <- function(eset, intgroup=NULL, outdir=NULL, logtransform=TRUE, title=NULL){
+  
+  prepdata <- prepdata(expressionset = eset, intgroup=intgroup, do.logtransform = logtransform)
+  he <- aqm.heatmap(prepdata)
+  bo <- aqm.boxplot(prepdata)
+  de <- aqm.density(prepdata)
+  ma <- aqm.maplot(prepdata)
+  qm <- list("Boxplot"= bo, "Density"=de, "Heatmap"=he, "MAplot"=ma)
+  aqm.writereport(modules=qm, reporttitle = title, outdir=outdir, arrayTable = pData(affyRaw))
+}
 ```
 
 ---
@@ -208,7 +219,6 @@ affyRaw <- read.celfiles(celFiles)
 pData(affyRaw) <- covars 
 sampleNames(affyRaw) <- pData(affyRaw)$sampleID
 validObject(affyRaw)
-rm(covars)
 ```
 
 ## Sample metadata
@@ -229,33 +239,57 @@ kable(pData(affyRaw))
 - using arrayQualityMetrics library `r citep("Kauffmann_2008")`
 
 ```{r rawQC, eval=FALSE}
-arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype", "replicate"))
+QCarray(eset = affyRaw, intgroup = "genotype", outdir = file.path(resultsDir, "report_raw"), logtransform = TRUE, title = "Raw data QC")
 ```
 
 [Raw Data QC Report](../results/report_raw/index.html)
 
-The arrays look fine, no problems at all.
+The arrays look OK in terms of intensity distributions etc. However, they don't seem to be clustering well before normalization and one KO sample appears to be an outlier.
+
+Normalizing the arrays may help clear this up.
 
 ## RMA Normalized Data
 
 - background correct and normalize data with RMA `r citep("10.1093/bioinformatics/19.2.185")`
 
-- summarize probesets on the gene ('core') level
+**Here I will summarize the probesets on both the the exon ('probeset') and gene ('core') levels.** THis is necessary to later adjust for overall gene expression levels when detecting differential exon expression.
 
 ```{r normalize, results='hide'}
-affyNorm.core <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
+affyNorm.gene <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+affyNorm.exon <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
 ```
 
 ### Quality Control
 - using arrayQualityMetrics library
 
 ```{r normQC, eval=FALSE}
-arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("pulldown", "source", "run"))
+QCarray(affyNorm.gene, intgroup="genotype", outdir=file.path(resultsDir, "report_norm.gene"), title="Normalized Gene level QC")
+dev.off()
+QCarray(affyNorm.exon, intgroup="genotype", outdir=file.path(resultsDir, "report_norm.exon"), title="Normalized Exon level QC")
+dev.off()
 ```
 
-[Normalized Data QC Report](../results/report_rma.core/index.html)
+[Normalized Data QC Report - Exon level](../results/report_norm.exon/index.html)
+[Normalized Data QC Report - Gene level](../results/report_norm.gene/index.html)
 
-The arrays look good, and the clustering looks very good. 
+The arrays look good with the exception of KO1, which is a clear outlier. I dropped KO1, and repeated the normalization.
+
+```{r dropoutlier}
+affyRaw <- affyRaw[,-which(pData(affyRaw)$sampleID=="KO1")]
+affyNorm.gene <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+affyNorm.exon <- rma(affyRaw, target="probeset", background=TRUE, normalize=TRUE)
+```
+
+```{r normQC2, eval=FALSE}
+QCarray(affyNorm.gene, intgroup="genotype", outdir=file.path(resultsDir, "report_norm.gene_nooutlier"), title="Normalized Gene level QC")
+dev.off()
+QCarray(affyNorm.exon, intgroup="genotype", outdir=file.path(resultsDir, "report_norm.exon_nooutlier"), title="Normalized Exon level QC")
+dev.off()
+```
+
+[Normalized Data QC Report without outlier sample - Exon level](../results/report_norm.exon_nooutlier/index.html)
+[Normalized Data QC Report without outlier sample - Gene level](../results/report_norm.gene_nooutlier/index.html)
+
 
 ### Unsupervised Clustering of RMA Normalized Data
 
@@ -265,11 +299,9 @@ The goal of these analyses are to naiively evaluate the variability within the r
 The first method produces a dendrogram by performing  
 >  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
 
-Here, I've fist highlighted which input sample was mRNA, and then highlighted the different pulldown categories. 
-
 ```{r cluster1, out.width='100%'}
-plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="source")
-plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="pulldown")
+plot_dendro(affyNorm.gene, labels.colname="genotype", colors.colname="genotype", title="Gene Level")
+plot_dendro(affyNorm.exon, labels.colname="genotype", colors.colname="genotype", title="Exon level")
 ```
 
 #### Principal Component Analysis (PCA)
@@ -277,74 +309,33 @@ plot_dendro(affyNorm.core, title="", labels.colname="pulldown", colors.colname="
 This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. This [Youtube slideshow](https://www.youtube.com/watch?v=BfTMmoDFXyE) gives a pretty good basic explanation of what PCA is doing.
 
 ```{r PCAsd1, out.width='75%'}
-PCAplot.sd.eset(affyNorm.core, title="")
+PCAplot.sd.eset(affyNorm.gene, title="Gene level")
+PCAplot.sd.eset(affyNorm.exon, title="Exon level")
 ```
 
-Here, each point depicts the amount of variation explained by each component and the line shows the cumulative amount. For this data set,  very few dimensions (3) can explain >75% of the variation observed in the samples.
+Here, each point depicts the amount of variation explained by each component and the line shows the cumulative amount. For this data set, at both the gene and exon levels, the first 3 components explain just over 75% of the of the variation observed in the samples.
 
-As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first three principal components. In the first plot, each sample group is represented by a separate color and in the second plot each sample is represented by a different color. 
-
-You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In these plots, I have once again first highlighted the RNA source (mRNA or whole RNA) and then highlighted the individual pulldown categories.
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first three principal components. 
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. 
 
 ```{r pca1, out.width='100%'}
-PCAplot.eset(affyNorm.core, categories="source", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
-PCAplot.eset(affyNorm.core, categories="pulldown", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+PCAplot.eset(affyNorm.gene, categories="genotype", title="Gene level", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
+PCAplot.eset(affyNorm.exon, categories="genotype", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
 ```
 
-There is  a high degree of clustering by pulldown type. So much so, that when you plot PC1 against PC2, both the input samples and stau2 samples largely overlap their respective sample groups. These results are consistent with a lower level of biological variation, likely resulting from the use of a single cell line for the experiment, making these replicates closer to technical replicates. The single input sample outlier is the mRNA sample.
-
-These unsupervised clustering resutls reveal that the mRNA input sample has clear differences from the whole RNA input samples, more than can be attributed to batch effect, given how closely the *Stau2* pulldown whole RNA repeat sample from the same run clusters with the *Stau2* whole RNA samples from the first run.
-
----
-
-## Batch Correction
-
-The whole RNA and mRNA input RNA samples were run on different days and may show batch effects. As an identical sample was also run both days, we can try adjusting for batch using ComBat r citep("doi: 10.1093/biostatistics/kxj037") from the sva package and see if it improves the data clustering. 
-
-```{r batch}
-library(sva)
-
-# Create model with batch as factor variable
-mod <- model.matrix(~as.factor(pulldown), data=pData(affyNorm.core))
-
-modcombat <- model.matrix(~1, data=pData(affyNorm.core))
-
-batch <- pData(affyNorm.core)$run
-# Modify expression matrix
-eset.core <- exprs(affyNorm.core)
-combat_edata <- ComBat(dat=eset.core,
-                       batch=batch,
-                       mod=modcombat,
-                       numCovs=NULL,
-                       par.prior=TRUE, 
-                       prior.plots=TRUE)
-affyNorm.core.batch <- affyNorm.core
-exprs(affyNorm.core.batch) <- combat_edata
-
-PCAplot.eset(affyNorm.core.batch, categories="source", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
-PCAplot.eset(affyNorm.core.batch, categories="pulldown", title="", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
-```
-
-Based on the low variation within the Stau2 group before batch correction (look back to the first PCA plot) there does not appear to be much need for batch correction. In fact, the PCA plot after batch correction shows an undesirable loss of signal (and averaging betweeen samples), potentially due to the lack of inclusion of a repeated input sample. Given this, I decided to skip batch correction for this analysis.
-
-Continuing forward, I removed the repeated Stau2 whole RNA sample.
-
-```{r removerepeat}
-pd <- pData(affyNorm.core)
-affyNorm.core <- affyNorm.core[,!(pd$sampleID=="stau2-whole-3" & pd$run==2)]
-
-# drop unused levels from pData as well
-pData(affyNorm.core) <- as.data.frame(apply(pData(affyNorm.core), 2, function(x) factor(x)))
-```
+There is  a decent degree of clustering by sample type, with PC1 explaining much of the variation between the WT and KO samples.
 
 ---
 
 ## Annotate
 
-So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+So far we have only been working with the probesets,without reference to the exons and genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
 
 ```{r features, results='hide'}
-featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+featureData(affyNorm.gene) <- getNetAffx(affyNorm.gene, "transcript") 
+featureData(affyNorm.exon) <- getNetAffx(affyNorm.exon, "probeset") 
+
+s# this will load the Affymetrix annotation, including the probeID, into the fData
 # get gene symbols and entrezIDs for all probesets
 fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
 fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
