@@ -316,7 +316,7 @@ PCAplot.sd.eset(affyNorm.exon, title="Exon level")
 Here, each point depicts the amount of variation explained by each component and the line shows the cumulative amount. For this data set, at both the gene and exon levels, the first 3 components explain just over 75% of the of the variation observed in the samples.
 
 As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first three principal components. 
-You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. 
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects.
 
 ```{r pca1, out.width='100%'}
 PCAplot.eset(affyNorm.gene, categories="genotype", title="Gene level", colorpalette=cbPalette, numcomponents=3, alpha=0.75)
@@ -325,32 +325,54 @@ PCAplot.eset(affyNorm.exon, categories="genotype", title="", colorpalette=cbPale
 
 There is  a decent degree of clustering by sample type, with PC1 explaining much of the variation between the WT and KO samples.
 
+
 ---
 
 ## Annotate
 
 So far we have only been working with the probesets,without reference to the exons and genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
 
+USE THE AFFY ANNOTATIONS INSTEAD
+
 ```{r features, results='hide'}
 featureData(affyNorm.gene) <- getNetAffx(affyNorm.gene, "transcript") 
 featureData(affyNorm.exon) <- getNetAffx(affyNorm.exon, "probeset") 
+# this will load the Affymetrix annotation, including the probeID, into the fData
+```
 
-s# this will load the Affymetrix annotation, including the probeID, into the fData
-# get gene symbols and entrezIDs for all probesets
-fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+## Filter Probesets
+Reducing the number of exons and genes assayed reduces  the multiple test correction and may allow us to identify more differentially spliced genes.
+
+The gene summarized dataset starts with `r nrow(affyNorm.gene)[[1]]` probesets/genes.
+
+The exon summarized dataset starts with `r nrow(affyNorm.exon)[[1]]` probesets/exons.
+
+### By Annotation
+- remove the probesets with no annotations
+
+```{r filter1}
+affyNorm.gene <- affyNorm.gene[!apply(fData(affyNorm.gene), 1, function(x) all(is.na(x))),]
+fdata.gene <- fData(affyNorm.gene) %>% tbl_df()
+
+affyNorm.exon <- affyNorm.exon[!apply(fData(affyNorm.exon), 1, function(x) all(is.na(x))),]
+fdata.exon <- fData(affyNorm.exon) %>% tbl_df()
+
+ apply()
+unlist(strsplit(fdata.gene$geneassignment[3], "\\/\\/\\/"))
+```
+
+Filter out any probesets that are known to assay multiple genes
+
+
+```{r getgenes}
+# get gene symbols and entrezIDs for all probesets 
+fData(affyNorm.gene)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
 fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
 numprobes <- nrow(fData(affyNorm.core))
 ```
 
-## Filter Probesets
-Reducing the number of genes assayed reduces  the multiple test correction and may allow us to identify more differentially expressed genes.
 
-Starting  with `r numprobes` probes remaining we can filter:
 
-### By Annotation
-- remove the control probes and probes without annotated genes
-
-```{r filter1}
 affyNorm.core <- affyNorm.core[which(!is.na(fData(affyNorm.core)$symbol) & fData(affyNorm.core)$category=="main"),]
 numprobes <- nrow(fData(affyNorm.core))
 ```
