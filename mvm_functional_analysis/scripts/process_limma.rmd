@@ -38,7 +38,7 @@ Contact `r analystname` (`r analystemail`) for additional details.
 
 The most recent update of this html document occurred: `r date()`
 
-The sections below provide code to reproduce the included results and plots. 
+[This file](./process_limma.rmd) provides code to reproduce the included results and plots. 
 
 ---
 
@@ -86,7 +86,15 @@ library(gProfileR)
 
 # Import Data and Metadata
 
-- load in phenotypes, normalized pre-annotated expression data, and information about which genes gproilfer recognizes (obtained [here](http://biit.cs.ut.ee/gprofiler/gmt/gprofiler_oaries.NAME.gmt.zip))
+- load in phenotypes, normalized pre-annotated expression data, and information about which genes gprofiler recognizes 
+
+gprofiler information can be obtained [here](http://biit.cs.ut.ee/gprofiler/gmt/gprofiler_oaries.NAME.gmt.zip)  
+
+The expression dataset I used is [here](../data/paired_dorsal_ventral_data.csv).  
+
+The file describing the samples is [here](../meta/covars.csv).  
+
+*(Excel should be albe to import the csv files)*  
 
 ```{r dataload, results='hide'}
 covars <- read_csv(file.path(metaDir, covarsfilename)) 
@@ -158,6 +166,7 @@ write.table(allresults.sub, file=file.path(resultsDir, "gprofiler.genes.stats.ex
 
 - as calculated by Limma
 
+We can say a gene is significantly differntially expressed genes when it's adjusted pvalue (adj.P.Val) is less than 0.05. You can't use the the raw pvalue (P.Value) because it doesn't take into account that you are doing many, many statistical tests. We adjust for this fact by doing multiple testing correction (described [here](http://www.biostathandbook.com/multiplecomparisons.html)) to get a more accurate sense of how likely are results are false positives.
 
 When using **all the probes**, there are no significant hits after adjusting for multiple testing. Here are the top 10 most differentially expressed genes.
 
