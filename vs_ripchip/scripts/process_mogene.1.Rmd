@@ -53,8 +53,8 @@ Working directories, files and other variables necessary to the analysis.
 ## Setup Data and Results directory variables
 if(file.exists("/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/")){
   baseDir="/n/hsphS10/hsphfs1/chb/projects/vs_ripchip/"
-    } else if (file.exists("/Users/johnhutchinson/projects/vs_ripchip/")){
-    baseDir="/Users/johnhutchinson/projects/vs_ripchip/"
+    } else if (file.exists("/Users/johnhutchinson/Work/projects/vs_ripchip/")){
+    baseDir="/Users/johnhutchinson/Work/projects/vs_ripchip/"
     }
 
 dataDir <- file.path(baseDir, "data")
@@ -187,60 +187,6 @@ volcano_density_plot <- function(stats, title="Volcano Plot with Marginal Distri
   } 
 
 
-##############################################################
-# ROC
-# Given a gene set of true positives use ROC to evaluate how well the ranked list of gene scores identifies them
-# Input: a gene set (list of identifers)
-# Input: a data frame of all genes tested. Genes should be listed by the same identifier used in gene set and 
-#        minimum of one column required specifying a gene score. Genes should be ordered with best gene score at top. 
-# Input: a number indicating which column of dataset contains the score value
-##############################################################
-rocRanked <- function(geneSet, dataSet, plot=TRUE){
-  
-  sorted<-dataSet
-  remove<-which(geneSet %in% row.names(sorted) == FALSE)
-  
-  n.genes<-length(row.names(sorted))
-  n.validate<-length(geneSet)-length(remove)
-  predict<-numeric()
-  
-  for (i in 1:n.genes){
-    
-    if(row.names(sorted)[i] %in% geneSet == TRUE){
-      val<-1
-    }else {val<-0}
-    predict<-c(predict, val)
-  }
-  
-  n.vector<-length(predict)
-  xVec<-0
-  yVec<-0
-  x<-0
-  y<-0
-  
-  # Ranking method: incrementing each axis for each of the genes in the ranked list
-  for (i in 1:n.vector){
-    
-    if(predict[i] == 1){
-      y<-y+1
-      xVec<-c(xVec, x)
-      yVec<-c(yVec, y)   
-    }else if(predict[i] == 0){
-      x<-x+1
-      xVec<-c(xVec, x)
-      yVec<-c(yVec, y)   
-    }
-  }
-  
-  if (plot) 
-    plot(xVec, yVec, xlab="FP", ylab="TP", pch=".", type="s", main="ROC evaluation")
-  
-  # Calculating AUC
-  top<-sum(yVec)
-  bottom<-(n.genes-length(remove))*(n.validate)
-  AUC<-top/bottom
-  return(AUC)
-}
 ```
 
 ---
