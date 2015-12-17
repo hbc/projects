@@ -5,7 +5,7 @@ output:
     toc_depth: 2
     theme: united
 title: "Microarray of RIP-chip samples"
-bibliography: "references.bib"
+
 ---
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
@@ -75,7 +75,6 @@ lfc.cutoff=log2(1.5)
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
 
 ```{r libraries_variables}
-library(knitr) # for simple tables
 library(oligo) # array utilities
 library(pd.mogene.1.0.st.v1)# array layout annotation
 library(mogene10sttranscriptcluster.db)
@@ -125,7 +124,7 @@ fmt <- function(){
   function(x) format(x,nsmall = 1,scientific = FALSE)
 }
 
-vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray") {
+vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray", fontsize=12) {
   # get range of log fold change and p-value values to setup plot borders
   range.lfc <- c(floor(min(stats$logFC)), ceiling(max(stats$logFC)))
   range.pval <- c(floor(min(-log10(stats$adj.P.Val))), ceiling(max(-log10(stats$adj.P.Val))))
@@ -139,7 +138,8 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     theme(axis.title.x=element_blank())+
     theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
     scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
-    scale_y_continuous(labels=fmt())
+    scale_y_continuous(labels=fmt())+
+    theme_set(theme_gray(base_size = fontsize))
   
   # make blank plot
   empty <- ggplot()+geom_point(aes(1,1), colour="white")+
@@ -163,7 +163,8 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     theme(legend.position="none") +
     theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
     scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
-    scale_y_continuous(labels=fmt(), limits = range.pval)
+    scale_y_continuous(labels=fmt(), limits = range.pval)+
+    theme_set(theme_gray(base_size = fontsize))
   
   # make right plot - density plot of adjusted pvalues
   pvald <- as.data.frame(cbind(density(-log10(stats$adj.P.Val))$x, density(-log10(stats$adj.P.Val))$y))
@@ -173,7 +174,8 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     theme_bw()+coord_flip()+
     scale_x_continuous(limits = range.pval)+
     theme(axis.title.y=element_blank())+ 
-    theme(plot.margin=unit(c(3,-5.5,4,3), "mm"))
+    theme(plot.margin=unit(c(3,-5.5,4,3), "mm"))+
+    theme_set(theme_gray(base_size = fontsize))
   
   # plot all plots
   pp.logfc <- ggplotGrob(hist_top)
@@ -533,9 +535,9 @@ Here we can visulize the relationship between the fold changes in expression obs
 
 3) Lower right - a density plot (smoothed histogram) of the adjusted pvalued observed for the contrast, the part of the distribution above `r pvalue.cutoff` is highlighted under the curve in `r highlight.color`. Note that for this plot, this highlight also included genes enriched in the input samples.
 
-```{r ggplotexps, out.width='100%', dev="png"}
-vcplot(stats=all.results[[1]]$stats.eset, title="Stau2 whole RNA pulldown vs. input", lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color )          
-vcplot(stats=all.results[[3]]$stats.eset, title="WT1 whole RNA pulldown vs. input" , lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color)          
+```{r ggplotexps, out.width='100%', dev="svg"}
+vcplot(stats=all.results[[1]]$stats.eset, title="Stau2 whole RNA pulldown vs. input", lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, fontsize=16)          
+vcplot(stats=all.results[[3]]$stats.eset, title="WT1 whole RNA pulldown vs. input" , lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, fontsize=16)          
 ```
 
 Using these pvalue and log2 fold change cutoffs we can identify which genes are showing enrichment in the two pulldowns. The cutoffs I have picked here (pvalue<`r pvalue.cutoff` and log2foldchange>`r lfc.cutoff`) are within accepted range, if a bit stringent, but are arbitrary. 
