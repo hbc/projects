@@ -124,7 +124,7 @@ fmt <- function(){
   function(x) format(x,nsmall = 1,scientific = FALSE)
 }
 
-vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray", fontsize=12) {
+vcplot <- function(stats, plottitle="Volcano Plot with Marginal Distributions", pval.cutoff=0.05, lfc.cutoff=1, shade.colour="green", shade.alpha=0.25, point.colour="gray", point.alpha=0.75, point.outline.colour="darkgray", line.colour="gray", axistitlefontsize=24, axislabelfontsize=12) {
   # get range of log fold change and p-value values to setup plot borders
   range.lfc <- c(floor(min(stats$logFC)), ceiling(max(stats$logFC)))
   range.pval <- c(floor(min(-log10(stats$adj.P.Val))), ceiling(max(-log10(stats$adj.P.Val))))
@@ -138,12 +138,13 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     theme(axis.title.x=element_blank())+
     theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
     scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
-    scale_y_continuous(labels=fmt())+
-    theme_set(theme_gray(base_size = fontsize))
+    scale_y_continuous(labels=fmt()) +
+   theme(axis.text=element_text(size=axislabelfontsize), axis.title=element_text(size=axistitlefontsize))
   
   # make blank plot
   empty <- ggplot()+geom_point(aes(1,1), colour="white")+
     theme(panel.grid=element_blank(),
+          panel.border=element_blank(),
           axis.ticks=element_blank(), 
           panel.background=element_blank(), 
           axis.text.x=element_blank(),  
@@ -164,7 +165,7 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     theme(plot.margin=unit(c(3,-5.5,4,3), "mm") )+
     scale_x_continuous(limits = range.lfc, breaks = range.lfc[1]:range.lfc[2], expand = c(.05,.05))+
     scale_y_continuous(labels=fmt(), limits = range.pval)+
-    theme_set(theme_gray(base_size = fontsize))
+    theme(axis.text=element_text(size=axislabelfontsize), axis.title=element_text(size=axistitlefontsize))    
   
   # make right plot - density plot of adjusted pvalues
   pvald <- as.data.frame(cbind(density(-log10(stats$adj.P.Val))$x, density(-log10(stats$adj.P.Val))$y))
@@ -175,14 +176,15 @@ vcplot <- function(stats, title="Volcano Plot with Marginal Distributions", pval
     scale_x_continuous(limits = range.pval)+
     theme(axis.title.y=element_blank())+ 
     theme(plot.margin=unit(c(3,-5.5,4,3), "mm"))+
-    theme_set(theme_gray(base_size = fontsize))
+    theme(axis.text=element_text(size=axislabelfontsize), axis.title=element_text(size=axistitlefontsize))    
   
   # plot all plots
   pp.logfc <- ggplotGrob(hist_top)
   pp.empty <- ggplotGrob(empty)
   pp.volc <- ggplotGrob(scatter)
   pp.pval  <- ggplotGrob(hist_right)
-  grid.arrange(top=textGrob(title),
+  
+ grid.arrange(top=textGrob(plottitle, gp = gpar(fontsize = axistitlefontsize*1.2, fontface = 'bold'),),
                arrangeGrob(pp.logfc,
                            pp.volc, 
                            heights=c(1,3),
@@ -536,8 +538,8 @@ Here we can visulize the relationship between the fold changes in expression obs
 3) Lower right - a density plot (smoothed histogram) of the adjusted pvalued observed for the contrast, the part of the distribution above `r pvalue.cutoff` is highlighted under the curve in `r highlight.color`. Note that for this plot, this highlight also included genes enriched in the input samples.
 
 ```{r ggplotexps, out.width='100%', dev="svg"}
-vcplot(stats=all.results[[1]]$stats.eset, title="Stau2 whole RNA pulldown vs. input", lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, fontsize=16)          
-vcplot(stats=all.results[[3]]$stats.eset, title="WT1 whole RNA pulldown vs. input" , lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, fontsize=16)          
+vcplot(stats=all.results[[1]]$stats.eset, plottitle="Stau2 whole RNA pulldown vs. input", lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, axistitlefontsize = 28, axislabelfontsize = 18)          
+vcplot(stats=all.results[[3]]$stats.eset, plottitle="WT1 whole RNA pulldown vs. input" , lfc.cutoff = lfc.cutoff, pval.cutoff = pvalue.cutoff, shade.colour=highlight.color, axistitlefontsize = 28, axislabelfontsize = 18)          
 ```
 
 Using these pvalue and log2 fold change cutoffs we can identify which genes are showing enrichment in the two pulldowns. The cutoffs I have picked here (pvalue<`r pvalue.cutoff` and log2foldchange>`r lfc.cutoff`) are within accepted range, if a bit stringent, but are arbitrary. 
