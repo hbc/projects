@@ -1,4 +1,4 @@
-# Prepare a truth set for NA23485/NA12878 mixture sequencing
+# Prepare a truth set for NA24385/NA12878 mixture sequencing
 # Downloads Genome in a Bottle calls for both genomes, cleans them
 # merges the VCFs and extracts unique calls in NA12878 as target somatics.
 
@@ -9,7 +9,7 @@ configfile: 'config.yaml'
 rule all:
     input:
         expand("calls/{genome}.vcf.gz.tbi", genome=config["genome"]),
-        "na12878-na23485-somatic-truth-hg19.vcf.gz",
+        "na12878-na24385-somatic-truth-hg19.vcf.gz",
         "na12878-truth-regions-hg19.bed"
 
 rule get_na12878_vcf:
@@ -23,7 +23,7 @@ rule get_na12878_bed:
         r"""wget -O - ftp://ftp.ncbi.nlm.nih.gov/giab/ftp/release/NA12878_HG001/NISTv2.19/union13callableMQonlymerged_addcert_nouncert_excludesimplerep_excludesegdups_excludedecoy_excludeRepSeqSTRs_noCNVs_v2.19_2mindatasets_5minYesNoRatio.bed.gz | gunzip -c > {output}"""
 
 rule get_na24385_vcf:
-    output: "calls/na23485-rtg.vcf.gz"
+    output: "calls/na24385-rtg.vcf.gz"
     shell:
         "wget -O {output} ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/Rutgers_IlluminaHiSeq300X_rtg_11052015/rtg_allCallsV2.vcf.gz"
 
@@ -35,8 +35,8 @@ rule make_indices:
 # Merge files and extract somatic truth set
 
 rule prep_na24385:
-    input: "calls/na23485-rtg.vcf.gz", "calls/na12878-giab.bed"
-    output: "calls/na23485-rtg-prep.vcf.gz"
+    input: "calls/na24385-rtg.vcf.gz", "calls/na12878-giab.bed",  "calls/na24385-rtg.vcf.gz.tbi"
+    output: "calls/na24385-rtg-prep.vcf.gz"
     shell:
         "bcftools view {input[0]} -f 'PASS,.' -s HG002 -R {input[1]} -o - | sed s/HG002/NA24385/ | "
         "sed 's#0|0#0/0#' | sed 's#0|1#0/1#' | sed 's#1|1#1/1#' | "
@@ -53,14 +53,14 @@ rule prep_na12878:
         "vt sort -m local -w 10000 -o {output} -"
 
 rule merge_both:
-    input: "calls/na12878-giab-prep.vcf.gz", "calls/na23485-rtg-prep.vcf.gz",
+    input: "calls/na12878-giab-prep.vcf.gz", "calls/na24385-rtg-prep.vcf.gz",
            expand("calls/{genome}-prep.vcf.gz.tbi", genome=config["genome"])
-    output: "work/na12878-na23485.vcf.gz"
+    output: "work/na12878-na24385.vcf.gz"
     shell: "bcftools merge {input[0]} {input[1]} -O z -o {output}"
 
 rule extract_somatic:
-    input: "work/na12878-na23485.vcf.gz"
-    output: "na12878-na23485-somatic.vcf.gz"
+    input: "work/na12878-na24385.vcf.gz"
+    output: "na12878-na24385-somatic.vcf.gz"
     shell:
         "zcat {input} | "
         """vawk --header '(S$NA12878$GT!="0/0" && S$NA12878$GT!="./." """
@@ -68,11 +68,18 @@ rule extract_somatic:
         "bgzip -c > {output}"
 
 rule hg19_truth_set:
-    input: "na12878-na23485-somatic.vcf.gz"
-    output: "na12878-na23485-somatic-truth-hg19.vcf.gz"
+    """Prepare truth set from extracted somatic.
+
+    - converts chromosomes to hg19
+    - Converts homozygous ref calls to het, since they'll be hets when mixed with NA24385
+      in tumor-like validation set.
+    """
+    input: "na12878-na24385-somatic.vcf.gz"
+    output: "na12878-na24385-somatic-truth-hg19.vcf.gz"
     shell:
         "bcftools view {input} -s NA12878 -o - | "
         "grep -v '##contig=' | "
+        "sed 's#1/1#0/1#' | "
         r"""sed "s/^\([0-9]\+\)\t/chr\1\t/g" | sed "s/^X/chrX/g" | sed "s/^Y/chrY/g" | grep -v ^MT | """
         "bgzip -c > {output}"
 
