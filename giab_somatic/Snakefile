@@ -10,7 +10,7 @@ rule all:
     input:
         expand("calls/{genome}.vcf.gz.tbi", genome=config["genome"]),
         "na12878-na24385-somatic-truth-hg19.vcf.gz",
-        "na12878-truth-regions-hg19.bed"
+        "na12878-na24385-somatic-truth-regions-hg19.bed"
 
 rule get_na12878_vcf:
     output: "calls/na12878-giab.vcf.gz"
@@ -83,10 +83,30 @@ rule hg19_truth_set:
         r"""sed "s/^\([0-9]\+\)\t/chr\1\t/g" | sed "s/^X/chrX/g" | sed "s/^Y/chrY/g" | grep -v ^MT | """
         "bgzip -c > {output}"
 
-rule hg19_truth_regions:
+rule hg19_truth_regions_na12878:
     input: "calls/na12878-giab.bed"
-    output: "na12878-truth-regions-hg19.bed"
+    output: "work/na12878-truth-regions-hg19.bed"
     shell:
         "cat {input} | "
         r"""sed "s/^\([0-9]\+\)\t/chr\1\t/g" | sed "s/^X/chrX/g" | sed "s/^Y/chrY/g" | grep -v ^MT """
         "> {output}"
+
+rule callable_regions_na24385:
+    output: "calls/na24385-callable.bed"
+    shell:
+        r"""wget -O - https://s3.amazonaws.com/bcbio/giab/AJTrio/NA24385-callable.bed.gz | gunzip -c > {output}"""
+
+rule hg19_truth_regions_na24385:
+    input: "calls/na24385-callable.bed"
+    output: "work/na24385-truth-regions-hg19.bed"
+    shell:
+        "cat {input} | "
+        r"""sed "s/^\([0-9]\+\)\t/chr\1\t/g" | sed "s/^X/chrX/g" | sed "s/^Y/chrY/g" | grep -v ^M | """
+        r"""grep -v _random | grep -v ^Un_ """
+        "> {output}"
+
+rule hg19_truth_regions:
+    input: "work/na12878-truth-regions-hg19.bed", "work/na24385-truth-regions-hg19.bed"
+    output: "na12878-na24385-somatic-truth-regions-hg19.bed"
+    shell:
+        "bedtools intersect -a {input[0]} -b {input[1]} > {output}"
