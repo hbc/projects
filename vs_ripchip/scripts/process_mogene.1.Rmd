@@ -68,6 +68,8 @@ mad.quantile.cutoff=0.1
 pvalue.cutoff=0.05
 highlight.color="green"
 lfc.cutoff=log2(1.5)
+# number of genes to show in heatmap
+numtop=50
 ```
 
 ## Libraries
@@ -98,6 +100,7 @@ library(magrittr)
 library(lattice)
 library(RRHO)
 library(biomaRt)
+library(dplyr)
 ```
 
 ## Functions
@@ -614,29 +617,95 @@ Removing the genes enriched by the Stau2 pulldown leaves us with `r nrow(top.uni
 
 ### Heatmaps of genes specifically bound by Stau2
 
+#### All bound genes
+
 ```{r heatmaps, out.width='100%', dev='png', fig.height=11, fig.width=8.5}
-# microarray intensities fwith rows labelle diwht probeset and gene
-eset.of.interest <- top.uniq.results.Stau2[,c(sampleNames(affyNorm.core), "symbol")]
-eset.of.interest$probeset_symbol <- paste(row.names(eset.of.interest), eset.of.interest$symbol, sep="-")
-eset.of.interest$symbol <- NULL
-eset.of.interest <- col2rownames(eset.of.interest, "probeset_symbol", TRUE)
-sub("whole_", "", names(eset.of.interest))
+top.uniq.results.Stau2 <- top.uniq.results.Stau2 %>% tbl_df()
+
+eset.of.interest <- top.uniq.results.Stau2 %>% select(.,  contains("symbol"), contains("whole"), logFC)
+names(eset.of.interest) <- gsub("_whole", "", names(eset.of.interest))
+eset.of.interest <- arrange(eset.of.interest, desc(logFC) ) %>% select(., -logFC)
+
+# calculate fold changes from average input intensity
+eset.of.interest <- mutate(eset.of.interest, inputavg=select(eset.of.interest, contains("input")) %>% rowMeans )
+fcs <-  select(eset.of.interest, -inputavg, -symbol) %>% mutate_each(., funs(ratio=./eset.of.interest$inputavg))
+
 
 # annotations
-pd <- pData(affyNorm.core)
-heatmap.annots <- pd[,c("sampleID", "pulldown")]
-heatmap.annots <- as.data.frame(apply(heatmap.annots, 2, unlist))
-
-row.names(heatmap.annots) <- heatmap.annots$sampleID
-heatmap.annots$sampleID <- NULL
-
+pd <- pData(affyNorm.core) %>% tbl_df()
+heatmap.annots <- pd %>% filter(., source=="whole_RNA") %>% mutate(., sampleID=sub("_whole", "", sampleID)) %>% select(., sampleID, pulldown)
+heatmap.annots <- as.data.frame(heatmap.annots)
+heatmap.annots <- col2rownames(heatmap.annots, "sampleID")
 # annotation colors
 pulldown_colors <- c(cbPalette[1:3] )
 names(pulldown_colors) <- unique(unlist(pd$pulldown))
 ann_colors = list(pulldown = pulldown_colors)
-## Heatmaps
 
-pheatmap(as.matrix(eset.of.interest), 
+
+## Heatmaps
+pdf(height=8.5, width=11)
+pheatmap(select(eset.of.interest, -symbol, -inputavg), 
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = TRUE,
+         main="Genes enriched after pulldown with Stau2, clustered by row", 
+         fontsize=12,
+         fontsize_row=7,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         show_rownames=FALSE,
+        cellwidth=40, annotation_names_col = FALSE, scale="none")
+
+pheatmap(select(eset.of.interest, -symbol, -inputavg), 
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         main="Genes enriched after pulldown with Stau2, sorted by logFC of Stau2 vs. input (highest on top)", 
+         fontsize=12,
+         fontsize_row=7,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         show_rownames=FALSE,
+        cellwidth=40, annotation_names_col = FALSE, scale="none", sub="Fas")
+
+pheatmap(as.matrix(select(eset.of.interest, -symbol,-inputavg)), 
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         main="Genes enriched after pulldown with Stau2", 
+         fontsize=12,
+         fontsize_row=7,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         show_rownames=TRUE,
+         cellwidth=40, 
+         annotation_names_col = FALSE, 
+         scale="row")
+
+
+pheatmap(as.matrix(select(eset.of.interest, -symbol)), 
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         main="Genes enriched after pulldown with Stau2", 
+         fontsize=12,
+         fontsize_row=7,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         show_rownames=TRUE,
+                 cellwidth=40, 
+         annotation_names_col = FALSE, 
+         scale="none")
+
+pheatmap(as.matrix(select(eset.of.interest, -symbol)), 
          annotation=heatmap.annots, 
          color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
          #color=rev(brewer.pal(11,"RdBu")), 
@@ -647,7 +716,83 @@ pheatmap(as.matrix(eset.of.interest),
          fontsize_row=7,
          annotation_colors=ann_colors,
          show_colnames=TRUE, 
-         cellwidth=40)
+         show_rownames=TRUE,
+         cellwidth=40, 
+         annotation_names_col = FALSE, 
+         scale="none")
+
+dev.off()
+
+```
+
+#### Top 50 for WT1 or Stau2
+
+```{r heatmaps2, out.width='100%', dev='png', fig.height=11, fig.width=8.5}
+# microarray intensities fwith rows labelle diwht probeset and gene
+top.uniq.results.Stau2 <- top.uniq.results.Stau2 %>% tbl_df()
+top.uniq.results.WT1 <- top.uniq.results.WT1 %>% tbl_df()
+
+
+# grab top 50 genes by logFC
+eset.of.interest.Stau2 <- top.uniq.results.Stau2 %>%  
+  arrange(., desc(logFC) ) %>% 
+  select(.,  contains("symbol"), contains("whole"), logFC) %>%
+  .[1:numtop,]
+names(eset.of.interest.Stau2) <- gsub("_whole", "", names(eset.of.interest.Stau2))
+eset.of.interest.Stau2 <- mutate(eset.of.interest.Stau2, pulldown="Stau2")
+# cluster with hclust and reorder matrix
+eset.of.interest.Stau2 <- select(eset.of.interest.Stau2, -logFC, -symbol, -pulldown) %>% 
+  as.matrix(.) %>% 
+  dist(., method="euclidean") %>% 
+  hclust(., method="centroid") %>%
+  .$order %>%
+  eset.of.interest.Stau2[.,]
+
+eset.of.interest.WT1 <- top.uniq.results.WT1 %>%  
+  arrange(., logFC ) %>% 
+  select(.,  contains("symbol"), contains("whole"), logFC) %>%
+  .[(nrow(.)-numtop):nrow(.),]
+names(eset.of.interest.WT1) <- gsub("_whole", "", names(eset.of.interest.WT1))
+eset.of.interest.WT1 <- mutate(eset.of.interest.WT1, pulldown="WT1")
+# cluster with hclust and reorder matrix
+eset.of.interest.WT1 <- select(eset.of.interest.WT1, -logFC, -symbol, -pulldown) %>% 
+  as.matrix(.) %>% 
+  dist(., method="euclidean") %>% 
+  hclust(., method="centroid") %>%
+  .$order %>%
+  eset.of.interest.WT1[.,]
+
+
+
+eset.of.interest <- dplyr::bind_rows(eset.of.interest.Stau2, eset.of.interest.WT1)
+# annotations
+pd <- pData(affyNorm.core) %>% tbl_df()
+
+heatmap.annots <- pd %>% filter(., source=="whole_RNA") %>% mutate(., sampleID=sub("_whole", "", sampleID)) %>% select(., sampleID, pulldown)
+heatmap.annots <- as.data.frame(heatmap.annots)
+heatmap.annots <- col2rownames(heatmap.annots, "sampleID")
+
+# annotation colors
+pulldown_colors <- c(cbPalette[1:3] )
+names(pulldown_colors) <- unique(unlist(pd$pulldown))
+ann_colors = list(pulldown = pulldown_colors)
+## Heatmaps
+
+pheatmap(as.matrix(select(eset.of.interest, -symbol, -logFC, -pulldown)),
+         annotation=heatmap.annots, 
+         color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
+         #color=rev(brewer.pal(11,"RdBu")), 
+         cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         main="Genes enriched after pulldown with Stau2 or WT1", 
+         fontsize=12,
+         fontsize_row=8,
+         annotation_colors=ann_colors,
+         show_colnames=TRUE, 
+         show_rownames=TRUE,
+         labels_row = eset.of.interest$symbol,
+                 cellwidth=40, annotation_names_col = FALSE)
+
 ```
 
 ## Gene Ontologies
@@ -887,9 +1032,10 @@ treemap(
 
 ```{r GO_annots}
 # pull in probeid to GO term mappings
-probeGOmappings <- select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
+probeGOmappings <- AnnotationDbi::select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
 # get probes associated with cell adhesion specific GO terms
 probeGOmappings.celladhesion <- probeGOmappings[which(probeGOmappings$GO %in% c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155")),]
+
 # assign probeids to gene symbols
 geneGOmappings.celladhesion <- merge(fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")], probeGOmappings.celladhesion, by.x="probesetid", by.y="PROBEID", all.y=TRUE)
 # aggregate all GO terms for individual genes
@@ -981,7 +1127,7 @@ ensemblmart.hsap <-  useMart("ensembl",dataset="hsapiens_gene_ensembl")
 attributes.hsap <- listAttributes(ensemblmart.hsap)
 filters.hsap <- listFilters(ensemblmart.hsap)
 setwd(resultsDir)
-save.image("RDATA")
+save.image(file.path(resultsDir, "RDATA"))
 
 
 # pull in kiebler data, translate rgd symbols to mouse homolog ensembl ids
@@ -1001,7 +1147,7 @@ write(kusek.mus.ensemblids, file.path(resultsDir, "kusek.mus.ensemblids.txt"))
 
 # find ensembl ids of renal pulldown genes
 renal.data <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
-renal.mus.ensemblids <- select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
+renal.mus.ensemblids <- AnnotationDbi::select(mogene10sttranscriptcluster.db, keys = as.character(renal.data$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
 num.renal.mus.ensemblids <- length(renal.mus.ensemblids)
 write(renal.mus.ensemblids,file.path(resultsDir, "renal.mus.ensemblids.txt"))
 
@@ -1048,18 +1194,20 @@ renal.data <- merge(renal.mus.ensemblids.probeids, renal.data, by.x="affy_mogene
 
 # subset all data sets to probes found in overlaps
 renal.data <- renal.data[renal.data$ensembl_gene_id %in% overlap.probeids,]
+kusek.data <- kusek.data[kusek.data$ensembl_gene_id %in% overlap.probeids,]
+kiebler.data <- kiebler.data[kiebler.data$ensembl_gene_id %in% overlap.probeids,]
 
-
-overlap.renal.data <- merge(merge(renal.data, kiebler.data, by="ensembl_gene_id", all.x=TRUE), kusek.data, by="ensembl_gene_id", all.x=TRUE)
+overlap.renal.data <- merge(merge(renal.data, kiebler.data, by="ensembl_gene_id", all=TRUE), kusek.data, by="ensembl_gene_id", all=TRUE) %>% tbl_df()
 overlap.renal.data$enriched_in_neural_study <- ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & !(is.na(overlap.renal.data$kusek.fold.change)), "BOTH",
                                                       ifelse(!(is.na(overlap.renal.data$kiebler.fold.change)) & is.na(overlap.renal.data$kusek.fold.change), "KIEBLER",
                                                              ifelse(is.na(overlap.renal.data$kiebler.fold.change) & !(is.na(overlap.renal.data$kusek.fold.change)), "KUSEK", "NA")))
 
+overlap.renal.data <- arrange(overlap.renal.data, enriched_in_neural_study, symbol)
 
 library(xlsx)
 
 
-write.xlsx(overlap.renal.data, file=file.path(resultsDir, "Probe.data.for.genes.also.enriched.in.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1")
+write.xlsx(overlap.renal.data, file=file.path(resultsDir, "Probe.data.for.genes.also.enriched.in.Kusek.and.Kiebler.studies.xlsx"), sheetName="Sheet1", showNA=FALSE)
 
 
 #output kusek kiebler overlap data
