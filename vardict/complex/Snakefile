@@ -1,0 +1,55 @@
+# Calculate overlap between complex variant calls
+# Uses VCF called outputs and truth set to export indel calls
+# that have any overlap, not requiring exact matches.
+
+configfile: 'config.yaml'
+
+rule all:
+    input:
+        expand("bed/{input}.bed", input=config["caller"] + [config["truth"]]),
+        expand("validation/{caller}-tp.bed", caller=config["caller"]),
+        expand("validation/{caller}-fp.bed", caller=config["caller"])
+
+rule tp_find:
+    input: "bed/{caller}.bed", expand("bed/{truth}.bed", truth=config["truth"])
+    output: "validation/{caller}-tp.bed"
+    shell:
+        "bedtools intersect -u -wa -a {input[1]} -b {input[0]} > {output}"
+
+rule fp_find:
+    input: "bed/{caller}.bed", expand("bed/{truth}.bed", truth=config["truth"])
+    output: "validation/{caller}-fp.bed"
+    shell:
+        "bedtools intersect -v -wa -a {input[0]} -b {input[1]} > {output}"
+
+# Export start/end of indels
+rule vcf_to_bed:
+    input: "vardict-complex/{input}.vcf.gz"
+    output: "bed/{input}.bed"
+    run:
+        import gzip
+        with gzip.open(input[0]) as in_handle:
+            with open(output[0], "w") as out_handle:
+                for line in in_handle:
+                    line = line.decode("utf-8")
+                    if line.startswith("#"):
+                        continue
+                    fields = line.strip().split()
+                    chrom = fields[0]
+                    start = int(fields[1]) - 1
+                    ref, alt = fields[3:5]
+                    filter = fields[6]
+                    info_end = [x for x in fields[7].split(";") if x.startswith("END=")]
+                    if info_end:
+                        _, end = info_end[0].split("=")
+                    else:
+                        end = start + len(ref)
+                    gt = fields[9].split(":")[0]
+                    if gt != "0/0" and (len(ref) > 1 or len(alt) > 1) and filter in ["PASS", "."]:
+                        out_handle.write("%s\t%s\t%s\t%s\n" % (chrom, start, end, alt))
+
+rule get_calls:
+    output: "vardict-complex/{input}.vcf.gz"
+    shell:
+        "wget -c https://s3.amazonaws.com/chapmanb/az/vardict_paper/vardict-complex.tar.gz && "
+        "tar -xzvpf vardict-complex.tar.gz"

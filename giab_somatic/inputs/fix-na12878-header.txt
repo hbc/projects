@@ -1,0 +1,1 @@
+##INFO=<ID=PLNCIIonWG,Number=.,Type=String,Description="Genotype likelihoods (PL)">
