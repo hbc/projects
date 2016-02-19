@@ -1,0 +1,455 @@
+---
+  html_document:
+    toc: true
+    highlight: zenburn
+    theme: united
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='')
+```
+
+# Overview
+
+```{r qc-setup}
+library(RColorBrewer)
+library(ggplot2)
+library(reshape)
+library(gplots)
+library(edgeR)
+library(CHBUtils)
+library(pheatmap)
+library(DESeq2)
+project_summary = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-02-16_project/project-summary.csv"
+counts_file = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-02-16_project/combined.counts"
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
+counts = counts[, order(colnames(counts))]
+colnames(counts) = gsub(".counts", "", colnames(counts))
+# this is a list of all non user-supplied metadata columns that could appear
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
+    "rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate",
+    "Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped",
+    "rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.",
+    "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
+    "complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads",
+    "Median.insert.size", "Mapped.reads.pct", "Total.reads",
+    "avg_coverage_per_region", "Mapped.Reads")
+metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+metadata$day <- as.character(metadata$day)
+summarydata$day <- as.character(summarydata$day)
+```
+
+```{r heatmap-function}
+get_heatmap_fn = function(summarydata) {
+    # return the pheatmap function with or without metadata
+    if(ncol(metadata) == 0) {
+       return(pheatmap)
+    }
+    else {
+    # rownames(metadata) = summarydata$Name
+    heatmap_fn = function(data, ...) {
+        pheatmap(data, annotation=metadata, ...)
+    }
+    return(heatmap_fn)
+}}
+heatmap_fn = get_heatmap_fn(summarydata)
+```
+
+# Quality control metrics
+
+## Mapped reads
+
+The number of mapped reads is on the low side but still usable (15 million reads) for the majority of samples across samples with three samples (L2, L3 & L4) showing fewer than 10 million reads.
+
+```{r mapped-plot, eval="Mapped" %in% colnames(summarydata)}
+ggplot(summarydata, aes(x=Name, y=Mapped)) +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    geom_bar(stat="identity") +
+    ylab("mapped reads") + xlab("")
+```
+
+## Genomic mapping rate
+
+The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts.
+
+The mapping rate is very good except for the 3 samples (LE2, LE3 & LE4).
+
+```{r mapping-rate-plot, eval="Mapping.Rate" %in% colnames(summarydata)}
+ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
+    geom_bar(stat="identity") +
+    ylab("mapping rate") + xlab("") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90))
+```
+
+## Unique mapping rate
+
+This plot denotes how many of the mapped reads mapped to a single location on the genome. This is an important metric because we will only be looking at these uniquely mapping reads for the statistical analysis downstream. 
+
+The samples show a low unique mapping rate, with only 30-40% of the reads mapping to unique locations on the genome (ie. a high rate of multi-mapping reads). This may be indicative of PCR artefacts or rRNA contamination.
+
+```{r unique-mapping-plot}
+dd = data.frame(Name = names(counts), Unique = colSums(counts), Mapped = summarydata[, "Mapped"])
+ggplot(dd, aes(x = Name, y = Unique/Mapped)) + geom_bar(stat = "identity") + 
+    ylab("unique mapping rate") + xlab("") + theme_bw(base_size = 10) + theme(panel.grid.major = element_line(size = 0.5, 
+    color = "grey"), axis.text.x = element_text(angle = 90))
+```
+
+## Number of genes detected
+
+Most of the samples have 15000 to 20000 genes detected. LE2, LE3 and LE4 have the lowest number of genes detected.
+
+```{r genes-detected-plot, eval="Genes.Detected" %in% colnames(summarydata)}
+dd = data.frame(Name=names(counts), Genes.Detected = colSums(counts > 0))
+ggplot(dd, aes(x=Name, y=Genes.Detected)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("")
+```
+
+## Gene detection saturation
+
+There's a variation in the number of genes detected, with the three samples with the lowest number of reads mapped (L2, L3 & L4) showing the fewest genes detected.
+
+```{r saturation-plot, eval="Genes.Detected" %in% colnames(summarydata)}
+dd = data.frame(Mapped=summarydata$Mapped, Genes.Detected = colSums(counts > 0))
+dd$name <- row.names(dd)
+ggplot(dd, aes(x=Mapped, y=Genes.Detected, color=name)) +
+    geom_point(size=8) +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("reads mapped") +
+    scale_color_brewer(palette="Paired")
+```
+
+## Exonic mapping rate
+
+This plot denotes how many of the mapped reads map to known exon regions.  As with the genomic mapping rate, the rates we are seeing here are quite low.
+
+```{r exonic-mapping-plot, eval="Exonic.Rate" %in% colnames(summarydata)}
+ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("exonic mapping rate") + xlab("")
+```
+
+## rRNA mapping rate
+This plot denotes how many of the mapped reads map to rRNA genes.
+
+The ribosomal mapping rate is quite high, except for samples L2, L3 & L4. This may explain the unique mapping rates we are seeing, except for samples L2, L3 & L4 which may just have too few reads.
+
+```{r check-rRNA-eval}
+eval_rRNA = "rRNA_rate" %in% colnames(summarydata) & !sum(is.na(summarydata$rRNA_rate)) == nrow(summarydata)
+```
+
+```{r rRNA-rate-plot, eval=eval_rRNA}
+ggplot(summarydata, aes(x=Name, y=rRNA_rate)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("rRNA rate") + xlab("")
+```
+
+## Boxplot of log10 counts per gene
+
+This plot demonstrates the consistency (or lack thereof) between samples with respect to counts per gene. These samples look pretty inconsistent, with LE2, LE3 & LE4 showing clear differences in their range. Normalization is essential for such a comparison (see the next plot).
+
+```{r boxplot-raw}
+melted = melt(counts)
+colnames(melted) = c("sample", "count")
+melted$sample = factor(melted$sample)
+melted = melted[order(melted$sample),]
+melted$count = log(melted$count)
+ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("")
+```
+
+## Boxplot of log10 TMM-normalized counts per gene
+
+This plot demonstrates the consistency (or lack thereof) between samples with respect to counts per gene also, but after the samples have been normalized (using the TMM method that EdgeR uses) so that we are making a fairer comparison.
+
+Trimmed mean of M-values (TMM) normalization is described
+[here](http://genomebiology.biomedcentral.com/articles/10.1186/gb-2010-11-3-r25).
+
+Robinson, M. D., & Oshlack, A. (2010). A scaling normalization method for differential expression analysis of RNA-seq data. Genome Biology, 11(3). doi:10.1186/gb-2010-11-3-r25
+
+Normalization doesn't appear to be addressing the consistency issues with the samples. 
+
+```{r boxplot-normalized}
+y = DGEList(counts=counts)
+y = calcNormFactors(y)
+normalized_counts = cpm(y, normalized.lib.sizes=TRUE)
+melted = melt(normalized_counts)
+colnames(melted) = c("gene", "sample", "count")
+melted$sample = factor(melted$sample)
+melted = melted[order(melted$sample),]
+melted$count = log(melted$count)
+ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("")
+```
+
+## Density of log10 TMM-normalized counts
+
+This is another way for looking at the normalized counts per gene. In this plot we prefer the pattern of count density to be consistent between the samples, but once again they look pretty inconsistent.
+
+```{r density-normalized}
+ggplot(melted, aes(x=count, group=sample, color=sample)) +
+    geom_density(lwd=1.25) +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("") +scale_color_brewer(palette="Paired")
+```
+
+## Correlation (Pearson) heatmap of TMM-normalized 
+This plot denotes the parametric correlation with respect to gene counts for all samples versus all other samples. The expectation would be that replicates from the same group will cluster together. 
+
+You can see that samples LE2, LE3 & LE4 (the samples with low mapping rates) cluster well together, but otherwise the samples don't cluster by sample class.
+
+```{r pearson-heatmap-normalized}
+heatmap_fn(cor(normalized_counts, method="pearson"))
+```
+
+## Correlation (Spearman) heatmap of TMM-normalized 
+This plot also denotes the correlation with respect to gene counts for all samples versus all other samples, but it is using a non-parametric or ranked method for assessing the correlation. 
+
+Once again the LE2, LE3 and LE4 samples cluster strongly together, but here we can see clustering of the remaining samples by class to some extent (excepting RE2).
+
+```{r spearman-heatmap-normalized}
+heatmap_fn(cor(normalized_counts, method="spearman"))
+```
+
+## Heatmap by concordance correlation coefficient
+http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004075
+
+```{r propcor-heatmap}
+propcor = function(x, y) {
+    x = log(x + 0.1)
+    y = log(y + 0.1)
+    num = 2 * cov(x, y)
+    denom = var(x) + var(y)
+return(num/denom)}
+
+do_propcor = function(x) {
+     mat = list()
+     for(i in seq_len(ncol(x))) {
+         for(j in seq_len(ncol(x))) {
+        x2 = x[, i]
+        y2 = x[, j]
+        mat = c(mat, propcor(x2, y2)) } }
+    mat = unlist(mat)
+    mat = matrix(mat, ncol(x), ncol(x))
+    colnames(mat) = colnames(x)
+    rownames(mat) = colnames(x)
+    return(mat)}
+
+heatmap_fn(do_propcor(normalized_counts))
+```
+```{r de-setup}
+library(DESeq2)
+library(DEGreport)
+library(vsn)
+design = ~day+sampletype
+condition = "sampletype"
+```
+
+
+## PCA plots
+PCA (principal components analysis) is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expresson levels for all probes and transforms it in principal component space, reducing each sample into one point (as coordinates within that space). This allows us to separate samples according to expression variation, and identify potential outliers. Basically, the PCA analysis is yet another way to look at how samples are clustering.
+
+This first PCA plot (PC1 against PC2) is looking at the TMM normalized count data.
+
+With the exception of the LE2, LE3 and LE4 samples, there's actually really good separation between the retinal and lung samples. PC1 (i.e. the largest sources of variation in your dataset) is capturing the difference between these 3 samples and the rest of the samples and PC2 (the next largest sources of variation in your dataset) is capturing the difference betwen the retinal and lung samples.
+
+```{r plotPCATMM}
+library(genefilter)
+rv <- rowVars(normalized_counts)
+select <- order(rv, decreasing = TRUE)[seq_len(min(500, length(rv)))]
+pca <- prcomp(t(normalized_counts[select, ]))
+percentVar <- pca$sdev^2/sum(pca$sdev^2)
+intgroup.df <- as.data.frame(colnames(normalized_counts), drop = FALSE)
+names(intgroup.df) <- "labels"
+d <- data.frame(PC1 = pca$x[, 1], PC2 = pca$x[, 2], group = intgroup.df)
+if (returnData) {
+  attr(d, "percentVar") <- percentVar[1:2]
+  return(d)
+}
+ggplot(data = d, aes_string(x = "PC1", y = "PC2", color = "labels")) + 
+  geom_point(size = 3) + xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) + ylab(paste0("PC2: ", round(percentVar[2] * 100), "% variance")) 
+```
+
+
+
+
+
+## Effects of Variance Stabilization
+
+PCA plots can be strongly affected by variance outliers (i.e. genes that show higher than expected amounts of variance). 
+This  PCA plot (PC1 against PC2) is looking at the DESeq2 normalized count data after variance stabilization.
+
+
+```{r pca}
+dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~day+sampletype)
+vst = rlog(dds)
+plotPCA(vst, intgroup=c("Name"))
+```
+
+
+# Differential expression
+
+```{r deseq2-expression-analysis, results='asis'}
+counts <- counts[rowSums(counts>0)>1,]
+dds = DESeqDataSetFromMatrix(countData=counts,colData=summarydata, design = ~day+sampletype)
+dds = DESeq(dds)
+```
+
+## Effect of variance stabilization
+
+```{r deseq-diagnostics, results='asis'}
+par(mfrow=c(1,3))
+notAllZero <- (rowSums(counts(dds))>0)
+rld <- rlog(dds)
+vsd <- varianceStabilizingTransformation(dds)
+rlogMat <- assay(rld)
+vstMat <- assay(vsd)
+
+meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))
+meanSdPlot(assay(rld[notAllZero,]))
+meanSdPlot(assay(vsd[notAllZero,]))
+```
+
+## Dispersion estimates
+
+```{r dispersion-estimate}
+plotDispEsts(dds)
+```
+
+```{r deseq2-handler}
+handle_deseq2 = function(dds, summarydata, column) {
+  all_combs = combn(levels(summarydata[,column]), 2, simplify=FALSE)
+  all_results = list()
+  contrast_strings = list()
+  for(comb in all_combs) {
+    contrast_string = paste(comb, collapse=" vs ")
+    contrast = c(column, comb)
+    res = results(dds, contrast=contrast)
+    res = res[order(res$padj),]
+    all_results = c(all_results, res)
+    contrast_strings = c(contrast_strings, contrast_string)
+  }
+  names(all_results) = contrast_strings
+  return(all_results)
+}
+```
+
+## MA-plots
+
+```{r DESeq-output, results='asis'}
+all_results = handle_deseq2(dds, summarydata, condition)
+len = length(all_results)
+nr = ceiling( len / 3 )
+nc = ceiling( len / nr )
+par(mfrow=c(nr,nc))
+for(i in seq(length(all_results))) {
+  plotMA(all_results[[i]])
+  title(paste("MA plot for contrast", names(all_results)[i]))
+}
+```
+
+## Volcano-plots
+
+```{r DESeq-volcano}
+for(i in seq(length(all_results))) {
+  stats = as.data.frame(all_results[[i]][,c(2,6)])
+  p = volcano_density_plot(stats, title=names(all_results)[i], lfc.cutoff=1.5)
+  print(p)
+}
+```
+
+## DEGreport
+
+```{r get-groups}
+get_groups <- function(d, comp, condition)
+{
+  g <- unlist(strsplit(comp," "))
+  g1 <- d$Name[d[, (names(d)==condition)]==g[1]]
+  g2 <- d$Name[d[, (names(d)==condition)]==g[3]]
+  list(g1,g2)
+}
+```
+
+### Pvalues-vs-Mean
+
+Here we plot some information about how the p-values are correlated with the
+mean or the standard deviation.
+
+```{r DEGreport-M}
+plots = list()
+scale_factor = round(1/nr * 14)
+for(i in seq(length(all_results))) {
+  plots[[i]] = degMean(all_results[[i]]$pvalue, rlogMat) +
+  theme_bw(base_size = scale_factor) +
+  ggtitle(paste0("Pvalues-vs-Mean for ", names(all_results)[i]))
+}
+do.call(grid.arrange,plots)
+```
+
+### Pvalues-vs-Variation
+
+```{r DEGreport-V}
+plots = list()
+for(i in seq(length(all_results))) {
+  plots[[i]] = degVar(all_results[[i]]$pvalue, rlogMat) +
+  theme_bw(base_size = scale_factor) +
+  ggtitle(paste0("Pvalues-vs-Variation for ", names(all_results)[i]))
+}
+do.call(grid.arrange,plots)
+```
+
+### Mean-vs-Variation
+```{r DEGreport-MV}
+plots = list()
+for(i in seq(length(all_results))) {
+  g <- get_groups(summarydata, names(all_results)[i], condition)
+  if(length(g[[1]]) < 2 | length(g[[2]]) < 2) {
+     next
+   }
+  plots[[i]] = degMV(g[[1]], g[[2]], all_results[[i]]$pvalue, counts(dds,normalized=TRUE)) +
+  theme_bw(base_size = scale_factor) +
+  ggtitle(paste0("Mean-vs-Variation for ", names(all_results)[i]))
+}
+if(length(plots) > 0) {
+    do.call(grid.arrange,plots)
+}
+```
+
+## Differentially expressed genes
+
+```{r DESeq-tables, results='asis'}
+for(i in seq(length(all_results))) {
+  cat(paste("Lowest adjusted p-value hits for", names(all_results)[i]))
+  out_df = as.data.frame(all_results[[i]])
+  print(knitr::kable(head(out_df)))
+  write.table(out_df, file=paste(names(all_results)[i], ".tsv", sep=""),
+                         quote=FALSE, sep="\t", row.names=TRUE, col.names=TRUE)
+  cat("\n")
+}
+```
