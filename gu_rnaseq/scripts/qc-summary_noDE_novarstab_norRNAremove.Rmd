@@ -11,10 +11,16 @@ knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
                message=FALSE, prompt=TRUE, comment='', fig.cap='')
 ```
 
-
-
-
 # Overview
+
+RNAseq QC  analysis for Shachar Dagan  (shachar_dagan@hms.harvard.edu),  Gu group at HMS.  
+
+Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`.
+
+The sections below provide code to reproduce the included results and plots. 
+
 
 ```{r qc-setup}
 library(RColorBrewer)
@@ -25,8 +31,8 @@ library(edgeR)
 library(CHBUtils)
 library(pheatmap)
 library(DESeq2)
-project_summary = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-02-16_project/project-summary.csv"
-counts_file = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-02-16_project/combined.counts"
+project_summary = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/project-summary.csv"
+counts_file = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/combined.counts"
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
 summarydata$Name = rownames(summarydata)
@@ -307,5 +313,5 @@ plotPCA(rld, intgroup=c("Name"))
 ```
 
 
-**Conclusions: we need to deal with the 3 outlier samples before proceeding. Either by dropping the samples or adjusting the other samples (i.e. filtering out rRNA) to eliminate the variance between theese samples and the rest of their group.
+**Conclusions: we need to deal with the 3 outlier samples before proceeding. Either by dropping the samples or adjusting the other samples (i.e. filtering out rRNA) to eliminate the variance between theese samples and the rest of their group.**
 
