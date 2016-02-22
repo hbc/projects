@@ -9,4 +9,4 @@ eval:
 ref:
   rtg: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/rtg/GRCh37.sdf
   seq: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
-
+  lcr: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/coverage/problem_regions/repeats/LCR.bed.gz
