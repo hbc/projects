@@ -1,0 +1,8 @@
+
+analysis: curoverse_c97qk-d1hrv-kuvmiix9fkjy3dq
+calls: 1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_Cosmicv72
+baseline: ../original_hartwig/24385-12878-30-200R_24385-12878-30-200T_filtered_merged_somatics_snpEff_dbSNP_Cosmicv72-cleaned.vcf.gz
+code:
+  giab: ~/hsph/projects/giab_somatic
+ref:
+  rtg: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/hg19/rtg/hg19.sdf
