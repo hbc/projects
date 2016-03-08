@@ -1,8 +1,10 @@
 ---
+output:
   html_document:
     toc: true
-    highlight: zenburn
-    theme: united
+    toc_depth: 3
+    theme: journal
+    css: custom.css
 ---
 
 ```{r setup, echo=FALSE}
@@ -31,6 +33,10 @@ library(edgeR)
 library(CHBUtils)
 library(pheatmap)
 library(DESeq2)
+library(biomaRt)
+baseDir <- "~/Work/projects/gu_rnaseq/"
+resultsDir <- file.path(baseDir, "results")
+
 project_summary = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/project-summary.csv"
 counts_file = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/combined.counts"
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
@@ -238,6 +244,7 @@ heatmap_fn(cor(normalized_counts, method="pearson"))
 ```
 
 ## Correlation (Spearman) heatmap of TMM-normalized 
+
 This plot also denotes the correlation with respect to gene counts for all samples versus all other samples, but it is using a non-parametric or ranked method for assessing the correlation. 
 
 Once again the LE2, LE3 and LE4 samples cluster strongly together, but here we can see clustering of the remaining samples by class to some extent (excepting RE2).
@@ -247,6 +254,7 @@ heatmap_fn(cor(normalized_counts, method="spearman"))
 ```
 
 ## Heatmap by concordance correlation coefficient
+
 http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004075
 
 ```{r propcor-heatmap}
@@ -275,6 +283,7 @@ heatmap_fn(do_propcor(normalized_counts))
 
 
 ## PCA plots
+
 PCA (principal components analysis) is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expresson levels for all probes and transforms it in principal component space, reducing each sample into one point (as coordinates within that space). This allows us to separate samples according to expression variation, and identify potential outliers. Basically, the PCA analysis is yet another way to look at how samples are clustering.
 
 This first PCA plot (PC1 against PC2) is looking at the TMM normalized count data.
@@ -315,3 +324,61 @@ plotPCA(rld, intgroup=c("Name"))
 
 **Conclusions: we need to deal with the 3 outlier samples before proceeding. Either by dropping the samples or adjusting the other samples (i.e. filtering out rRNA) to eliminate the variance between theese samples and the rest of their group.**
 
+
+# Effects of rRNA Removal
+
+Repeat the variance stabilized PCA after removing the rRNA genes
+
+```{r rRNA removal}
+ensemblmart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", host = "jul2015.archive.ensembl.org")
+attributes <- listAttributes(ensemblmart)
+filters <- listFilters(ensemblmart)
+
+conversions = getBM(attributes = c("ensembl_gene_id", "mgi_symbol", "gene_biotype", "chromosome_name"), mart =ensemblmart)
+
+# id rRNA genes by biotype coding
+rrna_biotypes = c("rRNA", "Mt_rRNA", "misc_RNA", "snRNA", "snoRNA", "tRNA", "Mt_tRNA")
+rrna_genes <- unique(subset(conversions, gene_biotype %in% rrna_biotypes)$ensembl_gene_id)
+
+#id mitochondrial proteing coding genes by chromosome
+mt_genes <- unique(subset(conversions, conversions$chromosome_name=="MT" & conversions$gene_biotype=="protein_coding")$ensembl_gene_id)
+
+# Analysis without mt and rRNA genes
+counts_norrna <- counts[!rownames(counts) %in% rrna_genes & !rownames(counts) %in% mt_genes, ]
+```
+
+**Removing the rRNA and mt gene counts doesn't seem to be helping the PCA clustering, which suggests that something else underlies this poor clustering**
+
+```{r pca_norRNA}
+dds_norrna = DESeqDataSetFromMatrix(counts_norrna, colData=summarydata, design=~day+Mapped+sampletype)
+rld_norrna <- rlog(dds_norrna)
+plotPCA(rld_norrna, intgroup=c("Name"))
+```
+
+
+## Counts table
+
+```{r outputcounts}
+output <- as.data.frame(assay(rld_norrna))
+output$ensemblid <-row.names(output)
+output <- annotate_df(output, 'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir,"normalized_variance_stabilized_counts_without_rRNA.csv" ))
+```
+
+**[Normalized Variance Stabilized counts without rRNA](../results/normalized_variance_stabilized_counts_without_rRNA.csv)**
+
+# Exploring Genes of Interest
+
+Only 3 of the six marker genes (Mfsd2a, Slc16a1 and Slc7a5) show consistent results in the lung samples. The other three show strongly divergent results within the lung samples.
+
+```{r genesofinters}
+markergenes <- c("Mfsd2a", "Cdh5", "Picalm", "Slc2a1","Slc7a5", "Slc16a1")
+markerensemblids <- getBM(markergenes, attributes=c("ensembl_gene_id","mgi_symbol"), filter="mgi_symbol", mart=ensemblmart)
+
+markercounts <- assay(rld_norrna)[markerensemblids$ensembl_gene_id,]
+row.names(markercounts) <- markerensemblids$mgi_symbol[match(markerensemblids$ensembl_gene_id , row.names(markercounts))]
+
+heatmap_fn(markercounts)
+```
+
+**Recommend dropping the lung samles with low mapping and gene detection rates. It's difficult to say whether these samples had bad RNA or just failed in sequencing.**
