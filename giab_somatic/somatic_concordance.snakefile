@@ -9,12 +9,13 @@
 configfile: 'somatic_concordance-config.yaml'
 
 rule all:
-    input: expand("{analysis}/somatic-rtg", analysis=config["analysis"])
+    input:
+        expand("{analysis}/somatic-rtg", analysis=config["analysis"]),
+        expand("{analysis}/somatic-truth-rtg", analysis=config["analysis"])
 
 rule prep_calls:
-    input: expand("{analysis}/{calls}.vcf", analysis=config["analysis"], calls=config["calls"])
     output: "{analysis}/calls.vcf.gz"
-    shell: "bgzip {input} -c > {output} && tabix -p vcf {output}"
+    shell: "wget -O - {config[url]} | bgzip {input} -c > {output} && tabix -p vcf {output}"
 
 rule combine_calls:
     input:  "{analysis}/calls.vcf.gz"
@@ -32,3 +33,13 @@ rule rtg_vcfeval:
     shell:
       "rm -rf {output[0]} && "
       "rtg vcfeval -c {input[0]} -b {input[1]} -t {input[2]} -o {output[0]}"
+
+rule rtg_vcfeval_truth:
+    """Run validations against truth set based on known GiaB calls.
+    """
+    input: "{analysis}/calls-cleaned.vcf.gz", config["truth"]["calls"],
+           config["truth"]["regions"], config["ref"]["rtg"]
+    output: "{analysis}/somatic-truth-rtg"
+    shell:
+      "rm -rf {output[0]} && "
+      "rtg vcfeval -c {input[0]} -b {input[1]} --bed-regions {input[2]} -t {input[3]} -o {output[0]}"
