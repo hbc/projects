@@ -25,7 +25,14 @@ rule get_na12878_bed:
 rule get_na24385_vcf_rtg:
     output: "calls/na24385-rtg.vcf.gz"
     shell:
-        "wget -O {output} ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/Rutgers_IlluminaHiSeq300X_rtg_11052015/rtg_allCallsV2.vcf.gz"
+        "wget -O - ftp://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/AshkenazimTrio/analysis/Rutgers_IlluminaHiSeq300X_rtg_11052015/rtg_allCallsV2.vcf.gz | "
+        "gunzip | "
+        "sed s/HG002/NA24385/ | "
+        "bcftools view --exclude-uncalled -f 'PASS,.' -s NA24385 | "
+        "sed 's#0|0#0/0#' | sed 's#0|1#0/1#' | sed 's#1|1#1/1#' | "
+        "sed 's#1|0#0/1#' | sed 's#1/0#0/1#' | "
+        "bgzip -c > {output} "
+        "&& tabix -p vcf -f {output}"
 
 rule get_na24385_vcf_cgi:
     """Retrieve CGI calls for NA24385, removing partially called, uncalled and filtered variants.
@@ -51,15 +58,6 @@ rule make_indices:
 
 # Merge files and extract somatic truth set
 
-rule prep_na24385:
-    input: "calls/na24385-rtg.vcf.gz", "calls/na12878-giab.bed",  "calls/na24385-rtg.vcf.gz.tbi"
-    output: "calls/na24385-rtg-prep.vcf.gz"
-    shell:
-        "bcftools view {input[0]} -f 'PASS,.' -s HG002 -R {input[1]} -o - | sed s/HG002/NA24385/ | "
-        "sed 's#0|0#0/0#' | sed 's#0|1#0/1#' | sed 's#1|1#1/1#' | "
-        "sed 's#1|0#0/1#' | sed 's#1/0#0/1#' | "
-        "bgzip -c > {output}"
-
 rule prep_na12878:
     input: "calls/na12878-giab.vcf.gz", "calls/na12878-giab.bed", "inputs/fix-na12878-header.txt", "calls/na12878-giab.vcf.gz.tbi"
     output: "calls/na12878-giab-prep.vcf.gz"
@@ -70,18 +68,17 @@ rule prep_na12878:
         "vt sort -m local -w 10000 -o {output} -"
 
 rule union_na24385:
-    input: "calls/na24385-rtg-prep.vcf.gz", "calls/na24385-cgi.vcf.gz", config["ref"]["seq"],
-           "calls/na24385-rtg-prep.vcf.gz.tbi",
+    input: "calls/na24385-rtg.vcf.gz", "calls/na24385-cgi.vcf.gz", config["ref"]["seq"]
     output: "work/na24385-rtg-cgi.vcf.gz"
     shell:
         "bcbio-variation-recall ensemble -n 1 --names rtg,cgi "
         "{output} {input[2]} {input[0]} {input[1]}"
 
 rule merge_both:
-    input: "calls/na12878-giab-prep.vcf.gz", "work/na24385-rtg-cgi.vcf.gz",
+    input: "calls/na12878-giab-prep.vcf.gz", "work/na24385-rtg-cgi.vcf.gz", "calls/na12878-giab.bed",
            "calls/na12878-giab-prep.vcf.gz.tbi"
     output: "work/na12878-na24385.vcf.gz"
-    shell: "bcftools merge {input[0]} {input[1]} -O z -o {output}"
+    shell: "bcftools merge {input[0]} {input[1]} -R {input[2]} -O z -o {output}"
 
 rule extract_somatic:
     input: "work/na12878-na24385.vcf.gz"
@@ -102,6 +99,7 @@ rule truth_set:
     output: "na12878-na24385-somatic-truth.vcf.gz"
     shell:
         "bcftools view {input} -s NA12878 -o - | "
+        "vt sort -m local -w 10000 - | "
         "sed 's#1/1#0/1#' | bgzip -c > {output} && "
         "tabix -f -p vcf {output}"
 
