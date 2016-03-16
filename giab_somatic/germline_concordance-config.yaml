@@ -1,0 +1,10 @@
+
+analysis: arvados/c97qk-d1hrv-kuvmiix9fkjy3dq
+calls: 24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.raw_variants.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf
+baseline: hartwig/24385-12878-30-200.giab_tumor.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf.gz
+sample: '24385-12878-30-200'
+regions: regions.bed
+ref:
+  rtg: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/rtg/GRCh37.sdf
+  seq: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+  lcr: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/coverage/problem_regions/repeats/LCR.bed.gz

@@ -1,0 +1,7 @@
+---
+genome:
+  - na12878-giab
+  - na24385-rtg
+ref:
+  seq: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/seq/GRCh37.fa
+    

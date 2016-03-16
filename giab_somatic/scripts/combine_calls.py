@@ -27,8 +27,8 @@ def main(in_file):
                     if final_call:
                         for caller in callers:
                             caller_count[caller] += 1
-                        parts[0] = chrom_to_hg19(parts[0])
-                        parts[7] += ";CALLERS=%s" % ",".join(callers)
+                        #parts[0] = chrom_to_hg19(parts[0])
+                        #parts[7] += ";CALLERS=%s" % ",".join(callers)
                         out = parts[:9] + [final_call]
                         out_handle.write("\t".join(out) + "\n")
     print dict(caller_count)
