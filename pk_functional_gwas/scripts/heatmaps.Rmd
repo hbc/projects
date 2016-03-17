@@ -91,6 +91,9 @@ pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_r
 
 ## Using all data, splitting the heatmap by cluster
 
+Unscaled
+
+
 ```{r heatmapnoscale2, fig.cap="Unscaled", fig.height=6, fig.width=8}
 
 pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="none", annotation_colors=ann_colors, border_color="NA", cutree_rows=5)
@@ -125,7 +128,11 @@ annotations <- as.data.frame(select(subset.data, Group_2))
 row.names(annotations) <- seq(1:nrow(datamatrix))
 names(annotations) <- c("Cell\ Type")
 
- tol9qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255", "#AA4499")
+rowlabels <- as.data.frame(select(subset.data, cell_type))
+rowlabels <- as.vector(rowlabels$cell_type)
+rowlabels <- gsub("_", " ", rowlabels)
+
+tol9qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255", "#AA4499")
 
 # Specify colors
 # heatmap annotation colors
@@ -134,9 +141,11 @@ names(celltype_colors) <- unique(unlist(annotations$`Cell\ Type`))
 ann_colors = list(`Cell\ Type` = celltype_colors)
 ```
 
+Unscaled
+
 ```{r heatmapnoscale3, fig.cap="Unscaled", fig.height=6, fig.width=8}
 
-pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="none", annotation_colors=ann_colors, border_color="NA", cutree_rows=4)
+pheatmap(datamatrix,show_rownames=TRUE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="none", annotation_colors=ann_colors, border_color="NA", cutree_rows=4, labels_row = rowlabels, fontsize_row = 8)
 ```
 
 \pagebreak
@@ -144,7 +153,7 @@ pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_r
 Scaled by row
 
 ```{r heatmaprowscale3, fig.cap="Row scaled",fig.height=6, fig.width=8}
-pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="row", annotation_colors=ann_colors, border_color="NA", cutree_rows=4 )
+pheatmap(datamatrix,show_rownames=TRUE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="row", annotation_colors=ann_colors, border_color="NA", cutree_rows=4,labels_row = rowlabels, fontsize_row = 8 )
 ```
 
 \pagebreak
@@ -152,6 +161,6 @@ pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_r
 Scaled by column
 
 ```{r heatmapcolumnscale3, fig.cap="Column scaled",fig.height=6, fig.width=8}
-pheatmap(datamatrix,show_rownames=FALSE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="column", annotation_colors=ann_colors, border_color="NA" , cutree_rows=4)
+pheatmap(datamatrix,show_rownames=TRUE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="column", annotation_colors=ann_colors, border_color="NA" , cutree_rows=4,labels_row = rowlabels, fontsize_row = 8)
 ```
- 
+
