@@ -89,19 +89,51 @@ rule extract_somatic:
         """ && S$NA12878$GT!=S$NA24385$GT) && (S$NA24385$GT=="0/0" || S$NA24385$GT=="./.")' | """
         "bgzip -c > {output}"
 
+rule remove_fns:
+    input: "na12878-na24385-somatic.vcf.gz", "calls/NA12878-NA24385-shared_fn_sites.txt"
+    output: "work/na12878-na24385-somatic-nofns.vcf"
+    run:
+        import gzip
+        remove = set([])
+        with open(input[1]) as in_handle:
+            for line in in_handle:
+                chrom, start, ref, alt = line.split()[:4]
+                remove.add((chrom, start, ref, alt))
+        with gzip.open(input[0], "rt") as in_handle:
+            with open(output[0], "wt") as out_handle:
+                for line in in_handle:
+                    passline = True
+                    if not line.startswith("#"):
+                        chrom, start, _, ref, alt = line.split("\t")[:5]
+                        if (chrom, start, ref, alt) in remove:
+                            passline = False
+                    if passline:
+                        out_handle.write(line)
+
+rule prep_remove_fns:
+    input: "work/na12878-na24385-somatic-nofns.vcf"
+    output: "work/na12878-na24385-somatic-nofns.vcf.gz"
+    shell:
+        "bgzip {input} && tabix -p vcf -f {output}"
+
 rule truth_set:
     """Prepare truth set from extracted somatic.
 
     - Converts homozygous ref calls to het, since they'll be hets when mixed with NA24385
       in tumor-like validation set.
     """
-    input: "na12878-na24385-somatic.vcf.gz"
+    input: "work/na12878-na24385-somatic-nofns.vcf.gz"
     output: "na12878-na24385-somatic-truth.vcf.gz"
     shell:
         "bcftools view {input} -s NA12878 -o - | "
         "vt sort -m local -w 10000 - | "
         "sed 's#1/1#0/1#' | bgzip -c > {output} && "
         "tabix -f -p vcf {output}"
+
+rule shared_fn_download:
+    output: "calls/NA12878-NA24385-shared_fn_sites.txt"
+    shell:
+        r"""wget -O - https://s3.amazonaws.com/bcbio/giab/AJTrio/NA12878-NA24385-shared_fn_sites.txt > {output}"""
 
 rule callable_regions_na24385:
     output: "calls/na24385-callable.bed"
