@@ -6,8 +6,6 @@ output:
     highlight: zenburn
     theme.chooser: FALSE
     highlight.chooser: FALSE
-
-
 ---
 
 ```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
@@ -65,12 +63,7 @@ Working directories, files and other variables necessary to the analysis.
 ```{r load}
 
 ## Setup Data and Results directory variables
-if(file.exists("/Volumes/orch/group_dir2/kobzik-rbss/Kobzik-rbbs/")){
-  baseDir="/Volumes/orch/group_dir2/kobzik-rbss/Kobzik-rbbs/"
-    } else if (file.exists("/Users/johnhutchinson/Work/projects/kobzik-rrbs/")){
-    baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
-    } 
-#/Users/andreassjodin/hbc-projects/orchestra/Kobzik-rbbs/data/bed
+baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
 
 dataDir <- file.path(baseDir, "data/bed")
 metaDir <- file.path(baseDir, "meta")
