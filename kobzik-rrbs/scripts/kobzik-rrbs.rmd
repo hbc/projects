@@ -53,6 +53,9 @@ library(ggplot2)
 library(CHBUtils)
 library(RColorBrewer)
 library(pheatmap)
+
+library(devtools)
+install_git("https://github.com/druvus/methylKit")
 library(methylKit)
 library(dplyr)
 ```
@@ -183,22 +186,23 @@ manhattan.plot <- function(x, main="", col= c("red", "blue"), cutoff = 3, ymax=N
   values(gr.dm)$pvalue[values(gr.dm)$pvalue > ymax] <- Inf
   plotGrandLinear(gr.dm, aes(y = pvalue), color = col, cutoff = cutoff, cutoff.color = "blue", cutoff.size = 0.2, main=main, ylim=ylim)
 }
-
-
-
-
 ```
 
 # Preperations
 
 ## Import Data and Metadata
 
+Previous analyses identified sample 14-b1-cntr as an outlier so it was not used for this analysis.
+
 ### Metadata
 
 Code needed to load metadata
 
+
 ```{r metadataload, bootstrap.show.output=TRUE}
 metadata <- read.table(file.path(metaDir, "meta.txt"),sep="\t",header=T)
+# drop male sample
+metadata <- metadata[-grep("14-b1-cntr", metadata$samplename),]
 
 metadata.out <- metadata[,c("samplename", "exposure", "type" ,"cohort", "generation")]
 kable(metadata.out)
@@ -209,17 +213,12 @@ kable(metadata.out)
 Code needed to load methylation data
 
 ```{r dataload}
+filelist10 <- paste("cpg", metadata$sampleid, "mincov10.txt", sep=".")
+
+testdata <- ifelse(metadata$generation=="cntr", 1, 0)
+
 setwd(dataDir)
-filelist10 <- dir(pattern="cpg")
-testdata <- rep(0, length(metadata$generation))
-testdata[metadata$generation == "cntr"] <-1
-
-sample.order <- order(as.numeric(unlist(lapply(strsplit(filelist10, "\\."), function(x) x[2]))))
-filelist10 <- filelist10[sample.order]
-
 meth.quants <- read(as.list(filelist10), sample.id=as.list(as.character(metadata$samplename)),  assembly="mm10", treatment=testdata, context="CpG" )
-
-
 
 
 #batch 1
@@ -343,6 +342,8 @@ meth.quants.b1F3.filtered.merged <- unite(meth.quants.b1F3.filtered.norm, destra
 meth.quants.b2F1.filtered.merged <- unite(meth.quants.b2F1.filtered.norm, destrand = TRUE)
 meth.quants.b2F2.filtered.merged <- unite(meth.quants.b2F2.filtered.norm, destrand = TRUE)
 meth.quants.b2F3.filtered.merged <- unite(meth.quants.b2F3.filtered.norm, destrand = TRUE)
+
+save.image(file=file.path(baseDir, "RDATA.filtered.normalized.united"))
 ```
 
 ### Sample correlations
@@ -385,13 +386,24 @@ Overview of all included samples
 PCASamples(meth.quants.filtered.merged)
 ```
 
-Sample 14-b1-cntr is regarded as an outlier and removed from the analysis. 
+
+There does appear to be some level of batch effect in the data, as generally speaking the individual samples cluster with each other and the pooled samples cluster with each other.
 
 
-```{dropoutlier}
+This is highly evident when you look at hypo and hyper methylated regions for the individual batches in the previous results. Though this might also be due each batch (and genearation) being treated separately i.e. they could be looking at different sites. How does the data look if you only split up the samples after filtering, normalization and unification?
 
+```{r newbatches}
 
+#batch 1
+meth.quants.b1F1.filtered.merged.new <- reorganize(meth.quants.filtered.merged ,sample.ids=c("15-b1-cntr", "16-b1-cntr", "17-b1-cntr", "1-b1-F1", "2-b1-F1", "3-b1-F1", "4-b1-F1"), treatment=c(0,0,0,1,1,1,1) )
+meth.quants.b1F2.filtered.merged.new <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "15-b1-cntr", "16-b1-cntr", "17-b1-cntr",  "5-b1-F2", "6-b1-F2", "7-b1-F2", "8-b1-F2"), treatment=c(0,0,0,1,1,1,1) )
+meth.quants.b1F3.filtered.merged.new <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "15-b1-cntr", "16-b1-cntr", "17-b1-cntr",  "10-b1-F3", "11-b1-F3", "12-b1-F3", "13-b1-F3"), treatment=c(0,0,0,1,1,1,1) )
 
+#batch 2
+meth.quants.b2F1.filtered.merged.new <- reorganize(meth.quants.filtered.merged  ,sample.ids=c("123-b2-cntr","124-b2-cntr", "125-b2-cntr", "126-b2-cntr", "60-b2-F1", "61-b2-F1", "62-b2-F1", "63-b2-F1"), treatment=c(0,0,0,0,1,1,1,1) )
+meth.quants.b2F2.filtered.merged.new <- reorganize(meth.quants.filtered.merged  ,sample.ids=c("123-b2-cntr","124-b2-cntr", "125-b2-cntr", "126-b2-cntr", "90-b2-F2", "91-b2-F2", "92-b2-F2", "93-b2-F2"), treatment=c(0,0,0,0,1,1,1,1) )
+meth.quants.b2F3.filtered.merged.new <- reorganize(meth.quants.filtered.merged  ,sample.ids=c("123-b2-cntr","124-b2-cntr", "125-b2-cntr", "126-b2-cntr", "119-b2-F3", "120-b2-F3", "121-b2-F3", "122-b2-F3"), treatment=c(0,0,0,0,1,1,1,1) )
+```
 
 
 __Per batch and generation__
@@ -410,9 +422,18 @@ p4 <- PCASamples(meth.quants.b2F1.filtered.merged, main="Batch 2 - F1 & control"
 p5 <- PCASamples(meth.quants.b2F2.filtered.merged, main="Batch 2 - F2 & control")
 p6 <- PCASamples(meth.quants.b2F3.filtered.merged, main="Batch 2 - F3 & control")
 
-grid.arrange(p1,p4,p2,p5,p3,p6 , ncol=2)
-```
 
+p7 <- PCASamples(meth.quants.b1F1.filtered.merged.new, main="Batch 1 - F1 & control - new")
+p8 <- PCASamples(meth.quants.b1F2.filtered.merged.new, main="Batch 1 - F2 & control - new")
+p9 <- PCASamples(meth.quants.b1F3.filtered.merged.new, main="Batch 1 - F3 & control - new")
+
+#batch 2
+p10 <- PCASamples(meth.quants.b2F1.filtered.merged.new, main="Batch 2 - F1 & control - new")
+p11 <- PCASamples(meth.quants.b2F2.filtered.merged.new, main="Batch 2 - F2 & control - new")
+p12 <- PCASamples(meth.quants.b2F3.filtered.merged.new, main="Batch 2 - F3 & control - new")
+
+grid.arrange(p1,p7,p4,p10,p2,p8,p5,p11,p3,p9,p6,p12 , ncol=2)
+```
 
 ## Differential methylation                           
 
@@ -434,32 +455,16 @@ b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1.filtered.merged,slim=TRUE,  
 b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
 b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
 
-```
+b1F1.diffMeth.new <- calculateDiffMeth(meth.quants.b1F1.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b1F2.diffMeth.new <- calculateDiffMeth(meth.quants.b1F2.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b1F3.diffMeth.new <- calculateDiffMeth(meth.quants.b1F3.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
 
+#batch2
+b2F1.diffMeth.new <- calculateDiffMeth(meth.quants.b2F1.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b2F2.diffMeth.new <- calculateDiffMeth(meth.quants.b2F2.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b2F3.diffMeth.new <- calculateDiffMeth(meth.quants.b2F3.filtered.merged.new,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
 
-```{r fisher}
-# pooled.methylBase <- pool(meth.quants.filtered.merged,sample.ids=c("control","F1"))
-# my.diffMeth=calculateDiffMeth(pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# #batch1
-# b1F1.pooled.methylBase <- pool(meth.quants.b1F1.filtered.merged,sample.ids=c("control","F1"))
-# b1F1.diffMeth <- calculateDiffMeth(b1F1.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# b1F2.pooled.methylBase <- pool(meth.quants.b1F2.filtered.merged,sample.ids=c("control","F2"))
-# b1F2.diffMeth <- calculateDiffMeth(b1F2.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# b1F3.pooled.methylBase <- pool(meth.quants.b1F3.filtered.merged,sample.ids=c("control","F2"))
-# b1F3.diffMeth <- calculateDiffMeth(b1F3.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# #batch2
-# b2F1.pooled.methylBase <- pool(meth.quants.b2F1.filtered.merged,sample.ids=c("control","F1"))
-# b2F1.diffMeth <- calculateDiffMeth(b2F1.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# b2F2.pooled.methylBase <- pool(meth.quants.b2F2.filtered.merged,sample.ids=c("control","F2"))
-# b2F2.diffMeth <- calculateDiffMeth(b2F2.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
-# 
-# b2F3.pooled.methylBase <- pool(meth.quants.b2F3.filtered.merged,sample.ids=c("control","F2"))
-# b2F3.diffMeth <- calculateDiffMeth(b2F3.pooled.methylBase,slim=TRUE,  weighted.mean=TRUE,num.cores=3)
+save.image(file=file.path(baseDir, "RDATA.filtered.normalized.united-diffs"))
 
 ```
 
