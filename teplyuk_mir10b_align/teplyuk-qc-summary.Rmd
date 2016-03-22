@@ -1,0 +1,180 @@
+---
+output:
+  knitrBootstrap::bootstrap_document:
+    title: "Krichevsky RNA-seq"
+    theme: readable
+    highlight: zenburn
+    theme.chooser: FALSE
+    highlight.chooser: FALSE
+
+
+---
+
+```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
+project="Krichevsky RNA-seq"
+clientname="Nadiya Teplyuk"
+clientemail=""
+labPI="Anna Krichevsky"
+lablocation=""
+analystname="Mary Piper"
+analystemail="piper@hsph.harvard.edu"
+
+```
+
+
+```{r knitrsetup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", bootstrap.show.code=FALSE, bootstrap.show.output=FALSE, bootstrap.thumbnail.size="col-md-10", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 8, fig.height = 8)
+
+```
+
+
+---
+
+# Krichevsky RNA-seq
+
+RNA-seq analysis for  `r clientname`, `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Overview
+
+```{r qc-setup}
+library(ggplot2)
+library(reshape)
+library(gplots)
+library(CHBUtils)
+project_summary = "project-summary.csv"
+counts_file = "combined.counts"
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+"#0072B2", "#D55E00", "#CC79A7")
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
+counts = counts[, order(colnames(counts))]
+# this is a list of all non user-supplied metadata columns that could appear
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
+    "rRNA.rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate",
+    "Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped",
+    "rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.",
+    "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
+    "complexity", "X5.3.bias")
+```
+
+# Quality control metrics
+
+## Mapped reads
+```{r mapped-plot}
+ggplot(summarydata, aes(x=Name, y=Mapped)) +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    geom_bar(stat="identity") +
+    ylab("mapped reads") + xlab("")
+```
+
+## Genomic mapping rate
+```{r mapping-rate-plot}
+ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
+    geom_bar(stat="identity") +
+    ylab("mapping rate") + xlab("") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90))
+```
+
+## Unique mapping rate
+```{r unique-rate-plot}
+dd = data.frame(Name=names(counts), Unique=colSums(counts), Mapped=summarydata[,"Mapped"])
+ggplot(dd, aes(x=Name, y=Unique/Mapped)) +
+    geom_bar(stat="identity") +
+    ylab("unique mapping rate") + xlab("") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90))
+```
+
+## Number of genes detected
+```{r genes-detected-plot}
+dd = data.frame(Name=names(counts), Genes.Detected = colSums(counts > 0))
+ggplot(dd, aes(x=Name, y=Genes.Detected)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("")
+```
+
+## Exonic mapping rate
+```{r exonic-mapping-plot}
+ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("exonic mapping rate") + xlab("")
+```
+
+## rRNA mapping rate
+```{r rRNA-rate-plot}
+ggplot(summarydata, aes(x=Name, y=rRNA.rate)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("rRNA rate") + xlab("")
+```
+
+---
+
+# Mapping visualizations
+
+## **By Sample**
+
+## Alignments to the entire HOXD region - by sample: 
+![HOXD reads by sample](Images/HOXD_genes_all_controls.png)
+   
+   
+##### H_Ast and H_Ng cell lines had very little coverage over the entire HOXD region and did not have any reads mapping around MIR10B. Therefore, these two cell lines were not included as separate rows for the following visualizations looking more closely at the surroundings of the MIR10B gene:   
+   
+## Area surrounding MIR10B gene - by sample:
+![Surrounding MIR10B](Images/MIR10B_full_display.png)
+
+## Alignments to primer pair range - by sample:
+
+### pm1
+![pm1](Images/Primers/pm1_by_sample.png)
+
+### pm2
+![pm2](Images/Primers/pm2_by_sample.png)
+
+### pm3
+![pm3](Images/Primers/pm3_by_sample.png)
+
+### pm4
+![pm4](Images/Primers/pm4_by_sample.png)
+
+### pm5
+![pm5](Images/Primers/pm5_by_sample.png)
+
+### ht1
+![ht1](Images/Primers/ht1_by_sample.png)
+
+### entire primer range
+![primer_range](Images/Primers/full_primer_range_by_sample.png)
+
+
+## **Alignment of merged reads from all samples (including H_Ast and H_Ng cell lines)**
+
+## Alignments to the entire HOXD region - merged:
+![HOXD reads](Images/HOXD_genes_merged.png)
+
+## Area surrounding MIR10B gene - merged:
+![Surrounding MIR10B merged](Images/MIR10B_full_display_merged.png)
+

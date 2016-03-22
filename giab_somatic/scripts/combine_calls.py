@@ -5,8 +5,9 @@ import collections
 import gzip
 import sys
 
-def main(in_file):
-    out_file = "%s-cleaned.vcf" % in_file.replace(".vcf.gz", "")
+def main(in_file, out_file=None):
+    if not out_file:
+        out_file = "%s-cleaned.vcf" % in_file.replace(".vcf.gz", "")
     caller_count = collections.defaultdict(int)
     with gzip.open(in_file) as in_handle:
         with open(out_file, "w") as out_handle:
@@ -27,8 +28,8 @@ def main(in_file):
                     if final_call:
                         for caller in callers:
                             caller_count[caller] += 1
-                        #parts[0] = chrom_to_hg19(parts[0])
-                        #parts[7] += ";CALLERS=%s" % ",".join(callers)
+                        # parts[0] = chrom_to_hg19(parts[0])
+                        # parts[7] += ";CALLERS=%s" % ",".join(callers)
                         out = parts[:9] + [final_call]
                         out_handle.write("\t".join(out) + "\n")
     print dict(caller_count)
@@ -40,24 +41,24 @@ def chrom_to_hg19(chrom):
         return "chr%s" % chrom
 
 def extract_tumor_calls(parts, tumor_is):
-    calls = []
+    calls = collections.defaultdict(int)
     callers = []
     for i, caller in tumor_is:
         gt = parts[i].split(":")[0]
         if gt != "./.":
-            calls.append(parts[i])
+            calls[parts[i]] += 1
             callers.append(caller)
     if len(calls) > 0:
-        return calls[0], callers
+        return sorted([(n, c) for c, n in calls.items()], reverse=True)[0][1], callers
     else:
         return None, None
 
 def get_tumor_indexes(line):
-    tumors = ["TUMOR", "24385-12878-30-200"]
+    tumors = ["TUMOR", "24385-12878-30-200", "24385-12878-30-200T"]
     parts = line.strip().split("\t")
     format_i = parts.index("FORMAT")
     out = []
-    for i, p in enumerate(parts[format_i+1:]):
+    for i, p in enumerate(parts[format_i + 1:]):
         base, caller = p.split(".")
         if base in tumors:
             out.append((format_i + i + 1, caller))
@@ -65,4 +66,3 @@ def get_tumor_indexes(line):
 
 if __name__ == "__main__":
     main(*sys.argv[1:])
-
