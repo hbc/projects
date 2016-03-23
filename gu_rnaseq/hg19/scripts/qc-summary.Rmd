@@ -1,54 +1,58 @@
 ---
-  html_document:
-    toc: true
-    highlight: zenburn
-    theme: united
+title: "hg19 RNAseq alignment and QC"
+author: John Hutchinson
+date: March 23, 2016
+output: html_document
 ---
 
+
 ```{r setup, echo=FALSE}
-knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
-               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
-               message=FALSE, prompt=TRUE, comment='', fig.cap='')
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,message=FALSE, prompt=TRUE, comment='', fig.cap='', echo=FALSE)
+
 ```
 
 # Overview
+
+Here I aligned all the samples against the hg19 build of the human transcriptome. By comparing these result to the prior mm10 results, we can get more information about what went wrong with the LE2, LE3 and LE4 samples.
 
 ```{r check-library-functions, echo=FALSE}
 check_install = function(packages) {
    not_installed = setdiff(packages, rownames(installed.packages()))
    if(length(not_installed) > 0) {
-      write(paste("The libraries", not_installed, "are not installed, aborting.",
-                   sep=" "), stdout())
+      write(paste("The libraries", not_installed, "are not installed, aborting.",sep=" "), stdout())
       stop()
    }
 }
 ```
 
 ```{r load-libraries, echo=FALSE}
-packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap",
-              "DESeq2", "tximport", "logging", "DT")
+packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "logging", "DT", "gridExtra")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
 ```
 
 ```{r qc-setup}
 basicConfig()
-project_summary = "/n/data1/cores/bcbio/gu_rnaseq/project_hg19/final/2016-03-21_project_hg19/project-summary.csv"
-counts_file = "/n/data1/cores/bcbio/gu_rnaseq/project_hg19/final/2016-03-21_project_hg19/combined.counts"
-tx2genes_file = "/n/data1/cores/bcbio/gu_rnaseq/project_hg19/final/2016-03-21_project_hg19/tx2gene.csv"
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-"#0072B2", "#D55E00", "#CC79A7")
+
+if(file.exists("/Volumes/orch/projects/gu_rnaseq/hg19")){
+  baseDir <- "/Volumes/orch/projects/gu_rnaseq/hg19"
+} else {
+  baseDir <- "/Users/johnhutchinson/Work/projects/gu_rnaseq/hg19"
+}
+project_summary = file.path(baseDir, "results/final/2016-03-21_project_hg19/project-summary.csv")
+counts_file = file.path(baseDir, "results/final/2016-03-21_project_hg19/combined.counts")
+tx2genes_file = file.path(baseDir, "results/final/2016-03-21_project_hg19/tx2gene.csv")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
 summarydata$Name = rownames(summarydata)
 summarydata = summarydata[order(summarydata$Name),]
+
 if (file.exists(tx2genes_file)) {
   loginfo("Using gene counts calculated from the Sailfish transcript counts.")
-  sf_files = file.path("..", "..", rownames(summarydata), "sailfish",
-                      rownames(summarydata), "quant.sf")
+  sf_files = file.path(baseDir, "results/work/sailfish", rownames(summarydata), "quant.sf")
   names(sf_files) = rownames(summarydata)
   tx2gene = read.table(tx2genes_file, sep=",", row.names=NULL, header=FALSE)
-  txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
-                        reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
+  txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene, reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
   counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
 } else {
   loginfo("Using gene counts calculated from featureCounts.")
@@ -109,370 +113,94 @@ heatmap_fn = get_heatmap_fn(summarydata)
 qualimap_run = "Mapped" %in% colnames(summarydata)
 ```
 
-## Mapped reads
+
 ```{r mapped-plot, eval=qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped)) +
+p1 <- ggplot(summarydata, aes(x=Name, y=Mapped)) +
     theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"), axis.text.x = element_text(angle=90)) +
     geom_bar(stat="identity") +
-    ylab("mapped reads") + xlab("")
+    ylab("mapped reads") + xlab("") + 
+  ggtitle("Mapped reads")
 ```
 
-```{r mapped-plot-noqualimap, eval=!qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads)) +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    geom_bar(stat="identity") +
-    ylab("mapped reads") + xlab("")
-```
 
-## Genomic mapping rate
 ```{r mapping-rate-plot, eval=qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
+p2 <- ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
     geom_bar(stat="identity") +
     ylab("mapping rate") + xlab("") +
     theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90))
+    theme(panel.grid.major = element_line(size = .5, color = "grey"), axis.text.x = element_text(angle=90)) + 
+  ggtitle("Genomic mapping rate")
 ```
 
-```{r mapping-rate-plot-noqualimap, eval=!qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads.pct)) +
-    geom_bar(stat="identity") +
-    ylab("mapping rate") + xlab("") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90))
-```
 
-## Number of genes detected
 ```{r genes-detected-plot}
 dd = data.frame(Name=colnames(counts), Genes.Detected = colSums(counts > 0))
-ggplot(dd, aes(x=Name, y=Genes.Detected)) +
+p3 <- ggplot(dd, aes(x=Name, y=Genes.Detected)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("genes detected") + xlab("")
+    theme(panel.grid.major = element_line(size = .5, color = "grey"), axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("") +
+  ggtitle("Number of genes detected")
 ```
 
-## Gene detection saturation
-```{r saturation-plot}
-dd = data.frame(Mapped=summarydata$Mapped, Genes.Detected = colSums(counts > 0))
-ggplot(dd, aes(x=Mapped, y=Genes.Detected)) +
-    geom_point() +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("genes detected") + xlab("reads mapped")
+```{r plot1, out.width='100%'}
+grid.arrange(p1,p2,p3, nrow=2, ncol=2)
 ```
 
-## Exonic mapping rate
+###The number of mapped reads, genomic mapping rate and number of genes detected all support samples LE2, LE3 and LE4 being strongly contaminated with human genetic material.
+
+---
+
+
 ```{r exonic-mapping-plot, eval="Exonic.Rate" %in% colnames(summarydata)}
-ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
+p1 <- ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=90)) +
-    ylab("exonic mapping rate") + xlab("")
+    ylab("exonic mapping rate") + xlab("") + ggtitle("Exonic mapping rate")
 ```
 
-## rRNA mapping rate
+
+```{r intronic-mapping-plot, eval="Intronic.Rate" %in% colnames(summarydata)}
+p2 <- ggplot(summarydata, aes(x=Name, y=Intronic.Rate)) +
+  geom_bar(stat="identity")+
+  theme_bw(base_size=10) +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"), axis.text.x = element_text(angle=90)) +
+  ylab("intronic mapping rate") + 
+  xlab("") + ggtitle("Intronic mapping rate")
+```
+
+
+```{r intergenic-mapping-plot, eval="Intergenic.Rate" %in% colnames(summarydata)}
+p3 <- ggplot(summarydata, aes(x=Name, y=Intergenic.Rate)) +
+  geom_bar(stat="identity")+
+  theme_bw(base_size=10) +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"), axis.text.x = element_text(angle=90)) +
+  ylab("intergenic mapping rate") + 
+  xlab("") + ggtitle("Intergenic mapping rate")
+```
+
+
+```{r plot2, out.width='100%'}
+grid.arrange(p1,p2,p3, nrow=2, ncol=2)
+```
+
+###The exonic, intronic and intergenic mapping rates all support the hypothesis that samples LE2, LE3 and LE4 were contaminated with human RNA, not DNA. If the contamination were DNA, you'd expect to see an even distribution of reads between exons, introns and intergenic regions instead of the majority mapping to exons.
+
+
 ```{r check-rRNA-eval}
 eval_rRNA = "rRNA_rate" %in% colnames(summarydata) & !sum(is.na(summarydata$rRNA_rate)) == nrow(summarydata)
 ```
-```{r rRNA-rate-plot, eval=eval_rRNA}
+
+```{r rRNA-rate-plot, eval=eval_rRNA, out.width='50%'}
 ggplot(summarydata, aes(x=Name, y=rRNA_rate)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=90)) +
-    ylab("rRNA rate") + xlab("")
+    ylab("rRNA rate") + xlab("") + ggtitle("rRNA mapping rate")
 ```
 
-## Estimated fragment length of paired-end reads
-```{r fragment-length-plot, eval="Fragment.Length.Mean" %in% colnames(summarydata)}
-ggplot(summarydata, aes(x=Name, y=Fragment.Length.Mean)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("fragment length") + xlab("")
-```
-
-## Boxplot of log10 counts per gene
-```{r boxplot-raw}
-melted = melt(counts)
-colnames(melted) = c("sample", "count")
-melted$sample = factor(melted$sample)
-melted = melted[order(melted$sample),]
-melted$count = log(melted$count)
-ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) + xlab("")
-```
-
-## Boxplot of log10 TMM-normalized counts per gene
-Trimmed mean of M-values (TMM) normalization is described
-[here](http://genomebiology.com/2010/11/3/R25)
-
-Robinson, M. D., & Oshlack, A. (2010). A scaling normalization method for differential expression analysis of RNA-seq data. Genome Biology, 11(3). doi:10.1186/gb-2010-11-3-r25
-
-```{r boxplot-normalized}
-y = DGEList(counts=counts)
-y = calcNormFactors(y)
-normalized_counts = cpm(y, normalized.lib.sizes=TRUE)
-melted = melt(normalized_counts)
-colnames(melted) = c("gene", "sample", "count")
-melted$sample = factor(melted$sample)
-melted = melted[order(melted$sample),]
-melted$count = log(melted$count)
-ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) + xlab("")
-```
-
-## Density of log10 TMM-normalized counts
-```{r density-normalized}
-ggplot(melted, aes(x=count, group=sample)) +
-    geom_density() +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) + xlab("")
-```
-
-## Correlation (Pearson) heatmap of TMM-normalized counts
-```{r pearson-heatmap-normalized, eval=ncol(counts) > 1}
-heatmap_fn(cor(normalized_counts, method="pearson"))
-```
-
-## Correlation (Spearman) heatmap of TMM-normalized counts
-```{r spearman-heatmap-normalized, eval=ncol(counts) > 1}
-heatmap_fn(cor(normalized_counts, method="spearman"))
-```
-
-## PCA plot
-```{r pca, eval=ncol(counts) > 1}
-dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~Name)
-vst = varianceStabilizingTransformation(dds)
-plotPCA(vst, intgroup=c("Name"))
-```
-
-## Heatmap by concordance correlation coefficient
-http://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1004075
-
-```{r propcor-heatmap, eval=ncol(counts) > 1}
-propcor = function(x, y) {
-    x = log(x + 0.1)
-    y = log(y + 0.1)
-    num = 2 * cov(x, y)
-    denom = var(x) + var(y)
-return(num/denom)}
-
-do_propcor = function(x) {
-     mat = list()
-     for(i in seq_len(ncol(x))) {
-         for(j in seq_len(ncol(x))) {
-        x2 = x[, i]
-        y2 = x[, j]
-        mat = c(mat, propcor(x2, y2)) } }
-    mat = unlist(mat)
-    mat = matrix(mat, ncol(x), ncol(x))
-    colnames(mat) = colnames(x)
-    rownames(mat) = colnames(x)
-    return(mat)}
-
-heatmap_fn(do_propcor(normalized_counts))
-```
-```{r deseq2-tximport-helper-functions}
-# snagged from development version of DESeq
-DESeqDataSetFromTximport <- function(txi, colData, design, ...)
-{
-  counts <- round(txi$counts)
-  mode(counts) <- "integer"
-  dds <- DESeqDataSetFromMatrix(countData=counts, colData=colData, design=design, ...)
-  stopifnot(txi$countsFromAbundance %in% c("no","scaledTPM","lengthScaledTPM"))
-  if (txi$countsFromAbundance %in% c("scaledTPM","lengthScaledTPM")) {
-    message("using length scaled TPM counts from tximport")
-  } else {
-    message("using counts and average transcript lengths from tximport")
-    lengths <- txi$length
-    dimnames(lengths) <- dimnames(dds)
-    assays(dds)[["avgTxLength"]] <- lengths
-  }
-  return(dds)
-}
-
-subset_tximport = function(txi, rows, columns) {
-    txi$counts = txi$counts[rows, columns]
-    txi$abundance = txi$abundance[rows, columns]
-    txi$length = txi$length[rows, columns]
-    return(txi)
-}
-```
-
-```{r de-setup}
-library(DEGreport)
-library(vsn)
-design = ~day+sampletype
-condition = "sampletype"
-```
-
-# Differential expression
-
-```{r deseq2-expression-analysis, results='asis'}
-counts <- counts[rowSums(counts>0)>1,]
-if(exists("txi.salmon")) {
-   loginfo("Using Sailfish gene counts for the DESeq2 model.")
-   txi.salmon = subset_tximport(txi.salmon, rownames(counts), colnames(counts))
-   dds = DESeqDataSetFromTximport(txi.salmon, colData=summarydata, design=design)
-} else {
-  loginfo("Using counts from featureCounts for the DESeq2 model.")
-  dds = DESeqDataSetFromMatrix(countData=counts,
-      colData=summarydata, design = design  )
-}
-geoMeans = apply(counts, 1, function(row) if (all(row == 0)) 0 else
-                 exp(mean(log(row[row != 0]))))
-dds = estimateSizeFactors(dds, geoMeans=geoMeans)
-dds = DESeq(dds)
-```
-
-## Effect of variance stabilization
-
-```{r deseq-diagnostics, results='asis'}
-par(mfrow=c(1,3))
-notAllZero <- (rowSums(counts(dds))>0)
-rld <- rlog(dds)
-vsd <- varianceStabilizingTransformation(dds)
-rlogMat <- assay(rld)
-vstMat <- assay(vsd)
-
-meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))
-meanSdPlot(assay(rld[notAllZero,]))
-meanSdPlot(assay(vsd[notAllZero,]))
-```
-
-## Dispersion estimates
-
-```{r dispersion-estimate}
-plotDispEsts(dds)
-```
-
-```{r deseq2-handler}
-handle_deseq2 = function(dds, summarydata, column) {
-  all_combs = combn(levels(summarydata[,column]), 2, simplify=FALSE)
-  all_results = list()
-  contrast_strings = list()
-  for(comb in all_combs) {
-    contrast_string = paste(comb, collapse=" vs ")
-    contrast = c(column, comb)
-    res = results(dds, contrast=contrast)
-    res = res[order(res$padj),]
-    all_results = c(all_results, res)
-    contrast_strings = c(contrast_strings, contrast_string)
-  }
-  names(all_results) = contrast_strings
-  return(all_results)
-}
-```
-
-## MA-plots
-
-```{r DESeq-output, results='asis'}
-all_results = handle_deseq2(dds, summarydata, condition)
-len = length(all_results)
-nr = ceiling( len / 3 )
-nc = ceiling( len / nr )
-par(mfrow=c(nr,nc))
-for(i in seq(length(all_results))) {
-  plotMA(all_results[[i]])
-  title(paste("MA plot for contrast", names(all_results)[i]))
-}
-```
-
-## Volcano-plots
-
-```{r DESeq-volcano}
-for(i in seq(length(all_results))) {
-  stats = as.data.frame(all_results[[i]][,c(2,6)])
-  p = volcano_density_plot(stats, title=names(all_results)[i], lfc.cutoff=1.5)
-  print(p)
-}
-```
-
-## DEGreport
-
-```{r get-groups}
-get_groups <- function(d, comp, condition)
-{
-  g <- unlist(strsplit(comp," "))
-  g1 <- d$Name[d[, (names(d)==condition)]==g[1]]
-  g2 <- d$Name[d[, (names(d)==condition)]==g[3]]
-  list(g1,g2)
-}
-```
-
-### Pvalues-vs-Mean
-
-Here we plot some information about how the p-values are correlated with the
-mean or the standard deviation.
-
-```{r DEGreport-M}
-plots = list()
-scale_factor = round(1/nr * 14)
-for(i in seq(length(all_results))) {
-  plots[[i]] = degMean(all_results[[i]]$pvalue, rlogMat) +
-  theme_bw(base_size = scale_factor) +
-  ggtitle(paste0("Pvalues-vs-Mean for ", names(all_results)[i]))
-}
-do.call(grid.arrange,plots)
-```
-
-### Pvalues-vs-Variation
-
-```{r DEGreport-V}
-plots = list()
-for(i in seq(length(all_results))) {
-  plots[[i]] = degVar(all_results[[i]]$pvalue, rlogMat) +
-  theme_bw(base_size = scale_factor) +
-  ggtitle(paste0("Pvalues-vs-Variation for ", names(all_results)[i]))
-}
-do.call(grid.arrange,plots)
-```
-
-### Mean-vs-Variation
-```{r DEGreport-MV}
-plots = list()
-for(i in seq(length(all_results))) {
-  g <- get_groups(summarydata, names(all_results)[i], condition)
-  if(length(g[[1]]) < 2 | length(g[[2]]) < 2) {
-     next
-   }
-  plots[[i]] = degMV(g[[1]], g[[2]], all_results[[i]]$pvalue, counts(dds,normalized=TRUE)) +
-  theme_bw(base_size = scale_factor) +
-  ggtitle(paste0("Mean-vs-Variation for ", names(all_results)[i]))
-}
-if(length(plots) > 0) {
-    do.call(grid.arrange,plots)
-}
-```
-
-## Differentially expressed genes
-
-```{r DESeq-tables, results='asis'}
-for(i in seq(length(all_results))) {
-  cat(paste("Lowest adjusted p-value hits for", names(all_results)[i]))
-  out_df = as.data.frame(all_results[[i]])
-  out_df$id = rownames(out_df)
-  out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
-  write.table(out_df, file=paste(names(all_results)[i], ".tsv", sep=""),
-                         quote=FALSE, sep="\t", row.names=FALSE, col.names=TRUE)
-  sig_genes = subset(out_df, padj < 0.05)
-  DT::datatable(sig_genes)
-  cat("\n")
-}
-```
+###The human RNA contamination does not appear to be of rRNA origin
