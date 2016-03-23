@@ -46,7 +46,7 @@ library(gProfileR)
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 
 baseDir <- "~/Work/projects/gu_rnaseq/"
-resultsDir <- file.path(baseDir, "results")
+resultsDir <- file.path(baseDir, "results/final/2016-02-16_project/report/results")
 ```
 
 ---
@@ -162,7 +162,7 @@ output <- annotate_df(row2colnames(counts(dds, normalize=FALSE), "ensemblid"),'e
 write.csv(output, file.path(resultsDir, "raw_counts.csv"))
 ```
 
-**[Raw Counts](../results/raw_counts.csv)**
+**[Raw Counts](../results/final/2016-02-16_project/report/results/raw_counts.csv)**
 
 DESeq2 normalizes for library size differences between samples.
 
@@ -171,7 +171,7 @@ output <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'en
 write.csv(output, file.path(resultsDir, "normalized_counts.csv"))
 ```
 
-**[Normalized Counts](../results/normalized_counts.csv)**
+**[Normalized Counts](../results/final/2016-02-16_project/report/results/normalized_counts.csv)**
 
 
 *From the [Bioconductor DE analysis page0(http://www.bioconductor.org/help/workflows/rnaseqGene/#eda)*
@@ -186,7 +186,7 @@ output <- annotate_df(row2colnames(assay(rld), "ensemblid"),'ensemblid', 'mmuscu
 write.csv(output, file.path(resultsDir, "normalized_variance_stabilized_counts.csv"))
 ```
 
-**[Normalized, Variance Stabilized,  Counts](../results/normalized_variance_stabilized_counts.csv)**
+**[Normalized, Variance Stabilized,  Counts](../results/final/2016-02-16_project/report/results/normalized_variance_stabilized_counts.csv)**
 
 ---
 
@@ -218,7 +218,7 @@ results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid
 write.csv(results.df.annot, file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
 ```
 
-**[Statisitics for ALL genes](../results/DESeq2_statistics_all_genes.csv)**
+**[Statisitics for ALL genes](../results/final/2016-02-16_project/report/results/DESeq2_statistics_all_genes.csv)**
 
 ## Volcano plots
 
@@ -263,7 +263,7 @@ datatable(DEresults.df.annot, rownames=FALSE)
 write.csv(DEresults.df.annot, file.path(resultsDir, "DESeq2_statistics_DE_genes.csv"))
 ```
 
-**[Statisitics for Differentially Expressed genes](../results/DESeq2_statistics_DE_genes.csv)**
+**[Statisitics for Differentially Expressed genes](../results/final/2016-02-16_project/report/results/DESeq2_statistics_DE_genes.csv)**
 
 ### Heatmap of top Differentially Expressed genes
 
@@ -366,4 +366,4 @@ source(mytempfile)
 ```
 
 
-**[Gene Ontology results](../results/GOresults.csv)**
+**[Gene Ontology results](../results/final/2016-02-16_project/report/results/GOresults.csv)**

@@ -35,7 +35,7 @@ library(pheatmap)
 library(DESeq2)
 library(biomaRt)
 baseDir <- "~/Work/projects/gu_rnaseq/"
-resultsDir <- file.path(baseDir, "results")
+resultsDir <- file.path(baseDir, "results/final/2016-02-16_project/report/results")
 
 project_summary = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/project-summary.csv"
 counts_file = "~/Work/projects/gu_rnaseq/results/final/2016-02-16_project/combined.counts"
@@ -365,7 +365,7 @@ output <- annotate_df(output, 'ensemblid', 'mmusculus_gene_ensembl', "ensembl_ge
 write.csv(output, file.path(resultsDir,"normalized_variance_stabilized_counts_without_rRNA.csv" ))
 ```
 
-**[Normalized Variance Stabilized counts without rRNA](../results/normalized_variance_stabilized_counts_without_rRNA.csv)**
+**[Normalized Variance Stabilized counts without rRNA](../results/final/2016-02-16_project/report/results/normalized_variance_stabilized_counts_without_rRNA.csv)**
 
 # Exploring Genes of Interest
 
