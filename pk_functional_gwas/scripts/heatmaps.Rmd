@@ -5,6 +5,7 @@ output:
 ---
 
 ```{r setupstate, echo=FALSE}
+# some code for controlling report output
 library(knitr)
 opts_chunk$set(tidy=TRUE, cache=FALSE,  highlight=TRUE, figalign="center", echo=FALSE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
 options(width=200)
@@ -12,11 +13,10 @@ options(width=200)
 
 
 ```{r libraries, results='hide', message=FALSE, warning=FALSE, warning=FALSE}
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(pheatmap)
-library(RColorBrewer)
+library(dplyr) # makes data manipulation easy
+library(readr) # file import
+library(pheatmap) # great heatmap library
+library(RColorBrewer) # nice color palettes
 ```
 
 
@@ -26,13 +26,16 @@ baseDir <- "/Users/johnhutchinson/Work/projects/pk_functional_gwas/"
 dataDir <- file.path(baseDir, "data")
 resultsDir <- file.path(baseDir, "results")
 metaDir <- file.path(baseDir, "meta")
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000")
+# nice palette to use for nine categories (from here: http://www.r-bloggers.com/the-paul-tol-21-color-salute/)
+tol9qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255", "#AA4499")
 ```
 
 
 ```{r import}
+# grab the data from the files Pete shared
+# combine them to get the cell group annotations
 metadata <- read_csv(file.path(dataDir, "results.oaat.overall.sci.csv"))
-metadata <- select(metadata, i, cell_type, Group_2)
+metadata <- dplyr::select(metadata, i, cell_type, Group_2)
 
 
 data <- read_delim(file.path(dataDir, "final.17trait.3BC.4IDs.txt"), delim="\t")
@@ -43,26 +46,32 @@ data <- dplyr::inner_join(metadata, data, by=c("i", "cell_type"))
 ## Subsetting to the H3K27ac marks, splitting the heatmap by cluster
 
 
-```{r heatmapsetup2}
+```{r heatmapsetup}
+# grabbing subset of data and setting up the annotations
+
+# fun with dplyr
+# subset to only one mark and dump to a matrix
 subset.data <- filter(data, Mark=="H3K27ac")
-datamatrix <- as.data.frame( select(subset.data, -cell_type, -Mark, -i, -Group_2, -Name))
+datamatrix <- as.data.frame( dplyr::select(subset.data, -cell_type, -Mark, -i, -Group_2, -Name))
+# have to match rownames to match the annotations to get pheatmap to work, defaults don;t work for some reason, have to be set
 row.names(datamatrix) <- seq(1:nrow(datamatrix))
 
+# settingp up the annotations
 annotations <- as.data.frame(select(subset.data, Group_2))
+## set matching rownames to the actual data
 row.names(annotations) <- seq(1:nrow(datamatrix))
+# change the column title as pheatmap displays text from here on the plot
 names(annotations) <- c("Cell\ Type")
+## specify colors for each annotation category, number of colors must match the number of annotation categories 
+celltype_colors <- tol9qualitative
+names(celltype_colors) <- unique(unlist(annotations$`Cell\ Type`))
+ann_colors = list(`Cell\ Type` = celltype_colors)
+
 
 rowlabels <- as.data.frame(select(subset.data, cell_type))
 rowlabels <- as.vector(rowlabels$cell_type)
 rowlabels <- gsub("_", " ", rowlabels)
 
-tol9qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#999933", "#DDCC77", "#CC6677", "#882255", "#AA4499")
-
-# Specify colors
-# heatmap annotation colors
-celltype_colors <- tol9qualitative
-names(celltype_colors) <- unique(unlist(annotations$`Cell\ Type`))
-ann_colors = list(`Cell\ Type` = celltype_colors)
 ```
 
 ## 4 clusters
@@ -70,8 +79,31 @@ ann_colors = list(`Cell\ Type` = celltype_colors)
 Unscaled
 
 ```{r heatmapnoscale4, fig.cap="Unscaled", fig.height=6, fig.width=8}
-
-pheatmap(datamatrix,show_rownames=TRUE,annotation_row=annotations, treeheight_row = 0, treeheight_col = 0,  color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100), annotation_legend=TRUE, fontsize_col=10, legend=TRUE, scale="none", annotation_colors=ann_colors, border_color="NA", cutree_rows=4, labels_row = rowlabels, fontsize_row = 8)
+pheatmap(datamatrix,
+         # how many clusters to split heatmap up by
+         cutree_rows=4, 
+         # setting row options
+         show_rownames=TRUE,
+         labels_row = rowlabels, 
+         fontsize_row = 8,
+         # dendrogram options
+         treeheight_row = 0,
+         treeheight_col = 0, 
+         # annotation options
+         annotation_row=annotations, 
+         annotation_legend=TRUE, 
+         annotation_colors=ann_colors, 
+         # palette for heatmap
+         color=colorRampPalette((brewer.pal(n = 11, name="RdBu")))(100),
+         # column options
+         fontsize_col=10, 
+         # show the legend?
+         legend=TRUE, 
+         # how to scale the data
+         scale="none",
+         # don't put outline arroudn heatmap cells
+         border_color="NA"
+)
 ```
 
 \pagebreak
