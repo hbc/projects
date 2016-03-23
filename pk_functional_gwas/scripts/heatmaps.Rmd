@@ -67,7 +67,7 @@ celltype_colors <- tol9qualitative
 names(celltype_colors) <- unique(unlist(annotations$`Cell\ Type`))
 ann_colors = list(`Cell\ Type` = celltype_colors)
 
-
+# these are the labels that go beside the rows (to replace the default labels based on the rownames of the datamatrix)
 rowlabels <- as.data.frame(select(subset.data, cell_type))
 rowlabels <- as.vector(rowlabels$cell_type)
 rowlabels <- gsub("_", " ", rowlabels)
