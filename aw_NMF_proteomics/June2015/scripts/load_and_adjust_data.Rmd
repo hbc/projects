@@ -225,7 +225,7 @@ metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | meta
 ```
 
 
-```{r RUVseq, cache=TRUE}
+```{r RUVseq}
 set = newSeqExpressionSet(as.matrix(normed.data.edger))
 difference <- matrix(data=c(c(1:3,7:9,13:15), c(4:6,10:12,16:18)), byrow=TRUE, nrow=2)
 batch_ruv_emp <- RUVs(as.matrix(normed.data.edger), rownames(normed.data.edger), k=2, difference, isLog=TRUE)
@@ -321,7 +321,7 @@ decreasing, (Hutchins et al. 2008) suggested to choose the first value where the
 an inflection point, and (Frigyesi et al. 2008) considered the smallest value at which the decrease
 in the RSS is lower than the decrease of the RSS obtained from random data.
 
-```{r estimrank, cache=TRUE}
+```{r estimrank}
 # drop weird rows with all negative numbers or only zeroes
 eset.corr <- normed.suv
 eset.corr <- eset.corr[apply(eset.corr, 1, function(x) all(x>0)),]
@@ -336,7 +336,7 @@ These results suggest that 2 metagenes might separate all the classes as there i
 
 Even for random data, increasing factorization ranks lead to more variables to fit the data, possibly leading to overfitting the data. Too assess this, we can run the same metrics after randomly permuting the data, and comparing the performance of the original and randomized datasets. 
 
-```{r overfitcheck, results='hide',warning=FALSE, message=FALSE, error=FALSE,cache=TRUE}
+```{r overfitcheck, results='hide',warning=FALSE, message=FALSE, error=FALSE}
 # shuffle original data to look for overfitting
 eset.corr.rand <- randomize(eset.corr)
 # estimate quality measures from the shuffled data (use default NMF algorithm)
@@ -363,7 +363,7 @@ To this point, I have been using the default (*brunet*) algorithm for the gross 
  
 To do so, I ran NMF on the data using four of the most popular algorithms (with error tracking enabled), and compared the error plots. In these error plots, each track is normalized so that its first value equals one, and stops at the iteration where the method's convergence criterion was fulfilled; algorithms that converge at lower objective values are optimal.
 
-```{r comparealgs, cache=TRUE, results="hide", message=FALSE, error=FALSE,warning=FALSE}
+```{r comparealgs,  results="hide", message=FALSE, error=FALSE,warning=FALSE}
 res.multi.method.2 <- nmf(eset.corr, 2, list("brunet", "KL", "lee","nsNMF"), nrun=TRAIN, seed = 123456, .options = "tv")
 plot(res.multi.method.2, main="NMF residuals - 2 metagenes")
 ```
@@ -381,6 +381,10 @@ res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv")
 save(list="res.final.2", file=file.path(resultsDir,  "RDATA.res.final.2"))
 ```
 
+```{r loadfinalnmf}
+load(file.path(resultsDir,  "RDATA.res.final.2"))
+```
+
 We can look at the final results in various ways:
 
 The consensus matrix plot is similar to the previous plot, just with more iterations. It shows how well the calculated metagenes cluster the samples.
@@ -395,7 +399,7 @@ The "Metagene Components"" plots indicate the contributions of a gene to the ind
 
 Here I first plotted all genes that contribute to any metagene.
 
-```{r rank2basismap, cache=TRUE}
+```{r rank2basismap}
 basismap(res.final.2, scale="r1",annColors=list(basis=cbPalette[5:6], consensus=brewer.pal(2, "Spectral")), main="Metagene Components - All Contributing Genes") # shows metagenes in relation to samples
 ```
 
