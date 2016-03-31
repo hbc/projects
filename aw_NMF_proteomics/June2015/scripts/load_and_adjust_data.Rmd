@@ -3,10 +3,12 @@ output:
   html_document:
     toc: true
     toc_depth: 3
-    theme: journal
-css: custom.css
+    toc_float: true
+    number_sections: true
+    theme: simplex
+    code_folding: show 
 title: "NMF analysis of proteomic data - 3 Sets"
-theme: united
+
 ---
 
 last update `r date()`
@@ -15,7 +17,6 @@ last update `r date()`
 library(knitr)
 opts_chunk$set(tidy=TRUE, cache=TRUE,  highlight=TRUE, figalign="center", echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120))
 options(width=200,bitmapType = 'cairo')
-# render_2_drop("from_john.Rmd","proteomics")
 ```
 
 # SETUP
@@ -42,7 +43,6 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 library(reshape2)
 library(ggplot2)
 library(readr)
-library(dplyr)
 library(pheatmap)
 library(ggdendro)
 library(CHBUtils)
@@ -52,6 +52,7 @@ library(RUVSeq)
 library(limma)
 library(knitr)
 library(NMF)
+library(dplyr)
 ```
 
 ## Load Data
@@ -64,26 +65,28 @@ rawdata.set1 <- read.csv(file.path(dataDir, "Set1", "Set1-Summary-2.csv"))
 rawdata.set2 <- read.csv(file.path(dataDir, "Set2", "Set2-Summary-2.csv"))
 ```
 
+
 # Data Summarize and Explore
 
-## Summarize/Collapse all identical phospho-residues
+# Summarize/Collapse all identical phospho-residues
 - same phospho-proteomic site can be represented in the data by a different peptide
 - assuming they are all coming from the same origin, makes sense to just sum the values for identical phosphoresidues found on same proteins
 
 ```{r summarizephospresidues}
-sumdata.set0 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set0, sum)
-sumdata.set1 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set1, sum)
-sumdata.set2 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set2, sum)
+sumdata.set0 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set0, sum) %>% tbl_df
+sumdata.set1 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set1, sum) %>% tbl_df
+sumdata.set2 <- aggregate(cbind(Summed.126, Summed.127, Summed.128, Summed.129, Summed.130, Summed.131) ~ GeneName+Protein.Relative.Modifications.1, data=rawdata.set2, sum)  %>% tbl_df
 ```
 
 ## Data Clean
+
 - some lines have no signal, dropped them
 
 ```{r dataclean}
 # remove any rows with zero counts for all samples
-sumdata.set0 <- sumdata.set0[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set0))], 1, function(x) all(x==0))),]
-sumdata.set1 <- sumdata.set1[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set1))], 1, function(x) all(x==0))),]
-sumdata.set2 <- sumdata.set2[!(apply(sumdata.set0[, grep("Summed", names(sumdata.set2))], 1, function(x) all(x==0))),]
+sumdata.set0 <-  sumdata.set0[apply(select(sumdata.set0, contains("Summed")), 1, function(x) all(x!=0)),]
+sumdata.set1 <-  sumdata.set1[apply(select(sumdata.set1, contains("Summed")), 1, function(x) all(x!=0)),]
+sumdata.set2 <-  sumdata.set2[apply(select(sumdata.set2, contains("Summed")), 1, function(x) all(x!=0)),]
 ```
 
 ## Data exploration
@@ -93,8 +96,9 @@ sumdata.set2 <- sumdata.set2[!(apply(sumdata.set0[, grep("Summed", names(sumdata
 
 ```{r dataexplore}
 # merge datasets together - all phospho sites
-sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"), all=TRUE)
-sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"), all=TRUE)
+
+sumdata.set.0.1 <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"), all=TRUE)
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1, sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"), all=TRUE)
 sumdata <- sumdata.set.0.1.2
 names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
 sumdata.m <- melt(sumdata, id.vars=c("GeneName", "Protein.Relative.Modifications.1"))
@@ -102,8 +106,8 @@ ggplot(sumdata.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()+gg
 
 
 # merge datasets together - only common phospho sites
-sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
-sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
+sumdata.set.0.1 <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1, sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
 sumdata <- sumdata.set.0.1.2
 names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
 sumdata.m <- melt(sumdata, id.vars=c("GeneName", "Protein.Relative.Modifications.1"))
@@ -122,8 +126,8 @@ ggplot(sumdata.m, aes(x=value, col=variable) )+geom_density()+scale_x_log10()+gg
 ```{r normvalues}
 # using just total count norm
 ## merge datasets together - only common phospho sites
-sumdata.set.0.1. <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
-sumdata.set.0.1.2 <- merge(sumdata.set.0.1., sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
+sumdata.set.0.1 <- merge(sumdata.set0, sumdata.set1, by=c("GeneName", "Protein.Relative.Modifications.1"), suffixes=c(".0", ".1"))
+sumdata.set.0.1.2 <- merge(sumdata.set.0.1, sumdata.set2, by=c("GeneName", "Protein.Relative.Modifications.1"))
 sumdata <- sumdata.set.0.1.2
 names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)] <- paste(names(sumdata)[(ncol(sumdata)-5):ncol(sumdata)], ".2", sep="")
 ## calc total intensities for each sample
@@ -196,29 +200,7 @@ dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
 ```
 
-Both normlaization methods are insufficient to overcome the batch run effect ie. they are still clustering by batch. While we could account for batch in the differential "expression" equation we can't do this for NMF, we instead require a pre-adjusted matrix.
-
-# Mean Phosphorulation change
-- looking at ratio fo D4 to D1 counts for every gene
-
-```{r meanchange}
-temp0 <- tbl_df(sumdata.set0)
-temp1 <- tbl_df(sumdata.set1)
-temp2 <- tbl_df(sumdata.set2)
-
-means0 <- temp0 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
-stats0 <- means0  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio), na.rm=T)
-means1 <- temp1 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
-stats1 <- means1  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio, na.rm=T))
-means2 <- temp2 %>% rowwise() %>% mutate(D1mean=mean(c(Summed.126, Summed.127, Summed.128))) %>% mutate(D4mean=mean(c(Summed.129, Summed.130, Summed.131))) %>% mutate('D4D1_ratio'=D4mean/D1mean) %>% ungroup() 
-stats2 <- means2  %>% summarize(meanratio=mean(D4D1_ratio, na.rm=T), sdratio=sd(D4D1_ratio, na.rm=T))
-
-
-write.table(means0, file=file.path(resultsDir, "Set0_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
-write.table(means1, file=file.path(resultsDir, "Set1_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
-write.table(means2, file=file.path(resultsDir, "Set2_normalized_data.xls"), row.names=F, col.names=T, sep="\t", quote=F)
-```
-
+Both normalization methods are insufficient to overcome the batch run effect ie. they are still clustering by batch. While we could account for batch in the differential "expression" equation we can't do this for NMF, we instead require a pre-adjusted matrix.
 
 
 # Batch correction
@@ -243,25 +225,26 @@ metadata$sampleclass <- ifelse(metadata$sample==126| metadata$sample==127 | meta
 ```
 
 
-```{r RUVseq, eval=FALSE}
+```{r RUVseq, cache=TRUE}
 set = newSeqExpressionSet(as.matrix(normed.data.edger))
 difference <- matrix(data=c(c(1:3,7:9,13:15), c(4:6,10:12,16:18)), byrow=TRUE, nrow=2)
-batch_ruv_emp <- RUVs(as.matrix(normed.data.edger), rownames(normed.data.edger), k=2, difference)
+batch_ruv_emp <- RUVs(as.matrix(normed.data.edger), rownames(normed.data.edger), k=2, difference, isLog=TRUE)
 
 normed.suv <- as.data.frame(log2(batch_ruv_emp$normalizedCounts + 0.5))
 
 normed.suv.m <- melt(normed.suv)
+```
 
+```{r plotbatchcorrected}
 ggplot(normed.suv.m, aes(x=value, col=variable) )+geom_density()
-heatmap(as.matrix(normed.suv), labRow = NA)
-myDist <- dist(t(1-cor(normed.suv)))
+
+normed.suv.plotme <- normed.suv[!apply(normed.suv,1, function(x) any(is.na(x))),]
+
+heatmap(as.matrix(normed.suv.plotme), labRow = NA)
+myDist <- dist(t(1-cor(normed.suv.plotme)))
 myTree <- hclust(myDist, method = "ward.D2")
 dhc <- as.dendrogram(myTree)
 ggdendrogram(dhc)
-```
-
-```{r loadbatchcorrected, echo=FALSE}
-load(file.path(resultsDir, "batch.corrected.counts"))
 ```
 
 
@@ -275,7 +258,7 @@ dd$batch = as.factor(unlist(dd$batch))
 
 ma = model.matrix(~ 0 + sampleclass + batch, data=dd)
   
-dat.voom = voom(batch_ruv_emp$normalizedCounts,design = ma, plot = TRUE)
+dat.voom = voom(2^batch_ruv_emp$normalizedCounts,design = ma, plot = TRUE)
 dat.fit <- lmFit(dat.voom, ma)
 
 cont.ma = makeContrasts(condition=sampleclassD4-sampleclassD1, levels=ma)
@@ -398,11 +381,6 @@ res.final.2 <- nmf(eset.corr, 2, "nsNMF", nrun=RUN, .options = "tv")
 save(list="res.final.2", file=file.path(resultsDir,  "RDATA.res.final.2"))
 ```
 
-```{r fullNMFload, echo=FALSE}
-# load precomputed NMF values, hack to avoid using caching
-load(file.path(resultsDir,  "RDATA.res.final.2"))
-```
-
 We can look at the final results in various ways:
 
 The consensus matrix plot is similar to the previous plot, just with more iterations. It shows how well the calculated metagenes cluster the samples.
@@ -465,7 +443,7 @@ D1 = resting bone marrow = RBMs = metagene 2
 #### PM/D4 specific metagene
 - these are the features of metagene 1
 
-[Excel file of metagene number 1 features](../results/6plex_1/metagene.1.xls)  
+[Excel file of metagene number 1 features](../results/metagene.1.xls)  
 
 ```{r mobBM.metagene.print, echo=FALSE, results='asis'}
 kable(as.data.frame(metagene2.1), row.names=FALSE)
@@ -475,7 +453,7 @@ kable(as.data.frame(metagene2.1), row.names=FALSE)
 
 - these are the most specific genes of metagene 2
 
-[Excel file of metagene number 2 features](../results/6plex_1/metagene.2.xls)  
+[Excel file of metagene number 2 features](../results/metagene.2.xls)  
 
 
 ```{r unmob.metagene.print, results='asis', echo=FALSE}
@@ -483,7 +461,7 @@ kable(as.data.frame(metagene2.2), row.names=FALSE)
 ```
 
 
-## R Session Information Summary
+# R Session Information 
 
 ```{r savesession, echo=FALSE}
 sessionInfo()
