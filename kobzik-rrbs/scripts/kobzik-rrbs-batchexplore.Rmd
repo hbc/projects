@@ -52,6 +52,7 @@ R libraries needed to perform analysis
 ```{r setup}
 library(gridExtra)
 library(knitr)
+library(stringr)
 library(ggplot2)
 library(CHBUtils)
 library(RColorBrewer)
@@ -71,8 +72,11 @@ Working directories, files and other variables necessary to the analysis.
 ```{r load}
 
 ## Setup Data and Results directory variables
+if(file.exists("/home/jnh7/projects/kobzik-rrbs")){
+	baseDir="/home/jnh7/projects/kobzik-rrbs"
+} else{ 
 baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
-
+}
 dataDir <- file.path(baseDir, "data/bed")
 metaDir <- file.path(baseDir, "meta")
 resultsDir <- file.path(baseDir, "results")
@@ -80,6 +84,8 @@ resultsDir <- file.path(baseDir, "results")
 lo.count.cutoff <- 10
 q.cutoff <- 0.01
 alpha <- 1e-5 #(for logit transforms)
+
+numcores <- parallel::detectCores()
 ```
 
 ## Functions 
@@ -359,14 +365,14 @@ Significance wwas calculated by applying Logistic regression tests.
   
 ```{r logreg, eval=FALSE}
 #batch1
-b1F1.diffMeth <- calculateDiffMeth(meth.quants.b1F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b1F2.diffMeth <- calculateDiffMeth(meth.quants.b1F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b1F3.diffMeth <- calculateDiffMeth(meth.quants.b1F3cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b1F1.diffMeth <- calculateDiffMeth(meth.quants.b1F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
+b1F2.diffMeth <- calculateDiffMeth(meth.quants.b1F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
+b1F3.diffMeth <- calculateDiffMeth(meth.quants.b1F3cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
 
 #batch2
-b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
+b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
+b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
 
 save(file=file.path(resultsDir, "batch.diffs"), list=ls()[grep("b.+diffMeth", ls())])
 ```
