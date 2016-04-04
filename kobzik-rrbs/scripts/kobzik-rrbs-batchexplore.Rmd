@@ -70,7 +70,6 @@ library(org.Mm.eg.db)
 Working directories, files and other variables necessary to the analysis.
 
 ```{r load}
-
 ## Setup Data and Results directory variables
 if(file.exists("/home/jnh7/projects/kobzik-rrbs")){
 	baseDir="/home/jnh7/projects/kobzik-rrbs"
@@ -490,12 +489,10 @@ meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end
 
 meth.quant.mat.m <- bind_rows(meth.quant.mat.betas.m, meth.quant.mat.m)
 
-save(file=file.path(resultsDir, "melted.methylkit.data"), list=c("meth.quant.mat.m"))
-  
-
+#save(file=file.path(resultsDir, "melted.methylkit.data"), list=c("meth.quant.mat.m"))
 ```
 
-```{r methdiffcompare_rawdataload, echo=FALSE}
+```{r methdiffcompare_rawdataload, echo=FALSE, eval=FALSE}
 load(file.path(resultsDir, "melted.methylkit.data"))
 ```
 
