@@ -575,7 +575,7 @@ lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
 
 *These summary tables contain the same information as the files above*
 
-### Heatmaps of genes specifically bound by Stau2
+### Heatmaps of genes bound by Stau2
 
 #### All bound genes
 
@@ -730,7 +730,7 @@ pheatmap(as.matrix(select(eset.of.interest.Stau2, -symbol, -logFC)),
          #color=rev(brewer.pal(11,"RdBu")), 
          cluster_cols = FALSE, 
          cluster_rows = FALSE,
-         main="Genes enriched after pulldown with Stau2 or WT1", 
+         main="Genes enriched after pulldown with Stau2", 
          fontsize=12,
          fontsize_row=8,
          annotation_colors=ann_colors,
