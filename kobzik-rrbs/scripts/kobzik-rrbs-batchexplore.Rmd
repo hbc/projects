@@ -479,29 +479,23 @@ meth.quant.mat.m <- mutate(meth.quant.mat.m, generation=unlist(lapply(str_split(
 numCs.m <- filter(meth.quant.mat.m, variable=="numCs")
 numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
 
-meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation")) %>%
-  mutate(., beta=value.x/(value.x+value.y)) %>%
-  mutate(., M=log2((value.x+1e-5)/(value.y+alpha))) %>%
-  dplyr::select(., -contains("variable"), -contains("value")) %>%
-  reshape2::melt(., id.vars=c("chr", "start", "end", "strand","samplid", "samplenum", "batch", "generation")) %>% 
-  tbl_df() %>% 
-  dplyr::select(., chr, start, end, strand, variable, value, samplenum, samplid, batch, generation)
+meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation"))
+meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, betaval=value.x/(value.x+value.y)) 
+meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, Mval=log2((value.x+1e-5)/(value.y+alpha))) 
+meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, -contains("variable"), -contains("value")) 
+meth.quant.mat.betas.m <- reshape2::melt(meth.quant.mat.betas.m, id.vars=c("chr", "start", "end", "strand","samplid", "samplenum", "batch", "generation")) 
+meth.quant.mat.betas.m <- tbl_df(meth.quant.mat.betas.m) 
+meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, chr, start, end, strand, variable, value, samplenum, samplid, batch, generation)
 
 meth.quant.mat.m <- bind_rows(meth.quant.mat.betas.m, meth.quant.mat.m)
 
 #save(file=file.path(resultsDir, "melted.methylkit.data"), list=c("meth.quant.mat.m"))
 ```
 
-```{r methdiffcompare_rawdataload, echo=FALSE, eval=FALSE}
-load(file.path(resultsDir, "melted.methylkit.data"))
-```
-
 ```{r methdiffcompare_rawdataplots}
 ggplot(meth.quant.mat.m, aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("all samples, all sites")
 ggplot(filter(meth.quant.mat.m, generation=="cntr"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("control samples, all sites")
 ggplot(filter(meth.quant.mat.m, generation=="F1"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("F1 samples, all sites")
-ggplot(meth.quant.mat.betas.m, aes(x=beta, color=batch))+geom_density()+facet_wrap(~generation)+ggtitle("Beta values - all sites")
-ggplot(meth.quant.mat.betas.m, aes(x=M, color=batch))+geom_density()+facet_wrap(~generation)+ggtitle("M values - all sites")
 
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff>25, batch=="two") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
