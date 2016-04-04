@@ -575,56 +575,18 @@ lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
 
 *These summary tables contain the same information as the files above*
 
-## Removing genes that bind non-specifically to Stau2.
-
-We can first compare the pulldowns by examining how many genes are pulled down by each protein.
-
-```{r venn}
-top.probesets.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
-top.probesets.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$probesetid
-top.probesets.intersect <- intersect(top.probesets.Stau2, top.probesets.WT1)
-top.genes.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
-top.genes.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)$symbol
-top.genes.intersect <- intersect(top.genes.Stau2, top.genes.WT1)
-plot(venneuler(c(WT1=length(top.genes.WT1),Stau2=length(top.genes.Stau2),"WT1&Stau2"=length(top.genes.intersect))))
-```
-
-Here, there are `r length(top.probesets.intersect)` probesets representing `r length(top.genes.intersect)` genes that are pulled down by both Stau2 and WT1.
-
-Any genes that are pulled down by both proteins can be considered non-specific and be eliminated from the Stau2 pulldown results. 
-
-```{r uniqStau2}
-top.results.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
-top.uniq.results.Stau2 <- top.results.Stau2[!(top.results.Stau2$probesetid %in% top.probesets.intersect),]
-write.table(top.uniq.results.Stau2, file=file.path(resultsDir, "top.genes.stats.exprs.Stau2-no_non_specific_binding.xls"), sep ="\t", row.names=F, col.names=T)
-```
-
-Removing the genes enriched by the WT1 pulldown leaves us with `r nrow(top.uniq.results.Stau2)` probesets representing `r length(unique(top.uniq.results.Stau2$symbol))` genes.
-
-**[Stau2 whole RNA pulldown stats - enriched genes (without non-specific binding)](../results/top.genes.stats.exprs.Stau2-no_non_specific_binding.xls)**
-
-We can do the same thing to get the more WT1 specific genes.
-
-```{r uniqWT1}
-top.results.WT1 <- subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
-top.uniq.results.WT1 <- top.results.WT1[!(top.results.WT1$probesetid %in% top.probesets.intersect),]
-write.table(top.uniq.results.WT1, file=file.path(resultsDir, "top.genes.stats.exprs.WT1-no_non_specific_binding.xls"), sep ="\t", row.names=F, col.names=T)
-```
-
-Removing the genes enriched by the Stau2 pulldown leaves us with `r nrow(top.uniq.results.WT1)` probesets representing `r length(unique(top.uniq.results.WT1$symbol))` genes.
-
-**[WT1 whole RNA pulldown stats - enriched genes (without non-specific binding)](../results/top.genes.stats.exprs.WT1-no_non_specific_binding.xls)**
-
 ### Heatmaps of genes specifically bound by Stau2
 
 #### All bound genes
 
 ```{r heatmaps, out.width='100%', dev='png', fig.height=11, fig.width=8.5}
-top.uniq.results.Stau2 <- top.uniq.results.Stau2 %>% tbl_df()
+top.results.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
 
-eset.of.interest <- top.uniq.results.Stau2 %>% select(.,  contains("symbol"), contains("whole"), logFC)
+top.results.Stau2 <- top.results.Stau2 %>% tbl_df() 
+
+eset.of.interest <- top.results.Stau2 %>% select(.,   contains("symbol"), contains("whole"), logFC)
 names(eset.of.interest) <- gsub("_whole", "", names(eset.of.interest))
-eset.of.interest <- arrange(eset.of.interest, desc(logFC) ) %>% select(., -logFC)
+eset.of.interest <- arrange(eset.of.interest, desc(logFC) ) %>% select(., -logFC, -`wt1-1`)
 
 # calculate fold changes from average input intensity
 eset.of.interest <- mutate(eset.of.interest, inputavg=select(eset.of.interest, contains("input")) %>% rowMeans )
@@ -632,12 +594,12 @@ fcs <-  select(eset.of.interest, -inputavg, -symbol) %>% mutate_each(., funs(rat
 
 
 # annotations
-pd <- pData(affyNorm.core) %>% tbl_df()
+pd <- pData(affyNorm.core) %>% tbl_df() %>% filter(., pulldown!="Wt1")
 heatmap.annots <- pd %>% filter(., source=="whole_RNA") %>% mutate(., sampleID=sub("_whole", "", sampleID)) %>% select(., sampleID, pulldown)
 heatmap.annots <- as.data.frame(heatmap.annots)
 heatmap.annots <- col2rownames(heatmap.annots, "sampleID")
 # annotation colors
-pulldown_colors <- c(cbPalette[1:3] )
+pulldown_colors <- c(cbPalette[1:2] )
 names(pulldown_colors) <- unique(unlist(pd$pulldown))
 ann_colors = list(pulldown = pulldown_colors)
 
@@ -728,57 +690,41 @@ dev.off()
 #### Top 50 for WT1 or Stau2
 
 ```{r heatmaps2, out.width='100%', dev='png', fig.height=11, fig.width=8.5}
-# microarray intensities fwith rows labelle diwht probeset and gene
-top.uniq.results.Stau2 <- top.uniq.results.Stau2 %>% tbl_df()
-top.uniq.results.WT1 <- top.uniq.results.WT1 %>% tbl_df()
 
+top.results.Stau2 <- subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+
+# microarray intensities fwith rows labelle diwht probeset and gene
+top.results.Stau2 <- top.results.Stau2 %>% tbl_df() %>% select(., -contains("wt1"))
 
 # grab top 50 genes by logFC
-eset.of.interest.Stau2 <- top.uniq.results.Stau2 %>%  
+eset.of.interest.Stau2 <- top.results.Stau2 %>%  
   arrange(., desc(logFC) ) %>% 
   select(.,  contains("symbol"), contains("whole"), logFC) %>%
   .[1:numtop,]
 names(eset.of.interest.Stau2) <- gsub("_whole", "", names(eset.of.interest.Stau2))
-eset.of.interest.Stau2 <- mutate(eset.of.interest.Stau2, pulldown="Stau2")
 # cluster with hclust and reorder matrix
-eset.of.interest.Stau2 <- select(eset.of.interest.Stau2, -logFC, -symbol, -pulldown) %>% 
+eset.of.interest.Stau2 <- select(eset.of.interest.Stau2, -logFC, -symbol) %>% 
   as.matrix(.) %>% 
   dist(., method="euclidean") %>% 
   hclust(., method="centroid") %>%
   .$order %>%
   eset.of.interest.Stau2[.,]
 
-eset.of.interest.WT1 <- top.uniq.results.WT1 %>%  
-  arrange(., logFC ) %>% 
-  select(.,  contains("symbol"), contains("whole"), logFC) %>%
-  .[(nrow(.)-numtop):nrow(.),]
-names(eset.of.interest.WT1) <- gsub("_whole", "", names(eset.of.interest.WT1))
-eset.of.interest.WT1 <- mutate(eset.of.interest.WT1, pulldown="WT1")
-# cluster with hclust and reorder matrix
-eset.of.interest.WT1 <- select(eset.of.interest.WT1, -logFC, -symbol, -pulldown) %>% 
-  as.matrix(.) %>% 
-  dist(., method="euclidean") %>% 
-  hclust(., method="centroid") %>%
-  .$order %>%
-  eset.of.interest.WT1[.,]
 
-
-
-eset.of.interest <- dplyr::bind_rows(eset.of.interest.Stau2, eset.of.interest.WT1)
 # annotations
 pd <- pData(affyNorm.core) %>% tbl_df()
 
-heatmap.annots <- pd %>% filter(., source=="whole_RNA") %>% mutate(., sampleID=sub("_whole", "", sampleID)) %>% select(., sampleID, pulldown)
+heatmap.annots <- pd %>% filter(., source=="whole_RNA", pulldown!="Wt1") %>% mutate(., sampleID=sub("_whole", "", sampleID)) %>% select(., sampleID, pulldown)
 heatmap.annots <- as.data.frame(heatmap.annots)
 heatmap.annots <- col2rownames(heatmap.annots, "sampleID")
 
 # annotation colors
-pulldown_colors <- c(cbPalette[1:3] )
-names(pulldown_colors) <- unique(unlist(pd$pulldown))
+pulldown_colors <- c(cbPalette[1:2] )
+names(pulldown_colors) <- unique(unlist(heatmap.annots$pulldown))
 ann_colors = list(pulldown = pulldown_colors)
 ## Heatmaps
 
-pheatmap(as.matrix(select(eset.of.interest, -symbol, -logFC, -pulldown)),
+pheatmap(as.matrix(select(eset.of.interest.Stau2, -symbol, -logFC)),
          annotation=heatmap.annots, 
          color = colorRampPalette(rev(brewer.pal(n = 11, name = "RdBu")))(100),
          #color=rev(brewer.pal(11,"RdBu")), 
@@ -790,9 +736,8 @@ pheatmap(as.matrix(select(eset.of.interest, -symbol, -logFC, -pulldown)),
          annotation_colors=ann_colors,
          show_colnames=TRUE, 
          show_rownames=TRUE,
-         labels_row = eset.of.interest$symbol,
+         labels_row = eset.of.interest.Stau2$symbol,
                  cellwidth=40, annotation_names_col = FALSE)
-
 ```
 
 ## Gene Ontologies
