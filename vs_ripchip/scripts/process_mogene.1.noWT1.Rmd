@@ -646,6 +646,17 @@ write.csv(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
 Running the all genes with at least a two-fold expression change (logFC>=1) through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in cytoskeletal protein binding. 
 [File with GO results](../results/GOresults.csv)
 
+```{r gosummaries, dev='png', width="100%"}
+library(GOsummaries)
+bp1 <- gosummaries(list(`Biological Process`=top200.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "BP")
+plot(bp1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+
+cc1 <- gosummaries(list(`Cellular Component`=top200.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "CC")
+plot(cc1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+mf1 <- gosummaries(list(`Molecular Function`=top200.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "MF")
+plot(mf1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+```
+
 Gene ontology enrichment analyses can yield an overwhelming number of enriched categories, many with redundant functionality. We can simplify this output by identifying the most representative subset of the terms, using metrics which measure the semantic similarity of the terms. [Revigo](http://revigo.irb.hr/) `r citep("10.1371/journal.pone.0021800")` performs such analyses, using an algortithm which forms
 
 >  groups of highly similar GO terms, where the choice of the groups’ representatives is guided by the p-values
