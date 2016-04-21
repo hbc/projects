@@ -6,6 +6,7 @@ output:
     toc_float: true
     number_sections: true
     theme: simplex
+    code_folding: hide
 ---
 
 
@@ -399,7 +400,7 @@ meth.pr.logit <- prepPCA(meth.quants.filtered.merged, logit=TRUE)
 methylPCA(meth.pr.logit, meth.prext.metadata = metadata, metadata.merge.col = "samplename",  comp1=1, comp2=2, title="Logit values")
 ```
 
-Using the logit transformed values, you can see that the samples separate better by cohort. This may have implications for which statistical approach to use for differential methylation detection.
+Using the logit transformed values, you can see that the samples separate somewhat better by cohort. This may have implications for which statistical approach to use for differential methylation detection.
 
 
 ### Comparing sites with discordant differential methhylation between individual and pooled samples
@@ -415,13 +416,12 @@ F1.diffMeth.mat <- rbind(b1F1.diffMeth.mat, b2F1.diffMeth.mat)
 F1.diffMeth.dt <- tbl_df(F1.diffMeth.mat)
 ```
 
-
+#### Methylation differeces at all sites, either batch  {.tabset}
 
 ```{r methdiffcompare_wholedist}
 
 ggplot(F1.diffMeth.dt, aes(x=meth.diff, colour=batch)) + geom_density()+ggtitle("F1 methylation  differences  ")
 
-# first look at the methylation distributions differences
 filter(F1.diffMeth.dt, meth.diff>0) %>% ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+scale_x_log10()+ ggtitle("Methylation differences at 'over'-methylated sites") +xlab("log10 transformed hyper-methylation differences")
 
 filter(F1.diffMeth.dt, meth.diff<0) %>% ggplot(., aes(x=abs(meth.diff), colour=batch)) + geom_density()+scale_x_log10()+ ggtitle("Methylation differences at 'under'-methylated sites")+xlab("log10 transformed absolute values of hypo-methylation differences")
@@ -429,7 +429,9 @@ filter(F1.diffMeth.dt, meth.diff<0) %>% ggplot(., aes(x=abs(meth.diff), colour=b
 
 It's clear from these plots that batch 1 (individual samples) shows more hypomethylation and batch 2 more  hypermethylation. (this largely repeats the results of the previous analyses, but doesn't involve cutoffs, so is a more robust way to look at the differences). That said, they both appear to be biased towards hypermethylation, but just vary in the degree.
 
-These trends are even more apparent if you subset to only the significant hits. 
+#### Methylation differences at significantly differentially methylated sites, either batch {.tabset}
+
+These trends are even more apparent if you subset to only the sites with significantly different methylation in either batch.
 
 ```{r methdiffcompare_bothsigdiffdist}
 filter(F1.diffMeth.dt, qvalue<0.01) %>% ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ggtitle("F1 methylation significant differences  ")
@@ -439,32 +441,33 @@ filter(F1.diffMeth.dt, meth.diff>0, qvalue<0.05) %>% ggplot(., aes(x=meth.diff, 
 
 filter(F1.diffMeth.dt, meth.diff<0, qvalue<0.05) %>% ggplot(., aes(x=abs(meth.diff), colour=batch)) + geom_density()+scale_x_log10()+ ggtitle("F1 methylation differences at significantly 'under'-methylated sites")+xlab("log10 transformed absolute values of hypo-methylation differences")
 ```
+#### Methylation differences at significantly differentially methylated sites, one batch {.tabset} 
 
-What does the counts data look like for sites that are hypermethylated/hypomethylated in batch 2 but not batch 1? (and vice versa)
+What do the counts data look like for sites that are hypermethylated/hypomethylated in batch 2 but not batch 1? (and vice versa)
 
 ```{r methdiffcompare_onesigdist}
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff>25, batch=="two") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
   dplyr::semi_join(F1.diffMeth.dt, ., by = c("chr", "start", "end")) %>% 
-  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Methylation differences at sites significant hypermethylated in batch2 F1")+xlab("methylation differences")
+  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypermethylated in batch2 F1")+xlab("methylation differences")
 
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff<(-25), batch=="two") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
   dplyr::semi_join(F1.diffMeth.dt, ., by = c("chr", "start", "end"))%>% 
-  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites hypomethylated in batch2 F1")+xlab("methylation differences")
+  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypomethylated in batch2 F1")+xlab("methylation differences")
 
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff>25, batch=="one") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
   dplyr::semi_join(F1.diffMeth.dt, ., by = c("chr", "start", "end")) %>% 
-  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Methylation differences at sites significant hypermethylated in batch1 F1")+xlab("methylation differences")
+  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypermethylated in batch1 F1")+xlab("methylation differences")
 
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff<(-25), batch=="one") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
   dplyr::semi_join(F1.diffMeth.dt, ., by = c("chr", "start", "end"))%>% 
-  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites hypomethylated in batch1 F1")+xlab("methylation differences")
+  ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypomethylated in batch1 F1")+xlab("methylation differences")
 ```
 
-```{r methdiffcompare_rawdatasetsup, eval=FALSE}
+```{r methdiffcompare_rawdatasetsup, eval=TRUE, cache=FALSE}
 sampleids <- meth.quants.filtered.merged@sample.ids
 meth.quant.mat <- getData(meth.quants.filtered.merged)
 meth.quant.mat.m <- reshape2::melt(meth.quant.mat, id.vars=c("chr", "start", "end", "strand")) %>% tbl_df()
@@ -474,7 +477,6 @@ meth.quant.mat.m <- mutate(meth.quant.mat.m, variable=str_replace_all(variable, 
 meth.quant.mat.m <- mutate(meth.quant.mat.m, samplid=sampleids[as.numeric(samplenum)])
 meth.quant.mat.m <- mutate(meth.quant.mat.m, batch=unlist(lapply(str_split(samplid, "-"), function(x) x[[2]])))
 meth.quant.mat.m <- mutate(meth.quant.mat.m, generation=unlist(lapply(str_split(samplid, "-"), function(x) x[[3]])))
-
 
 numCs.m <- filter(meth.quant.mat.m, variable=="numCs")
 numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
@@ -488,15 +490,20 @@ meth.quant.mat.betas.m <- tbl_df(meth.quant.mat.betas.m)
 meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, chr, start, end, strand, variable, value, samplenum, samplid, batch, generation)
 
 meth.quant.mat.m <- bind_rows(meth.quant.mat.betas.m, meth.quant.mat.m)
-
-#save(file=file.path(resultsDir, "melted.methylkit.data"), list=c("meth.quant.mat.m"))
 ```
 
-```{r methdiffcompare_rawdataplots}
-ggplot(meth.quant.mat.m, aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("all samples, all sites")
-ggplot(filter(meth.quant.mat.m, generation=="cntr"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("control samples, all sites")
-ggplot(filter(meth.quant.mat.m, generation=="F1"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable)+scale_x_log10()+ggtitle("F1 samples, all sites")
+#### Raw data values at all sites, either batch {.tabset}
 
+```{r methdiffcompare_rawdataplotsi1}
+ggplot(meth.quant.mat.m, aes(x=value, color=batch))+geom_density()+facet_wrap(~variable, scales="free",ncol=5)+scale_x_log10()+ggtitle("all samples, all sites")
+ggplot(filter(meth.quant.mat.m, generation=="cntr"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=5,scales="free")+scale_x_log10()+ggtitle("control samples, all sites")
+ggplot(filter(meth.quant.mat.m, generation=="F1"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=5,scales="free")+scale_x_log10()+ggtitle("F1 samples, all sites")
+```
+
+
+#### Raw data values at sites differentially methylated in one  batch {.tabset}
+
+```{r methdiffcompare_rawdataplotsi2}
 filter(F1.diffMeth.dt, qvalue<0.01, meth.diff>25, batch=="two") %>% 
   dplyr::select(., chr, start, end, strand) %>% 
   dplyr::semi_join(meth.quant.mat.m, ., by = c("chr", "start", "end")) %>%
