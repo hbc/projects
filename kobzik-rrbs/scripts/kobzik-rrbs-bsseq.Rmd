@@ -160,6 +160,7 @@ methylPCA <- function(meth.pr,
     theme(plot.title = element_text(size=20, face="bold", vjust=2)) +
     theme_bw()
   return(p)
+  ###
 }  
   
   
