@@ -22,6 +22,7 @@ analystemail="jhutchin@hsph.harvard.edu"
 
 
 ```{r knitrsetup, echo=FALSE}
+library(knitr)
 knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
 
 ```
@@ -29,11 +30,9 @@ knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highligh
 
 ---
 
-# Kobzik methylation
+# Fedulov methylation
 
-Examining differences between individual and pooled samples in RRBS data set. 
-
-For this analysis, I kept the samples together for filtering, normalization and unification.
+Trying out different statistical approach for individual and pooled samples in RRBS data set to see if it helps with differences in hypo/hyper methylated numbers.
 
 Contact `r analystname` (`r analystemail`) for additional details.
 
@@ -50,20 +49,19 @@ The sections below provide code to reproduce the included results and plots.
 R libraries needed to perform analysis
 
 ```{r setup}
-library(gridExtra)
-library(knitr)
 library(stringr)
 library(ggplot2)
 library(CHBUtils)
 library(RColorBrewer)
 library(pheatmap)
-library(GenomicRanges)
 library(devtools)
-#install_git("https://github.com/druvus/methylKit")
+library(devtools)
+install_git("https://github.com/druvus/methylKit")
 library(methylKit)
+library(readr)
 library(dplyr)
-library(org.Mm.eg.db)
-
+library(bsseq)
+library(DSS)
 ```
 
 ## Variables
@@ -85,192 +83,6 @@ q.cutoff <- 0.01
 alpha <- 1e-5 #(for logit transforms)
 
 numcores <- parallel::detectCores()
-```
-
-## Functions 
-
-``` {r functions}
-rowSds <- function(x, center=NULL, ...) {
-  n <- !is.na(x);
-  n <- rowSums(n);
-  n[n <= 1] <- NA;
-    if (is.null(center)) {
-    center <- rowMeans(x, ...);
-  }
-  x <- x - center;
-  x <- x*x;
-  x <- rowSums(x, ...);
-  x <- x/(n-1);
-  sqrt(x);
-}
-
-prepPCA <- function(x,  
-                    sd.filter=TRUE,
-                    sd.threshold=0.5, 
-                    filterByQuantile=TRUE, 
-                    scale=TRUE,
-                    center=TRUE, 
-                    logit=FALSE,
-                    alpha=0.01){
-  mat = getData(x)
-  # remove rows containing NA values, they might be introduced at unite step
-  mat      = mat[ rowSums(is.na(mat))==0, ]
-  
-  if(logit){
-    meth.mat <- log2((mat[,x@numCs.index]+alpha)/(mat[,x@numTs.index]+alpha))
-  } else {
-    meth.mat = mat[, x@numCs.index]/(mat[,x@numCs.index] + mat[,x@numTs.index] )
-  }
-  names(meth.mat)=x@sample.ids
-  
-  if(sd.filter){
-    if(filterByQuantile){
-      sds=rowSds(as.matrix(meth.mat))
-      cutoff=quantile(sds,sd.threshold)
-      meth.mat=meth.mat[sds>cutoff,]
-    }else{
-      meth.mat=meth.mat[rowSds(as.matrix(meth.mat))>sd.threshold,]
-    }
-  }
-  sample.ids=x@sample.ids
-  meth.pr = prcomp((meth.mat),scale=TRUE,center=TRUE)
-  return(meth.pr)
-}
-
-methylPCA <- function(meth.pr,  
-                      meth.prext.metadata="NULL", 
-                      metadata.merge.col="NULL",
-                      comp1=1,
-                      comp2=2, 
-                      adj.lim=c(0.001,0.1), 
-                      obj.return=FALSE, 
-                      title="PCA Plot"){
-  loads = meth.pr$rotation
-  expvar <- (meth.pr$sdev)^2 / sum(meth.pr$sdev^2)
-  
-  df <- data.frame(pc1=loads[,comp1], pc2=loads[,comp2], id=rownames(loads))
-  df <- merge(df, metadata, by.x="id", by.y=metadata.merge.col)
-  
-  p <- ggplot(df, aes(pc1, pc2, col=generation, shape=as.factor(cohort))) +
-    geom_point(size=5) +
-    labs(list(x =paste("loadings for PC",comp1," (", round(expvar[comp1]*100,1), "%)", sep=""),
-              y = paste("loadings for PC",comp2," (", round(expvar[comp2]*100,1), "%)", sep="")))+
-    scale_x_continuous() +
-    ggtitle(title) +
-    theme(plot.title = element_text(size=20, face="bold", vjust=2)) +
-    theme_bw()
-  return(p)
-  ###
-}  
-  
-  
-cor.meth <- function(object, method="spearman"){
-  meth.mat = getData(object)[, object@numCs.index]
-  (getData(object)[,object@numCs.index] + getData(object)[,object@numTs.index] )    
-  names(meth.mat) = object@sample.ids
-  cor.mat <- ( cor(meth.mat,method=method) )
-  cor.mat
-}
-
-plot.targetanno.cpgi <- function(mydiff, cpg, id){
-  diffCpGann=annotate.WithFeature.Flank(mydiff,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores")
-  #getFeatsWithTargetsStats(diffCpGann,percentage=TRUE)
-  #plotTargetAnnotation(diffCpGann,col=c("green","gray","white"), main=paste(id, "- differential methylation annotation"))
-  plotTargetAnnotation(diffCpGann,col="Set1", main=paste(id, "- differential methylation annotation"))
- }
-
-plot.targetanno.pei <- function(mydiff, gene, id){
-  diffAnn=annotate.WithGenicParts(mydiff,gene)
-  #getTargetAnnotationStats(diffAnn,percentage=TRUE,precedence=TRUE)
-  #props=getTargetAnnotationStats(diffAnn,percentage=TRUE,precedence=T)
-  #names(props)=paste( paste(round(props),"%"),sep=" ")
-  plotTargetAnnotation(diffAnn,precedence=TRUE, col="Set1", main=paste(id, "- differential methylation annotation"))
-}
-
-annodiff2 <- function(diff, idx, gene, cpg, all=F){
-  if (all){
-    idx <- 1:nrow(diff)
-  }
-  dselect <- methylKit::select(diff, idx)
-  anno <- annotate.WithGenicParts(dselect,gene)
-  gene.info <- getMembers(anno)
-  cpgi.info <- getMembers(annotate.WithFeature.Flank(dselect,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores"))
-  
-  assoc <- getAssociationWithTSS(anno)
-  
-  if (all){
-    out <- data.frame(getData(dselect), assoc[,-1])
-  } else {
-    out <- data.frame(getData(dselect)[,1:3], assoc[,-1])
-  }
-  symbol <- convertIDs(out$feature.name, "ENSEMBL", "SYMBOL", org.Mm.eg.db, "useFirst")
-  entrez <- convertIDs(out$feature.name, "ENSEMBL", "ENTREZID", org.Mm.eg.db, "useFirst")
-  description <- convertIDs(out$feature.name, "ENSEMBL", "GENENAME", org.Mm.eg.db, "useFirst")
-  refseq <- convertIDs(out$feature.name, "ENSEMBL", "REFSEQ", org.Mm.eg.db, "useFirst")
-  
-  out <- data.frame(out, gene.info, cpgi.info, symbol=symbol, entrez=entrez, description=description, refseq=refseq)
-  return(out)
-}
-
-annodiff <- function(diff, idx, gene, cpg, all=F){
-  if (all){
-    idx <- 1:nrow(diff)
-  }
-  dselect <- methylKit::select(diff, idx)
-  anno <- annotate.WithGenicParts(dselect,gene)
-  gene.info <- getMembers(anno)
-  cpgi.info <- getMembers(annotate.WithFeature.Flank(dselect,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores"))
-  
-  assoc <- getAssociationWithTSS(anno)
-  
-  if (all){
-    out <- data.frame(getData(dselect), assoc[,-1])
-  } else {
-    out <- data.frame(getData(dselect)[,1:3], assoc[,-1])
-  }
-  symbol <- convertIDs(out$feature.name, "REFSEQ", "SYMBOL", org.Mm.eg.db, "useFirst")
-  entrez <- convertIDs(out$feature.name, "REFSEQ", "ENTREZID", org.Mm.eg.db, "useFirst")
-  description <- convertIDs(out$feature.name, "REFSEQ", "GENENAME", org.Mm.eg.db, "useFirst")
-  ensembl <- convertIDs(out$feature.name, "REFSEQ", "ENSEMBL", org.Mm.eg.db, "useFirst")
-  
-  out <- data.frame(out, gene.info, cpgi.info, symbol=symbol, entrez=entrez, description=description, ensembl=ensembl)
-  return(out)
-}
-
-
-convertIDs <- function( ids, from, to, db, ifMultiple=c("putNA", "useFirst")) {
-  stopifnot( inherits( db, "AnnotationDb" ) )
-  ifMultiple <- match.arg( ifMultiple )
-  suppressWarnings( selRes <- AnnotationDbi::select(
-    db, keys=ids, keytype=from, columns=c(from,to) ) )
-  if ( ifMultiple == "putNA" ) {
-    duplicatedIds <- selRes[ duplicated( selRes[,1] ), 1 ]
-    selRes <- selRes[ ! selRes[,1] %in% duplicatedIds, ]
-  }
-  return( selRes[ match( ids, selRes[,1] ), 2 ] )
-}
-
-manhattan.plot <- function(x, main="", col= c("red", "blue"), cutoff = 3, ymax=NULL) {
-  dm <- getData(x)
-  dm$chr <- gsub("chr", "", dm$chr)
-  dm <- dm[dm$chr != "X" & dm$chr != "Y",]
-  dm$chr <- as.numeric(dm$chr)
-  dm <- dm[,c(1,2,6,7)]
-  colnames(dm)<- c("CHR", "S", "Q", "MD")
-  gr.dm <- transformDfToGr(dm, seqnames = "CHR", start = "S", width=1)
-  gr.dm <- keepSeqlevels(gr.dm, as.character(1:19))
-  data(ideoCyto, package = "biovizBase")
-  seqlengths(gr.dm) <- as.numeric(seqlengths(ideoCyto$mm10)[1:19])
-  gr.dm <- gr.dm[!is.na(gr.dm$Q)]
-  ## transform pvalue
-  values(gr.dm)$pvalue <- -log10(values(gr.dm)$Q)
-  if (is.null(ymax) ) {
-    ymax <- max(values(gr.dm)$pvalue)
-  }  
-  ylim <- range(0, ymax)
-  values(gr.dm)$pvalue[values(gr.dm)$pvalue > ymax] <- Inf
-  plotGrandLinear(gr.dm, aes(y = pvalue), color = col, cutoff = cutoff, cutoff.color = "blue", cutoff.size = 0.2, main=main, ylim=ylim)
-}
 ```
 
 # Preparations
@@ -295,16 +107,65 @@ kable(metadata.out)
 ### Data
 
 Code needed to load methylation data
+- will also format for bsseq and aggregate strands
 
 ```{r dataload, eval=FALSE}
-filelist10 <- paste("cpg", metadata$sampleid, "mincov10.txt", sep=".")
-
-testdata <- ifelse(metadata$generation=="cntr", 1, 0)
-
 setwd(dataDir)
-meth.quants <- read(as.list(filelist10), sample.id=as.list(as.character(metadata$samplename)),  assembly="mm10", treatment=testdata, context="CpG" )
+for (n in 1:length(metadata$sampleid)) {
+  sampleid <- metadata$sampleid[n]
+  file <- paste("methylcall.CpG", sampleid, "mincov0.txt", sep=".")
+  
+  dat <- read_delim(file, delim="\t") 
+  dat <- mutate(dat, methylated=round(coverage*freqC/100)) %>%
+    mutate(., unmethylated=coverage-methylated) %>% 
+    dplyr::select(., chr, base, strand, freqC,  methylated, unmethylated, coverage) %>%
+    mutate(., methylated=as.integer(methylated), unmethylated=as.integer(unmethylated)) %>%
+    arrange(., chr, base, strand)
+  
+  # collapsing strands
+  ## find how far apart the CpG base calls are
+  dat <- mutate(dat, diff=c(NA,diff(base)))
+  dat.df <- as.data.frame(dat)
+  ## Find indices of CpG dyads for which we have both positive and negative strand information
+  ### rows should be one base apart (as based on data.dyad$diff), first on positive strand and next on negative strand
+  dyad.neg.strand.indices=which(dat.df$diff==1 & dat$strand=="R")
+  dyad.pos.strand.indices=dyad.neg.strand.indices-1
+  ## get combined coverage from positive and negative strands at dyads
+  dyad.combined.numreads <- dat.df[dyad.pos.strand.indices, "coverage"]+dat.df[dyad.neg.strand.indices, "coverage"]
+  dyad.combined.numCs <- dat.df[dyad.pos.strand.indices, "methylated"]+dat.df[dyad.neg.strand.indices, "methylated"]
+  dyad.combined.numTs <- dat.df[dyad.pos.strand.indices, "unmethylated"]+dat.df[dyad.neg.strand.indices, "unmethylated"]
+  ## recalculate percent methylation
+  dyad.combined.percmeth <- dyad.combined.numCs/(dyad.combined.numCs+dyad.combined.numTs)*100
+  ## load combined coverage into the positive strand position of dyad into table
+  dat.df[dyad.pos.strand.indices, "coverage"] <- dyad.combined.numreads
+  dat.df[dyad.pos.strand.indices, "methylated"] <- dyad.combined.numCs
+  dat.df[dyad.pos.strand.indices, "unmethylated"] <- dyad.combined.numTs
+  dat.df[dyad.pos.strand.indices, "freqC"] <- dyad.combined.percmeth
+  ## remove negative strand rows of the combined dyads above from table
+  dat.df <- dat.df[-dyad.neg.strand.indices,]
+  ## find dyads that only have info for the negative strand
+  neg.strand.indices <- which(dat.df$strand=="R")
+  ## adjust start and end of unpaired negative strand dyads to the positive strand position
+  dat.df[neg.strand.indices,"base"] <- dat.df[neg.strand.indices,"base"]-1
+  dat.df[neg.strand.indices, "strand"] <- "F"
+  ## No need to adjust any dyads for which you only have info from the positive strand
+  dat.df$strand <- ifelse(dat.df$strand=="F", "+", "-")
+  if (n==1){
+    BS <- BSseq( M = as.matrix(dat.df$methylated,ncol=1), Cov = as.matrix(dat.df$coverage,ncol=1), pos = dat.df$base, chr = dat.df$chr,  sampleNames = sampleid) 
+  } else {
+    BS.temp <- BSseq( M = as.matrix(dat.df$methylated,ncol=1), Cov = as.matrix(dat.df$coverage,ncol=1), pos = dat.df$base, chr = dat.df$chr,  sampleNames =sampleid)
+    BS <- bsseq::combine(BS, BS.temp)
+  }
+}
+
+identical(sampleNames(BS),as.character(unlist(metadata$sampleid)))
+pData(BS) <- metadata
+save(file=file.path(resultsDir, "BSeq.object"), list="BS")
 ```
 
+```{r loadobject, echo=FALSE }
+load(file=file.path(resultsDir, "BSeq.object"))
+```
 
 
 # Analysis
