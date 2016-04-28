@@ -416,7 +416,7 @@ F1.diffMeth.mat <- rbind(b1F1.diffMeth.mat, b2F1.diffMeth.mat)
 F1.diffMeth.dt <- tbl_df(F1.diffMeth.mat)
 ```
 
-#### Methylation differeces at all sites, either batch  {.tabset}
+#### Methylation differeces at all sites, either batch  
 
 ```{r methdiffcompare_wholedist}
 
@@ -429,7 +429,7 @@ filter(F1.diffMeth.dt, meth.diff<0) %>% ggplot(., aes(x=abs(meth.diff), colour=b
 
 It's clear from these plots that batch 1 (individual samples) shows more hypomethylation and batch 2 more  hypermethylation. (this largely repeats the results of the previous analyses, but doesn't involve cutoffs, so is a more robust way to look at the differences). That said, they both appear to be biased towards hypermethylation, but just vary in the degree.
 
-#### Methylation differences at significantly differentially methylated sites, either batch {.tabset}
+#### Methylation differences at significantly differentially methylated sites, either batch
 
 These trends are even more apparent if you subset to only the sites with significantly different methylation in either batch.
 
@@ -467,7 +467,7 @@ filter(F1.diffMeth.dt, qvalue<0.01, meth.diff<(-25), batch=="one") %>%
   ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypomethylated in batch1 F1")+xlab("methylation differences")
 ```
 
-```{r methdiffcompare_rawdatasetsup, eval=TRUE, cache=FALSE}
+```{r methdiffcompare_rawdatasetsup,  cache=FALSE}
 sampleids <- meth.quants.filtered.merged@sample.ids
 meth.quant.mat <- getData(meth.quants.filtered.merged)
 meth.quant.mat.m <- reshape2::melt(meth.quant.mat, id.vars=c("chr", "start", "end", "strand")) %>% tbl_df()
@@ -489,15 +489,18 @@ meth.quant.mat.betas.m <- reshape2::melt(meth.quant.mat.betas.m, id.vars=c("chr"
 meth.quant.mat.betas.m <- tbl_df(meth.quant.mat.betas.m) 
 meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, chr, start, end, strand, variable, value, samplenum, samplid, batch, generation)
 
+ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+ facet_wrap(~generation)
+
+
 meth.quant.mat.m <- bind_rows(meth.quant.mat.betas.m, meth.quant.mat.m)
 ```
 
-#### Raw data values at all sites, either batch {.tabset}
+#### Raw data values at all sites, either batch 
 
-```{r methdiffcompare_rawdataplotsi1}
-ggplot(meth.quant.mat.m, aes(x=value, color=batch))+geom_density()+facet_wrap(~variable, scales="free",ncol=5)+scale_x_log10()+ggtitle("all samples, all sites")
-ggplot(filter(meth.quant.mat.m, generation=="cntr"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=5,scales="free")+scale_x_log10()+ggtitle("control samples, all sites")
-ggplot(filter(meth.quant.mat.m, generation=="F1"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=5,scales="free")+scale_x_log10()+ggtitle("F1 samples, all sites")
+```{r methdiffcompare_rawdataplotsi1,fig.width=8, fig.height=6}
+ggplot(meth.quant.mat.m, aes(x=value, color=batch))+geom_density()+facet_wrap(~variable, scales="free",ncol=2)+scale_x_log10()+ggtitle("all samples, all sites")
+ggplot(filter(meth.quant.mat.m, generation=="cntr"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=2,scales="free")+scale_x_log10()+ggtitle("control samples, all sites")
+ggplot(filter(meth.quant.mat.m, generation=="F1"), aes(x=value, color=batch))+geom_density()+facet_wrap(~variable,ncol=2,scales="free")+scale_x_log10()+ggtitle("F1 samples, all sites")
 ```
 
 
