@@ -69,10 +69,12 @@ library(org.Mm.eg.db)
 Working directories, files and other variables necessary to the analysis.
 
 ```{r load}
-
 ## Setup Data and Results directory variables
-baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
-
+if(file.exists("/home/jnh7/projects/kobzik-rrbs")){
+		baseDir="/home/jnh7/projects/kobzik-rrbs"
+} else{ 
+	baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
+}
 dataDir <- file.path(baseDir, "data/bed")
 metaDir <- file.path(baseDir, "meta")
 resultsDir <- file.path(baseDir, "results")
@@ -271,6 +273,7 @@ manhattan.plot <- function(x, main="", col= c("red", "blue"), cutoff = 3, ymax=N
 ## Import Data and Metadata
 
 Previous analyses identified sample 14-b1-cntr as an outlier so it was not used for this analysis.
+Also dropped 15-b1-cntr due to odd beta value distribution
 
 ### Metadata
 
@@ -280,6 +283,7 @@ Code needed to load metadata
 metadata <- read.table(file.path(metaDir, "meta.txt"),sep="\t",header=T)
 # drop male sample
 metadata <- metadata[-grep("14-b1-cntr", metadata$samplename),]
+metadata <- metadata[-grep("15-b1-cntr", metadata$samplename),]
 
 metadata.out <- metadata[,c("samplename", "exposure", "type" ,"cohort", "generation")]
 kable(metadata.out)
@@ -383,9 +387,9 @@ This is highly evident when you look at hypo and hyper methylated regions for th
 
 ```{r batches}
 #batch 1
-meth.quants.b1F1.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c("15-b1-cntr", "16-b1-cntr", "17-b1-cntr", "1-b1-F1", "2-b1-F1", "3-b1-F1", "4-b1-F1"), treatment=c(0,0,0,1,1,1,1) )
-meth.quants.b1F2.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "15-b1-cntr", "16-b1-cntr", "17-b1-cntr",  "5-b1-F2", "6-b1-F2", "7-b1-F2", "8-b1-F2"), treatment=c(0,0,0,1,1,1,1) )
-meth.quants.b1F3.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "15-b1-cntr", "16-b1-cntr", "17-b1-cntr",  "10-b1-F3", "11-b1-F3", "12-b1-F3", "13-b1-F3"), treatment=c(0,0,0,1,1,1,1) )
+meth.quants.b1F1.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c("16-b1-cntr", "17-b1-cntr", "1-b1-F1", "2-b1-F1", "3-b1-F1", "4-b1-F1"), treatment=c(0,0,1,1,1,1) )
+meth.quants.b1F2.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "16-b1-cntr", "17-b1-cntr",  "5-b1-F2", "6-b1-F2", "7-b1-F2", "8-b1-F2"), treatment=c(0,0,1,1,1,1) )
+meth.quants.b1F3.filtered.merged <- reorganize(meth.quants.filtered.merged ,sample.ids=c( "16-b1-cntr", "17-b1-cntr",  "10-b1-F3", "11-b1-F3", "12-b1-F3", "13-b1-F3"), treatment=c(0,0,1,1,1,1) )
 
 #batch 2
 meth.quants.b2F1.filtered.merged <- reorganize(meth.quants.filtered.merged  ,sample.ids=c("123-b2-cntr","124-b2-cntr", "125-b2-cntr", "126-b2-cntr", "60-b2-F1", "61-b2-F1", "62-b2-F1", "63-b2-F1"), treatment=c(0,0,0,0,1,1,1,1) )
@@ -402,14 +406,14 @@ Significance wwas calculated by applying Logistic regression tests.
   
 ```{r logreg, eval=FALSE}
 #batch1
-b1F1.diffMeth <- calculateDiffMeth(meth.quants.b1F1.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b1F2.diffMeth <- calculateDiffMeth(meth.quants.b1F2.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b1F3.diffMeth <- calculateDiffMeth(meth.quants.b1F3.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b1F1.diffMeth <- calculateDiffMeth(meth.quants.b1F1.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
+b1F2.diffMeth <- calculateDiffMeth(meth.quants.b1F2.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
+b1F3.diffMeth <- calculateDiffMeth(meth.quants.b1F3.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
 
 #batch2
-b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
-b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=2)
+b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
+b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
+b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3.filtered.merged,slim=TRUE,  weighted.mean=TRUE,num.cores=4)
 
 save(file=file.path(resultsDir, "batch.diffs"), list=ls()[grep("b.+diffMeth", ls())])
 ```
