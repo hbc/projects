@@ -59,6 +59,9 @@ library(readr)
 library(dplyr)
 library(bsseq)
 library(DSS)
+library(ggbio)
+library(biovizBase)
+
 ```
 
 ## Variables
@@ -75,9 +78,9 @@ dataDir <- file.path(baseDir, "data/bed")
 metaDir <- file.path(baseDir, "meta")
 resultsDir <- file.path(baseDir, "results")
 
-lo.count.cutoff <- 10
-q.cutoff <- 0.01
-alpha <- 1e-5 #(for logit transforms)
+q.cutoff <- 0.05
+alpha.cutoff <- 0.05 #(for logit transforms)
+beta.delta.cutoff <- 0.25
 
 numcores <- parallel::detectCores()
 ```
@@ -96,6 +99,8 @@ Code needed to load metadata
 metadata <- read.table(file.path(metaDir, "meta.txt"),sep="\t",header=T)
 # drop male sample
 metadata <- metadata[-grep("14-b1-cntr", metadata$samplename),]
+# drop sample with skewed beta value plot
+metadata <- metadata[-grep("15-b1-cntr", metadata$samplename),]
 
 metadata.out <- metadata[,c("samplename", "exposure", "type" ,"cohort", "generation")]
 kable(metadata.out)
@@ -163,128 +168,136 @@ save(file=file.path(resultsDir, "BSeq.object"), list="BS")
 
 ```{r loadobject, echo=FALSE }
 load(file=file.path(resultsDir, "BSeq.object"))
+# drop chrM (need to do it to get karyograms to work later)
+BS <- chrSelectBSseq(BS, seqnames = paste("chr", c(1:22,"X", "Y"), sep=""), order = TRUE)
 ```
-
 
 # Analysis
 
-## Separated by batch
-- just F1 for now
+## Separated by batch and generation
 
 ```{r separatebybatch}
-BS.b1 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
-BS.b2 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
+BS.b1.f1 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
+BS.b2.f1 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
+
+BS.b1.f2 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F2" | pData(BS)$generation=="cntr"))]
+BS.b2.f2 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F2" | pData(BS)$generation=="cntr"))]
+
+BS.b1.f3 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F3" | pData(BS)$generation=="cntr"))]
+BS.b2.f3 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F3" | pData(BS)$generation=="cntr"))]
 ```
 
 ### Statistical Tests
 - using DSS based Wald test
+- non-smoothed, individual sites only
 
-```{r DSStwogroup}
+```{r DSStwogroup, eval=FALSE}
 #use pData to subset and get samplenames 
-dmlTest.b1 <- DMLtest(BS.b1, group1=as.character(pData(BS.b1)$sampleid[which(pData(BS.b1)$generation=="F1")]),group2=as.character(pData(BS.b1)$sampleid[which(pData(BS.b1)$generation=="cntr")]))
-dmlTest.b2 <- DMLtest(BS.b2, group1=as.character(pData(BS.b2)$sampleid[which(pData(BS.b2)$generation=="F1")]), group2=as.character(pData(BS.b2)$sampleid[which(pData(BS.b2)$generation=="cntr")]))
+dmlTest.b1.f1 <- DMLtest(BS.b1.f1, group1=as.character(pData(BS.b1.f1)$sampleid[which(pData(BS.b1.f1)$generation=="F1")]),group2=as.character(pData(BS.b1.f1)$sampleid[which(pData(BS.b1.f1)$generation=="cntr")]))
+dmlTest.b2.f1 <- DMLtest(BS.b2.f1, group1=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="F1")]),group2=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="cntr")]))
 
-diffs.b1 <- callDML(dmlTest.b1, p.threshold = 0.05, delta=0.1)
-diffs.b1 <- subset(diffs.b1, fdr<0.01)
-diffs.b2 <- callDML(dmlTest.b2, p.threshold = 0.05, delta=0.1)
-diffs.b2 <- subset(diffs.b2, fdr<0.01)
+dmlTest.b1.f2 <- DMLtest(BS.b1.f2, group1=as.character(pData(BS.b1.f2)$sampleid[which(pData(BS.b1.f2)$generation=="F2")]),group2=as.character(pData(BS.b1.f2)$sampleid[which(pData(BS.b1.f2)$generation=="cntr")]))
+dmlTest.b2.f2 <- DMLtest(BS.b2.f2, group1=as.character(pData(BS.b2.f2)$sampleid[which(pData(BS.b2.f2)$generation=="F2")]),group2=as.character(pData(BS.b2.f2)$sampleid[which(pData(BS.b2.f2)$generation=="cntr")]))
 
-callDMR(dmlTest.b1, )
+dmlTest.b1.f3 <- DMLtest(BS.b1.f3, group1=as.character(pData(BS.b1.f3)$sampleid[which(pData(BS.b1.f3)$generation=="F3")]),group2=as.character(pData(BS.b1.f3)$sampleid[which(pData(BS.b1.f3)$generation=="cntr")]))
+dmlTest.b2.f3 <- DMLtest(BS.b2.f3, group1=as.character(pData(BS.b2.f3)$sampleid[which(pData(BS.b2.f3)$generation=="F3")]),group2=as.character(pData(BS.b2.f3)$sampleid[which(pData(BS.b2.f3)$generation=="cntr")]))
+
+save(file=file.path(resultsDir, "RDATA.dmlTests"), list=c("dmlTest.b1.f1", "dmlTest.b2.f1", "dmlTest.b1.f2", "dmlTest.b2.f2", "dmlTest.b1.f3", "dmlTest.b2.f3"))
 ```
 
-```{r hypohypercompare}
-hypo.b1 <- subset(diffs.b1, diff<0)
-hyper.b1 <- subset(diffs.b1, diff>0)
-hypo.b2 <- subset(diffs.b2, diff<0)
-hyper.b2 <- subset(diffs.b2, diff>0)
-
-diffs.b1.gr <- with(diffs.b1, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b2.gr <- with(diffs.b2, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-
-length(diffs.b1.gr)
-length(diffs.b2.gr)
-length(intersect(diffs.b1.gr, diffs.b2.gr))
+```{r dmltesload, echo=FALSE}
+load(file.path(resultsDir, "RDATA.dmlTests"))
 ```
 
+**Subset to sites with a change in methyulation of at least `r beta.delta.cutoff`, pvalue of less than `alpha.cutoff` and an FDR of less than  `r q.cutoff`.**
 
-```{r allpairwise}
-f1s.b1 <- as.character(pData(BS.b1)$sampleid[which(pData(BS.b1)$generation=="F1")])
-cntrs.b1 <- as.character(pData(BS.b1)$sampleid[which(pData(BS.b1)$generation=="cntr")])
-combos.b1 <- expand.grid(cntrs.b1, f1s.b1)
+```{r sigdiffs}
+diffs.b1.f1 <- callDML(dmlTest.b1.f1, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b1.f1 <- subset(diffs.b1.f1, fdr<q.cutoff)
+diffs.b2.f1 <- callDML(dmlTest.b2.f1, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b2.f1 <- subset(diffs.b2.f1, fdr<q.cutoff)
 
-f1s.b2 <- as.character(pData(BS.b2)$sampleid[which(pData(BS.b2)$generation=="F1")])
-cntrs.b2 <- as.character(pData(BS.b2)$sampleid[which(pData(BS.b2)$generation=="cntr")])
-combos.b2 <- expand.grid(cntrs.b2, f1s.b2)
+diffs.b1.f2 <- callDML(dmlTest.b1.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b1.f2 <- subset(diffs.b1.f2, fdr<q.cutoff)
+diffs.b2.f2 <- callDML(dmlTest.b2.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b2.f2 <- subset(diffs.b2.f2, fdr<q.cutoff)
 
-dmlTest.b1.15.1 <- DMLtest(BS.b1, group1="15", group2="1", smoothing=TRUE)
-dmlTest.b1.16.1 <- DMLtest(BS.b1, group1="16", group2="1", smoothing=TRUE)
-dmlTest.b1.17.1 <- DMLtest(BS.b1, group1="17", group2="1", smoothing=TRUE)
-dmlTest.b1.15.2 <- DMLtest(BS.b1, group1="15", group2="2", smoothing=TRUE)
-dmlTest.b1.16.2 <- DMLtest(BS.b1, group1="16", group2="2", smoothing=TRUE)
-dmlTest.b1.17.2 <- DMLtest(BS.b1, group1="17", group2="2", smoothing=TRUE)
-dmlTest.b1.15.3 <- DMLtest(BS.b1, group1="15", group2="3", smoothing=TRUE)
-dmlTest.b1.16.3 <- DMLtest(BS.b1, group1="16", group2="3", smoothing=TRUE)
-dmlTest.b1.17.3 <- DMLtest(BS.b1, group1="17", group2="3", smoothing=TRUE)
-dmlTest.b1.15.4 <- DMLtest(BS.b1, group1="15", group2="4", smoothing=TRUE)
-dmlTest.b1.16.4 <- DMLtest(BS.b1, group1="16", group2="4", smoothing=TRUE)
-dmlTest.b1.17.4 <- DMLtest(BS.b1, group1="17", group2="4", smoothing=TRUE)
+diffs.b1.f3 <- callDML(dmlTest.b1.f3, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b1.f3 <- subset(diffs.b1.f3, fdr<q.cutoff)
+diffs.b2.f3 <- callDML(dmlTest.b2.f3, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
+diffs.b2.f3 <- subset(diffs.b2.f3, fdr<q.cutoff)
+```
 
-diffs.b1.15.1 <- callDML(dmlTest.b1.15.1, p.threshold = 0.05, delta=0.1)
-diffs.b1.16.1 <- callDML(dmlTest.b1.16.1, p.threshold = 0.05, delta=0.1)
-diffs.b1.17.1 <- callDML(dmlTest.b1.17.1, p.threshold = 0.05, delta=0.1)
-diffs.b1.15.2 <- callDML(dmlTest.b1.15.2, p.threshold = 0.05, delta=0.1)
-diffs.b1.16.2 <- callDML(dmlTest.b1.16.2, p.threshold = 0.05, delta=0.1)
-diffs.b1.17.2 <- callDML(dmlTest.b1.17.2, p.threshold = 0.05, delta=0.1)
-diffs.b1.15.3 <- callDML(dmlTest.b1.15.3, p.threshold = 0.05, delta=0.1)
-diffs.b1.16.3 <- callDML(dmlTest.b1.16.3, p.threshold = 0.05, delta=0.1)
-diffs.b1.17.3 <- callDML(dmlTest.b1.17.3, p.threshold = 0.05, delta=0.1)
-diffs.b1.15.4 <- callDML(dmlTest.b1.15.4, p.threshold = 0.05, delta=0.1)
-diffs.b1.16.4 <- callDML(dmlTest.b1.16.4, p.threshold = 0.05, delta=0.1)
-diffs.b1.17.4 <- callDML(dmlTest.b1.17.4, p.threshold = 0.05, delta=0.1)
+- the different batches now have more similar distributions of hypo and hyper-methylated sites, with the individual samples still showing more hypermethylated sites
 
-diffs.b1.15.1.gr <- with(diffs.b1.15.1, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.16.1.gr <- with(diffs.b1.16.1, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.17.1.gr <- with(diffs.b1.17.1, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.15.2.gr <- with(diffs.b1.15.2, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.16.2.gr <- with(diffs.b1.16.2, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.17.2.gr <- with(diffs.b1.17.2, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.15.3.gr <- with(diffs.b1.15.3, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.16.3.gr <- with(diffs.b1.16.3, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.17.3.gr <- with(diffs.b1.17.3, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.15.4.gr <- with(diffs.b1.15.4, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.16.4.gr <- with(diffs.b1.16.4, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
-diffs.b1.17.4.gr <- with(diffs.b1.17.4, GRanges(chr, IRanges(pos, pos), mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr))
+```{r hypohyper}
 
-length(diffs.b1.15.1.gr)
-length(diffs.b1.16.1.gr)
-length(diffs.b1.17.1.gr)
-length(diffs.b1.15.2.gr)
-length(diffs.b1.16.2.gr)
-length(diffs.b1.17.2.gr)
+diffs.b1.f1$batch <- "pooled"
+diffs.b2.f1$batch <- "individual"
+diffs.f1 <- rbind(diffs.b1.f1, diffs.b2.f1) %>% tbl_df()
+ggplot(diffs, aes(x=diff,color=batch))+geom_density()
 
-length(diffs.b1.15.3.gr)
-length(diffs.b1.16.3.gr)
-length(diffs.b1.17.3.gr)
-length(diffs.b1.15.4.gr)
-length(diffs.b1.16.4.gr)
-length(diffs.b1.17.4.gr)
+chr.hypo.hyper.summary <- diffs.f1 %>% 
+  dplyr::group_by(., chr, batch) %>%
+  summarize(., hyper=length(which(diff>0)), hypo=length(which(diff<0))) %>%  
+  mutate(., percent.hyper=hyper/(hyper+hypo)*100) %>% mutate(., percent.hypo=100-percent.hyper) %>%
+  dplyr::select(., chr, batch, contains("percent")) %>% 
+  reshape2::melt(., id.vars=c("chr", "batch"))  
 
-length(intersect(diffs.b1.15.4.gr, diffs.b1.16.4.gr))
-intersect(diffs.b1.15.1.gr, intersect(diffs.b1.16.1.gr, diffs.b1.17.1.gr))
-intersect(diffs.b1.15.2.gr, intersect(diffs.b1.16.2.gr, diffs.b1.17.2.gr))
-intersect(diffs.b1.15.3.gr, intersect(diffs.b1.16.3.gr, diffs.b1.17.3.gr))
-intersect(diffs.b1.15.4.gr, intersect(diffs.b1.16.4.gr, diffs.b1.17.4.gr))
+ggplot(chr.hypo.hyper.summary, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
 
+diffs.b1.f2$batch <- "pooled"
+diffs.b2.f2$batch <- "individual"
+diffs.f2 <- rbind(diffs.b1.f2, diffs.b2.f2) %>% tbl_df()
+ggplot(diffs, aes(x=diff,color=batch))+geom_density()
 
-length(intersect(diffs.b1.1.gr, diffs.b1.3.gr))
-length(intersect(diffs.b1.1.gr, diffs.b1.4.gr))
-length(intersect(diffs.b1.2.gr, diffs.b1.3.gr))
-length(intersect(diffs.b1.2.gr, diffs.b1.4.gr))
-length(intersect(diffs.b1.3.gr, diffs.b1.4.gr))
+chr.hypo.hyper.summary <- diffs.f2 %>% 
+  dplyr::group_by(., chr, batch) %>%
+  summarize(., hyper=length(which(diff>0)), hypo=length(which(diff<0))) %>%  
+  mutate(., percent.hyper=hyper/(hyper+hypo)*100) %>% mutate(., percent.hypo=100-percent.hyper) %>%
+  dplyr::select(., chr, batch, contains("percent")) %>% 
+  reshape2::melt(., id.vars=c("chr", "batch"))  
+
+ggplot(chr.hypo.hyper.summary, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
 
 
 
 ```
+
+
+```{r karyograms}
+#dump differences into genomicranges object
+diffs.gr <- with(diffs, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr, batch=batch))
+# add sequence lengths for chromsomes
+seqlengths(diffs.gr) <- seqlengths(ideoCyto$mm10)[names(seqlengths(diffs.gr))]
+diffs.gr <- keepSeqlevels(diffs.gr, paste0("chr", c(1:19, "X", "Y")))
+
+# subset to different grranges objects for each batch
+diffs.b1.gr <- subset(diffs.gr, batch=="pooled")
+diffs.b2.gr <- subset(diffs.gr, batch=="individual")
+
+#plot with each batch a different color and position so they don't overlap
+autoplot(seqinfo(diffs.b1.gr), layout = "karyogram") +
+  layout_karyogram(data = diffs.b1.gr, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
+  layout_karyogram(data = diffs.b2.gr, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+
+# now only pl9t the hypermethylated differences from each batch
+diffs.b1.hyper.gr <- subset(diffs.gr, batch=="pooled" & diff>0)
+diffs.b2.hyper.gr <- subset(diffs.gr, batch=="individual" & diff>0)
+autoplot(seqinfo(diffs.b1.hyper.gr), layout = "karyogram") +
+  layout_karyogram(data = diffs.b1.hyper.gr, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
+  layout_karyogram(data = diffs.b2.hyper.gr, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+
+# now only pl9t the hypomethylated differences from each batch
+diffs.b1.hypo.gr <- subset(diffs.gr, batch=="pooled" & diff<0)
+diffs.b2.hypo.gr <- subset(diffs.gr, batch=="individual" & diff<0)
+autoplot(seqinfo(diffs.b1.hyper.gr), layout = "karyogram") +
+  layout_karyogram(data = diffs.b1.hypo.gr, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
+  layout_karyogram(data = diffs.b2.hypo.gr, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+```
+
+
+
 
 # R Session Info
 
