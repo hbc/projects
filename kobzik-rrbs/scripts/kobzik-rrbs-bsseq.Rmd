@@ -17,16 +17,12 @@ labPI=""
 lablocation=""
 analystname="John Hutchinson"
 analystemail="jhutchin@hsph.harvard.edu"
-
 ```
-
 
 ```{r knitrsetup, echo=FALSE}
 library(knitr)
 knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
-
 ```
-
 
 ---
 
@@ -63,7 +59,6 @@ library(bsseq)
 library(DSS)
 library(ggbio)
 library(biovizBase)
-
 ```
 
 ## Variables
@@ -212,8 +207,6 @@ diffs.b1.f1 <- subset(diffs.b1.f1, fdr<q.cutoff)
 diffs.b2.f1 <- callDML(dmlTest.b2.f1, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
 diffs.b2.f1 <- subset(diffs.b2.f1, fdr<q.cutoff)
 
-
-
 diffs.b1.f2 <- callDML(dmlTest.b1.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
 diffs.b1.f2 <- subset(diffs.b1.f2, fdr<q.cutoff)
 diffs.b2.f2 <- callDML(dmlTest.b2.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
@@ -284,7 +277,6 @@ chr.hypo.hyper.summary.f3 <- diffs.f3 %>%
 ggplot(chr.hypo.hyper.summary.f3, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
 ```
 
-
 #### Differences in Genomic Context 
 
 ```{r karyograms}
@@ -315,7 +307,6 @@ diffs.b2.hypo.gr.f1 <- subset(diffs.gr.f1, batch=="individual" & diff<0)
 karyo.hypo.f1 <- autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hypo.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hypo.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
-
 
 ##F2
 #dump differences into genomicranges object
