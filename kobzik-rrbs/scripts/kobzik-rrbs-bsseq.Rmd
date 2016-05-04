@@ -167,7 +167,7 @@ save(file=file.path(resultsDir, "BSeq.object"), list="BS")
 
 ## Separate by batch and generation
 
-```{r separatebybatch}
+```{r separatebybatch, cache=TRUE, cache.lazy=FALSE}
 # drop chrM (need to do it to get karyograms to work later)
 BS <- chrSelectBSseq(BS, seqnames = paste("chr", c(1:22,"X", "Y"), sep=""), order = TRUE)
 
