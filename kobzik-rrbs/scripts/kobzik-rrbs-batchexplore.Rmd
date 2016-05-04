@@ -304,9 +304,6 @@ testdata <- ifelse(metadata$generation=="cntr", 1, 0)
 setwd(dataDir)
 meth.quants <- read(as.list(filelist10), sample.id=as.list(as.character(metadata$samplename)),  assembly="mm10", treatment=testdata, context="CpG" )
 ```
-
-
-
 # Analysis
 
 ## Data Consolidation
@@ -337,11 +334,11 @@ meth.quants.filtered.norm <- normalizeCoverage(meth.quants.filtered )
 ```{r methmerge, eval=FALSE}
 meth.quants.filtered.merged <- unite(meth.quants.filtered.norm, destrand = TRUE)
 rm(meth.quants, meth.quants.filtered, meth.quants.filtered.norm)
-save(file=file.path(resultsDir, "meth.quants.filtered.merged"), list="meth.quants.filtered.merged")
+save(file=file.path(resultsDir, "meth.quants.filtered.merged.batchexplore"), list="meth.quants.filtered.merged")
 ```
 
 ```{r methmergeload, echo=FALSE}
-load(file=file.path(resultsDir, "meth.quants.filtered.merged"))
+load(file=file.path(resultsDir, "meth.quants.filtered.merged.batchexplore"))
 ```
 
 
@@ -363,7 +360,7 @@ meth.quants.b2F3cntr <- reorganize(meth.quants.filtered.merged  ,sample.ids=c("1
 
 Significance wwas calculated by applying Logistic regression tests.
   
-```{r logreg, eval=FALSE}
+```{r logreg}
 #batch1
 b1F1.diffMeth <- calculateDiffMeth(meth.quants.b1F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
 b1F2.diffMeth <- calculateDiffMeth(meth.quants.b1F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
@@ -373,13 +370,8 @@ b1F3.diffMeth <- calculateDiffMeth(meth.quants.b1F3cntr,slim=TRUE,  weighted.mea
 b2F1.diffMeth <- calculateDiffMeth(meth.quants.b2F1cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
 b2F2.diffMeth <- calculateDiffMeth(meth.quants.b2F2cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
 b2F3.diffMeth <- calculateDiffMeth(meth.quants.b2F3cntr,slim=TRUE,  weighted.mean=TRUE,num.cores=numcores)
-
-save(file=file.path(resultsDir, "batch.diffs"), list=ls()[grep("b.+diffMeth", ls())])
 ```
 
-```{r loaddiffs, echo=FALSE}
-load(file=file.path(resultsDir, "batch.diffs"))
-```
 
 ### Data Exploration - why are the batches so different?
 
@@ -419,7 +411,6 @@ F1.diffMeth.dt <- tbl_df(F1.diffMeth.mat)
 #### Methylation differeces at all sites, either batch  
 
 ```{r methdiffcompare_wholedist}
-
 ggplot(F1.diffMeth.dt, aes(x=meth.diff, colour=batch)) + geom_density()+ggtitle("F1 methylation  differences  ")
 
 filter(F1.diffMeth.dt, meth.diff>0) %>% ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+scale_x_log10()+ ggtitle("Methylation differences at 'over'-methylated sites") +xlab("log10 transformed hyper-methylation differences")
@@ -467,7 +458,7 @@ filter(F1.diffMeth.dt, qvalue<0.01, meth.diff<(-25), batch=="one") %>%
   ggplot(., aes(x=meth.diff, colour=batch)) + geom_density()+ ggtitle("Distributions of methylation differences at sites significantly hypomethylated in batch1 F1")+xlab("methylation differences")
 ```
 
-```{r methdiffcompare_rawdatasetsup,  cache=FALSE}
+```{r methdiffcompare_rawdatasetsup,  cache=TRUE, cache.lazy=FALSE}
 sampleids <- meth.quants.filtered.merged@sample.ids
 meth.quant.mat <- getData(meth.quants.filtered.merged)
 meth.quant.mat.m <- reshape2::melt(meth.quant.mat, id.vars=c("chr", "start", "end", "strand")) %>% tbl_df()
@@ -483,14 +474,13 @@ numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
 
 meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation"))
 meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, betaval=value.x/(value.x+value.y)) 
+ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+ facet_wrap(~generation)
+
 meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, Mval=log2((value.x+1e-5)/(value.y+alpha))) 
 meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, -contains("variable"), -contains("value")) 
 meth.quant.mat.betas.m <- reshape2::melt(meth.quant.mat.betas.m, id.vars=c("chr", "start", "end", "strand","samplid", "samplenum", "batch", "generation")) 
 meth.quant.mat.betas.m <- tbl_df(meth.quant.mat.betas.m) 
 meth.quant.mat.betas.m <- dplyr::select(meth.quant.mat.betas.m, chr, start, end, strand, variable, value, samplenum, samplid, batch, generation)
-
-ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+ facet_wrap(~generation)
-
 
 meth.quant.mat.m <- bind_rows(meth.quant.mat.betas.m, meth.quant.mat.m)
 ```
