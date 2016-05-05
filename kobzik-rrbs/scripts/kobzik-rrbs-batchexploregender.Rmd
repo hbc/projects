@@ -1,0 +1,412 @@
+---
+title: Batch analysis of RRBS data
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: simplex
+    code_folding: hide
+---
+
+
+```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
+project="Kobzik - RRBS Batch correction"
+clientname=" "
+clientemail=""
+labPI=""
+lablocation=""
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+```
+
+
+```{r knitrsetup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
+
+```
+
+
+---
+
+# Kobzik methylation
+
+Examining differences between individual and pooled samples in RRBS data set. 
+
+For this analysis, I kept the samples together for filtering, normalization and unification.
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Setup
+
+## Libraries
+
+R libraries needed to perform analysis
+
+```{r setup}
+library(gridExtra)
+library(knitr)
+library(stringr)
+library(ggplot2)
+library(CHBUtils)
+library(RColorBrewer)
+library(pheatmap)
+library(GenomicRanges)
+library(devtools)
+#install_git("https://github.com/druvus/methylKit")
+library(methylKit)
+library(dplyr)
+library(org.Mm.eg.db)
+
+```
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r load}
+## Setup Data and Results directory variables
+if(file.exists("/home/jnh7/projects/kobzik-rrbs")){
+	baseDir="/home/jnh7/projects/kobzik-rrbs"
+} else{ 
+baseDir="/Users/johnhutchinson/Work/projects/kobzik-rrbs/"
+}
+dataDir <- file.path(baseDir, "data/bed")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+lo.count.cutoff <- 10
+q.cutoff <- 0.01
+alpha <- 1e-5 #(for logit transforms)
+
+numcores <- parallel::detectCores()
+```
+
+## Functions 
+
+``` {r functions}
+rowSds <- function(x, center=NULL, ...) {
+  n <- !is.na(x);
+  n <- rowSums(n);
+  n[n <= 1] <- NA;
+    if (is.null(center)) {
+    center <- rowMeans(x, ...);
+  }
+  x <- x - center;
+  x <- x*x;
+  x <- rowSums(x, ...);
+  x <- x/(n-1);
+  sqrt(x);
+}
+
+prepPCA <- function(x,  
+                    sd.filter=TRUE,
+                    sd.threshold=0.5, 
+                    filterByQuantile=TRUE, 
+                    scale=TRUE,
+                    center=TRUE, 
+                    logit=FALSE,
+                    alpha=0.01){
+  mat = getData(x)
+  # remove rows containing NA values, they might be introduced at unite step
+  mat      = mat[ rowSums(is.na(mat))==0, ]
+  
+  if(logit){
+    meth.mat <- log2((mat[,x@numCs.index]+alpha)/(mat[,x@numTs.index]+alpha))
+  } else {
+    meth.mat = mat[, x@numCs.index]/(mat[,x@numCs.index] + mat[,x@numTs.index] )
+  }
+  names(meth.mat)=x@sample.ids
+  
+  if(sd.filter){
+    if(filterByQuantile){
+      sds=rowSds(as.matrix(meth.mat))
+      cutoff=quantile(sds,sd.threshold)
+      meth.mat=meth.mat[sds>cutoff,]
+    }else{
+      meth.mat=meth.mat[rowSds(as.matrix(meth.mat))>sd.threshold,]
+    }
+  }
+  sample.ids=x@sample.ids
+  meth.pr = prcomp((meth.mat),scale=TRUE,center=TRUE)
+  return(meth.pr)
+}
+
+methylPCA <- function(meth.pr,  
+                      meth.prext.metadata="NULL", 
+                      metadata.merge.col="NULL",
+                      comp1=1,
+                      comp2=2, 
+                      adj.lim=c(0.001,0.1), 
+                      obj.return=FALSE, 
+                      title="PCA Plot"){
+  loads = meth.pr$rotation
+  expvar <- (meth.pr$sdev)^2 / sum(meth.pr$sdev^2)
+  
+  df <- data.frame(pc1=loads[,comp1], pc2=loads[,comp2], id=rownames(loads))
+  df <- merge(df, metadata, by.x="id", by.y=metadata.merge.col)
+  
+  p <- ggplot(df, aes(pc1, pc2, col=generation, shape=as.factor(cohort))) +
+    geom_point(size=5) +
+    labs(list(x =paste("loadings for PC",comp1," (", round(expvar[comp1]*100,1), "%)", sep=""),
+              y = paste("loadings for PC",comp2," (", round(expvar[comp2]*100,1), "%)", sep="")))+
+    scale_x_continuous() +
+    ggtitle(title) +
+    theme(plot.title = element_text(size=20, face="bold", vjust=2)) +
+    theme_bw()
+  return(p)
+}  
+  
+  
+cor.meth <- function(object, method="spearman"){
+  meth.mat = getData(object)[, object@numCs.index]
+  (getData(object)[,object@numCs.index] + getData(object)[,object@numTs.index] )    
+  names(meth.mat) = object@sample.ids
+  cor.mat <- ( cor(meth.mat,method=method) )
+  cor.mat
+}
+
+plot.targetanno.cpgi <- function(mydiff, cpg, id){
+  diffCpGann=annotate.WithFeature.Flank(mydiff,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores")
+  #getFeatsWithTargetsStats(diffCpGann,percentage=TRUE)
+  #plotTargetAnnotation(diffCpGann,col=c("green","gray","white"), main=paste(id, "- differential methylation annotation"))
+  plotTargetAnnotation(diffCpGann,col="Set1", main=paste(id, "- differential methylation annotation"))
+ }
+
+plot.targetanno.pei <- function(mydiff, gene, id){
+  diffAnn=annotate.WithGenicParts(mydiff,gene)
+  #getTargetAnnotationStats(diffAnn,percentage=TRUE,precedence=TRUE)
+  #props=getTargetAnnotationStats(diffAnn,percentage=TRUE,precedence=T)
+  #names(props)=paste( paste(round(props),"%"),sep=" ")
+  plotTargetAnnotation(diffAnn,precedence=TRUE, col="Set1", main=paste(id, "- differential methylation annotation"))
+}
+
+annodiff2 <- function(diff, idx, gene, cpg, all=F){
+  if (all){
+    idx <- 1:nrow(diff)
+  }
+  dselect <- methylKit::select(diff, idx)
+  anno <- annotate.WithGenicParts(dselect,gene)
+  gene.info <- getMembers(anno)
+  cpgi.info <- getMembers(annotate.WithFeature.Flank(dselect,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores"))
+  
+  assoc <- getAssociationWithTSS(anno)
+  
+  if (all){
+    out <- data.frame(getData(dselect), assoc[,-1])
+  } else {
+    out <- data.frame(getData(dselect)[,1:3], assoc[,-1])
+  }
+  symbol <- convertIDs(out$feature.name, "ENSEMBL", "SYMBOL", org.Mm.eg.db, "useFirst")
+  entrez <- convertIDs(out$feature.name, "ENSEMBL", "ENTREZID", org.Mm.eg.db, "useFirst")
+  description <- convertIDs(out$feature.name, "ENSEMBL", "GENENAME", org.Mm.eg.db, "useFirst")
+  refseq <- convertIDs(out$feature.name, "ENSEMBL", "REFSEQ", org.Mm.eg.db, "useFirst")
+  
+  out <- data.frame(out, gene.info, cpgi.info, symbol=symbol, entrez=entrez, description=description, refseq=refseq)
+  return(out)
+}
+
+annodiff <- function(diff, idx, gene, cpg, all=F){
+  if (all){
+    idx <- 1:nrow(diff)
+  }
+  dselect <- methylKit::select(diff, idx)
+  anno <- annotate.WithGenicParts(dselect,gene)
+  gene.info <- getMembers(anno)
+  cpgi.info <- getMembers(annotate.WithFeature.Flank(dselect,cpg$CpGi,cpg$shores,feature.name="CpGi",flank.name="shores"))
+  
+  assoc <- getAssociationWithTSS(anno)
+  
+  if (all){
+    out <- data.frame(getData(dselect), assoc[,-1])
+  } else {
+    out <- data.frame(getData(dselect)[,1:3], assoc[,-1])
+  }
+  symbol <- convertIDs(out$feature.name, "REFSEQ", "SYMBOL", org.Mm.eg.db, "useFirst")
+  entrez <- convertIDs(out$feature.name, "REFSEQ", "ENTREZID", org.Mm.eg.db, "useFirst")
+  description <- convertIDs(out$feature.name, "REFSEQ", "GENENAME", org.Mm.eg.db, "useFirst")
+  ensembl <- convertIDs(out$feature.name, "REFSEQ", "ENSEMBL", org.Mm.eg.db, "useFirst")
+  
+  out <- data.frame(out, gene.info, cpgi.info, symbol=symbol, entrez=entrez, description=description, ensembl=ensembl)
+  return(out)
+}
+
+
+convertIDs <- function( ids, from, to, db, ifMultiple=c("putNA", "useFirst")) {
+  stopifnot( inherits( db, "AnnotationDb" ) )
+  ifMultiple <- match.arg( ifMultiple )
+  suppressWarnings( selRes <- AnnotationDbi::select(
+    db, keys=ids, keytype=from, columns=c(from,to) ) )
+  if ( ifMultiple == "putNA" ) {
+    duplicatedIds <- selRes[ duplicated( selRes[,1] ), 1 ]
+    selRes <- selRes[ ! selRes[,1] %in% duplicatedIds, ]
+  }
+  return( selRes[ match( ids, selRes[,1] ), 2 ] )
+}
+
+manhattan.plot <- function(x, main="", col= c("red", "blue"), cutoff = 3, ymax=NULL) {
+  dm <- getData(x)
+  dm$chr <- gsub("chr", "", dm$chr)
+  dm <- dm[dm$chr != "X" & dm$chr != "Y",]
+  dm$chr <- as.numeric(dm$chr)
+  dm <- dm[,c(1,2,6,7)]
+  colnames(dm)<- c("CHR", "S", "Q", "MD")
+  gr.dm <- transformDfToGr(dm, seqnames = "CHR", start = "S", width=1)
+  gr.dm <- keepSeqlevels(gr.dm, as.character(1:19))
+  data(ideoCyto, package = "biovizBase")
+  seqlengths(gr.dm) <- as.numeric(seqlengths(ideoCyto$mm10)[1:19])
+  gr.dm <- gr.dm[!is.na(gr.dm$Q)]
+  ## transform pvalue
+  values(gr.dm)$pvalue <- -log10(values(gr.dm)$Q)
+  if (is.null(ymax) ) {
+    ymax <- max(values(gr.dm)$pvalue)
+  }  
+  ylim <- range(0, ymax)
+  values(gr.dm)$pvalue[values(gr.dm)$pvalue > ymax] <- Inf
+  plotGrandLinear(gr.dm, aes(y = pvalue), color = col, cutoff = cutoff, cutoff.color = "blue", cutoff.size = 0.2, main=main, ylim=ylim)
+}
+```
+
+# Preparations
+
+## Import Data and Metadata
+
+Previous analyses identified sample 14-b1-cntr as an outlier so it was not used for this analysis.
+
+### Metadata
+
+Code needed to load metadata
+
+```{r metadataload, bootstrap.show.output=TRUE}
+metadata <- read.table(file.path(metaDir, "meta.txt"),sep="\t",header=T)
+
+metadata.out <- metadata[,c("samplename", "exposure", "type" ,"cohort", "generation")]
+kable(metadata.out)
+``` 
+
+### Data
+
+Code needed to load methylation data
+
+```{r dataload}
+filelist10 <- paste("cpg", metadata$sampleid, "mincov10.txt", sep=".")
+
+testdata <- ifelse(metadata$generation=="cntr", 1, 0)
+
+setwd(dataDir)
+meth.quants <- read(as.list(filelist10), sample.id=as.list(as.character(metadata$samplename)),  assembly="mm10", treatment=testdata, context="CpG" )
+```
+# Analysis
+
+## Data Consolidation
+
+### Filter by coverage 
+
+- removes bases with very high coverage (above 99.9th percentile) to adjust for potential PCR biases
+- also remove bases with very low coverage (<10)
+
+```{r methcoveragefilter}
+meth.quants.filtered <- filterByCoverage(meth.quants, lo.count = lo.count.cutoff , lo.perc = NULL, hi.count = NULL, hi.perc = 99.9)    # methylBase object
+```
+
+### Normalize 
+
+Normalizes coverage values between samples using a scaling factor derived from differences between median of coverage distributions
+
+
+```{r methnormalization}
+meth.quants.filtered.norm <- normalizeCoverage(meth.quants.filtered )
+```
+
+### Merge samples
+
+- only compare samples at sites where they all have coverage
+- reduce data to only these sites 
+
+```{r methmerge, eval=TRUE, cache=TRUE, cache.lazy=FALSE}
+meth.quants.filtered.merged <- unite(meth.quants.filtered.norm, destrand = TRUE)
+#rm(meth.quants, meth.quants.filtered, meth.quants.filtered.norm)
+save(file=file.path(resultsDir, "meth.quants.filtered.merged.batchexploregender"), list="meth.quants.filtered.merged")
+```
+
+## Data Exploration
+
+__All samples__
+
+Overview of all included samples
+
+
+### ChrX and ChrY exploration
+- looking for potential gender swaps
+
+```{r swapsprep}
+meth.quants.filtered.merged.X.1 <- meth.quants.filtered.merged[which(getData(meth.quants.filtered.merged)$chr=="chrX" | getData(meth.quants.filtered.merged)$chr=="chr1"),]
+
+meth.quants.filtered.merged.X <- meth.quants.filtered.merged[which(getData(meth.quants.filtered.merged)$chr=="chrX") ,]
+```
+
+#### Y chromosome
+- coverage and number of sites with at least 10 fold coverage on the Y chromosome
+
+```{r Ycoverage}
+median.coverage.Y <- as.data.frame(unlist(lapply(meth.quants.filtered.norm, function(x) median(subset(getData(x), chr=="chrY")$coverage)))) %>% tbl_df()
+names(median.coverage.Y) <- "median.coverage"
+median.coverage.Y$number.sites <- unlist(lapply(meth.quants.filtered.norm, function(x) length(subset(getData(x), chr=="chrY")$coverage)))
+median.coverage.Y$sampleids <-  unlist(lapply(meth.quants.filtered.norm, function(x) x@sample.id))
+
+ggplot(median.coverage.Y, aes(y=median.coverage, x=number.sites,  color=sampleids, label=sampleids))+geom_text()
+```
+
+#### PCA of X Chromosome
+
+```{r PCAX}
+PCASamples(meth.quants.filtered.merged, main="Methylkit Default PCA - all sites")
+PCASamples(meth.quants.filtered.merged.X, main="Methylkit Default PCA - chrX sites", scale=FALSE)
+```
+
+#### Methylation percentage distribution on X chromosome
+
+- expect the X chromosome of female samples to be shifted towards the middle
+
+```{r Xbetavaldist}
+sampleids <- meth.quants.filtered.merged.X.1@sample.ids
+meth.quant.mat <- getData(meth.quants.filtered.merged.X.1)
+meth.quant.mat.m <- reshape2::melt(meth.quant.mat, id.vars=c("chr", "start", "end", "strand")) %>% tbl_df()
+rm(meth.quant.mat)
+meth.quant.mat.m <- mutate(meth.quant.mat.m, samplenum=unlist(str_extract_all(as.character(meth.quant.mat.m$variable), "(\\d)+$")))
+meth.quant.mat.m <- mutate(meth.quant.mat.m, variable=str_replace_all(variable, "(\\d)+$", "" ))
+meth.quant.mat.m <- mutate(meth.quant.mat.m, samplid=sampleids[as.numeric(samplenum)])
+meth.quant.mat.m <- mutate(meth.quant.mat.m, batch=unlist(lapply(str_split(samplid, "-"), function(x) x[[2]])))
+meth.quant.mat.m <- mutate(meth.quant.mat.m, generation=unlist(lapply(str_split(samplid, "-"), function(x) x[[3]])))
+numCs.m <- filter(meth.quant.mat.m, variable=="numCs")
+numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
+# merge the berta value data 
+meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation"))
+# calculate beta values
+meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, betaval=value.x/(value.x+value.y)) 
+# plot distribtuions of beta values for all samples, spearateluy for each sample "type/generation"" 
+ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+ggtitle("All Samples")
+ggplot(subset(meth.quant.mat.betas.m,generation=="cntr"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("Controls")
+ggplot(subset(meth.quant.mat.betas.m,generation=="F1"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("F1s")
+ggplot(subset(meth.quant.mat.betas.m,generation=="F2"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired") + ggtitle("F2s")
+ggplot(subset(meth.quant.mat.betas.m,generation=="F3"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("F3s")
+```
+
+
+
+# R Session Info
+
+(useful if replicating these results)
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+---
+
