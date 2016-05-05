@@ -333,7 +333,7 @@ meth.quants.filtered.norm <- normalizeCoverage(meth.quants.filtered )
 
 ```{r methmerge, eval=FALSE}
 meth.quants.filtered.merged <- unite(meth.quants.filtered.norm, destrand = TRUE)
-rm(meth.quants, meth.quants.filtered, meth.quants.filtered.norm)
+#rm(meth.quants, meth.quants.filtered, meth.quants.filtered.norm)
 save(file=file.path(resultsDir, "meth.quants.filtered.merged.batchexplore"), list="meth.quants.filtered.merged")
 ```
 
@@ -394,7 +394,21 @@ methylPCA(meth.pr.logit, meth.prext.metadata = metadata, metadata.merge.col = "s
 
 Using the logit transformed values, you can see that the samples separate somewhat better by cohort. This may have implications for which statistical approach to use for differential methylation detection.
 
+#### ChrX and ChrY exploration
+- looking for potential gender swaps
 
+```{r swaps}
+chrY.coverage <- subset(getData(meth.quants.filtered.norm), chr=="chrY") %>% tbl_df() %>% dplyr::select(., chr, start, end, strand, contains("coverage"))
+
+chrY.coverage.m <- melt(chrY.coverage, id.vars=c("chr", "start", "end", "strand"))
+
+ggplot(chrY.coverage.m, aes(x=as.factor(start), y=value, color=variable))+geom_point(size=4)
+
+meth.quants.filtered.merged.chrX
+
+which(getData(meth.quants.filtered.merged)$chr=="chrX")
+
+plot(1,1)
 ### Comparing sites with discordant differential methhylation between individual and pooled samples
 
 ```{r }
@@ -459,6 +473,7 @@ filter(F1.diffMeth.dt, qvalue<0.01, meth.diff<(-25), batch=="one") %>%
 ```
 
 ```{r methdiffcompare_rawdatasetsup,  cache=TRUE, cache.lazy=FALSE}
+# munger the data to have the sample ids and metadata in a tidy form
 sampleids <- meth.quants.filtered.merged@sample.ids
 meth.quant.mat <- getData(meth.quants.filtered.merged)
 meth.quant.mat.m <- reshape2::melt(meth.quant.mat, id.vars=c("chr", "start", "end", "strand")) %>% tbl_df()
@@ -468,12 +483,14 @@ meth.quant.mat.m <- mutate(meth.quant.mat.m, variable=str_replace_all(variable, 
 meth.quant.mat.m <- mutate(meth.quant.mat.m, samplid=sampleids[as.numeric(samplenum)])
 meth.quant.mat.m <- mutate(meth.quant.mat.m, batch=unlist(lapply(str_split(samplid, "-"), function(x) x[[2]])))
 meth.quant.mat.m <- mutate(meth.quant.mat.m, generation=unlist(lapply(str_split(samplid, "-"), function(x) x[[3]])))
-
+# grab the C and T counts for calculating beta values
 numCs.m <- filter(meth.quant.mat.m, variable=="numCs")
 numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
-
+# merge the berta value data 
 meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation"))
+# calculate beta values
 meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, betaval=value.x/(value.x+value.y)) 
+# plot distribtuions of beta values for all samples, spearateluy for each sample "type/generation"" 
 ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+ facet_wrap(~generation)
 
 meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, Mval=log2((value.x+1e-5)/(value.y+alpha))) 
