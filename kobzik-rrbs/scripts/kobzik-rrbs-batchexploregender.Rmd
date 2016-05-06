@@ -64,6 +64,7 @@ library(devtools)
 library(methylKit)
 library(dplyr)
 library(org.Mm.eg.db)
+library(readr)
 
 ```
 
@@ -196,23 +197,30 @@ numTs.m <- filter(meth.quant.mat.m, variable=="numTs")
 meth.quant.mat.betas.m <- inner_join(numCs.m, numTs.m, by=c("chr", "start", "end", "strand", "samplid", "samplenum", "batch", "generation"))
 # calculate beta values
 meth.quant.mat.betas.m <-  mutate(meth.quant.mat.betas.m, betaval=value.x/(value.x+value.y)) 
+meth.quant.mat.betas.m <- mutate(meth.quant.mat.betas.m, mval=log2(value.x/value.y))
 # plot distribtuions of beta values for all samples, spearateluy for each sample "type/generation"" 
 ggplot(meth.quant.mat.betas.m, aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+ggtitle("All Samples")+theme_bw() + theme(plot.title = element_text(size=22))
 ggplot(subset(meth.quant.mat.betas.m,generation=="cntr"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("Controls")+theme_bw() + theme(plot.title = element_text(size=22))
 ggplot(subset(meth.quant.mat.betas.m,generation=="F1"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("F1s")+theme_bw() + theme(plot.title = element_text(size=22))
 ggplot(subset(meth.quant.mat.betas.m,generation=="F2"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired") + ggtitle("F2s")+theme_bw() + theme(plot.title = element_text(size=22))
 ggplot(subset(meth.quant.mat.betas.m,generation=="F3"), aes(x=betaval, color=samplid, linetype=batch))+geom_density()+facet_wrap(~chr)+scale_color_brewer(type="qual", palette="Paired")+ggtitle("F3s")+theme_bw() + theme(plot.title = element_text(size=22))
+
+
+temp <- meth.quant.mat.betas.m %>% group_by(.,samplid) %>% summarise(., median(betaval)) 
+plot(density(temp$`median(betaval)`))
+
 ```
-
-
-
 
 ### Sex-specific autosomal sites
 
 From the [Meta-analysis of human methylation data for evidence of sex-specific autosomal patterns, McCarthy et al. 2014, BMC Genomics. 15:981](http://bmcgenomics.biomedcentral.com/articles/10.1186/1471-2164-15-981) manuscript.
 
-```{r }
+```{r autosomalsites}
+autosites <- read_csv(file.path(metaDir, "12864_2014_6710_MOESM4_ESM.csv"))
 
+
+
+```
 # Conclusions
 
 Although 14-b1-cntr looks fine here, we should still exlcude it on the basis of previous PCA analysis.
