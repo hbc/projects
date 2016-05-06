@@ -98,7 +98,6 @@ library(sva)
 library(magrittr)
 library(lattice)
 library(RRHO)
-library(biomaRt)
 library(dplyr)
 ```
 
@@ -646,7 +645,7 @@ write.csv(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
 Running the all genes with at least a two-fold expression change (logFC>=1) through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in cytoskeletal protein binding. 
 [File with GO results](../results/GOresults.csv)
 
-```{r gosummaries, dev='png', width="100%"}
+```{r gosummaries, dev='png', width="100oc%"}
 library(GOsummaries)
 bp1 <- gosummaries(list(`Biological Process`=top200.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "BP")
 plot(bp1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
@@ -909,7 +908,10 @@ treemap(
 # pull in probeid to GO term mappings
 probeGOmappings <- AnnotationDbi::select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
 # get probes associated with cell adhesion specific GO terms
-probeGOmappings.celladhesion <- probeGOmappings[which(probeGOmappings$GO %in% c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155")),]
+
+cellmatrixadhesionGOs <- c("GO:0007160","GO:0016340","GO:0007161","GO:0048041","GO:0051895","GO:0051894","GO:0051893","GO:0001953","GO:0001954","GO:0001952","GO:0061302")
+
+probeGOmappings.celladhesion <- probeGOmappings[which(probeGOmappings$GO %in% c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155", cellmatrixadhesionGOs)),]
 
 # assign probeids to gene symbols
 geneGOmappings.celladhesion <- merge(fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")], probeGOmappings.celladhesion, by.x="probesetid", by.y="PROBEID", all.y=TRUE)
