@@ -623,6 +623,8 @@ pheatmap(as.matrix(select(eset.of.interest.Stau2, -symbol, -logFC)),
 
 ## Gene Ontologies
 
+### TOP 200
+
 ```{r functional1, fig.align='center', dev='png'}
 top200.Stau2 <- arrange(top.results.Stau2 , desc(logFC)) %>% select(., symbol) %>% as.data.frame() %>% unlist(.) %>% as.vector(.) %>% .[1:200]
 #top200.Stau2 <- filter(top.results.Stau2, logFC>=1) %>% select(., symbol) %>% as.data.frame() %>% unlist(.) %>% as.vector(.)
@@ -639,13 +641,16 @@ background <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., symb
             hier_filtering = "none", 
             domain_size = "annotated") 
  
-write.csv(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
+ 
+gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=22029) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+ 
+write.csv(gprofiler_results, file.path(resultsDir, "GOresults.top200.csv"))
 ``` 
 
-Running the all genes with at least a two-fold expression change (logFC>=1) through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in cytoskeletal protein binding. 
-[File with GO results](../results/GOresults.csv)
+Running the top 200 genes (as sorted by logFC)  through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in cytoskeletal protein binding.   
+**[File with GO results](../results/GOresults.top200.csv)**
 
-```{r gosummaries, dev='png', width="100oc%"}
+```{r gosummaries, dev='png',   fig.width=9,fig.height=2}
 library(GOsummaries)
 bp1 <- gosummaries(list(`Biological Process`=top200.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "BP")
 plot(bp1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
@@ -898,13 +903,347 @@ treemap(
 ```
 
 
-### Specific GO terms
+### More than 2 fold change
+
+```{r functional2, fig.align='center', dev='png'}
+top.Stau2 <- filter(top.results.Stau2 , logFC>1) %>% select(., symbol) %>% as.data.frame() %>% unlist(.) %>% as.vector(.) 
+#top.Stau2 <- filter(top.results.Stau2, logFC>=1) %>% select(., symbol) %>% as.data.frame() %>% unlist(.) %>% as.vector(.)
+library(gProfileR)
+background <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., symbol) %>% as.data.frame() %>% unlist(.) %>% as.vector(.)
+
+ gprofiler_results  <-     gprofiler(query = top.Stau2, 
+            organism = "mmusculus",
+            ordered_query = T, 
+            exclude_iea = F, 
+            max_p_value = 0.05, 
+            max_set_size = 0,
+            correction_method = "gSCS",
+            hier_filtering = "none", 
+            domain_size = "annotated") 
+ 
+  
+gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=22029) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+ 
+write.csv(gprofiler_results, file.path(resultsDir, "GOresults.morethan2fc.csv"))
+``` 
+
+Running the genes with at least a two-fold expression change (logFC>=1) through [g:profiler](http://biit.cs.ut.ee/gprofiler/) reveals significant enrichment of genes involved in cytoskeletal protein binding.   
+**[File with GO results](../results/GOresults.morethan2fc.csv)**
+
+```{r gosummaries2, dev='png',  fig.width=9,fig.height=2 }
+library(GOsummaries)
+bp1 <- gosummaries(list(`Biological Process`=top.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "BP")
+plot(bp1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+cc1 <- gosummaries(list(`Cellular Component`=top.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "CC")
+plot(cc1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+mf1 <- gosummaries(list(`Molecular Function`=top.Stau2), organism = "mmusculus", ordered_query = TRUE, go_branches = "MF")
+plot(mf1, panel_height=0, wordcloud_colors=c( "#41B6C4", "#081D58"))
+```
+
+
+```{r revigo2, dev='png'}
+# A treemap R script produced by the REVIGO server at http://revigo.irb.hr/
+# If you found REVIGO useful in your work, please cite the following reference:
+# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
+# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+# author: Anton Kratz <anton.kratz@gmail.com>, RIKEN Omics Science Center, Functional Genomics Technology Team, Japan
+# created: Fri, Nov 02, 2012  7:25:52 PM
+# last change: Fri, Nov 09, 2012  3:20:01 PM
+
+# -----------------------------------------------------------------------------
+# If you don't have the treemap package installed, uncomment the following line:
+# install.packages( "treemap" );
+library(treemap) 								# treemap package by Martijn Tennekes
+
+# Set the working directory if necessary
+# setwd("C:/Users/username/workingdir");
+
+# --------------------------------------------------------------------------
+# Here is your data from REVIGO. Scroll down for plot configuration options.
+
+bp.pval.revigo.names  <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+bp.pval.revigo.data <-rbind(c("GO:0006996","organelle organization",0.932,24.9318,0.794,0.000,"organelle organization"),
+c("GO:1902589","single-organism organelle organization",0.635,21.1707,0.706,0.619,"organelle organization"),
+c("GO:0010639","negative regulation of organelle organization",0.027,3.1238,0.610,0.699,"organelle organization"),
+c("GO:0044087","regulation of cellular component biogenesis",0.127,1.7328,0.682,0.486,"organelle organization"),
+c("GO:0030030","cell projection organization",0.378,2.1884,0.773,0.588,"organelle organization"),
+c("GO:0008152","metabolic process",82.183,4.7620,0.998,0.000,"metabolism"),
+c("GO:0009987","cellular process",65.994,5.6144,0.997,0.000,"cellular process"),
+c("GO:0032259","methylation",2.781,1.9706,0.985,0.000,"methylation"),
+c("GO:0032502","developmental process",1.387,4.5901,0.992,0.000,"developmental process"),
+c("GO:0044699","single-organism process",53.975,3.7747,0.996,0.000,"single-organism process"),
+c("GO:0048518","positive regulation of biological process",0.684,11.5346,0.765,0.000,"positive regulation of biological process"),
+c("GO:0048523","negative regulation of cellular process",0.942,3.9586,0.696,0.343,"positive regulation of biological process"),
+c("GO:0048519","negative regulation of biological process",1.243,3.7670,0.752,0.365,"positive regulation of biological process"),
+c("GO:0051235","maintenance of location",0.029,2.4123,0.804,0.247,"positive regulation of biological process"),
+c("GO:0010646","regulation of cell communication",0.380,2.8268,0.712,0.313,"positive regulation of biological process"),
+c("GO:0051302","regulation of cell division",0.069,6.6778,0.736,0.270,"positive regulation of biological process"),
+c("GO:0019222","regulation of metabolic process",10.173,10.6383,0.686,0.549,"positive regulation of biological process"),
+c("GO:0043547","positive regulation of GTPase activity",0.130,8.6459,0.677,0.332,"positive regulation of biological process"),
+c("GO:0065009","regulation of molecular function",0.835,4.3686,0.765,0.331,"positive regulation of biological process"),
+c("GO:0065008","regulation of biological quality",2.709,1.6904,0.737,0.405,"positive regulation of biological process"),
+c("GO:0009893","positive regulation of metabolic process",0.326,8.7305,0.699,0.309,"positive regulation of biological process"),
+c("GO:0097193","intrinsic apoptotic signaling pathway",0.015,1.3820,0.741,0.417,"positive regulation of biological process"),
+c("GO:0033160","positive regulation of protein import into nucleus, translocation",0.000,2.1255,0.758,0.550,"positive regulation of biological process"),
+c("GO:0051641","cellular localization",1.638,5.7852,0.967,0.000,"cellular localization"),
+c("GO:0008104","protein localization",1.716,2.3686,0.960,0.346,"cellular localization"),
+c("GO:0033036","macromolecule localization",1.969,1.6904,0.967,0.354,"cellular localization"),
+c("GO:0030705","cytoskeleton-dependent intracellular transport",0.009,2.7721,0.926,0.596,"cellular localization"),
+c("GO:0051649","establishment of localization in cell",1.489,3.9031,0.943,0.340,"cellular localization"),
+c("GO:0065007","biological regulation",14.918,6.4260,0.993,0.000,"biological regulation"),
+c("GO:0071840","cellular component organization or biogenesis",5.425,18.9957,0.992,0.000,"cellular component organization or biogenesis"),
+c("GO:0007049","cell cycle",1.410,12.5129,0.903,0.032,"cell cycle"),
+c("GO:0000278","mitotic cell cycle",0.087,3.8697,0.810,0.684,"cell cycle"),
+c("GO:0044770","cell cycle phase transition",0.030,1.6326,0.803,0.676,"cell cycle"),
+c("GO:0016310","phosphorylation",6.300,2.6478,0.918,0.147,"cell cycle"),
+c("GO:0044763","single-organism cellular process",41.995,5.2534,0.898,0.111,"cell cycle"),
+c("GO:0051298","centrosome duplication",0.004,4.8962,0.665,0.548,"cell cycle"),
+c("GO:0051301","cell division",1.357,6.7545,0.903,0.118,"cell cycle"),
+c("GO:0051321","meiotic cell cycle",0.023,4.2848,0.803,0.618,"cell cycle"),
+c("GO:0046483","heterocycle metabolic process",33.326,2.9431,0.907,0.259,"cell cycle"),
+c("GO:0010564","regulation of cell cycle process",0.066,7.5017,0.641,0.668,"cell cycle"),
+c("GO:0006725","cellular aromatic compound metabolic process",33.051,3.5901,0.907,0.143,"cell cycle"),
+c("GO:0098534","centriole assembly",0.002,1.5391,0.769,0.609,"cell cycle"),
+c("GO:0000075","cell cycle checkpoint",0.020,2.3125,0.814,0.611,"cell cycle"),
+c("GO:0007059","chromosome segregation",0.373,3.4089,0.913,0.102,"cell cycle"),
+c("GO:0022402","cell cycle process",0.527,13.6696,0.787,0.106,"cell cycle"),
+c("GO:0006928","cellular component movement",0.492,2.4609,0.911,0.105,"cell cycle"),
+c("GO:0006974","cellular response to DNA damage stimulus",1.978,11.7399,0.859,0.035,"cellular response to DNA damage stimulus"),
+c("GO:0006302","double-strand break repair",0.063,5.0585,0.788,0.650,"cellular response to DNA damage stimulus"),
+c("GO:0023051","regulation of signaling",0.379,1.8962,0.736,0.539,"cellular response to DNA damage stimulus"),
+c("GO:0010212","response to ionizing radiation",0.010,2.5406,0.939,0.338,"cellular response to DNA damage stimulus"),
+c("GO:0048583","regulation of response to stimulus",0.690,1.9747,0.727,0.498,"cellular response to DNA damage stimulus"),
+c("GO:0035556","intracellular signal transduction",2.718,11.3925,0.618,0.690,"cellular response to DNA damage stimulus"),
+c("GO:0007264","small GTPase mediated signal transduction",0.234,5.1555,0.688,0.521,"cellular response to DNA damage stimulus"),
+c("GO:0051056","regulation of small GTPase mediated signal transduction",0.112,4.1675,0.685,0.546,"cellular response to DNA damage stimulus"),
+c("GO:0006950","response to stress",4.119,2.0074,0.907,0.623,"cellular response to DNA damage stimulus"),
+c("GO:0000725","recombinational repair",0.042,2.4572,0.794,0.627,"cellular response to DNA damage stimulus"),
+c("GO:0000724","double-strand break repair via homologous recombination",0.041,2.5003,0.794,0.627,"cellular response to DNA damage stimulus"),
+c("GO:0006310","DNA recombination",1.840,5.8539,0.833,0.036,"DNA recombination"),
+c("GO:0018205","peptidyl-lysine modification",0.061,3.7190,0.842,0.628,"DNA recombination"),
+c("GO:0044260","cellular macromolecule metabolic process",28.588,3.6737,0.831,0.525,"DNA recombination"),
+c("GO:0009059","macromolecule biosynthetic process",17.669,2.3893,0.852,0.506,"DNA recombination"),
+c("GO:0006351","transcription, DNA-templated",9.014,2.7696,0.777,0.685,"DNA recombination"),
+c("GO:0006139","nucleobase-containing compound metabolic process",29.917,3.6055,0.847,0.528,"DNA recombination"),
+c("GO:0019438","aromatic compound biosynthetic process",15.562,1.7986,0.852,0.502,"DNA recombination"),
+c("GO:0006259","DNA metabolic process",6.339,7.7545,0.822,0.379,"DNA recombination"),
+c("GO:0006260","DNA replication",1.998,2.7423,0.815,0.653,"DNA recombination"),
+c("GO:0090304","nucleic acid metabolic process",20.158,5.6383,0.813,0.388,"DNA recombination"),
+c("GO:0010452","histone H3-K36 methylation",0.001,2.0716,0.703,0.573,"DNA recombination"),
+c("GO:0018130","heterocycle biosynthetic process",16.150,1.3152,0.852,0.507,"DNA recombination"),
+c("GO:0018105","peptidyl-serine phosphorylation",0.011,1.4881,0.854,0.543,"DNA recombination"),
+c("GO:0043412","macromolecule modification",5.091,3.3665,0.900,0.215,"DNA recombination"),
+c("GO:0051052","regulation of DNA metabolic process",0.156,3.0070,0.694,0.494,"DNA recombination"),
+c("GO:0018022","peptidyl-lysine methylation",0.003,4.3188,0.845,0.124,"DNA recombination"),
+c("GO:1901362","organic cyclic compound biosynthetic process",16.583,1.3063,0.879,0.497,"DNA recombination"),
+c("GO:0034641","cellular nitrogen compound metabolic process",33.428,1.3872,0.877,0.432,"DNA recombination"),
+c("GO:0006464","cellular protein modification process",2.895,3.8665,0.793,0.493,"DNA recombination"),
+c("GO:0034645","cellular macromolecule biosynthetic process",17.200,2.6440,0.795,0.446,"DNA recombination"),
+c("GO:0048731","system development",0.354,6.8539,0.770,0.057,"system development"),
+c("GO:0003012","muscle system process",0.020,1.6882,0.842,0.685,"system development"),
+c("GO:0061061","muscle structure development",0.035,1.3468,0.851,0.639,"system development"),
+c("GO:0007569","cell aging",0.006,1.4711,0.842,0.551,"system development"),
+c("GO:0048858","cell projection morphogenesis",0.049,1.3170,0.705,0.654,"system development"),
+c("GO:0060322","head development",0.004,4.2848,0.867,0.555,"system development"),
+c("GO:0030048","actin filament-based movement",0.005,1.3080,0.928,0.071,"actin filament-based movement"),
+c("GO:0030029","actin filament-based process",0.077,1.4012,0.921,0.088,"actin filament-based process"),
+c("GO:0007017","microtubule-based process",0.172,8.6819,0.917,0.095,"microtubule-based process"),
+c("GO:1901360","organic cyclic compound metabolic process",33.913,2.7595,0.941,0.100,"organic cyclic compound metabolism"),
+c("GO:0043170","macromolecule metabolic process",32.799,2.2495,0.941,0.230,"organic cyclic compound metabolism"));
+
+bp.pval.stuff <- data.frame(bp.pval.revigo.data);
+names(bp.pval.stuff) <- bp.pval.revigo.names;
+
+bp.pval.stuff$abslog10pvalue <- as.numeric( as.character(bp.pval.stuff$abslog10pvalue) );
+bp.pval.stuff$freqInDbPercent <- as.numeric( as.character(bp.pval.stuff$freqInDbPercent) );
+bp.pval.stuff$uniqueness <- as.numeric( as.character(bp.pval.stuff$uniqueness) );
+bp.pval.stuff$dispensability <- as.numeric( as.character(bp.pval.stuff$dispensability) );
+
+treemap(
+	bp.pval.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Biological Process Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+  )
+
+################################################################################################################
+################################################################################################################
+
+################################################################################################################
+################################################################################################################
+
+cc.pval.revigo.names <-  c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+cc.pval.revigo.data <-rbind(c("GO:0005623","cell",64.133,4.0975,0.990,0.000,"cell"),
+c("GO:0005856","cytoskeleton",0.714,19.6737,0.584,0.000,"cytoskeleton"),
+c("GO:0036449","microtubule minus-end",0.000,4.0386,0.587,0.555,"cytoskeleton"),
+c("GO:0005694","chromosome",0.973,6.6925,0.574,0.495,"cytoskeleton"),
+c("GO:0044446","intracellular organelle part",5.949,14.1494,0.479,0.640,"cytoskeleton"),
+c("GO:0097431","mitotic spindle pole",0.000,2.5171,0.603,0.538,"cytoskeleton"),
+c("GO:0043228","non-membrane-bounded organelle",8.439,23.4157,0.611,0.493,"cytoskeleton"),
+c("GO:0044430","cytoskeletal part",0.579,17.3107,0.435,0.469,"cytoskeleton"),
+c("GO:0044427","chromosomal part",0.450,2.1192,0.548,0.503,"cytoskeleton"),
+c("GO:0044428","nuclear part",0.645,15.0752,0.539,0.663,"cytoskeleton"),
+c("GO:0043232","intracellular non-membrane-bounded organelle",7.682,23.4157,0.502,0.629,"cytoskeleton"),
+c("GO:0043229","intracellular organelle",15.790,15.9872,0.556,0.690,"cytoskeleton"),
+c("GO:0044422","organelle part",6.517,14.8386,0.620,0.573,"cytoskeleton"),
+c("GO:0030018","Z disc",0.011,3.2218,0.575,0.338,"cytoskeleton"),
+c("GO:0005634","nucleus",2.809,15.6126,0.598,0.365,"cytoskeleton"),
+c("GO:0031981","nuclear lumen",0.437,17.0565,0.514,0.502,"cytoskeleton"),
+c("GO:0043292","contractile fiber",0.030,1.9872,0.663,0.363,"cytoskeleton"),
+c("GO:0005911","cell-cell junction",0.091,1.8327,0.881,0.000,"cell-cell junction"),
+c("GO:0030054","cell junction",0.154,4.3497,0.972,0.000,"cell junction"),
+c("GO:0031974","membrane-enclosed lumen",0.517,12.5143,0.972,0.000,"membrane-enclosed lumen"),
+c("GO:0032991","macromolecular complex",14.462,3.4572,0.976,0.000,"macromolecular complex"),
+c("GO:0043226","organelle",16.716,12.5272,0.976,0.000,"organelle"),
+c("GO:0044456","synapse part",0.066,3.3098,0.928,0.000,"synapse part"),
+c("GO:0045202","synapse",0.094,3.9208,0.972,0.000,"synapse"),
+c("GO:1902494","catalytic complex",3.772,1.4908,0.889,0.000,"catalytic complex"),
+c("GO:0034708","methyltransferase complex",0.032,1.3335,0.836,0.404,"catalytic complex"),
+c("GO:0043234","protein complex",8.273,6.0706,0.905,0.573,"catalytic complex"),
+c("GO:0030427","site of polarized growth",0.013,3.9031,0.941,0.023,"site of polarized growth"),
+c("GO:0030496","midbody",0.014,2.5157,0.941,0.023,"midbody"),
+c("GO:0031252","cell leading edge",0.034,1.4711,0.939,0.025,"cell leading edge"),
+c("GO:0097458","neuron part",0.092,4.1118,0.936,0.027,"neuron part"),
+c("GO:0044463","cell projection part",0.617,3.9788,0.866,0.032,"cell projection part"),
+c("GO:0001726","ruffle",0.015,1.9747,0.887,0.597,"cell projection part"),
+c("GO:0043005","neuron projection",0.069,3.7496,0.860,0.671,"cell projection part"),
+c("GO:0042995","cell projection",1.485,4.7959,0.926,0.035,"cell projection"),
+c("GO:0005622","intracellular",46.136,19.0259,0.905,0.064,"intracellular"),
+c("GO:0044464","cell part",64.133,4.3072,0.904,0.262,"intracellular"),
+c("GO:0005737","cytoplasm",38.159,6.6576,0.810,0.465,"intracellular"),
+c("GO:0044424","intracellular part",43.664,16.7721,0.821,0.199,"intracellular"));
+
+cc.pval.stuff <- data.frame(cc.pval.revigo.data);
+names(cc.pval.stuff) <- cc.pval.revigo.names;
+
+cc.pval.stuff$abslog10pvalue <- as.numeric( as.character(cc.pval.stuff$abslog10pvalue) );
+cc.pval.stuff$freqInDbPercent <- as.numeric( as.character(cc.pval.stuff$freqInDbPercent) );
+cc.pval.stuff$uniqueness <- as.numeric( as.character(cc.pval.stuff$uniqueness) );
+cc.pval.stuff$dispensability <- as.numeric( as.character(cc.pval.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  cc.pval.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Cellular Component Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+
+################################################################################################################
+################################################################################################################
+
+################################################################################################################
+################################################################################################################
+
+mf.pval.revigo.names <-  c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+mf.pval.revigo.data <- rbind(c("GO:0003774","motor activity",0.216,4.8601,0.881,0.000,"motor activity"),
+c("GO:0016817","hydrolase activity, acting on acid anhydrides",7.557,4.7570,0.893,0.274,"motor activity"),
+c("GO:0003777","microtubule motor activity",0.060,3.1831,0.890,0.363,"motor activity"),
+c("GO:0017111","nucleoside-triphosphatase activity",7.074,5.5171,0.842,0.548,"motor activity"),
+c("GO:0005085","guanyl-nucleotide exchange factor activity",0.061,5.8125,0.970,0.000,"guanyl-nucleotide exchange factor activity"),
+c("GO:0005089","Rho guanyl-nucleotide exchange factor activity",0.028,4.2557,0.944,0.000,"Rho guanyl-nucleotide exchange factor activity"),
+c("GO:0005096","GTPase activator activity",0.075,5.3595,0.899,0.000,"GTPase activator activity"),
+c("GO:0005488","binding",55.585,14.7447,0.987,0.000,"binding"),
+c("GO:0005515","protein binding",2.482,20.3799,0.890,0.000,"protein binding"),
+c("GO:0018024","histone-lysine N-methyltransferase activity",0.015,4.1537,0.768,0.015,"histone-lysine N-methyltransferase activity"),
+c("GO:0008276","protein methyltransferase activity",0.193,3.0560,0.801,0.457,"histone-lysine N-methyltransferase activity"),
+c("GO:0016772","transferase activity, transferring phosphorus-containing groups",9.188,1.3028,0.844,0.403,"histone-lysine N-methyltransferase activity"),
+c("GO:0016278","lysine N-methyltransferase activity",0.016,3.7721,0.804,0.613,"histone-lysine N-methyltransferase activity"),
+c("GO:0008757","S-adenosylmethionine-dependent methyltransferase activity",1.037,2.1261,0.778,0.689,"histone-lysine N-methyltransferase activity"),
+c("GO:0016773","phosphotransferase activity, alcohol group as acceptor",4.038,2.3497,0.838,0.517,"histone-lysine N-methyltransferase activity"),
+c("GO:0008170","N-methyltransferase activity",0.452,3.0334,0.790,0.589,"histone-lysine N-methyltransferase activity"),
+c("GO:0004402","histone acetyltransferase activity",0.010,1.5884,0.899,0.130,"histone-lysine N-methyltransferase activity"),
+c("GO:0016741","transferase activity, transferring one-carbon groups",3.193,1.3410,0.856,0.273,"histone-lysine N-methyltransferase activity"),
+c("GO:0004674","protein serine/threonine kinase activity",0.565,3.3915,0.860,0.168,"histone-lysine N-methyltransferase activity"),
+c("GO:0003682","chromatin binding",0.115,2.9872,0.916,0.050,"chromatin binding"),
+c("GO:0008092","cytoskeletal protein binding",0.162,10.3335,0.772,0.052,"cytoskeletal protein binding"),
+c("GO:0015631","tubulin binding",0.066,7.8729,0.754,0.524,"cytoskeletal protein binding"),
+c("GO:0042393","histone binding",0.016,1.4056,0.800,0.476,"cytoskeletal protein binding"),
+c("GO:0032403","protein complex binding",0.146,7.0227,0.773,0.556,"cytoskeletal protein binding"),
+c("GO:0019899","enzyme binding",0.221,5.6478,0.767,0.575,"cytoskeletal protein binding"),
+c("GO:0017016","Ras GTPase binding",0.029,5.1024,0.757,0.495,"cytoskeletal protein binding"),
+c("GO:0008270","zinc ion binding",3.455,4.1035,0.858,0.074,"zinc ion binding"),
+c("GO:0003677","DNA binding",13.924,8.3851,0.815,0.184,"zinc ion binding"),
+c("GO:0017076","purine nucleotide binding",15.986,7.3936,0.695,0.666,"zinc ion binding"),
+c("GO:0003676","nucleic acid binding",21.746,4.8962,0.799,0.317,"zinc ion binding"),
+c("GO:0035639","purine ribonucleoside triphosphate binding",15.477,7.0061,0.718,0.686,"zinc ion binding"),
+c("GO:1901265","nucleoside phosphate binding",20.353,5.1746,0.802,0.277,"zinc ion binding"),
+c("GO:0046914","transition metal ion binding",7.335,2.2076,0.845,0.527,"zinc ion binding"),
+c("GO:0097159","organic cyclic compound binding",42.443,8.1733,0.832,0.304,"zinc ion binding"),
+c("GO:1901363","heterocyclic compound binding",42.435,8.6421,0.832,0.124,"zinc ion binding"),
+c("GO:0097367","carbohydrate derivative binding",16.547,5.0264,0.858,0.196,"zinc ion binding"),
+c("GO:0005524","ATP binding",13.885,9.1198,0.654,0.275,"zinc ion binding"),
+c("GO:0043168","anion binding",20.956,6.5072,0.826,0.415,"zinc ion binding"),
+c("GO:0043167","ion binding",33.309,7.5346,0.840,0.267,"zinc ion binding"),
+c("GO:0036094","small molecule binding",21.712,3.2644,0.852,0.219,"zinc ion binding"));
+
+  
+mf.pval.stuff <- data.frame(mf.pval.revigo.data);
+names(mf.pval.stuff) <- mf.pval.revigo.names;
+
+mf.pval.stuff$abslog10pvalue <- as.numeric( as.character(mf.pval.stuff$abslog10pvalue) );
+mf.pval.stuff$freqInDbPercent <- as.numeric( as.character(mf.pval.stuff$freqInDbPercent) );
+mf.pval.stuff$uniqueness <- as.numeric( as.character(mf.pval.stuff$uniqueness) );
+mf.pval.stuff$dispensability <- as.numeric( as.character(mf.pval.stuff$dispensability) );
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  mf.pval.stuff,
+  index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Molecular Function Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+	# "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+	border.col=c("black","gray35"),
+	palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+	border.lwds=c(5,2),
+	fontsize.labels=c(36,12),
+	fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+```
+
+
+## Specific GO terms
 
 - are any of the genes from the comparison involved in cell adhesion?
 - working from Gene Ontology term for cellular senescence, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
+- added GO terms for cell matrix adhesion as well
 - here are the top 10 genes associated with cell adhesion, the full list is in the Excel file below
 
-```{r GO_annots}
+```{r GO_annots2}
 # pull in probeid to GO term mappings
 probeGOmappings <- AnnotationDbi::select(mogene10sttranscriptcluster.db, row.names(all.results[[1]]$stats.eset), "GO", "PROBEID")
 # get probes associated with cell adhesion specific GO terms
@@ -933,6 +1272,7 @@ write.table(top.results.Stau2[!is.na(top.results.Stau2$GO),], file=file.path(res
 ```
 
 [Excel file with Cell Adhesion Genes statistics](celladhesion.GO.genes.xls)
+
 
 ----
 
