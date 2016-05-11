@@ -94,10 +94,9 @@ Code needed to load metadata
 
 ```{r metadataload, bootstrap.show.output=TRUE}
 metadata <- read.table(file.path(metaDir, "meta.txt"),sep="\t",header=T)
-# drop male sample
-metadata <- metadata[-grep("14-b1-cntr", metadata$samplename),]
-# drop sample with skewed beta value plot
-metadata <- metadata[-grep("15-b1-cntr", metadata$samplename),]
+# drop questionable samples
+drops <- c("10-b1-F3", "11-b1-F3", "14-b1-cntr", "15-b1-cntr", "16-b1-cntr", "91-b2-F2", "92-b2-F2", "121-b2-F3","125-b2-cntr") 
+metadata <- metadata[!metadata$samplename %in% drops,]
 
 metadata.out <- metadata[,c("samplename", "exposure", "type" ,"cohort", "generation")]
 kable(metadata.out)
@@ -292,19 +291,22 @@ diffs.gr.f1 <- keepSeqlevels(diffs.gr.f1, paste0("chr", c(1:19, "X", "Y")))
 diffs.b1.gr.f1 <- subset(diffs.gr.f1, batch=="pooled")
 diffs.b2.gr.f1 <- subset(diffs.gr.f1, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
-karyo.f1 <- autoplot(seqinfo(diffs.b1.gr.f1), layout = "karyogram") +
+print("All Differentially Methylated Sites, F1")
+autoplot(seqinfo(diffs.b1.gr.f1), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypermethylated differences from each batch
 diffs.b1.hyper.gr.f1 <- subset(diffs.gr.f1, batch=="pooled" & diff>0)
 diffs.b2.hyper.gr.f1 <- subset(diffs.gr.f1, batch=="individual" & diff>0)
-karyo.hyper.f1 <- autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
+print("HyperMethylated Sites, F1")
+autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hyper.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hyper.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypomethylated differences from each batch
 diffs.b1.hypo.gr.f1 <- subset(diffs.gr.f1, batch=="pooled" & diff<0)
 diffs.b2.hypo.gr.f1 <- subset(diffs.gr.f1, batch=="individual" & diff<0)
-karyo.hypo.f1 <- autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
+print("HypoMethylated Sites, F1")
+autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hypo.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hypo.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 
@@ -318,19 +320,22 @@ diffs.gr.f2 <- keepSeqlevels(diffs.gr.f2, paste0("chr", c(1:19, "X", "Y")))
 diffs.b1.gr.f2 <- subset(diffs.gr.f2, batch=="pooled")
 diffs.b2.gr.f2 <- subset(diffs.gr.f2, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
-karyo.f2 <- autoplot(seqinfo(diffs.b1.gr.f2), layout = "karyogram") +
+print("All Differentially Methylated Sites, F2")
+autoplot(seqinfo(diffs.b1.gr.f2), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypermethylated differences from each batch
 diffs.b1.hyper.gr.f2 <- subset(diffs.gr.f2, batch=="pooled" & diff>0)
 diffs.b2.hyper.gr.f2 <- subset(diffs.gr.f2, batch=="individual" & diff>0)
-karyo.hyper.f2 <- autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
+print("HyperMethylated Sites, F2")
+autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hyper.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hyper.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypomethylated differences from each batch
 diffs.b1.hypo.gr.f2 <- subset(diffs.gr.f2, batch=="pooled" & diff<0)
 diffs.b2.hypo.gr.f2 <- subset(diffs.gr.f2, batch=="individual" & diff<0)
-karyo.hypo.f2 <- autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
+print("HypoMethylated Sites, F2")
+autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hypo.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hypo.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 
@@ -344,43 +349,25 @@ diffs.gr.f3 <- keepSeqlevels(diffs.gr.f3, paste0("chr", c(1:19, "X", "Y")))
 diffs.b1.gr.f3 <- subset(diffs.gr.f3, batch=="pooled")
 diffs.b2.gr.f3 <- subset(diffs.gr.f3, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
-karyo.f3 <- autoplot(seqinfo(diffs.b1.gr.f3), layout = "karyogram") +
+print("All Differentially Methylated Sites, F3")
+autoplot(seqinfo(diffs.b1.gr.f3), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypermethylated differences from each batch
 diffs.b1.hyper.gr.f3 <- subset(diffs.gr.f3, batch=="pooled" & diff>0)
 diffs.b2.hyper.gr.f3 <- subset(diffs.gr.f3, batch=="individual" & diff>0)
-karyo.hyper.f3 <- autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram") +
+print("HyperMethylated Sites, F3")
+autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram") +
   layout_karyogram(data = diffs.b1.hyper.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hyper.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 # now only pl9t the hypomethylated differences from each batch
 diffs.b1.hypo.gr.f3 <- subset(diffs.gr.f3, batch=="pooled" & diff<0)
 diffs.b2.hypo.gr.f3 <- subset(diffs.gr.f3, batch=="individual" & diff<0)
-karyo.hypo.f3 <- autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram", main="Faf") +
+print("HypoMethylated Sites, F3")
+autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram", main="Faf") +
   layout_karyogram(data = diffs.b1.hypo.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
   layout_karyogram(data = diffs.b2.hypo.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
 ```
-
-**Karyogram of all F1 differentiallly methylated sites (delta>abs(`r beta.delta.cutoff`), pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f1`
-**Karyogram of all F1 hypermethylated sites (delta>`r beta.delta.cutoff`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f1`
-**Karyogram of all F1 hypomethylated sites (delta<`r (beta.delta.cutoff)*(-1)`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f1`
-
-**Karyogram of all F2 differentiallly methylated sites (delta>abs(`r beta.delta.cutoff`), pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f2`
-**Karyogram of all F2 hypermethylated sites (delta>`r beta.delta.cutoff`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f2`
-**Karyogram of all F2 hypomethylated sites (delta<`r (beta.delta.cutoff)*(-1)`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f2`
-
-**Karyogram of all F3 differentiallly methylated sites (delta>abs(`r beta.delta.cutoff`), pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f3`
-**Karyogram of all F3 hypermethylated sites (delta>`r beta.delta.cutoff`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f3`
-**Karyogram of all F3 hypomethylated sites (delta<`r (beta.delta.cutoff)*(-1)`, pvalue<`r alpha.cutoff` &  FDR<`r q.cutoff`)***
-`r karyo.f3`
 
 
 ```{r annotate}
