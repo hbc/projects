@@ -1,0 +1,397 @@
+---
+title: "Differential Expression Analysis and Initial Functional Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: yeti
+    code_folding: hide
+---
+
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
+```
+
+# Overview
+
+RNAseq DE analysis for Caimiro Geraduzzi  (shachar_dagan@hms.harvard.edu),  Vaidya group at HSPH.  
+
+Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`.
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Setup
+
+## Libraries and Variables
+
+```{r vars}
+library(ggplot2)
+library(DT)
+library(CHBUtils)
+library(DESeq2)
+library(gProfileR)
+library(pheatmap)
+library(dplyr)
+library(biomaRt)
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
+
+baseDir <- "~/Work/projects/vv_smoc2KO_rnaseq/"
+resultsDir <- file.path(baseDir, "results/final/2016-05-05_analysis")
+pval.cutoff <- 0.1
+lfc.cutoff <-0.5849625
+```
+
+---
+
+# Data and Metadata Import 
+
+- drop outlier SMOC2_normal_2 as well
+  - PCA analysis in the QC shows that most of the variation by genotype is coming from this sample 
+
+```{r import}
+project_summary = file.path(resultsDir, "project-summary.csv")
+counts_file = file.path(resultsDir, "combined.counts")
+
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE) 
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
+counts = counts[, order(colnames(counts))]
+
+
+#drop outlier SMOC2_normal_2
+summarydata <- summarydata[!grepl("SMOC2_normal_2", rownames(summarydata)),]
+counts <- counts[,!grepl("SMOC2_normal_2", colnames(counts))]
+
+
+# this is a list of all non user-supplied metadata columns that could appear
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality","rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate","Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped","rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.","Genes.Detected", "Unique.Starts.Per.Read","unique_starts_per_read","complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads","Median.insert.size", "Mapped.reads.pct","Total.reads","avg_coverage_per_region", "Mapped.Reads", "Average.insert.size")
+
+metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+metadata$sampletype <- gsub(" kidney", "", metadata$sampletype)
+metadata$genotype <- gsub(" ", "_", metadata$genotype)
+metadata$Treatment <- gsub(" ", "_", metadata$Treatment)
+
+metadata$sampletype <- NULL
+metadata$replicate <- NULL
+metadata$mouse_num <- NULL
+metadata$id <- NULL
+
+```
+
+---
+
+# Data Manipulations
+
+## Remove genes with no counts for any of the samples
+
+```{r dropzeros}
+counts <- counts[!apply(counts, 1, function(x) all(x==0)),]
+```
+
+## Import raw counts into DESeq2
+
+```{r DEobject}
+eset <- new("ExpressionSet", exprs = as.matrix(counts))
+
+#make sure the metadata and expression set samples are in the same order
+if(identical(row.names(metadata), colnames(counts))){
+  pData(eset) <- metadata
+} else {
+  print("metadata and count data samples not in same order")
+}
+validObject(eset)
+
+# setup design to look at interaction term of genotype and treatment
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), design = ~genotype+Treatment+genotype:Treatment)
+dds <- DESeq(dds)
+```
+
+## PCA plot
+- after removing outlier samples
+
+```{r pca}
+vst = varianceStabilizingTransformation(dds)
+plotPCA(vst, intgroup=c("Treatment", "genotype"))
+```
+
+The samples separate by genotype much better after removing the single outlier sample.
+
+---
+
+# Counts Outputs
+
+The raw counts file below can be used to perform your own differential expression analysis. 
+
+The normalized counts file can be used for sample comparisons. 
+
+For plots that are sensitive to outliers  (like heatmaps and PCA), the variance stabilized data should be used.
+
+```{r rawcountsouput}
+output <- annotate_df(row2colnames(counts(dds, normalize=FALSE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "raw_counts.csv"))
+```
+
+**[Raw Counts](../results/final/2016-05-05_analysis/raw_counts.csv)**
+
+DESeq2 normalizes for library size differences between samples.
+
+```{r normalizedcountsoutput}
+output <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "normalized_counts.csv"))
+```
+
+**[Normalized Counts](../results/final/2016-05-05_analysis/normalized_counts.csv)**
+
+*From the [Bioconductor DE analysis page0(http://www.bioconductor.org/help/workflows/rnaseqGene/#eda)*
+
+>Many common statistical methods for exploratory analysis of multidimensional data, for example clustering and principal components analysis (PCA), work best for data that generally has the same range of variance at different ranges of the mean values. When the expected amount of variance is approximately the same across different mean values, the data is said to be homoskedastic. For RNA-seq raw counts, however, the variance grows with the mean. For example, if one performs PCA directly on a matrix of size-factor-normalized read counts, the result typically depends only on the few most strongly expressed genes because they show the largest absolute differences between samples. A simple and often used strategy to avoid this is to take the logarithm of the normalized count values plus a small pseudocount; however, now the genes with the very lowest counts will tend to dominate the results because, due to the strong Poisson noise inherent to small count values, and the fact that the logarithm amplifies differences for the smallest values, these low count genes will show the strongest relative differences between samples.
+
+>As a solution, DESeq2 offers transformations for count data that stabilize the variance across the mean. One such transformation is the regularized-logarithm transformation or rlog (Love, Huber, and Anders 2014). For genes with high counts, the rlog transformation will give similar result to the ordinary log2 transformation of normalized counts. For genes with lower counts, however, the values are shrunken towards the genes’ averages across all samples. Using an empirical Bayesian prior on inter-sample differences in the form of a ridge penalty, the rlog-transformed data then becomes approximately homoskedastic, and can be used directly for computing distances between samples and making PCA plots.
+
+```{r variancestabilizedcounts}
+rld <- rlog(dds)
+output <- annotate_df(row2colnames(assay(rld), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "normalized_variance_stabilized_counts.csv"))
+```
+
+**[Normalized, Variance Stabilized,  Counts](../results/final/2016-05-05_analysis/normalized_variance_stabilized_counts.csv)**
+
+---
+
+# Differential Expression Analysis
+
+This analysis was setup to detect differences in the response to the UUO treatment between the two genotypes. That is, genes that respond differently to the treatment for the two genotypes. In statistical terms, this is called an "interaction term". Note that because this is a measure of differences in how gene expression *changes*, the baseline expression level for a gene could be different for the two genotypes, but if it's expression changed similarly (i.e. doubled) after treatment, this method would not identify it. Instead the amount of change must differ for the two genotypes. There are some visualizations of this on the [Wikipedia page](https://en.wikipedia.org/wiki/Difference_in_differences) that might make this clearer.
+
+The differential gene expression analysis of count data was performed using the Bioconductor R package, DESeq2. The count data was fit to a negative binomial model and dispersion estimates were generated using the mean values from the maximum likelikhood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood.
+
+As the sample counts are low, we recommend caution in interpreting the results. Significantly differentially expressed genes identified in these analyses will require lab verification.
+
+## Statistics for all 
+
+Notes on adjusted pvalues and independent filtering:
+
+Adjusted p-value take into account the high number of statistical tests we are performing (multiple testing adjustment). The higher the number of tests we have to adjust for, the more stringent the adjustment, and the fewer statistically significant genes in our result.
+
+To reduce this adjustment, DESeq2 tries to pre-filter out genes for whom statistical tests would have no, or little chance of showing significant evidence, without even looking at their test statistic. DESeq2 does this by filtering out genes with very low average counts overall; these genes are are not likely to show significant differences due to high dispersion. We can also filter out genes that have large outlier values and only test for genes with high fold changes between samples.
+
+Genes which fail these filters are not counted in the multiple testing adjustment. They are still reported but have their adjusted p-values set to NA.
+
+```{r allstats}
+results.dr <- results(dds, name="genotypeWildtype.TreatmentNormal")
+results.df <- as.data.frame(results.dr)
+results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+write.csv(results.df.annot, file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
+```
+
+**[Statisitics for ALL genes](../results/final/2016-05-05_analysis/DESeq2_statistics_all_genes.csv)**
+
+## Volcano plots
+
+The plots represent each gene with a dot. The fold change (log2) is plotted on the x-axis and the adjusted p-value (log10, p-value adjusted/corrected for multiple testing) is on the y-axis. The orange shaded area or the orange colored dots denote genes that are differentially expressed (p-value < `r pval.cutoff`, log2 fold change>`r lfc.cutoff`). 
+
+As you can see, there are some differentially affected  genes by these criteria.
+
+```{r volcanoplot}
+results.df.volcstat <- results.df[,c("log2FoldChange", "padj")]
+names(results.df.volcstat) <- c("logFC", "Adjusted.PValue")
+volcano_density_plot(stats=results.df.volcstat, pval.cutoff=0.1, shade.colour="orange", lfc.cutoff=1, point.colour="#56B4E9", point.outline.colour = "white")
+
+results.df.volcstat$DE <-  as.logical(results.df.volcstat$Adjusted.PValue<0.1 & abs(results.df.volcstat$logFC)>1)
+ggplot(results.df.volcstat, aes(y=-log10(Adjusted.PValue), x=logFC, color=DE))+geom_point(alpha=0.5)+scale_color_manual(values=c("grey", "orange"))+theme_bw()
+```
+
+## MA plot
+
+Similar to the volcano plot, the MA plot is a great way to visualize the comparative expression metrics for a two group comparison. The x–axis is the average/mean expression over all the samples and the y axis is the log2 fold change between WT and KO. The red dots represent the genes that are differentially expressed (adjusted pvalue <`r pval.cutoff`).
+
+```{r MAplot}
+plotMA(results.dr, ylim=c(-10,10))
+```
+
+---
+
+# Differentially Expressed Genes
+
+These are the genes with at least a lfc>`r lfc.cutoff` at an adjusted p-value of less than `r pval.cutoff`
+
+```{r outputDE, cache=FALSE}
+library(DT)
+DEresults.df.annot <- subset(results.df.annot,padj<pval.cutoff & abs(log2FoldChange)>lfc.cutoff )
+
+datatable(DEresults.df.annot, rownames=FALSE)
+write.csv(DEresults.df.annot, file.path(resultsDir, "DESeq2_statistics_DE_genes.csv"))
+```
+
+**[Statisitics for Differentially Expressed genes](../results/final/2016-05-05_analysis/DESeq2_statistics_DE_genes.csv)**
+
+### Heatmap of differentially expressed genes
+
+- using the normalized, variance stabilized data
+- DE genes, as determined by absolute value of log 2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pval.cutoff`
+
+```{r DEheatmap, dev="svg", fig.height=12}
+# reoder stats by logFC and pull out top  results
+top.results.df.annot <- DEresults.df.annot
+# grab the ensemblids of the top reuslts
+top.ensemblids <- as.character(top.results.df.annot$ensemblid)
+# pull variance stabilizied data into a dataframe
+rld.df <- assay(rld)
+# subset data to top genes
+top.rld.df <- rld.df[row.names(rld.df) %in% top.ensemblids,]
+# get gene symbols
+top.rld.df.annot <-  annotate_df(row2colnames(top.rld.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+top.rld.df.annot <- top.rld.df.annot[match(row.names(top.rld.df), top.rld.df.annot$ensemblid),]
+identical(as.character(top.rld.df.annot$ensemblid), row.names(top.rld.df))
+
+pheatmap(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, scale="row", annotation=metadata, main="Row-scaled")
+
+pheatmap(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, annotation=metadata, main="Unscaled")
+```
+ 
+*the row-scaled heatmap is "centered and scaled"" by row, such that the mean of values for the row is subtracted from each samples value (centering), which value is then divided by the row's standard deviation so that the values shown reflect the number of standard deviations from the mean for that value*
+
+# Functional Enrichment
+
+## Gene Ontology analysis
+ - using [g:profiler](http://biit.cs.ut.ee/gprofiler/)  
+ - for  differentially expressed genes  
+
+### g:profiler
+
+ - first pass with just the DE genes as defined by logfold change and adjusted pvalue cutoffs
+ 
+```{r goanalysis1}
+top.results.df.annot <- DEresults.df.annot
+#order for lfc
+top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),]
+
+# run gprolier with ordered query and background set of genes
+gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
+                                  organism = "mmusculus",
+                                  ordered_query = TRUE, 
+                                  exclude_iea = F, 
+                                  correction_method = "gSCS"
+)
+datatable(gprofiler_results, rownames=FALSE)
+````
+
+- first pass shows very few enrichments of gene ontology categories for the differentially expressed genes
+
+ - next pass use the top 200 genes as determined by sorting by logfold change
+
+```{r goanalysis2}
+top.results.df.annot <- results.df.annot
+# subset to genes with actual adjusted vvalues
+top.results.df.annot <- subset(top.results.df.annot, is.finite(padj))
+
+#order for lfc
+top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),][1:200,]
+
+# run gprolier with ordered query and background set of genes
+gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
+                                  organism = "mmusculus",
+                                  ordered_query = TRUE, 
+                                  exclude_iea = FALSE, 
+                                  correction_method = "gSCS"
+)
+datatable(gprofiler_results, rownames=FALSE)
+
+
+write.table(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
+
+````
+
+- now we see slight enrichment of genes in categories from the Human Phenotype Onotology project (domain = hp), kegg pathways (domain = keg), and protein complexes (domain = CORUM)
+
+
+**[Gene Ontology results](../results/final/2016-05-05_analysis/GOresults.csv)**
+
+### clusterProfiler
+
+Similar to gprofileR, the tool [clusterProfiler](http://bioconductor.org/packages/release/bioc/html/clusterProfiler.html) was used to perform over-representation analysis on GO terms associated with the significant DE genes. The table displays the list of GO terms that were significantly enriched among the significant genes, which is similar to those output by gprofileR.
+
+The dotplot below shows the number of genes associated with each term and the p-adjusted values for the terms. The GO graph below shows the relationship among the significant GO terms.
+
+NOTE: While the GO terms output by clusterProfiler are very similar to those output by gprofileR, the small differences in the GO terms output is due to the different algorithms used by the two different programs.
+
+>G Yu, LG Wang, Y Han, QY He. clusterProfiler: an R package for comparing biological themes among gene clusters. OMICS: A Journal of Integrative Biology 2012, 16(5):284-287.
+
+>G Yu, LG Wang, GR Yan, QY He. DOSE: an R/Bioconductor package for Disease Ontology Semantic and Enrichment analysis. Bioinformatics 2015, 31(4):608-609.
+
+#### Gene ontology based
+
+- here I used the top 200 genes as sorted by logfold change again as using just the DE genes did not show any enrichments 
+```{r clusterprofiler}
+# clusterProfiler
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+# Add Entrez identifiers to DESeq2 results object (res) Follow tutorial by
+# Stephen Turner:
+# http://www.r-bloggers.com/tutorial-rna-seq-differential-expression-pathway-analysis-with-sailfish-deseq2-gage-and-pathview/
+DEG_background <- results.df
+DEG_background <- subset(DEG_background, is.finite(padj))
+
+mart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org"))
+attributes <- listAttributes(mart)
+entrez <- getBM(filters = "ensembl_gene_id", attributes = c("ensembl_gene_id", "entrezgene"), values = row.names(DEG_background), mart = mart)
+DEG_background$ensembl_gene_id <- row.names(DEG_background)
+entrez_results <- merge(DEG_background, entrez, by = "ensembl_gene_id")
+entrez_results <- subset(entrez_results, entrezgene != "NA")
+
+foldchanges <- entrez_results$log2FoldChange
+names(foldchanges) <- entrez_results$entrezgene
+# head(foldchanges)
+
+# clusterprofiler analysis
+sig_genes <- entrez_results[order(abs(entrez_results$log2FoldChange), decreasing = TRUE),"entrezgene"][1:200]
+sig_genes <- as.character(sig_genes)
+all_genes <- entrez_results$entrezgene
+all_genes <- as.character(all_genes)
+ego.bp <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "BP", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
+ego.cc <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "CC", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
+ego.mf <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "MF", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
+
+GO_BP <- ego.bp@result
+knitr::kable(GO_BP)
+GO_CC <- ego.cc@result
+knitr::kable(GO_CC)
+GO_MF <- ego.mf@result
+knitr::kable(GO_MF)
+
+dotplot(ego.bp, showCategory=30)
+dotplot(ego.cc, showCategory=30)
+dotplot(ego.mf, showCategory=30)
+
+entrez_results <- entrez_results[order(entrez_results$log2FoldChange, decreasing = TRUE),]
+geneList <- entrez_results$log2FoldChange
+names(geneList) <- entrez_results$entrezgene
+
+temp <- gseGO(geneList=geneList, OrgDb="org.Mm.eg.db", ont="BP", nPerm=1000, minGSSize=10, pvalueCutoff=0.1, verbose=TRUE)
+```
+
+#### KEGG based
+
+- 
+library(gage)
+library(pathview)
+library(gageData)
+library(DOSE)
+library(SPIA)
+library(R.devices)
+
+# Create a KEGG dataset
+kegg_mouse <- kegg.gsets(species = "mouse", id.type = "kegg")
+kegg.gs <- kegg_mouse$kg.sets[kegg_mouse$sigmet.idx]
+# head(kegg.gs)
