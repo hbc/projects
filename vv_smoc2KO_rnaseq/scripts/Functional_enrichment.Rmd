@@ -1,0 +1,321 @@
+---
+title: "Differential Expression Analysis and Initial Functional Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    number_sections: true
+    theme: yeti
+    code_folding: hide
+---
+
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
+```
+
+# Overview
+
+RNAseq DE analysis for Casimiro Geraduzzi  (shachar_dagan@hms.harvard.edu),  Vaidya group at HSPH.  
+
+Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`.
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Setup
+
+## Libraries and Variables
+- load Bioconductor and R packages necessary for analysis
+- setup file locations and variables (i.e. logfold change and pvalue cutoffs used in analyses)
+
+```{r vars}
+library(ggplot2)
+library(DT)
+library(CHBUtils)
+library(DESeq2)
+library(gProfileR)
+library(pheatmap)
+library(dplyr)
+library(biomaRt)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
+
+baseDir <- "~/Work/projects/vv_smoc2KO_rnaseq/"
+resultsDir <- file.path(baseDir, "results/final/2016-05-05_analysis")
+pval.cutoff <- 0.2
+lfc.cutoff <-0.5849625
+```
+
+**For these analyses I used a pvalue/qvalue cutoff of `r pval.cutoff`.**
+
+## Data Import 
+
+- statistics from previous DESeq2 analysis.
+- also added entrezgene annotations necessary for downstream analyses
+
+```{r allstats}
+results.df.annot <- read.csv(file.path(resultsDir, "DESeq2_statistics_all_genes.csv"), row.names=2)
+results.df.annot$X <- NULL
+
+# Add Entrez identifiers to DESeq2 results object (res) Follow tutorial by
+# Stephen Turner:
+# http://www.r-bloggers.com/tutorial-rna-seq-differential-expression-pathway-analysis-with-sailfish-deseq2-gage-and-pathview/
+DEG_background <- results.df.annot
+DEG_background <- subset(DEG_background, is.finite(padj))
+
+mart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org"))
+#attributes <- listAttributes(mart)
+entrez <- getBM(filters = "ensembl_gene_id", attributes = c("ensembl_gene_id", "entrezgene"), values = row.names(DEG_background), mart = mart)
+DEG_background$ensembl_gene_id <- row.names(DEG_background)
+entrez_results <- merge(DEG_background, entrez, by = "ensembl_gene_id")
+entrez_results <- subset(entrez_results, entrezgene != "NA")
+```
+
+---
+
+# Analysis
+
+There are 3 main ways to look for functional enrichment in a set of differential expression results. 
+
+1) **Over-representation analysis** (ORA) which statistically evaluates the fraction of genes found among the set of differentially expressed genes
+    - these tests consider the number of genes alone and ignore any values associated with them such as probe intensities, i.e. by these methods treat each gene equally
+    - uses only the most significant genes and discards the others
+    - assumes that each gene is independent of the other genes
+    - due to these disadvantages, while the easiest to employ, these methods are relatively crude and unlikely to find anything but the strongest changes
+
+2) **Functional class scoring** methods like **gene set enrichment analysis**, which are able to find subtler changes composed of weaker but coordinated changes in sets of functionally related genes
+    - better than ORA because these methods don't have arbitrary cutoffs and doesn't treat genes equally
+    - still have issues with pathway overlap (genes appearing in multiple pathways) and pathway hierarchies
+    - don't take into account true pathway information i.e. genes in a pathway are still treated as independent, equal units of the pathway
+
+3) **Topological approaches** which attempt to take into account directionality and gene interactions within a pathway
+    - these approaches are ideal but are limited by the amount and quality of the  *a priori* pathway data available i.e. protein intereaction network data
+
+
+---
+
+## Over-representation analysis
+- for  differentially expressed genes  and top fold change genes
+
+### g:profiler
+ - [g:profiler](http://biit.cs.ut.ee/gprofiler/)  will look for overrepresentation of a group of genes among mutliple functional gene  groups derived from databases including the Gene Ontologies, KEGG pathways, Reactome and others 
+
+- did a first pass with just the DE genes as defined by logfold change and adjusted pvalue cutoffs
+- pvalues for the the g:profiler results are all adjusted for multiple testing
+
+```{r goanalysis1}
+top.results.df.annot <- subset(results.df.annot,padj<pval.cutoff & abs(log2FoldChange)>lfc.cutoff )
+#order for lfc
+top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),]
+
+# run gprolier with ordered query and background set of genes
+gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
+                                  organism = "mmusculus",
+                                  ordered_query = TRUE, 
+                                  exclude_iea = F, 
+                                  correction_method = "gSCS"
+)
+knitr::kable(gprofiler_results, rownames=FALSE, caption="g:profiler results for DE genes")
+````
+
+- this first pass shows very few enrichments of any categories for the differentially expressed genes
+- for the next pass I used the top 200 genes as determined by sorting by logfold change
+
+```{r goanalysis2}
+top.results.df.annot <- results.df.annot
+# subset to genes with actual adjusted vvalues
+top.results.df.annot <- subset(top.results.df.annot, is.finite(padj))
+
+#order for lfc
+top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),][1:200,]
+
+# run gprolier with ordered query and background set of genes
+gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
+                                  organism = "mmusculus",
+                                  ordered_query = TRUE, 
+                                  exclude_iea = FALSE, 
+                                  correction_method = "gSCS"
+)
+knitr::kable(gprofiler_results, rownames=FALSE, caption="g:profiler results for top 200 genes")
+
+write.table(gprofiler_results, file.path(resultsDir, "gprofiler.results.csv"))
+````
+
+- now we see slight enrichment of genes in categories from the Human Phenotype Onotology project (domain = hp), kegg pathways (domain = keg), and protein complexes (domain = CORUM)
+
+**[Gene Ontology results](../results/final/2016-05-05_analysis/gprofiler.results.csv)**
+
+### clusterProfiler
+
+Similar to gprofileR, the tool [clusterProfiler](http://bioconductor.org/packages/release/bioc/html/clusterProfiler.html) was used to perform over-representation analysis on GO terms associated with the significant DE genes. The table displays the list of GO terms that were significantly enriched among the significant genes, which is similar to those output by gprofileR.
+
+NOTE: differences in the GO terms output are due to the different algorithms used by the two different programs.
+
+>G Yu, LG Wang, Y Han, QY He. clusterProfiler: an R package for comparing biological themes among gene clusters. OMICS: A Journal of Integrative Biology 2012, 16(5):284-287.
+
+>G Yu, LG Wang, GR Yan, QY He. DOSE: an R/Bioconductor package for Disease Ontology Semantic and Enrichment analysis. Bioinformatics 2015, 31(4):608-609.
+
+#### Gene Ontology based
+
+- here I used the top 200 genes as sorted by absolute logfold change again as using just the DE genes did not show any enrichments 
+- clusterprofiler results are multiple test adjusted
+
+```{r clusterprofilerGO}
+# clusterprofiler analysis
+sig_genes <- entrez_results[order(abs(entrez_results$log2FoldChange), decreasing = TRUE),"entrezgene"][1:200]
+sig_genes <- as.character(sig_genes)
+all_genes <- entrez_results$entrezgene
+all_genes <- as.character(all_genes)
+ego.bp <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "BP", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+ego.cc <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "CC", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+ego.mf <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "MF", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+
+GO_BP <- ego.bp@result
+knitr::kable(GO_BP, caption="Biological Processes")
+GO_CC <- ego.cc@result
+knitr::kable(GO_CC, caption="Cellular Component")
+GO_MF <- ego.mf@result
+knitr::kable(GO_MF, caption="Molecular Function")
+```
+
+- still not much there, but the results are a bit more interesting/relevant
+
+#### KEGG based
+- top 200 genes again
+
+```{r clusterprofilerkegg}
+kk <- enrichKEGG(gene=sig_genes, organism = 'mmu', qvalueCutoff = pval.cutoff, universe = all_genes)
+knitr::kable(summary(kk), caption="KEGG pathways")
+```
+
+#### Reactome based
+- [Reactome](http://www.reactome.org/) is an open-source, open access, manually curated and peer-reviewed pathway database.
+- top 200 genes again
+
+```{r reactomePA}
+library("ReactomePA")
+rpa <- enrichPathway(gene=sig_genes, qvalueCutoff=pval.cutoff,  organism="mouse",universe = all_genes)
+knitr::kable(summary(rpa))
+```
+
+---
+
+## Gene set enrichment analysis
+
+### Using GAGE and Pathview
+Using the log2 fold changes obtained from the DESeq2 analysis for every gene, gene set enrichment analysis and pathway analysis was performed using [GAGE (Generally Applicable Gene-set Enrichment for Pathway Analysis)](http://bioconductor.org/packages/release/bioc/html/gage.html) and [Pathview](http://bioconductor.org/packages/release/bioc/html/pathview.html) tools. 
+
+>Weijun Luo, Michael Friedman, Kerby Shedden, Kurt Hankenson, and Peter Woolf. GAGE: generally applicable gene set enrichment for pathway analysis. BMC Bioinformatics, 2009. doi:10.1186/1471-2105-10-161.
+
+>Weijun Luo and Cory Brouwer. Pathview: an R/Bioconductor package for pathway-based data integration and visualization. Bioinformatics, 29(14):1830-1831, 2013. doi: 10.1093/bioinformatics/btt285.
+
+#### KEGG based
+
+- test for situations where the direction of logfoldchange for genes can change in both directions (more realistic)
+
+```{r GAGEKegg}
+library(gage)
+library(gageData)
+library(pathview)
+
+# Create a KEGG dataset
+kegg_mouse <- gage::kegg.gsets(species = "mouse", id.type = "kegg")
+# pull out signaling or metabolic pathways
+kegg.gs <- kegg_mouse$kg.sets[kegg_mouse$sigmet.idx]
+# head(kegg.gs)
+
+# get logfold  chnages and entrezids, sorted by logfoldchange
+entrez_results <- entrez_results[order(entrez_results$log2FoldChange, decreasing = TRUE),]
+foldchanges <- entrez_results$log2FoldChange
+names(foldchanges) <- entrez_results$entrezgene
+
+# Run gage
+keggres = gage(foldchanges, gsets = kegg.gs, same.dir=FALSE)
+
+# Look at both up (greater), down (less), and statistics
+sel <- keggres$greater[, "q.val"] < pval.cutoff & !is.na(keggres$greater[, "q.val"])
+path.ids <- rownames(keggres$greater)[sel]
+
+# Get the IDs.
+keggresids = substr(path.ids, start = 1, stop = 8)
+
+# set colors for pahtway diagrams
+library(RColorBrewer)
+colors <- brewer.pal(3, "RdBu")
+# plot multiple pathways (plots saved to disk and returns a throwaway list
+setwd(resultsDir)
+# cleanup old files form previous runs
+oldfiles <- c(list.files(pattern="^mmu*"))
+for(file in oldfiles){
+  file.remove(file)
+}
+# generate new pathway diaagrams
+tmp = sapply(keggresids, function(pid) pathview(gene.data=foldchanges, 
+                                                pathway.id=pid, 
+                                                species='mmu',
+                                                low=list(gene=colors[1],cpd=colors[1]),
+                                                mid=list(gene=colors[2],cpd=colors[2]),
+                                                high=list(gene=colors[3],cpd=colors[3]),
+                                                bins=list(gene=20, cpd=20)
+))
+rm(tmp)
+
+# display table with results
+knitr::kable(keggres$greater[sel,])
+```
+
+
+- visualization of logfoldchanges in KEGG pathway contexts
+- colors reflect logfoldchange differences between the amount of gene expression change for the wildtype and Smoc2 transgenics after treatment.
+
+```{r displaypathways}
+# display pathways in report
+library(png)
+setwd(resultsDir)
+pathviewpngs <- list.files(pattern="pathview.png")
+
+
+for(p in 1:length(pathviewpngs)) {
+  img <- readPNG(file.path(resultsDir, pathviewpngs[p]))
+  grid::grid.newpage()
+  grid::grid.raster(img)
+
+}
+```
+
+#### Gene Ontology based
+
+```{r GAGEGO}
+data(go.sets.mm)
+data(go.subs.mm)
+
+go.bp=go.sets.mm[go.subs.mm$BP]
+go.cc=go.sets.mm[go.subs.mm$CC]
+go.mf=go.sets.mm[go.subs.mm$MF]
+ 
+gores.bp <- gage(foldchanges, gsets = go.bp, same.dir=FALSE )
+gores.cc <- gage(foldchanges, gsets = go.cc, same.dir=FALSE )
+gores.mf <- gage(foldchanges, gsets = go.mf, same.dir=FALSE )
+
+
+# Look at both up (greater), down (less), and statistics
+sel.bp <- gores.bp$greater[, "q.val"] < pval.cutoff & !is.na(gores.bp$greater[, "q.val"])
+knitr::kable(gores.bp$greater[sel.bp,, drop=FALSE], caption="Biological Processes")
+
+# Look at both up (greater), down (less), and statistics
+sel.cc <- gores.cc$greater[, "q.val"] < pval.cutoff & is.finite(gores.cc$greater[, "q.val"])
+knitr::kable(gores.cc$greater[sel.cc,, drop=FALSE], caption="Cellular Components")
+
+# Look at both up (greater), down (less), and statistics
+sel.mf <- gores.mf$greater[, "q.val"] < pval.cutoff & !is.na(gores.mf$greater[, "q.val"])
+knitr::kable(gores.mf$greater[sel.mf,, drop=FALSE], caption="Molecular Functions")
+```
+
+
