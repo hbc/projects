@@ -1,0 +1,496 @@
+---    
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+  
+  ```{r setup0, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+                      cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+                      message=FALSE, prompt=TRUE, comment='', fig.cap='', fig.height = 9, fig.width = 12, bootstrap.show.code=FALSE)
+```
+
+```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
+project="Vafai RNA-seq - DE report - WT vs. KO"
+clientname="Harveen Natarajan"
+clientemail="harveen@broadinstitute.org"
+labPI="Scott Vafai"
+analystname="Mary Piper"
+analystemail="piper@hsph.harvard.edu"
+```
+---
+  
+# Vafai RNA-Seq Differential Expression Report - WT vs. KO
+  
+RNA-Seq differential expression report for the Vafai project investigating the neurodegenerative disorder, Leigh syndrome. Leigh syndrome includes the symptoms: reduced lifespan, retardation, lethargy, blindness, decreased motor skills, increased serum lactate, lesions in brain stem and part of cerebellum and optic valve. Mouse model is Ndufs4-KO. 
+
+Experimental design for RNA-Seq: All male mice with wild-type (WT, n=8), Ndufs4-KO untreated (KO, n=8), and Ndufs4-KO rapamycin-treated (RAPA, n=6) groups. WT and KO mice are age-matched, but RAPA animals are not (much older). All samples were attained from the cerebellum/brainstem.
+
+Client: `r clientname`, `r labPI` group.  
+
+Analysts: `r analystname` (`r analystemail`)
+
+The most recent update of this html document occurred: `r date()`
+
+---
+  
+  
+# Overview
+  
+```{r qc-setup}
+# Libraries
+
+library(ggplot2)
+library(reshape)
+library(gplots)
+library(edgeR)
+library(CHBUtils)
+library(pheatmap)
+library(RColorBrewer)
+library(knitr)
+library(knitrBootstrap)
+library(tidyr)
+library(reshape)
+library(rmarkdown)
+library(dplyr)
+library(ggdendro)
+library(grid)
+library(reshape)
+library(gridExtra)
+library(Biobase)
+library(scales)
+library(DESeq2)
+library(gProfileR)
+library(DEGreport)
+library(vsn)
+library(ggrepel)
+
+
+# Data files
+project_summary = "~/Dropbox/HBC consults/2016_04_11_vafai/2016-04-19_vafai-rnaseq/project-summary.csv"
+counts_file = "~/Dropbox/HBC consults/2016_04_11_vafai/2016-04-19_vafai-rnaseq/combined.counts"
+ann_counts_file <- "~/Dropbox/HBC consults/2016_04_11_vafai/2016-04-19_vafai-rnaseq/annotated_combined.counts"
+
+# Analysis variables
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+"#0072B2", "#D55E00", "#CC79A7")
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+summary_no18 <- summarydata[-10,]
+
+# Raw counts files
+## Unannotated
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
+counts = counts[, order(colnames(counts))]
+colnames(counts) = gsub(".counts", "", colnames(counts))
+
+## Annotated
+ann_counts <- read.table(ann_counts_file, header=T, row.names="id", check.names=F)
+ann_counts = ann_counts[, order(colnames(ann_counts))]
+colnames(ann_counts) = gsub(".counts", "", colnames(ann_counts))
+
+# Remove all RAPA samples
+known_columns <- colnames(summarydata)
+known_columns <- known_columns[-21]
+metadata <- summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+idx <- which(metadata$condition != "RAPA")
+
+metadata_norapa <- subset(metadata, condition != "RAPA")
+counts_norapa <- counts[, idx]
+counts_norapa <- counts_norapa[rowSums(counts_norapa>0)>1,]
+ann_counts_norapa <- ann_counts[, idx]
+```
+
+# Differential Expression analysis - all samples WT vs. KO
+
+Differential gene expression analysis of count data was performed using the Bioconductor R package, [DESeq2](https://bioconductor.org/packages/release/bioc/html/DESeq2.html). The count data was fit to a negative binomial model and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood. 
+
+Several quality metrics were assessed to explore the fit of the count data to the model, and differential expression analysis was performed.
+
+The fit of the count data to the model was good, although we recommend looking at the expression heatmaps of the significant DE genes to narrow down genes most likely to be truly differentially expressed between WT and KO samples. 
+
+**The raw counts files below can be used to perform your own differential expression analysis. The normalized counts file should be used for any sample comparisons or plots.**
+
+```{r raw_counts_file}
+#write.table(ann_counts, "vafai_raw_counts.txt", sep="\t", quote=F)
+```
+[Download raw counts file used for all DE Analyses](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_raw_counts.txt)
+
+```{r de_normalized counts}
+
+# Differential expression design parameters
+design = ~ condition
+condition = "samplegroup"
+
+dds = DESeqDataSetFromMatrix(countData=counts_norapa,
+    colData=metadata_norapa, design = design)
+dds = DESeq(dds)
+
+# Rlog normalized counts
+total_norm_counts <- counts(dds, normalized=T)
+total_norm_counts <- data.frame(total_norm_counts)
+total_norm_counts$name <- rownames(total_norm_counts) 
+
+ann_counts_norapa_names <- ann_counts_norapa
+ann_counts_norapa_names$name <- rownames(ann_counts_norapa)
+norm_counts <- merge(total_norm_counts, ann_counts_norapa_names, by="name")
+rownames(norm_counts) <- norm_counts$name
+norm_counts <- norm_counts[,c(2:17,26)]
+names(norm_counts) <- c(rownames(metadata_norapa), "symbol")
+#write.table(norm_counts, "vafai_norm_counts.txt", sep="\t", quote=F)
+```
+[Download normalized counts file](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_norm_counts.txt)
+
+### Effect of variance stabilization - WT vs KO
+For RNA-Seq gene counts, the variance increases with the mean. To account for this variance, logarithmic transformation (log2) of normalized count values will ensure that these genes won't dominate during visualization. However, due to the noise associated with low count values, the general log2 transformation will worsen this noise, and low count genes will instead dominate. Therefore, we need to use a transformation that will stabilize the variance across the mean for the gene counts. The plots below show the standard deviation of transformed counts using log2, rlog, and vsd transformations by rank(mean) (from top to bottom, respectively). The transformations greatly reduce the standard deviation, with rlog stabilizing the variance the best across the mean. Therefore, we will use the rlog transformed counts for any downstream visualizations of counts.
+
+```{r deseq-diagnostics}
+#For RNA-Seq raw counts, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log2 transformation will amplify this noise, and show the low count genes will dominate the PCA plots. Therfore, transform to stabilize variance across the mean using rlog. For high counts, gives similar results as log2, but for low counts, values are shrunken towards the genes' average across samples.
+
+par(mfrow=c(1,3))
+notAllZero <- (rowSums(counts(dds))>0)
+rld <- rlog(dds)
+vsd <- varianceStabilizingTransformation(dds)
+rlogMat <- assay(rld)
+vstMat <- assay(vsd)
+
+#Plotting standard deviation by rank(mean)
+meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))
+meanSdPlot(assay(rld[notAllZero,]))
+meanSdPlot(assay(vsd[notAllZero,]))
+```
+
+### Dispersion estimates - WT vs KO
+The following plot shows the dispersion by mean of normalized counts. The dispersion looks good, since we expect the dispersion to decrease with increased mean of normalized counts. 
+
+```{r dispersion-estimate}
+plotDispEsts(dds)
+```
+
+## Differential Expression analysis WT vs. KO
+Overall, the WT and KO samples were very similar, with very little variation between sample groups. Due to the low variation between sample groups, few differentially expressed genes were identified. Normally, we select differentially expressed genes using a threshold of padj = 0.05 and fold change of 2x. However, with so few differentially expressed genes, we relaxed our thresholds to padj= 0.1 and no fold change threshold. The plots below show the significant genes in relation to all genes tested.
+
+```{r de_ko_vs_wt}
+res_all <- results(dds)
+df <- data.frame(res_all)
+
+summary(res_all, alpha=.1)
+```
+
+### MA-plots - WT vs KO
+MA plots explore the mean expression level of the genes with the fold change, allowing for the visualization of the genes that are differentially expressed (red). The few differentially expressed genes tend to have the larger fold changes for this dataset. However, all gene expression fold changes between the WT and KO sample groups are small (less than 2-fold (log2 < 1.0)).
+
+```{r DESeq-output_MA}
+#res <- results(dds, alpha=.05)
+plotMA(res_all, ylim=c(-1,1))
+```
+
+### Volcano-plot - WT vs KO
+The following volcano plot visualizes the significant DE genes. Due to the similarity in expression profiles between WT and KO samples, we detect few significant differentially expressed genes between sample groups. Since the differences are small between groups, no genes are differentially expressed at 2-fold fold changes.
+```{r DESeq-volcano}
+
+df <- data.frame(res_all)
+# ggplot(data=df, aes(x=log2FoldChange, y=-log10(padj))) +
+#   scale_color_manual(values = c("grey", "purple")) +
+#   xlim(c(-2,2)) +
+#   ylim(c(0,1.3)) +
+#   geom_point(alpha=0.75, pch=16) +
+#   theme(legend.position = "none",
+#         plot.title = element_text(size = rel(1.5)),
+#         axis.title = element_text(size = rel(1.5)),
+#         axis.text = element_text(size = rel(1.25))) +
+#   xlab("log2 fold change") + ylab("-log10 p-value")
+
+with(res_all, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-1,1), ylim=c(0,8)))
+
+# Add colored points: red if padj<0.1, orange of log2FC>1, green if both)
+with(subset(res_all, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+with(subset(res_all, padj<.1 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col="green"))
+```
+
+### Differentially expressed genes - WT vs KO
+Using an padj cut-off of 0.1 (p-values multiple test corrected using the BH method), 6 genes were identified as significant.
+
+#### Significant differentially expressed genes - WT vs KO
+The list of significant DE genes contains the gene expression differences in the WT samples relative to the KO samples. The row names in the table are the Ensembl gene ids, followed by the columns: the mean of the normalized counts for that gene for all samples (`baseMean`), log2 fold change (`log2FoldChange`), standard error (`lfcSE`), Wald statistic (`stat`), Wald test p-value (`pvalue`), BH adjusted p-values, which account for multiple testing (`padj`), and the official gene symbol (`symbol`). 
+
+For example, for gene id ENSMUSG00000021764 (official gene symbol = Ndufs4), the WT samples had an expression level log2 fold change of 0.50219 relative to the KO samples, with an average mean expression of 992.64 (norm. counts), and the gene was up-regulated in WT samples relative KO samples, since the log2FoldChange is positive. This is expected, as this was the gene with the exon knocked-out.
+
+```{r DE_genes_list}
+#Gene list with padj
+resSig <- subset(res_all, padj < 0.1)
+DEG <- data.frame(baseMean = resSig[[1]], log2FoldChange = resSig[[2]], lfcSE = resSig[[3]], stat = resSig[[4]], pvalue = resSig[[5]], padj = resSig[[6]], row.names = row.names(resSig))
+DEG <- cbind(DEG, name = row.names(DEG))
+DEGsymbol <- which(row.names(ann_counts_norapa_names) %in% row.names(DEG))
+DEGsymbol <- ann_counts_norapa_names[DEGsymbol,]
+
+DEG_genenames <- merge(DEG, ann_counts_norapa_names, by="name")
+
+sig_norm_counts <- cbind(norm_counts, "name" = row.names(norm_counts))
+sig_norm_counts <- merge(sig_norm_counts, DEG_genenames, by="name")
+row.names(sig_norm_counts) <- sig_norm_counts$name
+sig_norm_counts <- sig_norm_counts[, c(2:18)]
+
+row.names(DEG_genenames) <- DEG_genenames$name
+DEG_genenames <- DEG_genenames[, c(2:7, 16)]
+DEG_genenames <- DEG_genenames[order(DEG_genenames$padj),]
+knitr::kable(DEG_genenames)
+#write.csv(DEG_genenames, "vafai_DE_results_0.1padj.csv", quote=F)
+
+#Normalized counts of genes
+DEG_genenames <- merge(DEG, DEGsymbol, by="name")
+sig_counts <- cbind(counts_norapa, "name" = row.names(counts_norapa))
+sig_counts <- merge(sig_counts, DEG_genenames, by="name")
+row.names(sig_counts) <- sig_counts$name
+sig_counts <- sig_counts[, c(2:17, 32)]
+
+log2_counts <- assay(rld[notAllZero,])
+log2_counts <- as.data.frame(log2_counts) 
+idx <- rownames(log2_counts) %in% rownames(sig_counts)
+log2_sig_counts <- log2_counts[idx,]
+log2_sig_counts$name <- rownames(log2_sig_counts)
+log2_sig_counts_symbol <- merge(log2_sig_counts, DEG_genenames, by="name")
+rownames(log2_sig_counts_symbol) <- log2_sig_counts$name 
+log2_sig_counts_symbol <- log2_sig_counts_symbol[, c(2:17,32)]
+colnames(log2_sig_counts_symbol) <- c(colnames(counts_norapa), "symbol")
+rownames(log2_sig_counts_symbol) <- log2_sig_counts_symbol$symbol
+log2_sig_counts_symbol <- log2_sig_counts_symbol[1:16]
+#write.table(log2_sig_counts_symbol, "vafai_DE_rlog_counts.txt", sep="\t", quote=F)
+```
+
+[Download Results (can open in Excel)](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_DE_results_0.1padj.csv)
+
+#### Significant differentially expressed genes - WT vs KO
+This plot shows the expression of the significant differentially expressed genes by sample. These genes do cluster by sample group. The scale values compare the sample expression of a specific gene to the mean expression of the gene across all samples. 
+
+```{r heatmap_DE_genes_all}
+get_heatmap_fn = function(summarydata) {
+        # return the pheatmap function with or without metadata
+        if(ncol(metadata_norapa) == 0) {
+                return(pheatmap)
+        }
+        else {
+                # rownames(metadata) = summarydata$Name
+                heatmap_fn = function(data, ...) {
+                        pheatmap(data, annotation=metadata_norapa, ...)
+                }
+                return(heatmap_fn)
+        }}
+heatmap_fn = get_heatmap_fn(summarydata)
+
+#Values relate to the row mean subtracted from the normalized count value for each sample value.
+heatmap_fn(log2_sig_counts_symbol, clustering_method = "ward.D2", clustering_distance_cols = "correlation", scale="row")
+```
+[Download rlog normalized counts used to create heatmap figure](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_DE_rlog_counts.txt)
+
+### Functional Analysis - WT vs KO
+Using the DE genes, a list of statistically enriched gene ontology (GO) terms was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/). 
+```{r functional_analysis_all}
+gene_list <- DEG_genenames
+gene_list <- gene_list[, c(2:7, 16)]
+rownames(gene_list) <- rownames(DEG_genenames)
+gene_list <- gene_list[order(gene_list$padj),]
+gene_list <- gene_list[, c(6,7)]
+
+#gprofileR
+library(gProfileR)
+gprofiler_results <- gprofiler(query = gene_list, organism = "mmusculus", ordered_query = F, 
+                               exclude_iea = F, max_set_size = 0, correction_method = "fdr", 
+                               hier_filtering = "none", domain_size = "annotated", custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+GO.pval <- cbind(gprofiler_results$term.id, gprofiler_results$p.value)
+GO_genes <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "overlap.size", "intersection")]
+names(GO_genes) <- c("term.id", "term.name", "p.value", "term.size", "overlap.size", "assoc.gene.ids")
+#write.csv(GO_genes, file ="vafai_GO_genes.csv", quote = FALSE, row.names=T)
+```
+[Download GO Terms](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_GO_genes.csv)
+
+
+# Differential Expression analysis - without the outliers
+To identify more genes that may be differential expressed between sample groups KO and WT, we excluded the PCA outlier samples, WT8 and KO1, from the analysis. **Since the PCA outliers could potentially represent natural variation, their exclusion requires any DE genes identified from this analysis to be laboratory verified.**
+
+```{r raw_counts_no_outliers}
+metadata_no_outliers <- metadata[c(2:8, 15:21), ,drop=FALSE] 
+counts_no_outliers <- counts[, c(2:8, 15:21)]
+ann_counts_no_outliers <- ann_counts[, c(2:8, 15:22)]
+```
+
+```{r de_normalized counts_no_outliers}
+
+# Differential expression design parameters
+design = ~ condition
+condition = "samplegroup"
+
+dds = DESeqDataSetFromMatrix(countData=counts_no_outliers,
+    colData=metadata_no_outliers, design = design)
+dds = DESeq(dds)
+
+# Rlog normalized counts
+total_norm_counts_no_outliers <- counts(dds, normalized=T)
+total_norm_counts_no_outliers <- data.frame(total_norm_counts_no_outliers)
+total_norm_counts_no_outliers$name <- rownames(total_norm_counts_no_outliers) 
+
+ann_counts_no_outliers_names <- ann_counts_no_outliers
+ann_counts_no_outliers_names$name <- rownames(ann_counts_no_outliers)
+norm_counts_no_outliers <- merge(total_norm_counts_no_outliers, ann_counts_no_outliers_names, by="name")
+rownames(norm_counts_no_outliers) <- norm_counts_no_outliers$name
+norm_counts_no_outliers <- norm_counts_no_outliers[,c(2:15,23)]
+names(norm_counts_no_outliers) <- c(rownames(metadata_no_outliers), "symbol")
+#write.table(norm_counts_no_outliers, "vafai_norm_counts_no_outliers.txt", sep="\t", quote=F)
+```
+[Download normalized counts file - no outliers](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_norm_counts_no_outliers.txt)
+
+### Effect of variance stabilization - WT vs KO - no outliers
+The transformations greatly reduce the standard deviation, with rlog and vsd transformations stabilizing the variance the best across the mean. Therefore, we will use the rlog transformed counts for any downstream visualizations of counts.
+
+```{r deseq-diagnostics_no_outliers}
+#For RNA-Seq raw counts, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log2 transformation will amplify this noise, and show the low count genes will dominate the PCA plots. Therfore, transform to stabilize variance across the mean using rlog. For high counts, gives similar results as log2, but for low counts, values are shrunken towards the genes' average across samples.
+
+par(mfrow=c(1,3))
+notAllZero <- (rowSums(counts(dds))>0)
+rld <- rlog(dds)
+vsd <- varianceStabilizingTransformation(dds)
+rlogMat <- assay(rld)
+vstMat <- assay(vsd)
+
+#Plotting standard deviation by rank(mean)
+meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))
+meanSdPlot(assay(rld[notAllZero,]))
+meanSdPlot(assay(vsd[notAllZero,]))
+```
+
+### Dispersion estimates - WT vs KO - no outliers
+The following plot shows the dispersion by mean of normalized counts. The dispersion looks good, since we expect the dispersion to decrease with increased mean of normalized counts. 
+
+```{r dispersion-estimate_no_outliers}
+plotDispEsts(dds)
+```
+
+## Differential Expression analysis - no outliers
+Similar to the previous analysis, since the variation between groups is so small and there are few differentially expressed genes, we relaxed our significance thresholds to p-adj= 0.1 and no fold change threshold. The plots below show the significant genes in relation to all genes tested.
+
+```{r de_ko_vs_wt_no_outliers}
+res_no_outliers <- results(dds)
+df <- data.frame(res_no_outliers)
+
+summary(res_no_outliers, alpha=.1)
+#write.table(res_no_outliers, "vafai_total_results_no_outliers.txt", quote=F)
+```
+
+### MA-plots - WT vs KO - no outliers
+Similar to the previous analysis, the few differentially expressed genes tend to have the larger fold changes for this dataset. However, all gene expression fold changes between the WT and KO sample groups are small (less than 2-fold (log2 < 1.0)).
+
+```{r DESeq-output_MA_no_outliers}
+#res <- results(dds, alpha=.05)
+plotMA(res_no_outliers, ylim=c(-1,1))
+```
+
+### Volcano-plot - WT vs KO - no outliers
+Similar to the previous analysis, we detect few significant differentially expressed genes between sample groups. Since the differences are small between groups, no genes are differentially expressed at 2-fold fold changes.
+```{r DESeq-volcano_no_outliers}
+
+df <- data.frame(res_no_outliers)
+# ggplot(data=df, aes(x=log2FoldChange, y=-log10(padj))) +
+#   scale_color_manual(values = c("grey", "purple")) +
+#   xlim(c(-2,2)) +
+#   ylim(c(0,1.3)) +
+#   geom_point(alpha=0.75, pch=16) +
+#   theme(legend.position = "none",
+#         plot.title = element_text(size = rel(1.5)),
+#         axis.title = element_text(size = rel(1.5)),
+#         axis.text = element_text(size = rel(1.25))) +
+#   xlab("log2 fold change") + ylab("-log10 p-value")
+
+with(res_no_outliers, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-1,1), ylim=c(0,8)))
+
+# Add colored points: red if padj<0.05, orange of log2FC>1, green if both)
+with(subset(res_no_outliers, padj<.1 ), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+with(subset(res_no_outliers, padj<.1 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col="green"))
+```
+
+### Differentially expressed genes - WT vs KO - no outliers
+Using an padj cut-off of 0.1 (p-values multiple test corrected using the BH method), 20 genes were identified as significant.
+
+#### Significant differentially expressed genes - WT vs KO - no outliers
+The list of significant DE genes contains the gene expression differences in the WT samples relative to the KO samples. The row names in the table are the Ensembl gene ids, followed by the columns: the mean of the normalized counts for that gene for all samples (`baseMean`), log2 fold change (`log2FoldChange`), standard error (`lfcSE`), Wald statistic (`stat`), Wald test p-value (`pvalue`), BH adjusted p-values, which account for multiple testing (`padj`), and the official gene symbol (`symbol`). 
+
+For example, in the first row of the table for gene id ENSMUSG00000021764 (official gene symbol = Ndufs4), the WT samples had an expression level log2 fold change of 0.54519 relative to the KO samples, with an average mean expression of 1134.4 (norm. counts), and the gene was up-regulated in WT samples relative KO samples, since the log2FoldChange is positive. This is expected, as this was the gene with the exon knocked-out.
+
+```{r DE_genes_list_no_outliers}
+#Gene list with padj
+resSig <- subset(res_no_outliers, padj < 0.1)
+DEG <- data.frame(baseMean = resSig[[1]], log2FoldChange = resSig[[2]], lfcSE = resSig[[3]], stat = resSig[[4]], pvalue = resSig[[5]], padj = resSig[[6]], row.names = row.names(resSig))
+DEG <- cbind(DEG, name = row.names(DEG))
+DEGsymbol <- which(row.names(ann_counts_no_outliers_names) %in% row.names(DEG))
+DEGsymbol <- ann_counts_no_outliers_names[DEGsymbol,]
+
+DEG_genenames_no_outliers <- merge(DEG, ann_counts_no_outliers_names, by="name")
+
+sig_norm_counts_no_outliers <- cbind(norm_counts_no_outliers, "name" = row.names(norm_counts_no_outliers))
+sig_norm_counts_no_outliers <- merge(sig_norm_counts_no_outliers, DEG_genenames_no_outliers, by="name")
+row.names(sig_norm_counts_no_outliers) <- sig_norm_counts_no_outliers$name
+sig_norm_counts_no_outliers <- sig_norm_counts_no_outliers[, c(2:16)]
+
+row.names(DEG_genenames_no_outliers) <- DEG_genenames_no_outliers$name
+DEG_genenames_no_outliers <- DEG_genenames_no_outliers[, c(2:7, 15)]
+DEG_genenames_no_outliers <- DEG_genenames_no_outliers[order(DEG_genenames_no_outliers$padj),]
+knitr::kable(DEG_genenames_no_outliers)
+#write.csv(DEG_genenames_no_outliers, "vafai_DE_results_0.1padj_no_outliers.csv", quote=F)
+
+#Normalized counts of genes
+DEG_genenames_no_outliers_full <- merge(DEG, DEGsymbol, by="name")
+#write.table(DEG_genenames_no_outliers_full, "DEG_genenames_no_outliers_full.txt", sep="\t", quote=F)
+sig_counts_no_outliers <- cbind(counts_no_outliers, "name" = row.names(counts_no_outliers))
+sig_counts_no_outliers <- merge(sig_counts_no_outliers, DEG_genenames_no_outliers_full, by="name")
+row.names(sig_counts_no_outliers) <- sig_counts_no_outliers$name
+sig_counts_no_outliers <- sig_counts_no_outliers[, c(2:15, 29)]
+
+log2_counts_no_outliers <- assay(rld[notAllZero,])
+log2_counts_no_outliers <- as.data.frame(log2_counts_no_outliers) 
+idx <- rownames(log2_counts_no_outliers) %in% rownames(sig_counts_no_outliers)
+log2_sig_counts_no_outliers <- log2_counts_no_outliers[idx,]
+log2_sig_counts_no_outliers$name <- rownames(log2_sig_counts_no_outliers)
+log2_sig_counts_symbol_no_outliers <- merge(log2_sig_counts_no_outliers, DEG_genenames_no_outliers_full, by="name")
+rownames(log2_sig_counts_symbol_no_outliers) <- log2_sig_counts_no_outliers$name 
+log2_sig_counts_symbol_no_outliers <- log2_sig_counts_symbol_no_outliers[, c(2:15,29)]
+colnames(log2_sig_counts_symbol_no_outliers) <- c(colnames(counts_no_outliers), "symbol")
+#write.table(log2_sig_counts_symbol_no_outliers, "vafai_DE_rlog_counts_no_outliers.txt", sep="\t", quote=F)
+```
+
+[Download Results](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_DE_results_0.1padj_no_outliers.csv)
+
+#### Significant differentially expressed genes - WT vs KO - no outliers
+This plot shows the expression of the significant differentially expressed genes by sample. These genes do cluster by sample group, and all of the genes identified in the previous analysis with all samples are identified as significantly differentially expressed in this analysis. The scale values compare the sample expression of a specific gene to the mean expression of the gene across all samples.
+```{r heatmap_DE_genes_no_outliers}
+get_heatmap_fn = function(summarydata) {
+        # return the pheatmap function with or without metadata
+        if(ncol(metadata_no_outliers) == 0) {
+                return(pheatmap)
+        }
+        else {
+                # rownames(metadata) = summarydata$Name
+                heatmap_fn = function(data, ...) {
+                        pheatmap(data, annotation=metadata_no_outliers, ...)
+                }
+                return(heatmap_fn)
+        }}
+heatmap_fn = get_heatmap_fn(summarydata)
+
+rownames(log2_sig_counts_symbol_no_outliers) <- log2_sig_counts_symbol_no_outliers$symbol
+log2_sig_counts_symbol_no_outliers <- log2_sig_counts_symbol_no_outliers[, c(1:14)]
+
+#Values relate to the row mean subtracted from the normalized count value for each sample value.
+heatmap_fn(log2_sig_counts_symbol_no_outliers, clustering_method = "ward.D2", clustering_distance_cols = "correlation", scale = "row")
+```
+[Download rlog normalized counts used to create PCA and heatmap figures](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_DE_rlog_counts_no_outliers.txt)
+
