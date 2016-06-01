@@ -1,5 +1,5 @@
 ---
-title: "Differential Expression Analysis and Initial Functional Analysis"
+title: "Functional Analysis"
 output:
   html_document:
     toc: true
@@ -17,7 +17,7 @@ knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highligh
 
 # Overview
 
-RNAseq DE analysis for Casimiro Geraduzzi  (shachar_dagan@hms.harvard.edu),  Vaidya group at HSPH.  
+RNAseq DE analysis for Casimiro Geraduzzi  (cgerard@hsph.harvard.edu),  Vaidya group at HSPH.  
 
 Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
 
@@ -48,12 +48,13 @@ library(clusterProfiler)
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 
 baseDir <- "~/Work/projects/vv_smoc2KO_rnaseq/"
-resultsDir <- file.path(baseDir, "results/final/2016-05-05_analysis")
-pval.cutoff <- 0.2
+resultsDir <- file.path(baseDir, "results/final/2016-05-31_analysis")
+
+qval.cutoff <- 0.2
 lfc.cutoff <-0.5849625
 ```
 
-**For these analyses I used a pvalue/qvalue cutoff of `r pval.cutoff`.**
+**For these analyses I used an adjusted pvalue (qvalue) cutoff of `r qval.cutoff`.**
 
 ## Data Import 
 
@@ -61,21 +62,40 @@ lfc.cutoff <-0.5849625
 - also added entrezgene annotations necessary for downstream analyses
 
 ```{r allstats}
-results.df.annot <- read.csv(file.path(resultsDir, "DESeq2_statistics_all_genes.csv"), row.names=2)
+#load metadata
+metadata <- read.csv(file.path(resultsDir, "metadata.DE.csv"))
+names(metadata)[1] <- "sampleid"
+
+#load normalized, variance stabilized counts
+rld.counts <- read.csv(file.path(resultsDir, "normalized_variance_stabilized_counts.csv"))
+rld.counts$X <- NULL
+
+results.df.annot <- read.csv(file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
 results.df.annot$X <- NULL
 
+results.df.annot <- merge(results.df.annot, rld.counts)
 # Add Entrez identifiers to DESeq2 results object (res) Follow tutorial by
 # Stephen Turner:
 # http://www.r-bloggers.com/tutorial-rna-seq-differential-expression-pathway-analysis-with-sailfish-deseq2-gage-and-pathview/
 DEG_background <- results.df.annot
 DEG_background <- subset(DEG_background, is.finite(padj))
 
-mart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org"))
+mart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="useast.ensembl.org"))
 #attributes <- listAttributes(mart)
-entrez <- getBM(filters = "ensembl_gene_id", attributes = c("ensembl_gene_id", "entrezgene"), values = row.names(DEG_background), mart = mart)
-DEG_background$ensembl_gene_id <- row.names(DEG_background)
-entrez_results <- merge(DEG_background, entrez, by = "ensembl_gene_id")
+entrez <- getBM(filters = "ensembl_gene_id", attributes = c("ensembl_gene_id", "entrezgene"), values = DEG_background$ensemblid, mart = mart)
+entrez_results <- merge(DEG_background, entrez, by.y = "ensembl_gene_id", by.x="ensemblid")
 entrez_results <- subset(entrez_results, entrezgene != "NA")
+
+# center and normalize results to base set for each group
+entrez_results.normed <- tbl_df(entrez_results)
+
+entrez_results.normed <-  entrez_results.normed %>% 
+  mutate(WTbasemean = dplyr::select(., starts_with("WT_normal")) %>% rowMeans(na.rm = TRUE)) %>%
+  mutate(WTbasesd=dplyr::select(., starts_with("WT_normal")) %>% apply(.,1, function(x) sd(x,na.rm = TRUE))) %>%
+  mutate(SMOC2basemean = dplyr::select(., starts_with("SMOC2_normal")) %>% rowMeans(na.rm = TRUE)) %>%
+  mutate(SMOC2basesd=dplyr::select(., starts_with("SMOC2_normal")) %>% apply(.,1, function(x) sd(x,na.rm = TRUE))) %>%
+  mutate_each(funs(normed=(.-WTbasemean)/WTbasesd), starts_with("WT_")) %>%
+  mutate_each(funs(normed=(.-SMOC2basemean)/SMOC2basesd), starts_with("SMOC2_"))
 ```
 
 ---
@@ -107,11 +127,11 @@ There are 3 main ways to look for functional enrichment in a set of differential
 ### g:profiler
  - [g:profiler](http://biit.cs.ut.ee/gprofiler/)  will look for overrepresentation of a group of genes among mutliple functional gene  groups derived from databases including the Gene Ontologies, KEGG pathways, Reactome and others 
 
-- did a first pass with just the DE genes as defined by logfold change and adjusted pvalue cutoffs
+- did a first pass with just the DE genes as defined by log2fold change (`r 2^(lfc.cutoff)`) and adjusted pvalue cutoff (`r qval.cutoff`)
 - pvalues for the the g:profiler results are all adjusted for multiple testing
 
 ```{r goanalysis1}
-top.results.df.annot <- subset(results.df.annot,padj<pval.cutoff & abs(log2FoldChange)>lfc.cutoff )
+top.results.df.annot <- subset(results.df.annot,padj<qval.cutoff & abs(log2FoldChange)>lfc.cutoff )
 #order for lfc
 top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),]
 
@@ -126,7 +146,7 @@ knitr::kable(gprofiler_results, rownames=FALSE, caption="g:profiler results for 
 ````
 
 - this first pass shows very few enrichments of any categories for the differentially expressed genes
-- for the next pass I used the top 200 genes as determined by sorting by logfold change
+- for the next pass I used the top 200 genes as determined by sorting by log2fold change
 
 ```{r goanalysis2}
 top.results.df.annot <- results.df.annot
@@ -148,7 +168,7 @@ knitr::kable(gprofiler_results, rownames=FALSE, caption="g:profiler results for 
 write.table(gprofiler_results, file.path(resultsDir, "gprofiler.results.csv"))
 ````
 
-- now we see slight enrichment of genes in categories from the Human Phenotype Onotology project (domain = hp), kegg pathways (domain = keg), and protein complexes (domain = CORUM)
+- now we see slight enrichment of genes in categories from the Gene Ontology Biological Processes, Human Phenotype Onotology project (domain = hp), kegg pathways (domain = keg), and transcription factors (domain = tf)
 
 **[Gene Ontology results](../results/final/2016-05-05_analysis/gprofiler.results.csv)**
 
@@ -164,7 +184,7 @@ NOTE: differences in the GO terms output are due to the different algorithms use
 
 #### Gene Ontology based
 
-- here I used the top 200 genes as sorted by absolute logfold change again as using just the DE genes did not show any enrichments 
+- here I used the top 200 genes as sorted by absolute log2fold change again as using just the DE genes did not show any enrichments 
 - clusterprofiler results are multiple test adjusted
 
 ```{r clusterprofilerGO}
@@ -173,9 +193,9 @@ sig_genes <- entrez_results[order(abs(entrez_results$log2FoldChange), decreasing
 sig_genes <- as.character(sig_genes)
 all_genes <- entrez_results$entrezgene
 all_genes <- as.character(all_genes)
-ego.bp <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "BP", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
-ego.cc <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "CC", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
-ego.mf <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "MF", pAdjustMethod = "BH", qvalueCutoff = pval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+ego.bp <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "BP", pAdjustMethod = "BH", qvalueCutoff = qval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+ego.cc <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "CC", pAdjustMethod = "BH", qvalueCutoff = qval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
+ego.mf <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "MF", pAdjustMethod = "BH", qvalueCutoff = qval.cutoff, readable = TRUE, minGSSize=2, maxGSSize=10000)
 
 GO_BP <- ego.bp@result
 knitr::kable(GO_BP, caption="Biological Processes")
@@ -185,13 +205,13 @@ GO_MF <- ego.mf@result
 knitr::kable(GO_MF, caption="Molecular Function")
 ```
 
-- still not much there, but the results are a bit more interesting/relevant
+- still not alot there, but the results (particularly the cellular component results) are a bit more interesting/relevant
 
 #### KEGG based
 - top 200 genes again
 
 ```{r clusterprofilerkegg}
-kk <- enrichKEGG(gene=sig_genes, organism = 'mmu', qvalueCutoff = pval.cutoff, universe = all_genes)
+kk <- enrichKEGG(gene=sig_genes, organism = 'mmu', qvalueCutoff = qval.cutoff, universe = all_genes)
 knitr::kable(summary(kk), caption="KEGG pathways")
 ```
 
@@ -201,7 +221,7 @@ knitr::kable(summary(kk), caption="KEGG pathways")
 
 ```{r reactomePA}
 library("ReactomePA")
-rpa <- enrichPathway(gene=sig_genes, qvalueCutoff=pval.cutoff,  organism="mouse",universe = all_genes)
+rpa <- enrichPathway(gene=sig_genes, qvalueCutoff=qval.cutoff,  organism="mouse",universe = all_genes)
 knitr::kable(summary(rpa))
 ```
 
@@ -218,7 +238,7 @@ Using the log2 fold changes obtained from the DESeq2 analysis for every gene, ge
 
 #### KEGG based
 
-- test for situations where the direction of logfoldchange for genes can change in both directions (more realistic)
+- test for situations where the direction of log2fold change for genes can change in both directions (more realistic)
 
 ```{r GAGEKegg}
 library(gage)
@@ -240,7 +260,7 @@ names(foldchanges) <- entrez_results$entrezgene
 keggres = gage(foldchanges, gsets = kegg.gs, same.dir=FALSE)
 
 # Look at both up (greater), down (less), and statistics
-sel <- keggres$greater[, "q.val"] < pval.cutoff & !is.na(keggres$greater[, "q.val"])
+sel <- keggres$greater[, "q.val"] < qval.cutoff & !is.na(keggres$greater[, "q.val"])
 path.ids <- rownames(keggres$greater)[sel]
 
 # Get the IDs.
@@ -271,7 +291,6 @@ rm(tmp)
 knitr::kable(keggres$greater[sel,])
 ```
 
-
 - visualization of logfoldchanges in KEGG pathway contexts
 - colors reflect logfoldchange differences between the amount of gene expression change for the wildtype and Smoc2 transgenics after treatment.
 
@@ -290,6 +309,39 @@ for(p in 1:length(pathviewpngs)) {
 }
 ```
 
+##### Heatmaps of expression levels for enriched KEGG pathway genes
+
+- each genotype's values were  centered and scaled to the untreated sample values for that genotype
+  - this has the effect of making the untreated samples all look the same, but it allows us to see the different changes that occur on treatment in the two genotypes
+  
+```{r keggheatmaps, fig.height=18}
+metadata <- col2rownames(metadata, "sampleid", )
+
+for(pathid in path.ids){
+  print(pathid)
+  entrezids <- kegg.gs[[pathid]]
+    
+  ## now do it with the centered data
+  # subset data to entrezids in  set
+  entrez_results.sub.annot <- entrez_results.normed[entrez_results.normed$entrezgene %in% entrezids,]
+  entrez_results.sub <- entrez_results.sub.annot[,names(entrez_results.sub.annot) %in% as.character(row.names(metadata))]
+  #sanity check
+  identical(as.character(names(entrez_results.sub)), as.character(row.names(metadata)))
+  # heatmap of normzlied, variant stabilized counts for all gene within seti
+  if(nrow(entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
+  pheatmap(entrez_results.sub, labels_row=entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("All Genes", pathid, sep=" - "))
+  # take the top quartile (by absolute(log2foldchange)) of these genes
+  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, abs(entrez_results.sub.annot$log2FoldChange)>quantile(abs(entrez_results.sub.annot$log2FoldChange),0.75))
+  top.entrez_results.sub <- top.entrez_results.sub.annot[,names(top.entrez_results.sub.annot) %in% row.names(metadata)]
+   #sanity check again
+  identical(as.character(names(top.entrez_results.sub)), as.character(row.names(metadata)))
+    # heatmap of normzlied, variant stabilized counts for the genes with the biggest logFCs with the set
+    if(nrow(top.entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
+  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("Top Quartile Genes", pathid, sep=" - "))
+  }  
+```  
+
+
 #### Gene Ontology based
 
 ```{r GAGEGO}
@@ -304,18 +356,104 @@ gores.bp <- gage(foldchanges, gsets = go.bp, same.dir=FALSE )
 gores.cc <- gage(foldchanges, gsets = go.cc, same.dir=FALSE )
 gores.mf <- gage(foldchanges, gsets = go.mf, same.dir=FALSE )
 
-
 # Look at both up (greater), down (less), and statistics
-sel.bp <- gores.bp$greater[, "q.val"] < pval.cutoff & !is.na(gores.bp$greater[, "q.val"])
+sel.bp <- gores.bp$greater[, "q.val"] < qval.cutoff & !is.na(gores.bp$greater[, "q.val"])
 knitr::kable(gores.bp$greater[sel.bp,, drop=FALSE], caption="Biological Processes")
 
 # Look at both up (greater), down (less), and statistics
-sel.cc <- gores.cc$greater[, "q.val"] < pval.cutoff & is.finite(gores.cc$greater[, "q.val"])
+sel.cc <- gores.cc$greater[, "q.val"] < qval.cutoff & is.finite(gores.cc$greater[, "q.val"])
 knitr::kable(gores.cc$greater[sel.cc,, drop=FALSE], caption="Cellular Components")
 
 # Look at both up (greater), down (less), and statistics
-sel.mf <- gores.mf$greater[, "q.val"] < pval.cutoff & !is.na(gores.mf$greater[, "q.val"])
+sel.mf <- gores.mf$greater[, "q.val"] < qval.cutoff & !is.na(gores.mf$greater[, "q.val"])
 knitr::kable(gores.mf$greater[sel.mf,, drop=FALSE], caption="Molecular Functions")
 ```
 
+
+##### Heatmaps of expression levels for enriched Gene Ontology categories
+
+- once again, each genotype's values were  centered and scaled to the untreated sample values for that genotype
+
+```{r enrichegoheatmaps, fig.height=18}
+enriched.gos.bp <- row.names(gores.bp$greater[sel.bp,, drop=FALSE])
+enriched.gos.cc <- row.names(gores.cc$greater[sel.cc,, drop=FALSE])
+enriched.gos.mf <- row.names(gores.mf$greater[sel.mf,, drop=FALSE])
+
+enriched.gos <- c(enriched.gos.bp, enriched.gos.cc, enriched.gos.mf)
+
+for(enrichedgo in enriched.gos){
+  print(enrichedgo)
+  entrezids <- go.sets.mm[[enrichedgo]]
+
+  ## now do it with the centered data
+  # subset data to entrezids in  set
+  entrez_results.sub.annot <- entrez_results.normed[entrez_results.normed$entrezgene %in% entrezids,]
+  entrez_results.sub <- entrez_results.sub.annot[,names(entrez_results.sub.annot) %in% as.character(row.names(metadata))]
+  #sanity check
+  identical(as.character(names(entrez_results.sub)), as.character(row.names(metadata)))
+  # heatmap of normzlied, variant stabilized counts for all gene within seti
+  if(nrow(entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
+  pheatmap(entrez_results.sub, labels_row=entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("All Genes", enrichedgo, sep=" - "))
+  # take the top quartile (by absolute(log2foldchange)) of these genes
+  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, abs(entrez_results.sub.annot$log2FoldChange)>quantile(abs(entrez_results.sub.annot$log2FoldChange),0.75))
+  top.entrez_results.sub <- top.entrez_results.sub.annot[,names(top.entrez_results.sub.annot) %in% row.names(metadata)]
+   #sanity check again
+  identical(as.character(names(top.entrez_results.sub)), as.character(row.names(metadata)))
+    # heatmap of normzlied, variant stabilized counts for the genes with the biggest logFCs with the set
+    if(nrow(top.entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
+  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("Top Quartile Genes", enrichedgo, sep=" - "))
+}   
+```  
+
+
+
+
+---
+
+## Topology Based
+
+## Pathway analysis using SPIA (topology-based method)
+The previous analyses did not explore how genes interact with each other (e.g. activation, inhibition, phosphorylation, ubiquitination, etc) to determine the pathway-level statistics. The [SPIA (Signaling Pathway Impact Analysis)](http://bioconductor.org/packages/release/bioc/html/SPIA.html) tool was used to integrate the lists of differentially expressed genes determined by DESeq2, their fold changes, and pathway topology to identify affected pathways.
+
+The table below shows the following significantly dysregulated pathways based on over-representation and signaling perturbations accumulation. 
+The table shows the following information:  
+
+- *pSize* is the number of genes on the pathway
+- *NDE* is the number of DE genes per pathway
+- *tA* is the observed total preturbation accumulation in the pathway
+- *pNDE* is the probability to observe at least NDE genes on the pathway using a hypergeometric model
+- *pPERT* is the probability to observe a total accumulation more extreme than tA only by chance
+- *pG* is the p-value obtained by combining pNDE and pPERT
+- *pGFdr* and *pGFWER* are the False Discovery Rate and respectively Bonferroni adjusted global p-values
+- *Status* gives the direction in which the pathway is perturbed (activated or inhibited). 
+- *KEGGLINK* gives a web link to the KEGG website that displays the pathway image with the differentially expressed genes highlighted in red
+
+>Tarca AL, Kathri P and Draghici S (2013). SPIA: Signaling Pathway Impact Analysis (SPIA) using combined evidence of pathway over-representation and unusual signaling perturbations. [http://bioinformatics.oxfordjournals.org/cgi/reprint/btn577v1](http://bioinformatics.oxfordjournals.org/cgi/reprint/btn577v1).
+
+- for this analysis, I used the DE genes as determined by adjusted pvalue of `r qval.cutoff`
+
+```{r spia, results="hide"}
+library(SPIA)
+#spia (http://www.gettinggeneticsdone.com/2012/03/pathway-analysis-for-high-throughput.html)
+
+# significant genes is a vector of fold changes where the names
+# are ENTREZ gene IDs. The background set is a vector of all the 
+# genes represented on the platform.
+#convert ensembl to entrez ids
+
+sig_genes <- subset(entrez_results, padj<qval.cutoff)$log2FoldChange
+names(sig_genes) <- subset(entrez_results, padj<qval.cutoff)$entrezgene
+
+#Remove NA values
+sig_genes <- sig_genes[!is.na(names(sig_genes))] 
+
+# run SPIA.
+spia_result <- spia(de=sig_genes, all=entrez_results$entrezgene, organism="mmu")
+```
+
+```{r spiaresults}
+knitr::kable(spia_result)
+```
+
+- nothing reaches significance after multiple testing adjustment
 

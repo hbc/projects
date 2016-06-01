@@ -1,5 +1,5 @@
 ---
-title: "Differential Expression Analysis and Initial Functional Analysis"
+title: "Differential Expression Analysis"
 output:
   html_document:
     toc: true
@@ -16,7 +16,7 @@ knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highligh
 
 # Overview
 
-RNAseq DE analysis for Caimiro Geraduzzi  (shachar_dagan@hms.harvard.edu),  Vaidya group at HSPH.  
+RNAseq DE analysis for Caimiro Geraduzzi  (cgerard@hsph.harvard.edu),  Vaidya group at HSPH.  
 
 Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
 
@@ -41,12 +41,26 @@ library(dplyr)
 library(biomaRt)
 
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
-
 baseDir <- "~/Work/projects/vv_smoc2KO_rnaseq/"
-resultsDir <- file.path(baseDir, "results/final/2016-05-05_analysis")
+resultsDir <- file.path(baseDir, "results/final/2016-05-31_analysis")
 pval.cutoff <- 0.1
 lfc.cutoff <-0.5849625
 ```
+
+
+## Functions
+- custom functions for this analysis
+
+```{r functions}
+annotate_df <- function (df, df_ensemblid_header, biomart_ensembl_dataset, biomart_ensemblid_filter, biomart_genesymbol_attribute){
+    require(biomaRt)
+    ensembl = useMart("ENSEMBL_MART_ENSEMBL", dataset = biomart_ensembl_dataset, host = "useast.ensembl.org")
+    annot.df = getBM(attributes = c(biomart_ensemblid_filter, biomart_genesymbol_attribute, "description"), filters = c(biomart_ensemblid_filter), values = df[, df_ensemblid_header], mart = ensembl)
+    m = merge(df, annot.df, by.x = df_ensemblid_header, by.y = biomart_ensemblid_filter)
+    return(m)
+}
+```
+
 
 ---
 
@@ -85,6 +99,7 @@ metadata$replicate <- NULL
 metadata$mouse_num <- NULL
 metadata$id <- NULL
 
+write.csv(metadata, file.path(resultsDir, "metadata.DE.csv"))
 ```
 
 ---
@@ -261,137 +276,29 @@ pheatmap(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, ann
  
 *the row-scaled heatmap is "centered and scaled"" by row, such that the mean of values for the row is subtracted from each samples value (centering), which value is then divided by the row's standard deviation so that the values shown reflect the number of standard deviations from the mean for that value*
 
-# Functional Enrichment
 
-## Gene Ontology analysis
- - using [g:profiler](http://biit.cs.ut.ee/gprofiler/)  
- - for  differentially expressed genes  
+### Plots of expression changes in differentially expressed genes
 
-### g:profiler
+- these plots show the expressino changes for all samples, the number in the title represents the "log2FoldChange"
 
- - first pass with just the DE genes as defined by logfold change and adjusted pvalue cutoffs
- 
-```{r goanalysis1}
-top.results.df.annot <- DEresults.df.annot
-#order for lfc
-top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),]
+```{r individualgenes, fig.height=100}
+normalized.counts <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+all.stats <- merge(results.df.annot,normalized.counts)
 
-# run gprolier with ordered query and background set of genes
-gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
-                                  organism = "mmusculus",
-                                  ordered_query = TRUE, 
-                                  exclude_iea = F, 
-                                  correction_method = "gSCS"
-)
-datatable(gprofiler_results, rownames=FALSE)
-````
-
-- first pass shows very few enrichments of gene ontology categories for the differentially expressed genes
-
- - next pass use the top 200 genes as determined by sorting by logfold change
-
-```{r goanalysis2}
-top.results.df.annot <- results.df.annot
-# subset to genes with actual adjusted vvalues
-top.results.df.annot <- subset(top.results.df.annot, is.finite(padj))
-
-#order for lfc
-top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),][1:200,]
-
-# run gprolier with ordered query and background set of genes
-gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
-                                  organism = "mmusculus",
-                                  ordered_query = TRUE, 
-                                  exclude_iea = FALSE, 
-                                  correction_method = "gSCS"
-)
-datatable(gprofiler_results, rownames=FALSE)
+normalized.counts.DE <- all.stats[all.stats$ensemblid %in% DEresults.df.annot$ensemblid,] %>% 
+  tbl_df() %>%   
+  dplyr::select(.,mgi_symbol, log2FoldChange,contains("normal"), contains("UUO")) %>% 
+  mutate(., log2FoldChange=round(log2FoldChange,2)) %>%
+  mutate(., labels=paste(mgi_symbol, " (", log2FoldChange, ")", sep=""))
 
 
-write.table(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
-
-````
-
-- now we see slight enrichment of genes in categories from the Human Phenotype Onotology project (domain = hp), kegg pathways (domain = keg), and protein complexes (domain = CORUM)
+normalized.counts.DE <-reshape2::melt(as.data.frame(normalized.counts.DE), id.vars=c("mgi_symbol", "log2FoldChange", "labels")) %>% 
+  tbl_df() %>% 
+  mutate(., genotype=ifelse(grepl("SMOC2", variable), "Smoc2", "WT"), treatment=ifelse(grepl("UUO", variable), "UUO", "Normal"))
 
 
-**[Gene Ontology results](../results/final/2016-05-05_analysis/GOresults.csv)**
-
-### clusterProfiler
-
-Similar to gprofileR, the tool [clusterProfiler](http://bioconductor.org/packages/release/bioc/html/clusterProfiler.html) was used to perform over-representation analysis on GO terms associated with the significant DE genes. The table displays the list of GO terms that were significantly enriched among the significant genes, which is similar to those output by gprofileR.
-
-The dotplot below shows the number of genes associated with each term and the p-adjusted values for the terms. The GO graph below shows the relationship among the significant GO terms.
-
-NOTE: While the GO terms output by clusterProfiler are very similar to those output by gprofileR, the small differences in the GO terms output is due to the different algorithms used by the two different programs.
-
->G Yu, LG Wang, Y Han, QY He. clusterProfiler: an R package for comparing biological themes among gene clusters. OMICS: A Journal of Integrative Biology 2012, 16(5):284-287.
-
->G Yu, LG Wang, GR Yan, QY He. DOSE: an R/Bioconductor package for Disease Ontology Semantic and Enrichment analysis. Bioinformatics 2015, 31(4):608-609.
-
-#### Gene ontology based
-
-- here I used the top 200 genes as sorted by logfold change again as using just the DE genes did not show any enrichments 
-```{r clusterprofiler}
-# clusterProfiler
-library(org.Mm.eg.db)
-library(clusterProfiler)
-
-# Add Entrez identifiers to DESeq2 results object (res) Follow tutorial by
-# Stephen Turner:
-# http://www.r-bloggers.com/tutorial-rna-seq-differential-expression-pathway-analysis-with-sailfish-deseq2-gage-and-pathview/
-DEG_background <- results.df
-DEG_background <- subset(DEG_background, is.finite(padj))
-
-mart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="www.ensembl.org"))
-attributes <- listAttributes(mart)
-entrez <- getBM(filters = "ensembl_gene_id", attributes = c("ensembl_gene_id", "entrezgene"), values = row.names(DEG_background), mart = mart)
-DEG_background$ensembl_gene_id <- row.names(DEG_background)
-entrez_results <- merge(DEG_background, entrez, by = "ensembl_gene_id")
-entrez_results <- subset(entrez_results, entrezgene != "NA")
-
-foldchanges <- entrez_results$log2FoldChange
-names(foldchanges) <- entrez_results$entrezgene
-# head(foldchanges)
-
-# clusterprofiler analysis
-sig_genes <- entrez_results[order(abs(entrez_results$log2FoldChange), decreasing = TRUE),"entrezgene"][1:200]
-sig_genes <- as.character(sig_genes)
-all_genes <- entrez_results$entrezgene
-all_genes <- as.character(all_genes)
-ego.bp <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "BP", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
-ego.cc <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "CC", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
-ego.mf <- enrichGO(gene = sig_genes, OrgDb="org.Mm.eg.db", universe = all_genes, ont = "MF", pAdjustMethod = "BH", qvalueCutoff = 0.2, readable = TRUE)
-
-GO_BP <- ego.bp@result
-knitr::kable(GO_BP)
-GO_CC <- ego.cc@result
-knitr::kable(GO_CC)
-GO_MF <- ego.mf@result
-knitr::kable(GO_MF)
-
-dotplot(ego.bp, showCategory=30)
-dotplot(ego.cc, showCategory=30)
-dotplot(ego.mf, showCategory=30)
-
-entrez_results <- entrez_results[order(entrez_results$log2FoldChange, decreasing = TRUE),]
-geneList <- entrez_results$log2FoldChange
-names(geneList) <- entrez_results$entrezgene
-
-temp <- gseGO(geneList=geneList, OrgDb="org.Mm.eg.db", ont="BP", nPerm=1000, minGSSize=10, pvalueCutoff=0.1, verbose=TRUE)
+ggplot(normalized.counts.DE, aes(treatment,as.numeric(as.character(value)), fill=genotype, color=genotype))+
+  geom_boxplot(position="identity", alpha=0.25)+theme_bw() + 
+  stat_summary(fun.y="mean", geom="line", aes(group=factor(genotype)),linetype=2)+
+  facet_wrap(~labels, scales="free",ncol=2)
 ```
-
-#### KEGG based
-
-- 
-library(gage)
-library(pathview)
-library(gageData)
-library(DOSE)
-library(SPIA)
-library(R.devices)
-
-# Create a KEGG dataset
-kegg_mouse <- kegg.gsets(species = "mouse", id.type = "kegg")
-kegg.gs <- kegg_mouse$kg.sets[kegg_mouse$sigmet.idx]
-# head(kegg.gs)
