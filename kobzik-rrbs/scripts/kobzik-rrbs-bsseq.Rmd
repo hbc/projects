@@ -1,10 +1,12 @@
 ---
-title: Batch analysis of RRBS data
+title: Analysis of RRBS data
 output:
   html_document:
     toc: true
     toc_float: true
     number_sections: true
+    code_folding: hide
+    collapsed: true
     theme: simplex
 ---
 
@@ -59,6 +61,7 @@ library(bsseq)
 library(DSS)
 library(ggbio)
 library(biovizBase)
+
 ```
 
 ## Variables
@@ -86,7 +89,7 @@ numcores <- parallel::detectCores()
 
 ## Import Data and Metadata
 
-Previous analyses identified sample 14-b1-cntr as an outlier so it was not used for this analysis.
+Previous analyses identified sample 14-b1-cntr as an outlier so it was not used for this analysis. Also dropped 10-b1-F3, 11-b1-F3, 15-b1-cntr, 16-b1-cntr, 91-b2-F2, 92-b2-F2, 121-b2-F3 and 125-b2-cntr on suspicion of male DNA contamination.
 
 ### Metadata
 
@@ -164,81 +167,60 @@ save(file=file.path(resultsDir, "BSeq.object"), list="BS")
 
 # Analysis
 
-## Separate by batch and generation
+**Only for batch 2 (individual samples)**
 
 ```{r separatebybatch, cache=TRUE, cache.lazy=FALSE}
-# drop chrM (need to do it to get karyograms to work later)
-BS <- chrSelectBSseq(BS, seqnames = paste("chr", c(1:22,"X", "Y"), sep=""), order = TRUE)
+# drop chrM
+BS <- chrSelectBSseq(BS, seqnames = paste("chr", c(1:19,"X", "Y"), sep=""), order = TRUE)
 
-BS.b1.f1 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
 BS.b2.f1 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F1" | pData(BS)$generation=="cntr"))]
-
-BS.b1.f2 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F2" | pData(BS)$generation=="cntr"))]
 BS.b2.f2 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F2" | pData(BS)$generation=="cntr"))]
-
-BS.b1.f3 <- BS[,which(pData(BS)$cohort==1 & (pData(BS)$generation=="F3" | pData(BS)$generation=="cntr"))]
 BS.b2.f3 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F3" | pData(BS)$generation=="cntr"))]
 ```
 
 ## Statistical Tests
-- using DSS based Wald test
+- using [DSS](http://www.ncbi.nlm.nih.gov/pubmed/24561809) based Wald test
 - non-smoothed, individual sites only
+
+
 
 ```{r DSStwogroup, cache=TRUE, cache.lazy=FALSE}
 #use pData to subset and get samplenames 
-dmlTest.b1.f1 <- DMLtest(BS.b1.f1, group1=as.character(pData(BS.b1.f1)$sampleid[which(pData(BS.b1.f1)$generation=="F1")]),group2=as.character(pData(BS.b1.f1)$sampleid[which(pData(BS.b1.f1)$generation=="cntr")]))
 dmlTest.b2.f1 <- DMLtest(BS.b2.f1, group1=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="F1")]),group2=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="cntr")]))
 
-dmlTest.b1.f2 <- DMLtest(BS.b1.f2, group1=as.character(pData(BS.b1.f2)$sampleid[which(pData(BS.b1.f2)$generation=="F2")]),group2=as.character(pData(BS.b1.f2)$sampleid[which(pData(BS.b1.f2)$generation=="cntr")]))
 dmlTest.b2.f2 <- DMLtest(BS.b2.f2, group1=as.character(pData(BS.b2.f2)$sampleid[which(pData(BS.b2.f2)$generation=="F2")]),group2=as.character(pData(BS.b2.f2)$sampleid[which(pData(BS.b2.f2)$generation=="cntr")]))
 
-dmlTest.b1.f3 <- DMLtest(BS.b1.f3, group1=as.character(pData(BS.b1.f3)$sampleid[which(pData(BS.b1.f3)$generation=="F3")]),group2=as.character(pData(BS.b1.f3)$sampleid[which(pData(BS.b1.f3)$generation=="cntr")]))
 dmlTest.b2.f3 <- DMLtest(BS.b2.f3, group1=as.character(pData(BS.b2.f3)$sampleid[which(pData(BS.b2.f3)$generation=="F3")]),group2=as.character(pData(BS.b2.f3)$sampleid[which(pData(BS.b2.f3)$generation=="cntr")]))
 
-save(file=file.path(resultsDir, "RDATA.dmlTests"), list=c("dmlTest.b1.f1", "dmlTest.b2.f1", "dmlTest.b1.f2", "dmlTest.b2.f2", "dmlTest.b1.f3", "dmlTest.b2.f3"))
+save(file=file.path(resultsDir, "RDATA.dmlTests"), list=c("dmlTest.b2.f1",  "dmlTest.b2.f2", "dmlTest.b2.f3"))
 ```
 
-**Subset to sites with a change in methyulation of at least `r beta.delta.cutoff`, pvalue of less than `alpha.cutoff` and an FDR of less than  `r q.cutoff`.**
+**Differentially methylated sites were defined as those with a change in methyulation of at least `r beta.delta.cutoff`, pvalue of less than `r alpha.cutoff` and an FDR of less than  `r q.cutoff`.**
 
 ```{r sigdiffs}
-diffs.b1.f1 <- callDML(dmlTest.b1.f1, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
-diffs.b1.f1 <- subset(diffs.b1.f1, fdr<q.cutoff)
 diffs.b2.f1 <- callDML(dmlTest.b2.f1, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
 diffs.b2.f1 <- subset(diffs.b2.f1, fdr<q.cutoff)
 
-diffs.b1.f2 <- callDML(dmlTest.b1.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
-diffs.b1.f2 <- subset(diffs.b1.f2, fdr<q.cutoff)
 diffs.b2.f2 <- callDML(dmlTest.b2.f2, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
 diffs.b2.f2 <- subset(diffs.b2.f2, fdr<q.cutoff)
 
-diffs.b1.f3 <- callDML(dmlTest.b1.f3, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
-diffs.b1.f3 <- subset(diffs.b1.f3, fdr<q.cutoff)
 diffs.b2.f3 <- callDML(dmlTest.b2.f3, p.threshold = alpha.cutoff, delta=beta.delta.cutoff)
 diffs.b2.f3 <- subset(diffs.b2.f3, fdr<q.cutoff)
 ```
 
 ## Results
 
-### Example Results
-#### F1, batch1 (pooled samples)
-`rkable(head(diffs.b1.f1,10))`
-
-#### F1, batchs (individual samples)
-`r kable(head(diffs.b2.f1,10))`
-
-### Comparing Batches
-
-#### Differences in Hyper and Hypo methylation levels
+### Hyper and Hypo methylation levels
 
 - the different batches now have more similar distributions of hypo and hyper-methylated sites, with the individual samples still showing more hypermethylated sites
 
-**HYPERmethylation is when methylaiton is higher in the F1/F2/F3 over controls**
-**HYPOmethyation is when methylation is LOWER in the F1/F2/F3 samples compared to controls**
+**HYPERmethylation** - methylation is *higher* in the F1/F2/F3 over controls
+
+**HYPOmethyation** -  methylation is *lower* in the F1/F2/F3 samples compared to controls
 
 ```{r hypohyper}
-diffs.b1.f1$batch <- "pooled"
 diffs.b2.f1$batch <- "individual"
-diffs.f1 <- rbind(diffs.b1.f1, diffs.b2.f1) %>% tbl_df()
+diffs.f1 <- diffs.b2.f1 %>% tbl_df()
 ggplot(diffs.f1, aes(x=diff,color=batch))+geom_density(lwd=1.1)
 
 chr.hypo.hyper.summary.f1 <- diffs.f1 %>% 
@@ -249,9 +231,8 @@ chr.hypo.hyper.summary.f1 <- diffs.f1 %>%
   reshape2::melt(., id.vars=c("chr", "batch"))  
 ggplot(chr.hypo.hyper.summary.f1, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))+ggtitle("F1 vs. Control")
 
-diffs.b1.f2$batch <- "pooled"
 diffs.b2.f2$batch <- "individual"
-diffs.f2 <- rbind(diffs.b1.f2, diffs.b2.f2) %>% tbl_df()
+diffs.f2 <-  diffs.b2.f2 %>% tbl_df()
 ggplot(diffs.f2, aes(x=diff,color=batch))+geom_density()
 
 chr.hypo.hyper.summary.f2 <- diffs.f2 %>% 
@@ -262,9 +243,8 @@ chr.hypo.hyper.summary.f2 <- diffs.f2 %>%
   reshape2::melt(., id.vars=c("chr", "batch"))  
 ggplot(chr.hypo.hyper.summary.f2, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
 
-diffs.b1.f3$batch <- "pooled"
 diffs.b2.f3$batch <- "individual"
-diffs.f3 <- rbind(diffs.b1.f3, diffs.b2.f3) %>% tbl_df()
+diffs.f3 <- diffs.b2.f3 %>% tbl_df()
 ggplot(diffs.f3, aes(x=diff,color=batch))+geom_density()
 
 chr.hypo.hyper.summary.f3 <- diffs.f3 %>% 
@@ -276,101 +256,77 @@ chr.hypo.hyper.summary.f3 <- diffs.f3 %>%
 ggplot(chr.hypo.hyper.summary.f3, aes(x=chr, y=value, fill=variable))+geom_bar(stat='identity')+ facet_wrap(~batch) + theme(axis.text.x = element_text(angle = 60, hjust = 1))
 ```
 
-#### Differences in Genomic Context 
+### Differences in Genomic Context 
 
 ```{r karyograms}
 data(ideoCyto, package = "biovizBase")
 
 ##F1
 #dump differences into genomicranges object
-diffs.gr.f1 <- with(diffs.f1, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr, batch=batch))
+diffs.gr.f1 <- with(diffs.f1, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, stat=stat,phi1=phi1, phi2=phi2, pval=pval, fdr=fdr, batch=batch))
 # add sequence lengths for chromsomes
 seqlengths(diffs.gr.f1) <- seqlengths(ideoCyto$mm10)[names(seqlengths(diffs.gr.f1))]
 diffs.gr.f1 <- keepSeqlevels(diffs.gr.f1, paste0("chr", c(1:19, "X", "Y")))
-# subset to different grranges objects for each batch
-diffs.b1.gr.f1 <- subset(diffs.gr.f1, batch=="pooled")
-diffs.b2.gr.f1 <- subset(diffs.gr.f1, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
 print("All Differentially Methylated Sites, F1")
-autoplot(seqinfo(diffs.b1.gr.f1), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.gr.f1), layout = "karyogram") +
+  layout_karyogram(data = diffs.gr.f1, aes(color=diff), geom = "rect") 
 # now only pl9t the hypermethylated differences from each batch
-diffs.b1.hyper.gr.f1 <- subset(diffs.gr.f1, batch=="pooled" & diff>0)
-diffs.b2.hyper.gr.f1 <- subset(diffs.gr.f1, batch=="individual" & diff>0)
+diffs.hyper.gr.f1 <- subset(diffs.gr.f1,  diff>0)
 print("HyperMethylated Sites, F1")
-autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.hyper.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hyper.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f1), layout = "karyogram") +
+  layout_karyogram(data = diffs.hyper.gr.f1, aes(color=diff), geom = "rect")
 # now only pl9t the hypomethylated differences from each batch
-diffs.b1.hypo.gr.f1 <- subset(diffs.gr.f1, batch=="pooled" & diff<0)
-diffs.b2.hypo.gr.f1 <- subset(diffs.gr.f1, batch=="individual" & diff<0)
+diffs.hypo.gr.f1 <- subset(diffs.gr.f1,  diff<0)
 print("HypoMethylated Sites, F1")
-autoplot(seqinfo(diffs.b1.hyper.gr.f1), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.hypo.gr.f1, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hypo.gr.f1, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f1), layout = "karyogram") +
+  layout_karyogram(data = diffs.hypo.gr.f1, aes( color=diff), geom = "rect")
 
 ##F2
 #dump differences into genomicranges object
-diffs.gr.f2 <- with(diffs.f2, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr, batch=batch))
+diffs.gr.f2 <- with(diffs.f2, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, stat=stat,phi1=phi1, phi2=phi2, pval=pval, fdr=fdr, batch=batch))
 # add sequence lengths for chromsomes
 seqlengths(diffs.gr.f2) <- seqlengths(ideoCyto$mm10)[names(seqlengths(diffs.gr.f2))]
 diffs.gr.f2 <- keepSeqlevels(diffs.gr.f2, paste0("chr", c(1:19, "X", "Y")))
-# subset to different grranges objects for each batch
-diffs.b1.gr.f2 <- subset(diffs.gr.f2, batch=="pooled")
-diffs.b2.gr.f2 <- subset(diffs.gr.f2, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
 print("All Differentially Methylated Sites, F2")
-autoplot(seqinfo(diffs.b1.gr.f2), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.gr.f2), layout = "karyogram") +
+  layout_karyogram(data = diffs.gr.f2, aes(color=diff), geom = "rect") 
 # now only pl9t the hypermethylated differences from each batch
-diffs.b1.hyper.gr.f2 <- subset(diffs.gr.f2, batch=="pooled" & diff>0)
-diffs.b2.hyper.gr.f2 <- subset(diffs.gr.f2, batch=="individual" & diff>0)
+diffs.hyper.gr.f2 <- subset(diffs.gr.f2,  diff>0)
 print("HyperMethylated Sites, F2")
-autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.hyper.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hyper.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f2), layout = "karyogram") +
+  layout_karyogram(data = diffs.hyper.gr.f2, aes(color=diff), geom = "rect")
 # now only pl9t the hypomethylated differences from each batch
-diffs.b1.hypo.gr.f2 <- subset(diffs.gr.f2, batch=="pooled" & diff<0)
-diffs.b2.hypo.gr.f2 <- subset(diffs.gr.f2, batch=="individual" & diff<0)
+diffs.hypo.gr.f2 <- subset(diffs.gr.f2,  diff<0)
 print("HypoMethylated Sites, F2")
-autoplot(seqinfo(diffs.b1.hyper.gr.f2), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.hypo.gr.f2, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hypo.gr.f2, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f2), layout = "karyogram") +
+  layout_karyogram(data = diffs.hypo.gr.f2, aes( color=diff), geom = "rect")
 
 ##F3
 #dump differences into genomicranges object
-diffs.gr.f3 <- with(diffs.f3, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, pval=pval, fdr=fdr, batch=batch))
+diffs.gr.f3 <- with(diffs.f3, GRanges(chr, IRanges(pos, pos),  mu1=mu1, mu2=mu2, diff=diff, diff.se=diff.se, stat=stat,phi1=phi1, phi2=phi2, pval=pval, fdr=fdr, batch=batch))
 # add sequence lengths for chromsomes
 seqlengths(diffs.gr.f3) <- seqlengths(ideoCyto$mm10)[names(seqlengths(diffs.gr.f3))]
 diffs.gr.f3 <- keepSeqlevels(diffs.gr.f3, paste0("chr", c(1:19, "X", "Y")))
-# subset to different grranges objects for each batch
-diffs.b1.gr.f3 <- subset(diffs.gr.f3, batch=="pooled")
-diffs.b2.gr.f3 <- subset(diffs.gr.f3, batch=="individual")
 #plot with each batch a different color and position so they don't overlap
 print("All Differentially Methylated Sites, F3")
-autoplot(seqinfo(diffs.b1.gr.f3), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.gr.f3), layout = "karyogram") +
+  layout_karyogram(data = diffs.gr.f3, aes(color=diff), geom = "rect") 
 # now only pl9t the hypermethylated differences from each batch
-diffs.b1.hyper.gr.f3 <- subset(diffs.gr.f3, batch=="pooled" & diff>0)
-diffs.b2.hyper.gr.f3 <- subset(diffs.gr.f3, batch=="individual" & diff>0)
+diffs.hyper.gr.f3 <- subset(diffs.gr.f3,  diff>0)
 print("HyperMethylated Sites, F3")
-autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram") +
-  layout_karyogram(data = diffs.b1.hyper.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hyper.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f3), layout = "karyogram") +
+  layout_karyogram(data = diffs.hyper.gr.f3, aes(color=diff), geom = "rect")
 # now only pl9t the hypomethylated differences from each batch
-diffs.b1.hypo.gr.f3 <- subset(diffs.gr.f3, batch=="pooled" & diff<0)
-diffs.b2.hypo.gr.f3 <- subset(diffs.gr.f3, batch=="individual" & diff<0)
+diffs.hypo.gr.f3 <- subset(diffs.gr.f3,  diff<0)
 print("HypoMethylated Sites, F3")
-autoplot(seqinfo(diffs.b1.hyper.gr.f3), layout = "karyogram", main="Faf") +
-  layout_karyogram(data = diffs.b1.hypo.gr.f3, aes(fill="pooled", color="pooled"), geom = "rect", ylim = c(0, 10/2)) +
-  layout_karyogram(data = diffs.b2.hypo.gr.f3, aes(fill="individual", color="individual"), geom = "rect", ylim = c(10/2, 10/2*2)) + theme(legend.title=element_blank())+ guides(color=FALSE)
+autoplot(seqinfo(diffs.hyper.gr.f3), layout = "karyogram") +
+  layout_karyogram(data = diffs.hypo.gr.f3, aes( color=diff), geom = "rect")
 ```
 
 
-```{r annotate}
+```{r annotatedist}
 require(TxDb.Mmusculus.UCSC.mm10.knownGene)
 txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
 library(ChIPseeker)
@@ -433,15 +389,75 @@ plot_annotations <- function(df_gr, samples=""){
   plotAnnoBar(an, title=paste("Feature Distribution", samples, sep=" - "))
 }
 
-plot_annotations(df_gr=diffs.b1.gr.f1, samples="Batch1, F1 vs. Control")
-plot_annotations(df_gr=diffs.b2.gr.f1, samples="Batch2, F1 vs. Control")
+plot_annotations(df_gr=diffs.gr.f1, samples="Batch1, F1 vs. Control")
 
-plot_annotations(df_gr=diffs.b1.gr.f2, samples="Batch1, F2 vs. Control")
-plot_annotations(df_gr=diffs.b2.gr.f2, samples="Batch2, F2 vs. Control")
+plot_annotations(df_gr=diffs.gr.f2, samples="Batch1, F2 vs. Control")
 
-plot_annotations(df_gr=diffs.b1.gr.f3, samples="Batch1, F3 vs. Control")
-plot_annotations(df_gr=diffs.b2.gr.f3, samples="Batch2, F3 vs. Control")
+plot_annotations(df_gr=diffs.gr.f3, samples="Batch1, F3 vs. Control")
 ```
+
+
+### Output Results
+
+#### Differentially Methylated CpGs
+
+```{r annotategene, results="hide"}
+library(bumphunter)
+genes.gr <- annotateTranscripts(TxDb.Mmusculus.UCSC.mm10.knownGene, annotationPackage = "org.Mm.eg.db", by = c("gene"), codingOnly=FALSE, verbose = TRUE, requireAnnotation = TRUE)
+
+genes.diffs.f1.gr <- matchGenes(diffs.gr.f1, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
+genes.diffs.f1.gr <- cbind(diffs.gr.f1, genes.diffs.f1.gr)
+write.csv(as.data.frame(genes.diffs.f1.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f1.vs.control.csv"))
+
+genes.diffs.f2.gr <- matchGenes(diffs.gr.f2, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
+genes.diffs.f2.gr <- cbind(diffs.gr.f2, genes.diffs.f2.gr)
+write.csv(as.data.frame(genes.diffs.f2.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f2.vs.control.csv"))
+
+genes.diffs.f3.gr <- matchGenes(diffs.gr.f3, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
+genes.diffs.f3.gr <- cbind(diffs.gr.f3, genes.diffs.f3.gr)
+write.csv(as.data.frame(genes.diffs.f3.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f3.vs.control.csv"))
+```
+
+**Table legend**
+
+ - *chr* chromosome number
+ - *start* chromosome position
+ - *end* chromosome position
+ - *width* width of CpG feature
+ - *strand* chromosomal strand (not relevant here as all CpG dyads were destranded for the analysis)
+ - *mu1* mean methylation of group1 (here, F1, F2 or F3)
+ - *mu2* mean methylaiton of group2 (here, controls)
+ - *diff* difference in mean methlation levels between the two groups
+ - *diff.se* standard error of the methylation difference
+ - *stat*, *phi1*, *phi2* wald statistics
+ - *pval* pvalue
+ - *fdr* multiple testing adjusted pvalue
+ - *batch* batch of experiment (should all be individual here)
+ - *name* gene symbol of closest gene
+ - *annotation* refseq ID of closeset gene
+ - *description* position of CpG relative to gene
+ - *region* general position of CpG relative to gene
+ - *distance* distance before 5' end of gene
+ - *subregion*  information about position of gene if inside exon/intron
+ - *insidDistance* distance past 5' end of gene
+ - *exonnumber* which exon CpG is in (if relevant)
+ - *nexons* number of exons in gene
+ - *UTR*  information about position of gene if inside UTR
+ - *strand* strand gene transcript is on
+ - *geneL* gene length
+ - *condingL* coding length of gene
+ - *Entrez* entrez id of gene
+ - *subjectHits* index of gene in database that was queried (not relevant)
+
+
+ 
+[F1 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f1.vs.control.csv)
+
+[F2 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f2.vs.control.csv)
+
+[F3 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f3.vs.control.csv)
+
+
 
 # R Session Info
 
