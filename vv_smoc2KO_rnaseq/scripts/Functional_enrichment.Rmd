@@ -229,14 +229,15 @@ knitr::kable(summary(rpa))
 
 ## Gene set enrichment analysis
 
-### Using GAGE and Pathview
+- using GAGE and Pathview
+
 Using the log2 fold changes obtained from the DESeq2 analysis for every gene, gene set enrichment analysis and pathway analysis was performed using [GAGE (Generally Applicable Gene-set Enrichment for Pathway Analysis)](http://bioconductor.org/packages/release/bioc/html/gage.html) and [Pathview](http://bioconductor.org/packages/release/bioc/html/pathview.html) tools. 
 
 >Weijun Luo, Michael Friedman, Kerby Shedden, Kurt Hankenson, and Peter Woolf. GAGE: generally applicable gene set enrichment for pathway analysis. BMC Bioinformatics, 2009. doi:10.1186/1471-2105-10-161.
 
 >Weijun Luo and Cory Brouwer. Pathview: an R/Bioconductor package for pathway-based data integration and visualization. Bioinformatics, 29(14):1830-1831, 2013. doi: 10.1093/bioinformatics/btt285.
 
-#### KEGG based
+### KEGG based
 
 - test for situations where the direction of log2fold change for genes can change in both directions (more realistic)
 
@@ -309,7 +310,7 @@ for(p in 1:length(pathviewpngs)) {
 }
 ```
 
-##### Heatmaps of expression levels for enriched KEGG pathway genes
+#### Heatmaps of expression levels for enriched KEGG pathway genes
 
 - each genotype's values were  centered and scaled to the untreated sample values for that genotype
   - this has the effect of making the untreated samples all look the same, but it allows us to see the different changes that occur on treatment in the two genotypes
@@ -341,8 +342,7 @@ for(pathid in path.ids){
   }  
 ```  
 
-
-#### Gene Ontology based
+### Gene Ontology based
 
 ```{r GAGEGO}
 data(go.sets.mm)
@@ -369,8 +369,7 @@ sel.mf <- gores.mf$greater[, "q.val"] < qval.cutoff & !is.na(gores.mf$greater[, 
 knitr::kable(gores.mf$greater[sel.mf,, drop=FALSE], caption="Molecular Functions")
 ```
 
-
-##### Heatmaps of expression levels for enriched Gene Ontology categories
+#### Heatmaps of expression levels for enriched Gene Ontology categories
 
 - once again, each genotype's values were  centered and scaled to the untreated sample values for that genotype
 
@@ -406,7 +405,72 @@ for(enrichedgo in enriched.gos){
 ```  
 
 
+#### Network visualization of enriched Gene Ontology category relationships
+ - display GAGE Gene Ontology enrichment results using [Enrichment Map](http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0013984) in [Cytoscape](http://www.cytoscape.org/)
 
+```{r enrichmentmap}
+# have to convert the GAGE GO results into Generic Enrichment Map (GEM) format
+library(stringr)
+enriched.gos.bp <- gores.bp$greater[sel.bp,, drop=FALSE] %>% 
+  as.data.frame() %>% 
+  row2colnames(., "go") %>% 
+  tbl_df() %>% 
+  dplyr::select(., go, p.val, q.val) %>%
+  mutate(., GO.ID=str_sub(go, 1,10)) %>%
+  mutate(., Description=str_sub(go, 11,-1)) %>%
+  mutate(., phenotype=1) %>%
+  dplyr::select(GO.ID, Description, p.val, q.val, phenotype, go)
+enriched.gos.bp$Genes <- sapply(enriched.gos.bp$go, function(x) {
+  entrezids <- go.sets.mm[[x]] %>% paste(., collapse=",")
+  return(entrezids)
+})
+enriched.gos.bp <- dplyr::select(enriched.gos.bp, -go)
+names(enriched.gos.bp) <- c("GO.ID", "Description","p.Val","FDR", "Phenotype","Genes")
+
+
+enriched.gos.cc <- gores.cc$greater[sel.cc,, drop=FALSE] %>% 
+  as.data.frame() %>% 
+  row2colnames(., "go") %>% 
+  tbl_df() %>% 
+  dplyr::select(., go, p.val, q.val) %>%
+  mutate(., GO.ID=str_sub(go, 1,10)) %>%
+  mutate(., Description=str_sub(go, 11,-1)) %>%
+  mutate(., phenotype=1) %>%
+  dplyr::select(GO.ID, Description, p.val, q.val, phenotype, go)
+enriched.gos.cc$Genes <- sapply(enriched.gos.cc$go, function(x) {
+  entrezids <- go.sets.mm[[x]] %>% paste(., collapse=",")
+  return(entrezids)
+})
+enriched.gos.cc <- dplyr::select(enriched.gos.cc, -go)
+names(enriched.gos.cc) <- c("GO.ID", "Description","p.Val","FDR", "Phenotype","Genes")
+
+
+enriched.gos.mf <- gores.mf$greater[sel.mf,, drop=FALSE] %>% 
+  as.data.frame() %>% 
+  row2colnames(., "go") %>% 
+  tbl_df() %>% 
+  dplyr::select(., go, p.val, q.val) %>%
+  mutate(., GO.ID=str_sub(go, 1,10)) %>%
+  mutate(., Description=str_sub(go, 11,-1)) %>%
+  mutate(., phenotype=1) %>%
+  dplyr::select(GO.ID, Description, p.val, q.val, phenotype, go)
+enriched.gos.mf$Genes <- sapply(enriched.gos.mf$go, function(x) {
+  entrezids <- go.sets.mm[[x]] %>% paste(., collapse=",")
+  return(entrezids)
+})
+enriched.gos.mf <- dplyr::select(enriched.gos.mf, -go)
+names(enriched.gos.mf) <- c("GO.ID", "Description","p.Val","FDR", "Phenotype","Genes")
+
+write.table(enriched.gos.bp, file=file.path(resultsDir, "gage_results.bp.txt"), row.names=FALSE, col.names=TRUE, sep="\t", quote=F)
+write.table(enriched.gos.cc, file=file.path(resultsDir, "gage_results.cc.txt"), row.names=FALSE, col.names=TRUE, sep="\t", quote=F)
+write.table(enriched.gos.mf, file=file.path(resultsDir, "gage_results.mf.txt"), row.names=FALSE, col.names=TRUE, sep="\t", quote=F)
+
+# analyse these results in Cytoscape with Enrichment Map
+```
+
+![](../results/final/2016-05-31_analysis/gage.go.bp.network.png)
+![](../results/final/2016-05-31_analysis/gage.go.cc.network.png)
+![](../results/final/2016-05-31_analysis/gage.go.mf.network.png)
 
 ---
 
