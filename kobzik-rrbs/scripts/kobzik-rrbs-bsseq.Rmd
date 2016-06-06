@@ -182,8 +182,6 @@ BS.b2.f3 <- BS[,which(pData(BS)$cohort==2 & (pData(BS)$generation=="F3" | pData(
 - using [DSS](http://www.ncbi.nlm.nih.gov/pubmed/24561809) based Wald test
 - non-smoothed, individual sites only
 
-
-
 ```{r DSStwogroup, cache=TRUE, cache.lazy=FALSE}
 #use pData to subset and get samplenames 
 dmlTest.b2.f1 <- DMLtest(BS.b2.f1, group1=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="F1")]),group2=as.character(pData(BS.b2.f1)$sampleid[which(pData(BS.b2.f1)$generation=="cntr")]))
@@ -403,19 +401,23 @@ plot_annotations(df_gr=diffs.gr.f3, samples="Batch1, F3 vs. Control")
 
 ```{r annotategene, results="hide"}
 library(bumphunter)
+library(xlsx)
 genes.gr <- annotateTranscripts(TxDb.Mmusculus.UCSC.mm10.knownGene, annotationPackage = "org.Mm.eg.db", by = c("gene"), codingOnly=FALSE, verbose = TRUE, requireAnnotation = TRUE)
 
 genes.diffs.f1.gr <- matchGenes(diffs.gr.f1, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
 genes.diffs.f1.gr <- cbind(diffs.gr.f1, genes.diffs.f1.gr)
 write.csv(as.data.frame(genes.diffs.f1.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f1.vs.control.csv"))
+write.xlsx(as.data.frame(genes.diffs.f1.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f1.vs.control.xlsx"), sheetName="Sheet1")
 
 genes.diffs.f2.gr <- matchGenes(diffs.gr.f2, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
 genes.diffs.f2.gr <- cbind(diffs.gr.f2, genes.diffs.f2.gr)
 write.csv(as.data.frame(genes.diffs.f2.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f2.vs.control.csv"))
+write.xlsx(as.data.frame(genes.diffs.f2.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f2.vs.control.xlsx"), sheetName="Sheet1")
 
 genes.diffs.f3.gr <- matchGenes(diffs.gr.f3, genes.gr, type = c("any", "fiveprime"), promoterDist = 2500, skipExons = FALSE, verbose = TRUE)
 genes.diffs.f3.gr <- cbind(diffs.gr.f3, genes.diffs.f3.gr)
 write.csv(as.data.frame(genes.diffs.f3.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f3.vs.control.csv"))
+write.xlsx(as.data.frame(genes.diffs.f3.gr), file=file.path(resultsDir, "differentially.methylated.CpGs.f3.vs.control.xlsx"), sheetName="Sheet1")
 ```
 
 **Table legend**
@@ -451,11 +453,17 @@ write.csv(as.data.frame(genes.diffs.f3.gr), file=file.path(resultsDir, "differen
 
 
  
-[F1 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f1.vs.control.csv)
+[F1 vs. control differentially methylated sites CSV file](../results/differentially.methylated.CpGs.f1.vs.control.csv)
 
-[F2 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f2.vs.control.csv)
+[F1 vs. control differentially methylated sites Excel file](../results/differentially.methylated.CpGs.f1.vs.control.xlsx)
 
-[F3 vs. control differentially methylated sites](../results/differentially.methylated.CpGs.f3.vs.control.csv)
+[F2 vs. control differentially methylated sites CSV file](../results/differentially.methylated.CpGs.f2.vs.control.csv)
+
+[F2 vs. control differentially methylated sites Excel file](../results/differentially.methylated.CpGs.f2.vs.control.xlsx)
+
+[F3 vs. control differentially methylated sites CSV file](../results/differentially.methylated.CpGs.f3.vs.control.csv)
+
+[F3 vs. control differentially methylated sites Excel file](../results/differentially.methylated.CpGs.f3.vs.control.xlsx)
 
 
 
