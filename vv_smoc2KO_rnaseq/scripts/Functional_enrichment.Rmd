@@ -325,20 +325,14 @@ for(pathid in path.ids){
   ## now do it with the centered data
   # subset data to entrezids in  set
   entrez_results.sub.annot <- entrez_results.normed[entrez_results.normed$entrezgene %in% entrezids,]
-  entrez_results.sub <- entrez_results.sub.annot[,names(entrez_results.sub.annot) %in% as.character(row.names(metadata))]
-  #sanity check
-  identical(as.character(names(entrez_results.sub)), as.character(row.names(metadata)))
-  # heatmap of normzlied, variant stabilized counts for all gene within seti
-  if(nrow(entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
-  pheatmap(entrez_results.sub, labels_row=entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("All Genes", pathid, sep=" - "))
   # take the top quartile (by absolute(log2foldchange)) of these genes
-  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, abs(entrez_results.sub.annot$log2FoldChange)>quantile(abs(entrez_results.sub.annot$log2FoldChange),0.75))
+  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, entrez_results.sub.annot$pvalue<quantile(entrez_results.sub.annot$pvalue,0.25))
   top.entrez_results.sub <- top.entrez_results.sub.annot[,names(top.entrez_results.sub.annot) %in% row.names(metadata)]
    #sanity check again
   identical(as.character(names(top.entrez_results.sub)), as.character(row.names(metadata)))
     # heatmap of normzlied, variant stabilized counts for the genes with the biggest logFCs with the set
     if(nrow(top.entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
-  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("Top Quartile Genes", pathid, sep=" - "))
+  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=10, annotation=metadata, main=paste("Top Quartile Genes", pathid, sep=" - "))
   }  
 ```  
 
@@ -387,14 +381,8 @@ for(enrichedgo in enriched.gos){
   ## now do it with the centered data
   # subset data to entrezids in  set
   entrez_results.sub.annot <- entrez_results.normed[entrez_results.normed$entrezgene %in% entrezids,]
-  entrez_results.sub <- entrez_results.sub.annot[,names(entrez_results.sub.annot) %in% as.character(row.names(metadata))]
-  #sanity check
-  identical(as.character(names(entrez_results.sub)), as.character(row.names(metadata)))
-  # heatmap of normzlied, variant stabilized counts for all gene within seti
-  if(nrow(entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
-  pheatmap(entrez_results.sub, labels_row=entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("All Genes", enrichedgo, sep=" - "))
   # take the top quartile (by absolute(log2foldchange)) of these genes
-  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, abs(entrez_results.sub.annot$log2FoldChange)>quantile(abs(entrez_results.sub.annot$log2FoldChange),0.75))
+  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, entrez_results.sub.annot$pvalue<quantile(entrez_results.sub.annot$pvalue,0.25))
   top.entrez_results.sub <- top.entrez_results.sub.annot[,names(top.entrez_results.sub.annot) %in% row.names(metadata)]
    #sanity check again
   identical(as.character(names(top.entrez_results.sub)), as.character(row.names(metadata)))
@@ -471,6 +459,96 @@ write.table(enriched.gos.mf, file=file.path(resultsDir, "gage_results.mf.txt"), 
 ![](../results/final/2016-05-31_analysis/gage.go.bp.network.png)
 ![](../results/final/2016-05-31_analysis/gage.go.cc.network.png)
 ![](../results/final/2016-05-31_analysis/gage.go.mf.network.png)
+
+#### Treemap visualization of enriched Gene Ontology category relationships
+
+Gene ontology enrichment analyses can yield an overwhelming number of enriched categories, many with redundant functionality. We can simplify this output by identifying the most representative subset of the terms, using metrics which measure the semantic similarity of the terms. [Revigo](http://revigo.irb.hr/) [(publication)](http://journals.plos.org/plosone/article?id=10.1371%2Fjournal.pone.0021800) performs such analyses, using an algortithm which forms
+
+>  groups of highly similar GO terms, where the choice of the groups’ representatives is guided by the p-values
+
+The algorithm takes into account the parent-child structure of the gene onotology database
+
+> If the p-values are quite close and one term is a child node of the other, REVIGO will tend to choose the parent term
+
+The algorithm also tries to find more specific GO terms.
+
+> Very general GO terms, however, are always avoided as cluster representatives ... as they tend to be uninformative
+
+Revigo allows visualization of these representatives and their relations to the terms within their group  as a [treemap](http://en.wikipedia.org/wiki/Treemapping). Here the color depicts a grouping of related terms, the size of a block, it's pvalue from g:profiler and the large text the most representative gene ontology term for the related group.
+
+```{r revigo}
+#Parameters to change
+cutoff <- "0.9" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
+organism <- "Mus musculus" #Allowed values: See organism.list below
+isPValue <- "yes" #Allowed values: "yes"  "no"
+whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
+measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+
+#Do not change below
+organism.list <- list(
+	"whole UniProt"=0, 
+	"Homo sapiens"=9606,
+	"Mus musculus"=10090,
+	"Rattus norvegicus"=10116,
+	"Bos taurus"=9913,
+	"Gallus gallus"=9031,
+	"Danio rerio"=7955,
+	"Takifugu rubripes"=31033,
+	"Xenopus laevis"=8355,
+	"Drosophila melanogaster"=7227,
+	"Caenorhabditis elegans"=6239,
+	"Arabidopsis thaliana"=3702,
+	"Oryza sativa"=39947,
+	"Zea mays"=4577,
+	"Saccharomyces cerevisiae"=4932,
+	"Schizosaccharomyces pombe"=4896,
+	"Dictyostelium discoideum"=44689,
+	"Plasmodium falciparum"=5833,
+	"Chlamydomonas reinhardtii"=3055,
+	"Escherichia coli"=83333,
+	"Bacillus subtilis"=1423,
+	"Pseudomonas aeruginosa"=287,
+	"Mycobacterium tuberculosis"=1773,
+	"Mycoplasma genitalium"=2097,
+	"Synechocystis sp."=1148
+	)
+organism.db <- as.character(organism.list[organism])
+```
+
+**Biological Processes**
+
+```{r revigobp}
+GOs <- as.character(unlist(enriched.gos.bp$GO.ID))
+pvals <- as.character(unlist(enriched.gos.bp$p.Val))
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+```
+
+**Cellular Components**
+
+```{r revigocc}
+cutoff=0.9
+GOs <- as.character(unlist(enriched.gos.cc$GO.ID))
+GOpvals <- as.character(unlist(enriched.gos.cc$p.Val))
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+**Molecular Functions**
+
+```{r revigomf}
+GOs <- as.character(unlist(enriched.gos.mf$GO.ID))
+pvals <- as.character(unlist(enriched.gos.mf$p.Val))
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
 
 ---
 
