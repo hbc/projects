@@ -1,0 +1,240 @@
+details:
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: RE1
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-295_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 1
+    fastqcode: D16-295
+    sampletype: retinal
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: RE2
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-296_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 2
+    fastqcode: D16-296
+    sampletype: retinal
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: RE3
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-297_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 3
+    fastqcode: D16-297
+    sampletype: retinal
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: RE4
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-298_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 4
+    fastqcode: D16-298
+    sampletype: retinal
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: RE5
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-299_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 5
+    fastqcode: D16-299
+    sampletype: retinal
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: LE1
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-300_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 1
+    fastqcode: D16-300
+    sampletype: lung
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: LE2
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-301_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 2
+    fastqcode: D16-301
+    sampletype: lung
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: LE3
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-302_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 3
+    fastqcode: D16-302
+    sampletype: lung
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: LE4
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-303_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 4
+    fastqcode: D16-303
+    sampletype: lung
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: LE5
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-304_NA_sequence.fastq
+  genome_build: mm10
+  metadata:
+    day: 5
+    fastqcode: D16-304
+    sampletype: lung
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: 160107Gu_D16-3958_NA_sequence
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3958_NA_sequence.fastq
+  genome_build: mm10
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: 160107Gu_D16-3959_NA_sequence
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3959_NA_sequence.fastq
+  genome_build: mm10
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: 160107Gu_D16-3960_NA_sequence
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3960_NA_sequence.fastq
+  genome_build: mm10
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: 160107Gu_D16-3961_NA_sequence
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3961_NA_sequence.fastq
+  genome_build: mm10
+- algorithm:
+    adapters:
+    - truseq
+    - polya
+    aligner: star
+    quality_format: Standard
+    strandedness: unstranded
+    trim_reads: read_through
+  analysis: RNA-seq
+  description: 160107Gu_D16-3962_NA_sequence
+  files:
+  - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3962_NA_sequence.fastq
+  genome_build: mm10
+fc_date: '2016-06-08'
+fc_name: project
+upload:
+  dir: ../final
