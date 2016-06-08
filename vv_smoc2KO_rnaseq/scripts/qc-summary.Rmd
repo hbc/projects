@@ -33,9 +33,9 @@ installed = lapply(packages, library, character.only = TRUE)
 
 ```{r qc-setup}
 basicConfig()
-project_summary = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-05_analysis/project-summary.csv"
-counts_file = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-05_analysis/combined.counts"
-tx2genes_file = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-05_analysis/tx2gene.csv"
+project_summary = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-31_analysis/project-summary.csv"
+counts_file = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-31_analysis/combined.counts"
+tx2genes_file = "/Volumes/orch/group_dir/vv_smoc2KO_rnaseq/analysis/final/2016-05-31_analysis/tx2gene.csv"
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
 summarydata$Name = rownames(summarydata)

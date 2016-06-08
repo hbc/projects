@@ -1,0 +1,433 @@
+---    
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+  
+```{r setup0, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+                      cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+                      message=FALSE, prompt=TRUE, comment='', fig.cap='', fig.height = 9, fig.width = 12, bootstrap.show.code=FALSE)
+```
+
+```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
+project="Vafai RNA-seq - Functional analysis report - WT vs. KO"
+clientname="Harveen Natarajan"
+clientemail="harveen@broadinstitute.org"
+labPI="Scott Vafai"
+analystname="Mary Piper"
+analystemail="piper@hsph.harvard.edu"
+```
+---
+  
+# Vafai RNA-Seq Functional Analysis Report - WT vs. KO - no outliers
+RNA-Seq differential expression report for the Vafai project investigating the neurodegenerative disorder, Leigh syndrome. Leigh syndrome includes the symptoms: reduced lifespan, retardation, lethargy, blindness, decreased motor skills, increased serum lactate, lesions in brain stem and part of cerebellum and optic valve. Mouse model is Ndufs4-KO. 
+
+Experimental design for RNA-Seq: All male mice with wild-type (WT, n=8), Ndufs4-KO untreated (KO, n=8), and Ndufs4-KO rapamycin-treated (RAPA, n=6) groups. WT and KO mice are age-matched, but RAPA animals are not (much older). All samples were attained from the cerebellum/brainstem.
+
+Client: `r clientname`, `r labPI` group.  
+
+Analysts: `r analystname` (`r analystemail`)
+
+The most recent update of this html document occurred: `r date()`
+
+## Over-representation analysis using gProfileR/REVIGO and clusterProfiler
+
+### gprofileR/REViGO
+Using the significant DE genes (padj < 0.1) identified for the WT vs. KO samples without the PCA outlier samples, a list of statistically enriched gene ontology (GO) and human phenotype ontology (HP) terms was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/). A list including only the significant GO terms was then used as input to [REViGO](http://revigo.irb.hr/), which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories. 
+
+Using these tools, we found the DE genes to exhibit significant enrichment for processes related to metabolism and nervous system development. The most significant GO/HP terms are output in the table below, and the table contains many processes related to symptoms of Leigh syndrome, such as increased serum lactate, optic neuropathy and loss of visual acuity, brain development, developmental regression, etc. The table also provides the significant genes related to the described processes. 
+
+The list of all significant GO terms and a high resolution copy of the REViGO figure can be downloaded using the links below the table. 
+
+J. Reimand, T. Arak, P. Adler, L. Kolberg, S. Reisberg, H. Peterson, J. Vilo. g:Profiler -- a web server for functional interpretation of gene lists (2016 update). Nucleic Acids Research 2016; doi: 10.1093/nar/gkw199
+
+Supek F, Bošnjak M, Škunca N, Šmuc T. REVIGO summarizes and visualizes long lists of Gene Ontology terms. PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+```{r gprofileR-revigo, echo=FALSE}
+# Libraries
+
+library(ggplot2)
+library(reshape)
+library(gplots)
+library(CHBUtils)
+library(RColorBrewer)
+library(knitr)
+library(knitrBootstrap)
+library(tidyr)
+library(reshape)
+library(rmarkdown)
+library(dplyr)
+library(ggdendro)
+library(grid)
+library(reshape)
+library(gridExtra)
+library(Biobase)
+library(scales)
+library(gProfileR)
+library(DEGreport)
+library(vsn)
+library(ggrepel)
+library(png)
+#setwd("~/Dropbox/HBC consults/2016_04_11_vafai/results/vafai_rnaseq")
+
+#for gprofiler/revigo
+DEG_genenames_no_outliers <- read.table("DEG_genenames_no_outliers_full.txt")
+gene_list_no_outliers <- DEG_genenames_no_outliers
+gene_list_no_outliers <- gene_list_no_outliers[, c(2:7, 15)]
+rownames(gene_list_no_outliers) <- DEG_genenames_no_outliers$name
+gene_list_no_outliers <- gene_list_no_outliers[order(gene_list_no_outliers$padj),]
+gene_list_no_outliers <- gene_list_no_outliers[, c(6,7)]
+
+#gprofileR
+library(gProfileR)
+gprofiler_results_no_outliers <- gprofiler(query = gene_list_no_outliers, organism = "mmusculus", ordered_query = F, 
+                               exclude_iea = F, max_set_size = 0, correction_method = "fdr", 
+                               hier_filtering = "none", domain_size = "annotated", custom_bg = "")
+
+allterms <- gprofiler_results_no_outliers$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results_no_outliers$p.value[grep("GO:", allterms)]
+GO.pval <- data.frame(gprofiler_results_no_outliers$term.id, gprofiler_results_no_outliers$p.value)
+GO.pval <- GO.pval[grep("GO:", GO.pval$gprofiler_results_no_outliers.term.id),]
+GO.pval <- GO.pval[order(GO.pval$gprofiler_results_no_outliers.p.value),]
+GO_genes_no_outliers <- gprofiler_results_no_outliers[, c("term.id", "term.name", "p.value", "term.size", "overlap.size", "intersection")]
+names(GO_genes_no_outliers) <- c("term.id", "term.name", "p.value", "term.size", "overlap.size", "assoc.gene.ids")
+GO_genes_no_outliers_ordered <- GO_genes_no_outliers[order(GO_genes_no_outliers$p.value),]
+knitr::kable(head(GO_genes_no_outliers_ordered, n=50))
+#write.table(GO_genes_no_outliers_ordered, file ="vafai_full_GO_results_no_outliers", quote = FALSE, sep = "\t", row.names=T)              
+#write.table(GO.pval, file ="vafai_GO_names_no_outliers.txt", quote = FALSE, sep = "\t", row.names=F, col.names = F)
+
+# Input GO terms in the REViGO website, then downloaded the Rscript for the treemap, then pasted the contents below.
+
+# A treemap R script produced by the REVIGO server at http://revigo.irb.hr/
+# If you found REVIGO useful in your work, please cite the following reference:
+# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
+# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+# author: Anton Kratz <anton.kratz@gmail.com>, RIKEN Omics Science Center, Functional Genomics Technology Team, Japan
+# created: Fri, Nov 02, 2012  7:25:52 PM
+# last change: Fri, Nov 09, 2012  3:20:01 PM
+
+# -----------------------------------------------------------------------------
+# If you don't have the treemap package installed, uncomment the following line:
+# install.packages( "treemap" );
+library(treemap) 								# treemap package by Martijn Tennekes
+
+# Set the working directory if necessary
+# setwd("C:/Users/username/workingdir");
+
+# --------------------------------------------------------------------------
+# Here is your data from REVIGO. Scroll down for plot configuration options.
+
+# revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+# revigo.data <- rbind(c("GO:0006091","generation of precursor metabolites and energy",3.224,4.3830,0.919,0.000,"generation of precursor metabolites and energy"),
+# c("GO:0007417","central nervous system development",0.052,4.4034,0.764,0.000,"central nervous system development"),
+# c("GO:0045657","positive regulation of monocyte differentiation",0.000,1.3307,0.727,0.552,"central nervous system development"),
+# c("GO:0007568","aging",0.013,3.0315,0.824,0.513,"central nervous system development"),
+# c("GO:0035026","leading edge cell differentiation",0.000,1.8069,0.836,0.403,"central nervous system development"),
+# c("GO:0060322","head development",0.004,3.6990,0.831,0.494,"central nervous system development"),
+# c("GO:0031099","regeneration",0.005,2.3420,0.830,0.498,"central nervous system development"),
+# c("GO:0031100","organ regeneration",0.001,1.6216,0.814,0.584,"central nervous system development"),
+# c("GO:0008152","metabolic process",82.183,2.2840,0.997,0.000,"metabolism"),
+# c("GO:0009628","response to abiotic stimulus",0.312,3.8697,0.847,0.000,"response to abiotic stimulus"),
+# c("GO:1901698","response to nitrogen compound",0.042,3.2757,0.814,0.515,"response to abiotic stimulus"),
+# c("GO:1901700","response to oxygen-containing compound",0.312,2.0904,0.792,0.697,"response to abiotic stimulus"),
+# c("GO:0070482","response to oxygen levels",0.020,2.8601,0.827,0.674,"response to abiotic stimulus"),
+# c("GO:1990267","response to transition metal nanoparticle",0.032,2.7077,0.816,0.506,"response to abiotic stimulus"),
+# c("GO:0009719","response to endogenous stimulus",0.113,1.9318,0.856,0.353,"response to abiotic stimulus"),
+# c("GO:0046684","response to pyrethroid",0.000,1.4101,0.860,0.362,"response to abiotic stimulus"),
+# c("GO:0035900","response to isolation stress",0.000,1.6308,0.899,0.194,"response to abiotic stimulus"),
+# c("GO:0010038","response to metal ion",0.065,2.8477,0.800,0.538,"response to abiotic stimulus"),
+# c("GO:0009651","response to salt stress",0.009,2.7986,0.829,0.645,"response to abiotic stimulus"),
+# c("GO:0051602","response to electrical stimulus",0.001,2.1537,0.849,0.571,"response to abiotic stimulus"),
+# c("GO:0051365","cellular response to potassium ion starvation",0.000,1.6308,0.833,0.220,"response to abiotic stimulus"),
+# c("GO:0006950","response to stress",4.119,1.5391,0.821,0.494,"response to abiotic stimulus"),
+# c("GO:0010243","response to organonitrogen compound",0.033,3.5686,0.794,0.321,"response to abiotic stimulus"),
+# c("GO:0010033","response to organic substance",0.287,1.3478,0.793,0.700,"response to abiotic stimulus"),
+# c("GO:0010035","response to inorganic substance",0.273,2.1612,0.794,0.614,"response to abiotic stimulus"),
+# c("GO:0001666","response to hypoxia",0.019,3.0088,0.818,0.309,"response to abiotic stimulus"),
+# c("GO:0019953","sexual reproduction",0.051,1.3270,0.985,0.000,"sexual reproduction"),
+# c("GO:0032502","developmental process",1.387,2.3706,0.985,0.000,"developmental process"),
+# c("GO:0051704","multi-organism process",2.773,1.3010,0.985,0.000,"multi-organism process"),
+# c("GO:1901135","carbohydrate derivative metabolic process",11.649,3.9101,0.929,0.013,"carbohydrate derivative metabolism"),
+# c("GO:0055086","nucleobase-containing small molecule metabolic process",10.836,1.8327,0.729,0.313,"carbohydrate derivative metabolism"),
+# c("GO:1901564","organonitrogen compound metabolic process",19.565,2.2418,0.860,0.134,"carbohydrate derivative metabolism"),
+# c("GO:0006139","nucleobase-containing compound metabolic process",29.917,1.3401,0.792,0.507,"carbohydrate derivative metabolism"),
+# c("GO:0072521","purine-containing compound metabolic process",8.058,2.2076,0.802,0.281,"carbohydrate derivative metabolism"),
+# c("GO:1901360","organic cyclic compound metabolic process",33.913,1.7167,0.917,0.186,"carbohydrate derivative metabolism"),
+# c("GO:0034641","cellular nitrogen compound metabolic process",33.428,2.0980,0.822,0.428,"carbohydrate derivative metabolism"),
+# c("GO:0006807","nitrogen compound metabolic process",38.650,1.9101,0.973,0.023,"nitrogen compound metabolism"),
+# c("GO:0006585","dopamine biosynthetic process from tyrosine",0.000,2.1079,0.860,0.031,"dopamine biosynthesis from tyrosine"),
+# c("GO:0006048","UDP-N-acetylglucosamine biosynthetic process",0.026,1.4101,0.788,0.157,"dopamine biosynthesis from tyrosine"),
+# c("GO:0018963","phthalate metabolic process",0.000,1.5058,0.893,0.152,"dopamine biosynthesis from tyrosine"),
+# c("GO:0016310","phosphorylation",6.300,2.0477,0.789,0.605,"dopamine biosynthesis from tyrosine"),
+# c("GO:0019637","organophosphate metabolic process",11.968,2.1433,0.761,0.285,"dopamine biosynthesis from tyrosine"),
+# c("GO:1901657","glycosyl compound metabolic process",8.260,4.2083,0.774,0.354,"dopamine biosynthesis from tyrosine"),
+# c("GO:0048146","positive regulation of fibroblast proliferation",0.003,3.9508,0.806,0.032,"positive regulation of fibroblast proliferation"),
+# c("GO:1990441","negative regulation of transcription from RNA polymerase II promoter in response to endoplasmic reticulum stress",0.000,1.4101,0.825,0.271,"positive regulation of fibroblast proliferation"),
+# c("GO:0030335","positive regulation of cell migration",0.017,1.4401,0.779,0.642,"positive regulation of fibroblast proliferation"),
+# c("GO:1901216","positive regulation of neuron death",0.003,1.8665,0.829,0.518,"positive regulation of fibroblast proliferation"),
+# c("GO:0008630","intrinsic apoptotic signaling pathway in response to DNA damage",0.007,1.5229,0.770,0.584,"positive regulation of fibroblast proliferation"),
+# c("GO:0048144","fibroblast proliferation",0.005,3.3487,0.888,0.671,"positive regulation of fibroblast proliferation"),
+# c("GO:0045740","positive regulation of DNA replication",0.003,1.7471,0.818,0.521,"positive regulation of fibroblast proliferation"),
+# c("GO:1903237","negative regulation of leukocyte tethering or rolling",0.000,1.6308,0.854,0.128,"positive regulation of fibroblast proliferation"),
+# c("GO:0031952","regulation of protein autophosphorylation",0.002,2.4045,0.854,0.161,"positive regulation of fibroblast proliferation"),
+# c("GO:0015837","amine transport",0.020,1.8268,0.921,0.035,"amine transport"),
+# c("GO:1902600","hydrogen ion transmembrane transport",1.797,1.5058,0.862,0.289,"amine transport"),
+# c("GO:0015842","synaptic vesicle amine transport",0.000,1.6308,0.917,0.327,"amine transport"),
+# c("GO:0098700","neurotransmitter loading into synaptic vesicle",0.000,1.6308,0.946,0.138,"amine transport"),
+# c("GO:0052314","phytoalexin metabolic process",0.000,1.8069,0.924,0.040,"phytoalexin metabolism"),
+# c("GO:0044238","primary metabolic process",51.925,1.7645,0.973,0.044,"primary metabolism"),
+# c("GO:0042214","terpene metabolic process",0.001,1.6308,0.917,0.045,"terpene metabolism"),
+# c("GO:0071704","organic substance metabolic process",56.178,1.5670,0.973,0.057,"organic substance metabolism"),
+# c("GO:0044237","cellular metabolic process",53.874,1.8928,0.925,0.070,"cellular metabolism"),
+# c("GO:0006793","phosphorus metabolic process",16.891,1.8697,0.899,0.118,"cellular metabolism"),
+# c("GO:0046483","heterocycle metabolic process",33.326,1.8665,0.886,0.198,"cellular metabolism"),
+# c("GO:0006725","cellular aromatic compound metabolic process",33.051,1.8447,0.886,0.259,"cellular metabolism"),
+# c("GO:0045333","cellular respiration",2.258,4.3188,0.808,0.079,"cellular respiration"),
+# c("GO:0044710","single-organism metabolic process",39.463,2.4486,0.882,0.120,"cellular respiration"),
+# c("GO:0055114","oxidation-reduction process",15.044,1.9393,0.848,0.201,"cellular respiration"),
+# c("GO:0044281","small molecule metabolic process",21.500,1.5935,0.840,0.328,"cellular respiration"),
+# c("GO:0033076","isoquinoline alkaloid metabolic process",0.000,1.8069,0.920,0.089,"isoquinoline alkaloid metabolism"),
+# c("GO:0009820","alkaloid metabolic process",0.002,1.6308,0.921,0.103,"isoquinoline alkaloid metabolism"));
+# 
+# stuff <- data.frame(revigo.data);
+# names(stuff) <- revigo.names;
+# 
+# stuff$abslog10pvalue <- as.numeric( as.character(stuff$abslog10pvalue) );
+# stuff$freqInDbPercent <- as.numeric( as.character(stuff$freqInDbPercent) );
+# stuff$uniqueness <- as.numeric( as.character(stuff$uniqueness) );
+# stuff$dispensability <- as.numeric( as.character(stuff$dispensability) );
+# 
+# by default, outputs to a PDF file
+# pdf( file="revigo_treemap.pdf", width=16, height=9 ) # width and height are in inches
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+# treemap(
+# 	stuff,
+# 	index = c("representative","description"),
+# 	vSize = "abslog10pvalue",
+# 	type = "categorical",
+# 	vColor = "representative",
+# 	title = "REVIGO Gene Ontology treemap",
+# 	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+# 	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+# 	bg.labels = "#CCCCCCAA",     # define background color of group labels
+# 												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+# 	position.legend = "none"
+# )
+# 
+# dev.off()
+img_revigo <- readPNG("revigo.png")
+grid.raster(img_revigo)
+```
+
+[Download Full List of GO Terms](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_full_GO_results_no_outliers)
+
+[Download High Resolution REViGO Figure](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_revigo_treemap.pdf)
+
+### clusterProfiler
+Similar to gprofileR, the tool [clusterProfiler](http://bioconductor.org/packages/release/bioc/html/clusterProfiler.html) was used to perform over-representation analysis on GO terms associated with the significant DE genes. The table displays the list of GO terms that were significantly enriched among the significant genes, which is similar to those output by gprofileR. 
+
+The dotplot below shows the number of genes associated with each term and the p-adjusted values for the terms. The GO graph below shows the relationship among the significant GO terms.
+
+**NOTE:** While the GO terms output by clusterProfiler are very similar to those output by gprofileR, the small differences in the GO terms output is due to the different algorithms used by the two different programs.
+
+G Yu, LG Wang, Y Han, QY He. clusterProfiler: an R package for comparing biological themes among gene clusters. OMICS: A Journal of Integrative Biology 2012, 16(5):284-287.
+
+G Yu, LG Wang, GR Yan, QY He. DOSE: an R/Bioconductor package for Disease Ontology Semantic and Enrichment analysis. Bioinformatics 2015, 31(4):608-609.
+
+```{r clusterprofiler_no_outliers}
+#clusterProfiler
+library(gage)
+library(pathview)
+library(gageData)
+library(dplyr)
+library(biomaRt)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(DOSE)
+library(SPIA)
+library(R.devices)
+
+
+# Create a KEGG dataset
+kegg_mouse <- kegg.gsets(species = "mouse", id.type = "kegg")
+kegg.gs <- kegg_mouse$kg.sets[kegg_mouse$sigmet.idx]
+#head(kegg.gs)
+
+# Add Entrez identifiers to DESeq2 results object (res)
+## Follow tutorial by Stephen Turner: http://www.r-bloggers.com/tutorial-rna-seq-differential-expression-pathway-analysis-with-sailfish-deseq2-gage-and-pathview/
+DEG_background <- read.table("vafai_total_results_no_outliers.txt")
+
+mart <- useDataset("mmusculus_gene_ensembl", 
+                  useMart('ENSEMBL_MART_ENSEMBL', 
+                          host =  'www.ensembl.org')) 
+attributes <- listAttributes(mart)
+entrez <- getBM(filters= "ensembl_gene_id", 
+                    attributes= c("ensembl_gene_id", "entrezgene"),
+                    values= row.names(DEG_background),
+                    mart= mart)
+DEG_background$ensembl_gene_id <- row.names(DEG_background)
+entrez_results <- merge(DEG_background, entrez, by="ensembl_gene_id")
+entrez_results <- subset(entrez_results, entrezgene != "NA")
+
+foldchanges <- entrez_results$log2FoldChange
+names(foldchanges) <- entrez_results$entrezgene
+#head(foldchanges)
+
+#clusterprofiler analysis
+sig_genes <- subset(entrez_results, padj<0.1)$entrezgene
+sig_genes <- as.character(sig_genes)
+all_genes <- entrez_results$entrezgene
+all_genes <- as.character(all_genes)
+ggo <- groupGO(gene=sig_genes, organism="mouse", ont="BP", level=3, readable=TRUE)
+ego <- enrichGO(gene=sig_genes, universe=all_genes, organism="mouse", ont="BP", pAdjustMethod = "BH", qvalueCutoff =0.1, readable=TRUE)
+
+GO_processes <- ego@result
+knitr::kable(GO_processes)
+#write.table(GO_processes, "vafai_GO_KEGG_processes.txt", sep="\t", quote=F)
+#dotplot(ego, showCategory=30)
+#plotGOgraph(ego)
+#enrichMap(ego)
+#barplot(ggo, drop=TRUE, showCategory=12)
+#barplot(ego, showCategory=8)
+#cnetplot(ego, categorySize="pvalue", foldChange=foldchanges)
+
+img_dotplot <- readPNG("dotplot.png")
+grid.raster(img_dotplot)
+```
+
+```{r clusterprofiler_GOgraph}
+img_GOgraph <- readPNG("GOgraph.png")
+grid.raster(img_GOgraph)
+```
+
+[Download clusterProfiler Dotplot](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_clusterprofiler_dotplot)
+
+[Download High Resolution clusterProfiler GO Graph](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_clusterprofiler_GOgraph)
+
+## Gene set enrichment analysis using GAGE and Pathview 
+Using the log2 fold changes obtained from the DESeq2 analysis for every gene, gene set enrichment analysis and pathway analysis was performed using [GAGE (Generally Applicable Gene-set Enrichment for Pathway Analysis)](http://bioconductor.org/packages/release/bioc/html/gage.html) and [Pathview](http://bioconductor.org/packages/release/bioc/html/pathview.html) tools. Several [KEGG pathways](http://www.genome.jp/kegg/pathway.html) were significantly different between the wild type and knock-out sample groups. 
+
+Weijun Luo, Michael Friedman, Kerby Shedden, Kurt Hankenson, and Peter Woolf. GAGE: generally applicable
+gene set enrichment for pathway analysis. BMC Bioinformatics, 2009. doi:10.1186/1471-2105-10-161.
+
+Weijun Luo and Cory Brouwer. Pathview: an R/Bioconductor package for pathway-based data integration
+and visualization. Bioinformatics, 29(14):1830-1831, 2013. doi: 10.1093/bioinformatics/btt285.
+
+### Pathway analysis with GAGE and Pathview
+Analysis was performed to identify any genes in the pathway that were dysregulated (genes in pathway could be up- or down-regulated simultaneously). The following pathways were found to be significantly dysregulated: [MAPK signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04010.pathview.png), [Ras signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04014.pathview.png), [Rap1 signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04015.pathview.png), [cAMP signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04024.pathview.png), [chemokine signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04062.pathview.png), [sphingolipid signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04071.pathview.png), [neuroactive ligand-receptor interaction](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04080.pathview.png), [axon guidance](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04360.pathview.png), [focal adhesion](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04510.pathview.png), [TNF signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04668.pathview.png),  [intestinal immune network for IgA production](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04672.pathview.png),  [long term potentiation](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04720.pathview.png),  [neurotrophin signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04722.pathview.png), and [oxytocin signaling pathway](https://dl.dropboxusercontent.com/u/204381225/vafai/pathview_no_outliers/mmu04921.pathview.png). The legend in the pathway images reflects the degree of dysregulation (the minus direction (green) is down-regulated, while the positive direction (red) is up-regulated). 
+
+```{r gage_no_outliers}
+# Run gage
+keggres = gage(foldchanges, gsets=kegg.gs, same.dir=FALSE)
+
+# Look at both up (greater), down (less), and statatistics.
+#lapply(keggres, head)
+sel <- keggres$greater[, "q.val"] < 0.1 & !is.na(keggres$greater[, "q.val"])
+path.ids <- rownames(keggres$greater)[sel]
+
+# Get the pathways
+keggrespathways = data.frame(id=rownames(keggres$greater), keggres$greater) %>% 
+  tbl_df() %>% 
+  filter(row_number()<=11) %>% 
+  .$id %>% 
+  as.character()
+#keggrespathways
+
+# Get the IDs.
+keggresids = substr(keggrespathways, start=1, stop=8)
+#keggresids
+
+#pathview
+# Define plotting function for applying later
+plot_pathway = function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="mmu", new.signature=FALSE)
+
+# plot multiple pathways (plots saved to disk and returns a throwaway list object)
+#tmp = sapply(keggresids, function(pid) pathview(gene.data=foldchanges, pathway.id=pid, species="mmu"))
+```
+
+### GO enrichment analysis with GAGE
+
+Using the GAGE tool, we also identified significantly enriched gene ontology terms for biological process and molecular function based on the log2 fold changes for all genes. While gProfileR is an overlap statistic analysis tool which uses a threshold (adjusted p<0.1 here) to define which genes are analyzed for GO enrichment, gene set enrichment analysis tools like GAGE use a ranked list of genes (here ranked by logFC) without using a threshold. This allows GAGE to use more information to identify enriched biological processes. The introduction to GSEA goes into more detail about the advantages of this approach: [http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1239896/](http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1239896/). The following gene ontology terms were found to be enriched for biological process:
+
+```{r go_gage_analysis, echo=FALSE}
+#go analysis
+
+#Acquire datasets
+data(go.sets.mm)
+data(go.subs.mm)
+
+#Biological process 
+gobpsets = go.sets.mm[go.subs.mm$BP]
+gobpres = gage(foldchanges, gsets=gobpsets, same.dir=FALSE)
+GO_enriched_BP <- lapply(gobpres, head, n=35)
+knitr::kable(GO_enriched_BP$greater)
+#write.table(GO_enriched_BP, "vafai_no_outliers_GAGE_GO_BP.txt", quote=F)
+```
+
+Similarly, the following gene ontology terms were found to be enriched for molecular function:
+
+```{r go_GAGE_mf, echo=FALSE}
+#Molecular function
+gomfsets=go.sets.mm[go.subs.mm$MF]
+gomfres = gage(foldchanges, gsets = gomfsets, same.dir=FALSE)
+GO_enriched_MF <- lapply(gomfres, head)
+knitr::kable(GO_enriched_MF$greater)
+#write.table(GO_enriched_MF, "vafai_no_outliers_GAGE_GO_MF.txt", quote=F)
+```
+
+## Pathway analysis using SPIA (topology-based method)
+The previous analyses did not explore how genes interact with each other (e.g. activation, inhibition, phosphorylation, ubiquitination, etc) to determine the pathway-level statistics. The [SPIA (Signaling Pathway Impact Analysis)](http://bioconductor.org/packages/release/bioc/html/SPIA.html) tool was used to integrate the lists of differentially expressed genes determined by DESeq2, their fold changes, and pathway topology to identify affected pathways.
+
+The table below shows the following significantly dysregulated pathways based on over-representation and signaling perturbations accumulation. The table shows the following information: pSize is the number of genes on the pathway; NDE is the number of DE genes per pathway; tA is the observed total preturbation accumulation in the pathway; pNDE is the probability to observe at least NDE genes on the pathway using a hypergeometric model; pPERT is the probability to observe a total accumulation more extreme than tA only by chance; pG is the p-value obtained by combining pNDE and pPERT; pGFdr and pGFWER are the False Discovery Rate and respectively Bonferroni adjusted global p-values; and the Status gives the direction in which the pathway is perturbed (activated or inhibited). KEGGLINK gives a web link to the KEGG website that displays the pathway image with the differentially expressed genes highlighted in red.
+
+In the plot below, each pathway is a point and the coordinates are the log of pNDE (using a hypergeometric model) and the p-value from perturbations, pPERT. The oblique lines in the plot show the significance regions based on the combined evidence.
+
+Tarca AL, Kathri P and Draghici S (2013). SPIA: Signaling Pathway Impact Analysis (SPIA) using combined evidence of pathway over-representation and unusual signaling perturbations. [http://bioinformatics.oxfordjournals.org/cgi/reprint/btn577v1](http://bioinformatics.oxfordjournals.org/cgi/reprint/btn577v1).
+
+```{r spia, results="hide",echo=FALSE}
+#spia (http://www.gettinggeneticsdone.com/2012/03/pathway-analysis-for-high-throughput.html)
+
+# significant genes is a vector of fold changes where the names
+# are ENTREZ gene IDs. The background set is a vector of all the 
+# genes represented on the platform.
+#convert ensembl to entrez ids
+
+sig_genes <- subset(entrez_results, padj<0.1)$log2FoldChange
+names(sig_genes) <- subset(entrez_results, padj<0.1)$entrezgene
+
+#Remove NA values
+sig_genes <- sig_genes[!is.na(names(sig_genes))] 
+
+# run SPIA.
+spia_result <- spia(de=sig_genes, all=entrez_results$entrezgene, organism="mmu", plots=TRUE)
+```
+
+```{r spia_plot, echo=FALSE}
+knitr::kable(head(spia_result, n=10))
+img_spia <- readPNG("vafai_spia_plot.png")
+grid.raster(img_spia)
+#plotP(spia_result, threshold=0.1)
+#write.table(spia_result, "vafai_spia_results.txt", quote=F)
+```
+[Download SPIA plot](https://dl.dropboxusercontent.com/u/204381225/vafai/vafai_spia_plot)
+
+```{r session_info}
+sessionInfo()
+```
+
+
+
+
+
+
+
