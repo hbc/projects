@@ -366,29 +366,31 @@ knitr::kable(gores.mf$greater[sel.mf,, drop=FALSE], caption="Molecular Functions
 #### Heatmaps of expression levels for enriched Gene Ontology categories
 
 - once again, each genotype's values were  centered and scaled to the untreated sample values for that genotype
-
-```{r enrichegoheatmaps, fig.height=18}
-enriched.gos.bp <- row.names(gores.bp$greater[sel.bp,, drop=FALSE])
-enriched.gos.cc <- row.names(gores.cc$greater[sel.cc,, drop=FALSE])
-enriched.gos.mf <- row.names(gores.mf$greater[sel.mf,, drop=FALSE])
-
-enriched.gos <- c(enriched.gos.bp, enriched.gos.cc, enriched.gos.mf)
+- categories of interest are: 
+  - GO:0007186 G-protein coupled receptor signaling pathway
+  - GO:0006935 chemotaxis
+  - GO:0031012 extracellular matrix
+  - GO:0005578 proteinaceous extracellular matrix
+  - GO:0009986 cell surface
+  - GO:0005581 collagen
+- heatmaps are based on the top decile of genes based on non-adjusted p-value
+```{r enrichegoheatmaps, fig.height=10.5, dpi=150,dev='png', fig.width=8}
+enriched.gos <- c("GO:0007186 G-protein coupled receptor signaling pathway", "GO:0006935 chemotaxis", "GO:0031012 extracellular matrix", "GO:0005578 proteinaceous extracellular matrix", "GO:0009986 cell surface", "GO:0005581 collagen")
 
 for(enrichedgo in enriched.gos){
   print(enrichedgo)
   entrezids <- go.sets.mm[[enrichedgo]]
-
+  
   ## now do it with the centered data
   # subset data to entrezids in  set
   entrez_results.sub.annot <- entrez_results.normed[entrez_results.normed$entrezgene %in% entrezids,]
   # take the top quartile (by absolute(log2foldchange)) of these genes
-  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, entrez_results.sub.annot$pvalue<quantile(entrez_results.sub.annot$pvalue,0.25))
+  top.entrez_results.sub.annot <- subset(entrez_results.sub.annot, entrez_results.sub.annot$pvalue<quantile(entrez_results.sub.annot$pvalue,0.10))
   top.entrez_results.sub <- top.entrez_results.sub.annot[,names(top.entrez_results.sub.annot) %in% row.names(metadata)]
-   #sanity check again
+  #sanity check again
   identical(as.character(names(top.entrez_results.sub)), as.character(row.names(metadata)))
-    # heatmap of normzlied, variant stabilized counts for the genes with the biggest logFCs with the set
-    if(nrow(top.entrez_results.sub)>120){showrownames=FALSE}else{showrownames=TRUE}
-  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=8, annotation=metadata, main=paste("Top Quartile Genes", enrichedgo, sep=" - "))
+  # heatmap of normzlied, variant stabilized counts for the genes with the biggest logFCs with the set
+  pheatmap(top.entrez_results.sub, labels_row=top.entrez_results.sub.annot$mgi_symbol, show_rownames = showrownames,scale="row", fontsize_row=12, annotation=metadata, main=enrichedgo, show_colnames=FALSE, border_color="lightgrey", drop_levels=TRUE, fontsize=12)
 }   
 ```  
 
