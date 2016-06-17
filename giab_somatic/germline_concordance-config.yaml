@@ -1,8 +1,12 @@
+analysis: arvados/iap2_1_0_report_wx7k5-d1hrv-ggo7qwqjfr7xemu
+url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-x2ad17fjpiubxn6/5ap9xb81yb99c2akfmrbldj1b93183shvxrdi39cep8t64ovzu/24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.raw_variants.filtered_variants_snpEff_snpSift_Cosmicv76_GoNLv5.vcf
 
-analysis: arvados/c97qk-d1hrv-kuvmiix9fkjy3dq
-calls: 24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.raw_variants.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf
-baseline: hartwig/24385-12878-30-200.giab_tumor.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf.gz
-sample: '24385-12878-30-200'
+baseline: ../hartwig_iapv2.1.0/GIAB_TN_IAPv2.1.0_reference.filtered_variants_snpEff_snpSift_Cosmicv76_GoNLv5.vcf.gz
+
+#analysis: arvados/c97qk-d1hrv-kuvmiix9fkjy3dq
+#calls: 24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.raw_variants.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf
+#baseline: hartwig/24385-12878-30-200.giab_tumor.filtered_variants_snpEff_snpSift_Cosmicv72_GoNLv5.vcf.gz
+sample: '24385-12878-30-200T'
 regions: regions.bed
 ref:
   rtg: /cm/shared/apps/bcbio/20141204-devel/data/genomes/Hsapiens/GRCh37/rtg/GRCh37.sdf
