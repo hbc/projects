@@ -1,8 +1,20 @@
+analysis: curoverse_iap2.1.0_report_wx7k5-4zz18-d3zov39xmgxesky
+url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-d3zov39xmgxesky/2a0evv6tlrhi1z0qq4s9y7hutxgasm41pq5u8yjckj8laf9m12/1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf 
+
+#analysis: curoverse_iap2.1.0_optimized_wx7k5-4zz18-svx0p78asw0zvk2
+#url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-svx0p78asw0zvk2/6994e2v8zpuzepsqwsjjocyqf4tpoukryv4193r1hz28slzp74/1_142691157_24385-12878-30-200_AH5G7WCCXX_merge.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf
+
+#analysis: curoverse_iap2.1.0_varscan2.4.0_wx7k5-4zz18-0qmo9m3gt9m2mib
+#url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-0qmo9m3gt9m2mib/155c2oorjwwlbhl5cp7aqp5fl0yovsns2f9g8xsxzvqhiq6qk1/1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf
+
+#analysis: curoverse_iap2.1.0_varscan2.4.1_wx7k5-4zz18-wldcny8jb1wmwah
+#url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-wldcny8jb1wmwah/371iigxssq61etpptnxqeyvs9tliyip07eql7lfn6lml9ezkvq/1_24385-12878-30-200_AH5G7WCCXX_merge.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf
+
 #analysis: curoverse_iap2.1.0_wx7k5-4zz18-nld3u3whc153jch
 #url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-nld3u3whc153jch/1wcbnjr954pbw8do4hhy86tajkru0i6wwgfwt0r2r98i95r87q/1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf
 
-analysis: curoverse_iap2.1.0runtimecontstraint_wx7k5-4zz18-lqkls4fjecandcy
-url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-lqkls4fjecandcy/4m3yb02whsknz8e3cc7w7tei5ix80lg4sx8m3nkugrhdmxilzz/1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf 
+#analysis: curoverse_iap2.1.0runtimecontstraint_wx7k5-4zz18-lqkls4fjecandcy
+#url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-lqkls4fjecandcy/4m3yb02whsknz8e3cc7w7tei5ix80lg4sx8m3nkugrhdmxilzz/1_24385-12878-30-200_AH5G7WCCXX.realigned.bam.realigned.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf 
 #
 #analysis: curoverse_iap2.1.0noir_wx7k5-4zz18-46wj0nn85c25cde
 #url: https://workbench.wx7k5.arvadosapi.com/collections/download/wx7k5-4zz18-46wj0nn85c25cde/2u6rnoz5dco0c6rw5ohbr4054afpr3r55hcubkqq81lwadlt24/1_24385-12878-30-200_AH5G7WCCXX_merge.indel_goNLv5.vcf.merged.Somatic.hc_filtered_merged_somatics_filtered_merged_somatics_snpEff_dbSNP_CosmicCodingMuts_v76_goNLv5.vcf

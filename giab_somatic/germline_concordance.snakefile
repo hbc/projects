@@ -54,17 +54,17 @@ rule count_discordant_overlap:
       "zgrep -c -v ^# {input} > {output}"
 
 rule prep_calls:
-    input: expand("{analysis}/{calls}", analysis=config["analysis"], calls=config["calls"])
     output: "{analysis}/calls.vcf.gz"
-    shell: "bgzip -c {input} > {output} && tabix -p vcf {output}"
+    shell: "wget -O - {config[url]} | bgzip -c > {output} && tabix -p vcf {output}"
 
 rule rtg_vcfeval:
-    input: "{analysis}/calls.vcf.gz", config["baseline"], config["regions"], config["ref"]["rtg"]
+    input: "{analysis}/calls.vcf.gz", "{analysis}/compare/baseline-sample.vcf.gz",
+           config["regions"], config["ref"]["rtg"]
     output: "{analysis}/germline-rtg", "{analysis}/germline-rtg/fn.vcf.gz", "{analysis}/germline-rtg/fp.vcf.gz"
     shell:
       "rm -rf {output[0]} && "
       "rtg vcfeval -c {input[0]} -b {input[1]} --bed-regions {input[2]} "
-      "-t {input[3]} --sample={config[sample]} -o {output[0]}"
+      "-t {input[3]} -o {output[0]}"
 
 rule extra_fns_missing:
     input: "{analysis}/calls.vcf.gz", "{analysis}/germline-rtg/fn.vcf.gz"
