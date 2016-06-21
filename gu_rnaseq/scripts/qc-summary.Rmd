@@ -33,41 +33,27 @@ installed = lapply(packages, library, character.only = TRUE)
 
 ```{r qc-setup}
 basicConfig()
-project_summary = "/home/jnh7/group_dir/gu_rnaseq/project/final/2016-06-15_project/project-summary.csv"
-counts_file = "/home/jnh7/group_dir/gu_rnaseq/project/final/2016-06-15_project/combined.counts"
-tx2genes_file = "/home/jnh7/group_dir/gu_rnaseq/project/final/2016-06-15_project/tx2gene.csv"
+project_summary = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-06-15_project/project-summary.csv"
+counts_file = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-06-15_project/combined.counts"
+tx2genes_file = "/Volumes/orch/group_dir/gu_rnaseq/project/final/2016-06-15_project/tx2gene.csv"
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
 "#0072B2", "#D55E00", "#CC79A7")
 summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
 summarydata$Name = rownames(summarydata)
 summarydata = summarydata[order(summarydata$Name),]
-if (file.exists(tx2genes_file)) {
-  loginfo("Using gene counts calculated from the Sailfish transcript counts.")
-  sf_files = file.path("..", "..", rownames(summarydata), "sailfish",
-                      rownames(summarydata), "quant.sf")
-  names(sf_files) = rownames(summarydata)
-  tx2gene = read.table(tx2genes_file, sep=",", row.names=NULL, header=FALSE)
-  txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
-                        reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
-  counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
-} else {
-  loginfo("Using gene counts calculated from featureCounts.")
-  counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
-}
+loginfo("Using gene counts calculated from featureCounts.")
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
 counts = counts[, order(colnames(counts)), drop=FALSE]
 colnames(counts) = gsub(".counts", "", colnames(counts))
 
 # this is a list of all non user-supplied metadata columns that could appear
-known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
-    "rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate",
-    "Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped",
-    "rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.",
-    "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
-    "complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads",
-    "Median.insert.size", "Mapped.reads.pct", "Total.reads",
-    "avg_coverage_per_region", "Mapped.Reads")
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality","rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate","Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped","rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.","Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read","complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads","Median.insert.size", "Mapped.reads.pct", "Total.reads","avg_coverage_per_region", "Mapped.Reads", "Average.insert.size")
 metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+metadata$phenotype=NULL
+metadata$fastqcode <- NULL
 ```
+
+
 
 ```{r sanitize-datatable}
 sanitize_datatable = function(df, ...) {
@@ -119,27 +105,9 @@ ggplot(summarydata, aes(x=Name, y=Mapped)) +
     ylab("mapped reads") + xlab("")
 ```
 
-```{r mapped-plot-noqualimap, eval=!qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads)) +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    geom_bar(stat="identity") +
-    ylab("mapped reads") + xlab("")
-```
-
 ## Genomic mapping rate
 ```{r mapping-rate-plot, eval=qualimap_run}
 ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
-    geom_bar(stat="identity") +
-    ylab("mapping rate") + xlab("") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90))
-```
-
-```{r mapping-rate-plot-noqualimap, eval=!qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads.pct)) +
     geom_bar(stat="identity") +
     ylab("mapping rate") + xlab("") +
     theme_bw(base_size=10) +
@@ -161,8 +129,9 @@ ggplot(dd, aes(x=Name, y=Genes.Detected)) +
 ## Gene detection saturation
 ```{r saturation-plot}
 dd = data.frame(Mapped=summarydata$Mapped, Genes.Detected = colSums(counts > 0))
-ggplot(dd, aes(x=Mapped, y=Genes.Detected)) +
-    geom_point() +
+dd <- row2colnames(dd, "sampleid")
+ggplot(dd, aes(x=Mapped, y=Genes.Detected, color=sampleid)) +
+    geom_point(size=4) +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=90)) +
@@ -192,15 +161,7 @@ ggplot(summarydata, aes(x=Name, y=rRNA_rate)) +
     ylab("rRNA rate") + xlab("")
 ```
 
-## Estimated fragment length of paired-end reads
-```{r fragment-length-plot, eval="Fragment.Length.Mean" %in% colnames(summarydata)}
-ggplot(summarydata, aes(x=Name, y=Fragment.Length.Mean)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("fragment length") + xlab("")
-```
+Definitely seeing an lower gene detection rate and a lower rRNA rate with the new samples. 
 
 ## Boxplot of log10 counts per gene
 ```{r boxplot-raw}
@@ -288,3 +249,6 @@ do_propcor = function(x) {
 
 heatmap_fn(do_propcor(normalized_counts))
 ```
+
+Samples are clustering by batch, but the new samples don't appear to be as different from the previous good lung samples as the old bad lung samples were.
+
