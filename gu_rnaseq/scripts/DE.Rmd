@@ -16,7 +16,7 @@ knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",cache=FALSE, highligh
 
 # Overview
 
-RNAseq DE analysis for Shachar Dagan  (shachar_dagan@hms.harvard.edu),  Gu group at HMS.  
+RNAseq DE analysis for Shachar Dagan  (shachar_dagan@hms.harvard.edu),  Gu group at HMS. Using new set of LE samples to replace LE2, LE3 and LE4. 
 
 Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
 
@@ -42,11 +42,13 @@ library(pheatmap)
 library(dplyr)
 library(biomaRt)
 library(gProfileR)
+library(RUVSeq)
 
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 
 baseDir <- "~/Work/projects/gu_rnaseq/"
-resultsDir <- file.path(baseDir, "results/final/2016-02-16_project/report/results")
+dataDir <- file.path(baseDir, "results/final/2016-06-15_project")
+resultsDir <- file.path(baseDir, "results/final/2016-06-15_project/report")
 ```
 
 ---
@@ -54,23 +56,25 @@ resultsDir <- file.path(baseDir, "results/final/2016-02-16_project/report/result
 # Data and Metadata Import 
 
 ```{r import}
-project_summary = file.path(resultsDir, "final/2016-02-16_project/project-summary.csv")
-counts_file = file.path(resultsDir, "final/2016-02-16_project/combined.counts")
+project_summary = file.path(dataDir, "project-summary.csv")
+counts_file = file.path(dataDir, "combined.counts")
 
 summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE) 
 summarydata$Name = rownames(summarydata)
 summarydata = summarydata[order(summarydata$Name),]
 summarydata$fastqcode <- NULL
+summarydata$phenotype <- NULL
 
 counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
 counts = counts[, order(colnames(counts))]
 colnames(counts) = gsub(".counts", "", colnames(counts))
 
 # this is a list of all non user-supplied metadata columns that could appear
-known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality","rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate","Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped","rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.","Genes.Detected", "Unique.Starts.Per.Read","unique_starts_per_read","complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads","Median.insert.size", "Mapped.reads.pct","Total.reads","avg_coverage_per_region", "Mapped.Reads")
+known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality","rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate","Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped","rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.","Genes.Detected", "Unique.Starts.Per.Read","unique_starts_per_read","complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads","Median.insert.size", "Mapped.reads.pct","Total.reads","avg_coverage_per_region", "Mapped.Reads", "Average.insert.size")
 
 metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
 metadata$day <- as.character(metadata$day)
+metadata$batch <- as.character(metadata$batch)
 summarydata$day <- as.character(summarydata$day)
 ```
 
@@ -121,11 +125,11 @@ counts <- counts[!rownames(counts) %in% rrna_genes & !rownames(counts) %in% mt_g
 
 ## Drop Outlier Samples
 
-Previous QC analysis showed that LE2, LE3 and LE4 are all outliers with low mapping rates. Dropped these samples and their matched retinal samples RE2, RE3 and RE4 from the analysis.
+Previous QC analysis showed that LE2, LE3 and LE4 are all outliers with low mapping rates. Dropped these samples from the analysis.
 
 ```{r dropoutliers}
-metadata <- metadata[!row.names(metadata) %in% c("LE2", "LE3", "LE4", "RE2", "RE3", "RE4"),]
-counts <- counts[,!names(counts) %in% c("LE2", "LE3", "LE4", "RE2", "RE3", "RE4")]
+metadata <- metadata[!row.names(metadata) %in% c("LE2_1", "LE3_1", "LE4_1"),]
+counts <- counts[,!names(counts) %in% c("LE2_1", "LE3_1", "LE4_1")]
 ```
 
 ## Remove genes with no counts for any of the remaining samples
@@ -142,141 +146,141 @@ metadata <- metadata[order(metadata$sampletype, metadata$day),]
 pData(eset) <- metadata
 validObject(eset)
 
-dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), design = ~day+sampletype)
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), design = ~day+batch+sampletype)
 dds <- DESeq(dds)
 ```
 
+## PCA plot of normalized, variant stabilized data
+
+```{r PCAs}
+rld = rlog(dds)
+plotPCA(rld, intgroup=c("batch", "sampletype"))
+plotPCA(rld, intgroup=c("batch", "sampletype", "day"))
+```
+
+There is a batch effect, which we will need to eliminate as it is confounded with the sample class. Ideally, all the lung samples would cluster together. 
+
+
+Try using RUVseq to remove variation associated wtih batch.
+
+First, try leveraging the two technical replicates we have that span the batches.
+
+### RUVseq using replicates
+
+```{r ruvseqs}
+#RUVs using replicates
+## specify replicates
+replicates <- matrix(data=c(c(1,2), c(6,7)), byrow=TRUE, nrow=2)
+## run RUVseq on size-adjusted data from DESeq2
+batch_ruvs_calc <- RUVs(as.matrix(counts, normalize=TRUE), rownames(counts), k=1, replicates, isLog=FALSE)
+## variance stabilize RUVseq adjusted results
+normed.ruvs.vs <- rlog(batch_ruvs_calc$normalizedCounts)
+## PCA plot the variaznce stabilized RUVseqS adjusted results
+se.ruvs <- SummarizedExperiment(normed.ruvs.vs, colData=colData(dds))
+plotPCA(DESeqTransform(se.ruvs), intgroup=c("sampletype", "batch"))
+plotPCA(DESeqTransform(se.ruvs), intgroup=c("sampletype", "batch", "day"))
+
+# this is better but doesn't completely remove the batch effect (note the two lung samples off by themselves are the ones that are replicated)
+```
+
+This is an improvement over the uncorrected data but it still doesn't completely remove the batch effect (note the two lung samples off by themselves are the ones that are replicated)
+
+### RUVseq using residuals
+
+```{r RUVr}
+## RUVr using residuals
+# setup a design that ignores batch
+design <- model.matrix(~day+sampletype, data=as.data.frame(colData(dds)))
+# use the EdgeR GLM to find residuals using this design
+y <- DGEList(counts=counts(dds), group=colData(dds)$sampletype)
+y <- calcNormFactors(y, method="TMM")
+y <- estimateGLMCommonDisp(y, design)
+y <- estimateGLMTagwiseDisp(y, design)
+
+fit <- glmFit(y, design)
+res <- residuals(fit, type="deviance")
+
+# plot PCAs of residuals to see if they capture day and batch
+se <- SummarizedExperiment(res, colData=colData(dds))
+plotPCA(DESeqTransform(se), intgroup=c( "day"))
+plotPCA(DESeqTransform(se), intgroup=c( "batch"))
+# some amount of batch captured
+
+batch_ruvr_calc <- RUVr(counts(dds), rownames(counts(dds)), k=1, res) 
+normed.ruvr.vs <- rlog(batch_ruvr_calc$normalizedCounts)
+## PCA plot the variaznce stabilized RUVseqR adjusted results
+se.ruvr <- SummarizedExperiment(normed.ruvr.vs, colData=colData(dds))
+plotPCA(DESeqTransform(se.ruvr), intgroup=c("sampletype", "batch"))
+plotPCA(DESeqTransform(se.ruvr), intgroup=c("sampletype", "batch", "day"))
+
+```
+
+Now appears that batch and sampletype are confounded...
 
 ---
 
-# Counts Outputs
+Try out some methods and look at heatmaps to see how well they work.
 
-The raw counts file below can be used to perform your own differential expression analysis. 
+a) Try DESeq2 with replicate corrected data
 
-The normalized counts file can be used for sample comparisons. 
+b) Will also try just dropping the 2 new replicated samples and include batch as a covariate in DESeq2
 
-For plots that are sensitive to outliers  (like heatmaps and PCA), the variance stabilized data should be used.
+```{r, DE1}
+library(DESeq2)
 
-```{r rawcountsouput}
-output <- annotate_df(row2colnames(counts(dds, normalize=FALSE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
-write.csv(output, file.path(resultsDir, "raw_counts.csv"))
-```
+dds.ruvs <- DESeqDataSetFromMatrix(countData = exprs(eset),
+                                   colData = cbind(batch_ruvs_calc$W, pData(eset)),
+                                   design = ~W_1+sampletype)
+dds <- DESeq(dds) 
 
-**[Raw Counts](../results/final/2016-02-16_project/report/results/raw_counts.csv)**
-
-DESeq2 normalizes for library size differences between samples.
-
-```{r normalizedcountsoutput}
-output <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
-write.csv(output, file.path(resultsDir, "normalized_counts.csv"))
-```
-
-**[Normalized Counts](../results/final/2016-02-16_project/report/results/normalized_counts.csv)**
-
-
-*From the [Bioconductor DE analysis page0(http://www.bioconductor.org/help/workflows/rnaseqGene/#eda)*
-
->Many common statistical methods for exploratory analysis of multidimensional data, for example clustering and principal components analysis (PCA), work best for data that generally has the same range of variance at different ranges of the mean values. When the expected amount of variance is approximately the same across different mean values, the data is said to be homoskedastic. For RNA-seq raw counts, however, the variance grows with the mean. For example, if one performs PCA directly on a matrix of size-factor-normalized read counts, the result typically depends only on the few most strongly expressed genes because they show the largest absolute differences between samples. A simple and often used strategy to avoid this is to take the logarithm of the normalized count values plus a small pseudocount; however, now the genes with the very lowest counts will tend to dominate the results because, due to the strong Poisson noise inherent to small count values, and the fact that the logarithm amplifies differences for the smallest values, these low count genes will show the strongest relative differences between samples.
-
->As a solution, DESeq2 offers transformations for count data that stabilize the variance across the mean. One such transformation is the regularized-logarithm transformation or rlog (Love, Huber, and Anders 2014). For genes with high counts, the rlog transformation will give similar result to the ordinary log2 transformation of normalized counts. For genes with lower counts, however, the values are shrunken towards the genes’ averages across all samples. Using an empirical Bayesian prior on inter-sample differences in the form of a ridge penalty, the rlog-transformed data then becomes approximately homoskedastic, and can be used directly for computing distances between samples and making PCA plots.
-
-```{r variancestabilizedcounts}
-rld <- rlog(dds)
-output <- annotate_df(row2colnames(assay(rld), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
-write.csv(output, file.path(resultsDir, "normalized_variance_stabilized_counts.csv"))
-```
-
-**[Normalized, Variance Stabilized,  Counts](../results/final/2016-02-16_project/report/results/normalized_variance_stabilized_counts.csv)**
-
----
-
-# Differential Expression Analysis
-
-Differential gene expression analysis of count data was performed using the Bioconductor R package, DESeq2. The count data was fit to a negative binomial model and dispersion estimates were generated using the mean values from the maximum likelikhood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood.
-
-Several quality metrics were assessed to explore the fit of the count data to the model, and differential expression analysis performed. The models used to estimate differential expression accounted for the matched sample design.
-
-For the remaining samples, the models account well for the variation in the data. However, as the sample counts are low, we recommend caution in interpreting the results. Significantly differentially expressed genes identified in these analyses will require lab verification. In addition, we recommend looking at the expression heatmaps of the significant DE genes to narrow down genes most likely to be truly differentially expressed between lung and retinal samples.
-
-## Statistics for all 
-
-Notes on adjusted pvalues and independent filtering:
-
-Adjusted p-value take into account the high number of statistical tests we are performing (multiple testing adjustment). The higher the number of tests we have to adjust for, the more stringent our adjustment, and the fewer statistically significant genes in our result.
-
-To reduce this adjustment, DESeq2 tries to pre-filter out genes for whom statistical tests would have no, or little chance of showing significant evidence, without even looking at their test statistic. DESeq2 does this by filtering out genes with very low average counts overall; these genes are are not likely to show significant differences due to high dispersion. We can also filter out genes that have large outlier values and only test for genes with high fold changes between samples.
-
-Genes which fail these filters have their adjusted p-values set to NA.
-
-**Here I set filtering to maximize the number of genes with an adjusted p-value of 0.01 and to only look for genes with log2 fold change of at least 1 (or at least a two-fold change).**
-
-```{r allstats}
 results.dr <- results(dds, alpha=0.01, lfcThreshold = 1)
 results.df <- as.data.frame(results.dr)
 results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
 
-write.csv(results.df.annot, file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
-```
-
-**[Statisitics for ALL genes](../results/final/2016-02-16_project/report/results/DESeq2_statistics_all_genes.csv)**
-
-## Volcano plots
-
-The plots represent each gene with a dot. The fold change (log2) is plotted on the x-axis and the adjusted p-value (log10, p-value adjusted/corrected for multiple testing) is on the y-axis. The orange shaded area or the orange colored dots denote genes that are differentially expressed (p-value < 0.01, fold change>2). 
-
-As you can see, there are a large number of differentially expressed genes by these criteria.
-
-```{r volcanoplot}
-results.df.volcstat <- results.df[,c("log2FoldChange", "padj")]
-names(results.df.volcstat) <- c("logFC", "Adjusted.PValue")
-
-volcano_density_plot(stats=results.df.volcstat, pval.cutoff=0.01, shade.colour="orange", lfc.cutoff=1  )
-results.df.volcstat$DE <-  as.logical(results.df.volcstat$Adjusted.PValue<0.01 & abs(results.df.volcstat$logFC)>1)
-ggplot(results.df.volcstat, aes(y=-log10(Adjusted.PValue), x=logFC, color=DE))+geom_point(alpha=0.5)+scale_color_manual(values=c("grey", "orange"))+theme_bw()
-```
-
-## MA plot
-
-Similar to the volcano plot, the MA plot is a great way to visualize the comparative expression metrics for a two group comparison. The x–axis is the average/mean expression over all the samples and the y axis is the log2 fold change between WT and KO. The red dots represent the genes that are differentially expressed (adjusted pvalue <0.01).
-
-```{r MAplot}
-plotMA(results.dr, ylim=c(-10,10))
-```
-
-## Summary of Differential Expression
-
-Here we can see a summary of differential expression results with an adjusted pvalue of less than 0.01 and a fold change of at least 2 (ignore the LFC >0 and LFC <0, that's a typo from the R package, those values should be 2). 
-
-```{r results}
-summary(results.dr)
-```
-
-## Differentially Expressed Genes
-
-These are the genes with at least a two-fold chnage in expression at an adjusted p-value of 0.01.
-
-```{r outputDE, cache=FALSE}
-library(DT)
 DEresults.df.annot <- subset(results.df.annot,padj<0.01 & abs(log2FoldChange)>1 )
-
-datatable(DEresults.df.annot, rownames=FALSE)
-write.csv(DEresults.df.annot, file.path(resultsDir, "DESeq2_statistics_DE_genes.csv"))
-```
-
-**[Statisitics for Differentially Expressed genes](../results/final/2016-02-16_project/report/results/DESeq2_statistics_DE_genes.csv)**
-
-### Heatmap of top Differentially Expressed genes
-
-- using the normalized, variance stabilized data
-- top 100 DE genes, as determined by absolute value of log fold change for genes with an adjusted pvalue of less than 0.01
-
-```{r DEheatmap, dev="svg", fig.height=12}
 # reoder stats by logFC and pull out top  results
 top.results.df.annot <- DEresults.df.annot[order(abs(DEresults.df.annot$log2FoldChange)),][1:100,]
 # grab the ensemblids of the top reuslts
 top.ensemblids <- as.character(top.results.df.annot$ensemblid)
 # pull variance stabilizied data into a dataframe
-rld.df <- assay(rld)
+rld.df <- assay(rld[,which(!colnames((eset)) %in% c("LE1_2", "LE5_2"))])
+# subset data to top genes
+top.rld.df <- rld.df[row.names(rld.df) %in% top.ensemblids,]
+# get gene symbols
+top.rld.df.annot <-  annotate_df(row2colnames(top.rld.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+top.rld.df.annot <- top.rld.df.annot[match(row.names(top.rld.df), top.rld.df.annot$ensemblid),]
+identical(as.character(top.rld.df.annot$ensemblid), row.names(top.rld.df))
+
+heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, scale="row")
+
+heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8)
+
+```
+
+Run DESeq2 with batch as covariate in design.  
+Keep pairing information.   
+Drop new, replicated samples.  
+
+```{r, DE2}
+# drop repeat samples
+eset.sub <- eset[,which(!sampleNames((eset)) %in% c("LE1_2", "LE5_2"))]
+
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset.sub), colData = pData(eset.sub), design = ~batch+day+sampletype)
+dds <- DESeq(dds)
+
+
+results.dr <- results(dds, alpha=0.01, lfcThreshold = 1)
+results.df <- as.data.frame(results.dr)
+results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+DEresults.df.annot <- subset(results.df.annot,padj<0.01 & abs(log2FoldChange)>1 )
+# reoder stats by logFC and pull out top  results
+top.results.df.annot <- DEresults.df.annot[order(abs(DEresults.df.annot$log2FoldChange)),][1:100,]
+# grab the ensemblids of the top reuslts
+top.ensemblids <- as.character(top.results.df.annot$ensemblid)
+# pull variance stabilizied data into a dataframe
+rld.df <- assay(rld[,which(!colnames((eset)) %in% c("LE1_2", "LE5_2"))])
 # subset data to top genes
 top.rld.df <- rld.df[row.names(rld.df) %in% top.ensemblids,]
 # get gene symbols
@@ -290,80 +294,38 @@ heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, s
 heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8)
 ```
 
+Run DESeq2 with batch as covariate in design.   
+Discard pairing information.   
+Drop new, replicated samples.  
 
-## Functional Enrichment
+```{r, DE3}
+# drop repeat samples
+eset.sub <- eset[,which(!sampleNames((eset)) %in% c("LE1_2", "LE5_2"))]
 
-### Gene Ontology analysis
- - using [g:profiler](http://biit.cs.ut.ee/gprofiler/)  
- - for top 200 differentially expressed genes  
- - categories summarized using [Revigo](http://revigo.irb.hr/)  
- 
-```{r goanalysis, cache=FALSE}
-top.results.df.annot <- DEresults.df.annot[order(abs(DEresults.df.annot$log2FoldChange)),][1:200,]
-top.results.df.annot <- top.results.df.annot[order(abs(top.results.df.annot$log2FoldChange), decreasing=TRUE),]
-gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_symbol),
-            organism = "mmusculus",
-            ordered_query = T, 
-            exclude_iea = F, 
-            max_p_value = 0.01, 
-            max_set_size = 0,
-            correction_method = "gSCS",
-            domain_size = "annotated",
-            custom_bg = as.vector(results.df.annot$mgi_symbol))
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset.sub), colData = pData(eset.sub), design = ~batch+sampletype)
+dds <- DESeq(dds)
 
-write.table(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
+results.dr <- results(dds, alpha=0.01, lfcThreshold = 1)
+results.df <- as.data.frame(results.dr)
+results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
 
-#write.table(gprofiler_results, "results/KO_control-gprofiler.txt", sep="\t")
-allterms <- gprofiler_results$term.id
-GOs <- allterms[grep('GO:', allterms)]
-pvals <- gprofiler_results$p.value[grep('GO:', allterms)]
-GO.pval <- cbind(gprofiler_results$term.id,gprofiler_results$p.value)
+DEresults.df.annot <- subset(results.df.annot,padj<0.01 & abs(log2FoldChange)>1 )
+# reoder stats by logFC and pull out top  results
+top.results.df.annot <- DEresults.df.annot[order(abs(DEresults.df.annot$log2FoldChange)),][1:100,]
+# grab the ensemblids of the top reuslts
+top.ensemblids <- as.character(top.results.df.annot$ensemblid)
+# pull variance stabilizied data into a dataframe
+rld.df <- assay(rld[,which(!colnames((eset)) %in% c("LE1_2", "LE5_2"))])
+# subset data to top genes
+top.rld.df <- rld.df[row.names(rld.df) %in% top.ensemblids,]
+# get gene symbols
+top.rld.df.annot <-  annotate_df(row2colnames(top.rld.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
 
+top.rld.df.annot <- top.rld.df.annot[match(row.names(top.rld.df), top.rld.df.annot$ensemblid),]
+identical(as.character(top.rld.df.annot$ensemblid), row.names(top.rld.df))
 
+heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, scale="row")
 
-#Parameters to change
-cutoff <- "0.5" #Allowed values: "0.90" "0.70" "0.50" "0.40"
-organism <- "Mus musculus" #Allowed values: See organism.list below
-isPValue <- "yes" #Allowed values: "yes"  "no"
-whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
-measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
-
-#Do not change below
-organism.list <- list(
-        "whole UniProt"=0,
-        "Homo sapiens"=9606,
-        "Mus musculus"=10090,
-        "Rattus norvegicus"=10116,
-        "Bos taurus"=9913,
-        "Gallus gallus"=9031,
-        "Danio rerio"=7955,
-        "Takifugu rubripes"=31033,
-        "Xenopus laevis"=8355,
-        "Drosophila melanogaster"=7227,
-        "Caenorhabditis elegans"=6239,
-        "Arabidopsis thaliana"=3702,
-        "Oryza sativa"=39947,
-        "Zea mays"=4577,
-        "Saccharomyces cerevisiae"=4932,
-        "Schizosaccharomyces pombe"=4896,
-        "Dictyostelium discoideum"=44689,
-        "Plasmodium falciparum"=5833,
-        "Chlamydomonas reinhardtii"=3055,
-        "Escherichia coli"=83333,
-        "Bacillus subtilis"=1423,
-        "Pseudomonas aeruginosa"=287,
-        "Mycobacterium tuberculosis"=1773,
-        "Mycoplasma genitalium"=2097,
-        "Synechocystis sp."=1148
-        )
-organism.db <- as.character(organism.list[organism])
-
-mycommand=paste('~/Scripts/Scripts/revigoR/revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
-
-mytempfile <- tempfile()
-system2(command='perl', args=mycommand, stdout=mytempfile)
-source(mytempfile)
+heatmap_fn(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8)
 ```
 
-
-**[Gene Ontology results](../results/final/2016-02-16_project/report/results/GOresults.csv)**
