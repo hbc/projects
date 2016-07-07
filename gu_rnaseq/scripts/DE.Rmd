@@ -136,6 +136,8 @@ dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), de
 dds <- DESeq(dds)
 ```
 
+
+
 # Data Sanity Check
 
 - does the data make sense, i.e. do the samples cluster the way we expect them to?
@@ -189,8 +191,6 @@ plotPCA(rld, intgroup=c("batch", "sampletype"))
 plotPCA(rld, intgroup=c("batch", "sampletype", "day"))
 ```
 
-
-
 # Batch Correction
 
 There is a batch effect, which we will need to eliminate as it is confounded with the sample class. Ideally, all the lung samples would cluster together.
@@ -226,6 +226,8 @@ plotPCA(DESeqTransform(se.ruvs), intgroup=c("sampletype", "batch"))
 ```{r ruvpca2}
 plotPCA(DESeqTransform(se.ruvs), intgroup=c("sampletype", "batch", "day"))
 ```
+
+
 
 
 
@@ -273,7 +275,7 @@ results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid
 write.csv(results.df.annot, file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
 ```
 
-**[Statisitics for ALL genes](../results/final/2016-06-15_project/report/DESeq2_statistics_all_genes.csv)**
+**[Statistics for ALL genes](../results/final/2016-06-15_project/report/DESeq2_statistics_all_genes.csv)**
 
 ## Visualizing differential expression
 
@@ -327,7 +329,7 @@ datatable(DEresults.df.annot, rownames=FALSE)
 write.csv(DEresults.df.annot, file.path(resultsDir, "DESeq2_statistics_DE_genes.csv"))
 ```
   
-**[Statisitics for Differentially Expressed genes](../results/final/2016-06-15_project/report/results/DESeq2_statistics_DE_genes.csv)**
+**[Statisitics for Differentially Expressed genes](../results/final/2016-06-15_project/report/DESeq2_statistics_DE_genes.csv)**
 
 ### Heatmaps of top differentially expressed genes {.tabset}
 - for top `r numgenes` differentially expressed genes (with adjusted pvalue of less than `r pvalcutoff` and sorted by absolute log2foldchange)
@@ -384,7 +386,8 @@ gprofiler_results  <-   gprofiler(query = as.vector(top.results.df.annot$mgi_sym
 write.table(gprofiler_results, file.path(resultsDir, "GOresults.csv"))
 ```
 
-**[Gene Ontology results](../results/GOresults.csv)**
+
+**[Gene Ontology results](../results/final/2016-06-15_project/report/GOresults.csv)**
 
 ### Gene ontology simplification
 
@@ -453,5 +456,37 @@ mytempfile <- tempfile()
 system2(command='perl', args=mycommand, stdout=mytempfile)
 source(mytempfile)
 ```
+
+
+# Counts Output
+
+
+```{r output}
+
+write.csv(counts, file=file.path(resultsDir, "rawdata.csv"))
+
+write.csv(batch_ruvs_calc$normalizedCounts, file=file.path(resultsDir, "raw.batchcorrected.data.csv"))
+
+write.csv(normed.ruvs.vs, file=file.path(resultsDir, "raw.batchcorrected.variancestabilized.data.csv"))
+```
+
+
+
+
+**[Raw data](../results/final/2016-06-15_project/report/rawdata.csv)**
+
+You can use this raw data to reproduce these results using the code below this point.
+
+
+**[Raw batch corrected data](../results/final/2016-06-15_project/report/raw.batchcorrected.data.csv)**
+
+Use these values for comparing expression values between samples for individual genes.
+
+**[Variance stabilized batch corrected data](../results/final/2016-06-15_project/report/raw.batchcorrected.variancestabilized.data.csv)**
+
+Use these values for any clustering analyses or anything that can be affected by high variance outliers.
+
+
+
 
 
