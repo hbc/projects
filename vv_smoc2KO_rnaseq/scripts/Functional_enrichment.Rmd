@@ -519,7 +519,8 @@ organism.db <- as.character(organism.list[organism])
 
 **Biological Processes**
 
-```{r revigobp}
+```{r revigobpi, dpi=150,dev='png' }
+setwd(file.path(baseDir, "scripts"))
 GOs <- as.character(unlist(enriched.gos.bp$GO.ID))
 pvals <- as.character(unlist(enriched.gos.bp$p.Val))
 mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
@@ -531,7 +532,7 @@ source(mytempfile)
 
 **Cellular Components**
 
-```{r revigocc}
+```{r revigocc, dpi=150,dev='png'}
 cutoff=0.9
 GOs <- as.character(unlist(enriched.gos.cc$GO.ID))
 GOpvals <- as.character(unlist(enriched.gos.cc$p.Val))
@@ -543,7 +544,7 @@ source(mytempfile)
 
 **Molecular Functions**
 
-```{r revigomf}
+```{r revigomf,dpi=150,dev='png'}
 GOs <- as.character(unlist(enriched.gos.mf$GO.ID))
 pvals <- as.character(unlist(enriched.gos.mf$p.Val))
 mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
