@@ -1,0 +1,287 @@
+---
+title: "Differential Hydroxy-methylation Analysis"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: yeti
+    code_folding: hide
+---
+
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png", cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE, message=FALSE, prompt=TRUE, comment='', fig.cap='', tidy.opts=list(keep.blank.line=FALSE, width.cutoff=200), fig.width = 16, fig.height = 14)
+```
+
+# Overview
+
+RNAseq DE analysis for Ira Differential Ira Fetahu (IFETAHU@PARTNERS.ORG), Shi group.  
+
+Contact John Hutchinson (jhutchin@hsph.harvard.edu) for additional details.
+
+The most recent update of this html document occurred: `r date()`.
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Setup
+
+## Libraries and Variables
+
+```{r vars}
+library(ggplot2)
+library(CHBUtils)
+library(dplyr)
+library(biomaRt)
+library(readr)
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
+baseDir <- "~/projects/shi_wgbs/"
+dataDir <- file.path(baseDir, "data")
+resultsDir <- file.path(baseDir, "results")
+metaDir <- file.path(baseDir, "meta")
+```
+
+---
+
+# Data and Metadata Import 
+
+- pull in Lorena's merged results file from BSMAP, MLML and custom scripts
+
+```{r import}
+metadata = read.csv(file.path(metaDir, "Sample_IDs.csv"))
+datafiles = file.path(dataDir, list.files(path=file.path(dataDir), pattern="merged"))
+#load data
+dataset <- lapply(datafiles, function(datafile) {
+	id <- strsplit(basename(datafile), "_")[[1]][1]
+	data <- read_delim(datafile, delim="\t")
+	data1 <- dplyr::select(data, chr, pos, strand, context)
+	data2 <- dplyr::select(data, -chr, -pos, -strand, -context) 
+	names(data2)<- paste(names(data2), id, sep="_")
+	data <- cbind(data1, data2)
+	tbl_df(data)
+})  
+```
+
+Merge datasets to sites that are assayed in all samples
+
+```{r merge}
+merged.data <- Reduce(function(x,y) inner_join(x,y, by=c("chr", "pos", "strand", "context")), dataset) 
+```
+
+Subset merged dataset to sites that show any evidence (in at least one sample) of hydroxymethylation
+
+```{r hmC_fdr_filter}
+merged.filterd.data <- filter(merged.data, hmC_fdr_s345<0.05 | hmC_fdr_s347<0.05 | hmC_fdr_s409<0.05 | hmC_fdr_s411<0.05 | hmC_fdr_s413<0.05) 
+```
+
+
+---
+
+# Data Manipulations
+
+## iSubset data to common sites for all samples
+
+```{r dropzeros}
+#load data
+data <- lapply(datafiles, function(datafile) {
+	read_delim(datafile, delim="\t")
+})  
+
+
+}
+
+
+```
+
+## Import raw counts into DESeq2
+
+```{r DEobject}
+eset <- new("ExpressionSet", exprs = as.matrix(counts))
+
+#make sure the metadata and expression set samples are in the same order
+if(identical(row.names(metadata), colnames(counts))){
+  pData(eset) <- metadata
+} else {
+  print("metadata and count data samples not in same order")
+}
+validObject(eset)
+
+# setup design to look at interaction term of genotype and treatment
+dds <- DESeqDataSetFromMatrix(countData = exprs(eset), colData = pData(eset), design = ~genotype+Treatment+genotype:Treatment)
+dds <- DESeq(dds)
+```
+
+## PCA plot
+- after removing outlier samples
+
+```{r pca}
+vst = varianceStabilizingTransformation(dds)
+plotPCA(vst, intgroup=c("Treatment", "genotype"))
+```
+
+The samples separate by genotype much better after removing the single outlier sample.
+
+---
+
+# Counts Outputs
+
+The raw counts file below can be used to perform your own differential expression analysis. 
+
+The normalized counts file can be used for sample comparisons. 
+
+For plots that are sensitive to outliers  (like heatmaps and PCA), the variance stabilized data should be used.
+
+```{r rawcountsouput}
+output <- annotate_df(row2colnames(counts(dds, normalize=FALSE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "raw_counts.csv"))
+```
+
+**[Raw Counts](../results/final/2016-05-05_analysis/raw_counts.csv)**
+
+DESeq2 normalizes for library size differences between samples.
+
+```{r normalizedcountsoutput}
+output <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "normalized_counts.csv"))
+```
+
+**[Normalized Counts](../results/final/2016-05-05_analysis/normalized_counts.csv)**
+
+*From the [Bioconductor DE analysis page0(http://www.bioconductor.org/help/workflows/rnaseqGene/#eda)*
+
+>Many common statistical methods for exploratory analysis of multidimensional data, for example clustering and principal components analysis (PCA), work best for data that generally has the same range of variance at different ranges of the mean values. When the expected amount of variance is approximately the same across different mean values, the data is said to be homoskedastic. For RNA-seq raw counts, however, the variance grows with the mean. For example, if one performs PCA directly on a matrix of size-factor-normalized read counts, the result typically depends only on the few most strongly expressed genes because they show the largest absolute differences between samples. A simple and often used strategy to avoid this is to take the logarithm of the normalized count values plus a small pseudocount; however, now the genes with the very lowest counts will tend to dominate the results because, due to the strong Poisson noise inherent to small count values, and the fact that the logarithm amplifies differences for the smallest values, these low count genes will show the strongest relative differences between samples.
+
+>As a solution, DESeq2 offers transformations for count data that stabilize the variance across the mean. One such transformation is the regularized-logarithm transformation or rlog (Love, Huber, and Anders 2014). For genes with high counts, the rlog transformation will give similar result to the ordinary log2 transformation of normalized counts. For genes with lower counts, however, the values are shrunken towards the genes’ averages across all samples. Using an empirical Bayesian prior on inter-sample differences in the form of a ridge penalty, the rlog-transformed data then becomes approximately homoskedastic, and can be used directly for computing distances between samples and making PCA plots.
+
+```{r variancestabilizedcounts}
+rld <- rlog(dds)
+output <- annotate_df(row2colnames(assay(rld), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+write.csv(output, file.path(resultsDir, "normalized_variance_stabilized_counts.csv"))
+```
+
+**[Normalized, Variance Stabilized,  Counts](../results/final/2016-05-05_analysis/normalized_variance_stabilized_counts.csv)**
+
+---
+
+# Differential Expression Analysis
+
+This analysis was setup to detect differences in the response to the UUO treatment between the two genotypes. That is, genes that respond differently to the treatment for the two genotypes. In statistical terms, this is called an "interaction term". Note that because this is a measure of differences in how gene expression *changes*, the baseline expression level for a gene could be different for the two genotypes, but if it's expression changed similarly (i.e. doubled) after treatment, this method would not identify it. Instead the amount of change must differ for the two genotypes. There are some visualizations of this on the [Wikipedia page](https://en.wikipedia.org/wiki/Difference_in_differences) that might make this clearer.
+
+The differential gene expression analysis of count data was performed using the Bioconductor R package, DESeq2. The count data was fit to a negative binomial model and dispersion estimates were generated using the mean values from the maximum likelikhood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood.
+
+As the sample counts are low, we recommend caution in interpreting the results. Significantly differentially expressed genes identified in these analyses will require lab verification.
+
+## Statistics for all 
+
+Notes on adjusted pvalues and independent filtering:
+
+Adjusted p-value take into account the high number of statistical tests we are performing (multiple testing adjustment). The higher the number of tests we have to adjust for, the more stringent the adjustment, and the fewer statistically significant genes in our result.
+
+To reduce this adjustment, DESeq2 tries to pre-filter out genes for whom statistical tests would have no, or little chance of showing significant evidence, without even looking at their test statistic. DESeq2 does this by filtering out genes with very low average counts overall; these genes are are not likely to show significant differences due to high dispersion. We can also filter out genes that have large outlier values and only test for genes with high fold changes between samples.
+
+Genes which fail these filters are not counted in the multiple testing adjustment. They are still reported but have their adjusted p-values set to NA.
+
+```{r allstats}
+results.dr <- results(dds, name="genotypeWildtype.TreatmentNormal")
+results.df <- as.data.frame(results.dr)
+results.df.annot <- annotate_df(row2colnames(results.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+write.csv(results.df.annot, file.path(resultsDir, "DESeq2_statistics_all_genes.csv"))
+```
+
+**[Statisitics for ALL genes](../results/final/2016-05-05_analysis/DESeq2_statistics_all_genes.csv)**
+
+## Volcano plots
+
+The plots represent each gene with a dot. The fold change (log2) is plotted on the x-axis and the adjusted p-value (log10, p-value adjusted/corrected for multiple testing) is on the y-axis. The orange shaded area or the orange colored dots denote genes that are differentially expressed (p-value < `r pval.cutoff`, log2 fold change>`r lfc.cutoff`). 
+
+As you can see, there are some differentially affected  genes by these criteria.
+
+```{r volcanoplot}
+results.df.volcstat <- results.df[,c("log2FoldChange", "padj")]
+names(results.df.volcstat) <- c("logFC", "Adjusted.PValue")
+volcano_density_plot(stats=results.df.volcstat, pval.cutoff=0.1, shade.colour="orange", lfc.cutoff=1, point.colour="#56B4E9", point.outline.colour = "white")
+
+results.df.volcstat$DE <-  as.logical(results.df.volcstat$Adjusted.PValue<0.1 & abs(results.df.volcstat$logFC)>1)
+ggplot(results.df.volcstat, aes(y=-log10(Adjusted.PValue), x=logFC, color=DE))+geom_point(alpha=0.5)+scale_color_manual(values=c("grey", "orange"))+theme_bw()
+```
+
+## MA plot
+
+Similar to the volcano plot, the MA plot is a great way to visualize the comparative expression metrics for a two group comparison. The x–axis is the average/mean expression over all the samples and the y axis is the log2 fold change between WT and KO. The red dots represent the genes that are differentially expressed (adjusted pvalue <`r pval.cutoff`).
+
+```{r MAplot}
+plotMA(results.dr, ylim=c(-10,10))
+```
+
+---
+
+# Differentially Expressed Genes
+
+These are the genes with at least a lfc>`r lfc.cutoff` at an adjusted p-value of less than `r pval.cutoff`
+
+```{r outputDE, cache=FALSE}
+library(DT)
+DEresults.df.annot <- subset(results.df.annot,padj<pval.cutoff & abs(log2FoldChange)>lfc.cutoff )
+
+datatable(DEresults.df.annot, rownames=FALSE)
+write.csv(DEresults.df.annot, file.path(resultsDir, "DESeq2_statistics_DE_genes.csv"))
+```
+
+**[Statisitics for Differentially Expressed genes](../results/final/2016-05-05_analysis/DESeq2_statistics_DE_genes.csv)**
+
+### Heatmap of differentially expressed genes
+
+- using the normalized, variance stabilized data
+- DE genes, as determined by absolute value of log 2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pval.cutoff`
+
+```{r DEheatmap, dev="svg", fig.height=12}
+# reoder stats by logFC and pull out top  results
+top.results.df.annot <- DEresults.df.annot
+# grab the ensemblids of the top reuslts
+top.ensemblids <- as.character(top.results.df.annot$ensemblid)
+# pull variance stabilizied data into a dataframe
+rld.df <- assay(rld)
+# subset data to top genes
+top.rld.df <- rld.df[row.names(rld.df) %in% top.ensemblids,]
+# get gene symbols
+top.rld.df.annot <-  annotate_df(row2colnames(top.rld.df, "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+
+top.rld.df.annot <- top.rld.df.annot[match(row.names(top.rld.df), top.rld.df.annot$ensemblid),]
+identical(as.character(top.rld.df.annot$ensemblid), row.names(top.rld.df))
+
+pheatmap(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, scale="row", annotation=metadata, main="Row-scaled")
+
+pheatmap(top.rld.df, labels_row=top.rld.df.annot$mgi_symbol, fontsize_row=8, annotation=metadata, main="Unscaled")
+```
+ 
+*the row-scaled heatmap is "centered and scaled"" by row, such that the mean of values for the row is subtracted from each samples value (centering), which value is then divided by the row's standard deviation so that the values shown reflect the number of standard deviations from the mean for that value*
+
+
+### Plots of expression changes in differentially expressed genes
+
+- these plots show the expressino changes for all samples, the number in the title represents the "log2FoldChange"
+
+```{r individualgenes, fig.height=100}
+normalized.counts <- annotate_df(row2colnames(counts(dds, normalize=TRUE), "ensemblid"),'ensemblid', 'mmusculus_gene_ensembl', "ensembl_gene_id", "mgi_symbol")
+all.stats <- merge(results.df.annot,normalized.counts)
+
+normalized.counts.DE <- all.stats[all.stats$ensemblid %in% DEresults.df.annot$ensemblid,] %>% 
+  tbl_df() %>%   
+  dplyr::select(.,mgi_symbol, log2FoldChange,contains("normal"), contains("UUO")) %>% 
+  mutate(., log2FoldChange=round(log2FoldChange,2)) %>%
+  mutate(., labels=paste(mgi_symbol, " (", log2FoldChange, ")", sep=""))
+
+
+normalized.counts.DE <-reshape2::melt(as.data.frame(normalized.counts.DE), id.vars=c("mgi_symbol", "log2FoldChange", "labels")) %>% 
+  tbl_df() %>% 
+  mutate(., genotype=ifelse(grepl("SMOC2", variable), "Smoc2", "WT"), treatment=ifelse(grepl("UUO", variable), "UUO", "Normal"))
+
+
+ggplot(normalized.counts.DE, aes(treatment,as.numeric(as.character(value)), fill=genotype, color=genotype))+
+  geom_boxplot(position="identity", alpha=0.25)+theme_bw() + 
+  stat_summary(fun.y="mean", geom="line", aes(group=factor(genotype)),linetype=2)+
+  facet_wrap(~labels, scales="free",ncol=2)
+```
