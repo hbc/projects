@@ -6,13 +6,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: RE1
+  description: RE1_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-295_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 1
     fastqcode: D16-295
     sampletype: retinal
@@ -23,13 +24,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: RE2
+  description: RE2_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-296_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 2
     fastqcode: D16-296
     sampletype: retinal
@@ -40,13 +42,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: RE3
+  description: RE3_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-297_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 3
     fastqcode: D16-297
     sampletype: retinal
@@ -57,13 +60,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: RE4
+  description: RE4_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-298_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 4
     fastqcode: D16-298
     sampletype: retinal
@@ -74,13 +78,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: RE5
+  description: RE5_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-299_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 5
     fastqcode: D16-299
     sampletype: retinal
@@ -91,13 +96,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: LE1
+  description: LE1_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-300_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 1
     fastqcode: D16-300
     sampletype: lung
@@ -108,13 +114,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: LE2
+  description: LE2_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-301_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 2
     fastqcode: D16-301
     sampletype: lung
@@ -125,13 +132,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: LE3
+  description: LE3_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-302_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 3
     fastqcode: D16-302
     sampletype: lung
@@ -142,13 +150,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: LE4
+  description: LE4_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-303_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 4
     fastqcode: D16-303
     sampletype: lung
@@ -159,13 +168,14 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: LE5
+  description: LE5_1
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-304_NA_sequence.fastq
   genome_build: mm10
   metadata:
+    batch: 1
     day: 5
     fastqcode: D16-304
     sampletype: lung
@@ -176,12 +186,17 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: 160107Gu_D16-3958_NA_sequence
+  description: LE1_2
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3958_NA_sequence.fastq
   genome_build: mm10
+  metadata:
+    batch: 2
+    day: 1
+    fastqcode: D16-3958
+    sampletype: lung
 - algorithm:
     adapters:
     - truseq
@@ -189,12 +204,17 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: 160107Gu_D16-3959_NA_sequence
+  description: LE2_2
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3959_NA_sequence.fastq
   genome_build: mm10
+  metadata:
+    batch: 2
+    day: 2
+    fastqcode: D16-3959
+    sampletype: lung
 - algorithm:
     adapters:
     - truseq
@@ -202,12 +222,17 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: 160107Gu_D16-3960_NA_sequence
+  description: LE3_2
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3960_NA_sequence.fastq
   genome_build: mm10
+  metadata:
+    batch: 2
+    day: 3
+    fastqcode: D16-3960
+    sampletype: lung
 - algorithm:
     adapters:
     - truseq
@@ -215,12 +240,17 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: 160107Gu_D16-3961_NA_sequence
+  description: LE4_2
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3961_NA_sequence.fastq
   genome_build: mm10
+  metadata:
+    batch: 2
+    day: 4
+    fastqcode: D16-3961
+    sampletype: lung
 - algorithm:
     adapters:
     - truseq
@@ -228,13 +258,18 @@ details:
     aligner: star
     quality_format: Standard
     strandedness: unstranded
-    trim_reads: read_through
+    trim_reads: false
   analysis: RNA-seq
-  description: 160107Gu_D16-3962_NA_sequence
+  description: LE5_2
   files:
   - /n/data1/cores/bcbio/gu_rnaseq/data/fastq/160107Gu_D16-3962_NA_sequence.fastq
   genome_build: mm10
-fc_date: '2016-06-08'
+  metadata:
+    batch: 2
+    day: 5
+    fastqcode: D16-3962
+    sampletype: lung
+fc_date: '2016-06-15'
 fc_name: project
 upload:
   dir: ../final
