@@ -94,7 +94,7 @@ The expression dataset I used is [here](../data/paired_dorsal_ventral_data.csv).
 
 The file describing the samples is [here](../meta/covars.csv).  
 
-*(Excel should be albe to import the csv files)*  
+*(Excel should be able to import the csv files)*  
 
 ```{r dataload, results='hide'}
 covars <- read_csv(file.path(metaDir, covarsfilename)) 
@@ -162,7 +162,7 @@ write.table(allresults, file=file.path(resultsDir, "all.genes.stats.exprs.xls"),
 write.table(allresults.sub, file=file.path(resultsDir, "gprofiler.genes.stats.exprs.xls"),  sep ="\t",, row.names=F, col.names=T)
 ```
 
-### Statistics and expression levels
+## Statistics and expression levels
 
 - as calculated by Limma
 
@@ -193,6 +193,8 @@ However, if we **subset to just genes recognized by gprofiler**, we don't have t
 
 ## Gene Ontologies
 
+### Ignoring direction of differential expression
+
 ```{r gprofiler, results='hide'}
 gprofiler(query=allresults.sub$geneid[1:200],
                      organism="oaries",
@@ -213,13 +215,61 @@ goresults <- gprofiler(query=allresults.sub$geneid[1:200],
 )
 ```
 
-
-
 Running the top 200 differentially expressed genes (from the subsetted data) through [g:profiler](http://biit.cs.ut.ee/gprofiler/) with the appropirate background set of genes (genes assayed by the Agilent array that are recognized by gprofiler) reveals significant enrichment of genes involved in multiple relevant biological processes, including immune regulatory processes and sinusitis.
 
 `r kable(goresults)`
 
 ![](../results/gprofiler.png)
+
+### Using direction of differential expression
+
+#### Negative fold change
+
+```{r gprofiler, results='hide'}
+allresults.sub <- arrange(allresults.sub, logFC)
+gprofiler(query=allresults.sub$geneid[1:200],
+                     organism="oaries",
+                     ordered_query=TRUE,
+                     significant=TRUE,
+                     correction_method="gSCS",
+                     hier_filtering="none",
+                     custom_bg=allresults.sub$geneid, 
+                     png_fn=file.path(resultsDir, "gprofiler.png")
+)
+goresults <- gprofiler(query=allresults.sub$geneid[1:200],
+                     organism="oaries",
+                     ordered_query=TRUE,
+                     significant=TRUE,
+                     correction_method="gSCS",
+                     hier_filtering="none",
+                     custom_bg=allresults.sub$geneid
+)
+```
+
+
+#### Positive fold change
+
+
+```{r gprofiler, results='hide'}
+allresults.sub <- arrange(allresults.sub, desc(logFC))
+gprofiler(query=allresults.sub$geneid[1:200],
+                     organism="oaries",
+                     ordered_query=TRUE,
+                     significant=TRUE,
+                     correction_method="gSCS",
+                     hier_filtering="none",
+                     custom_bg=allresults.sub$geneid, 
+                     png_fn=file.path(resultsDir, "gprofiler.png")
+)
+goresults <- gprofiler(query=allresults.sub$geneid[1:200],
+                     organism="oaries",
+                     ordered_query=TRUE,
+                     significant=TRUE,
+                     correction_method="gSCS",
+                     hier_filtering="none",
+                     custom_bg=allresults.sub$geneid
+)
+```
 
 
 ----
