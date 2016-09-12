@@ -1,0 +1,668 @@
+---
+title: "Cord blood - Batch Analysis"
+output:
+  html_document:
+    theme: united
+    toc: yes
+    toc_depth: 5
+  pdf_document:
+    toc: yes
+bibliography: references.bib
+---
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitcitations)
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Mauricio Cortes"
+clientemail="mcortes1@bidmc.harvard.edu"
+labPI="Trista North"
+lablocation="BIDMC"
+analystname="Meeta Mistry"
+analystemail="mmistry@hsph.harvard.edu"
+
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE,cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+
+# Methods Summary  
+
+## Batch Analyses
+Since we observed samples to cluster by batch, it is worth looking for differential expression within batch and comparing results between them, if any.
+
+All Affymetrix HTA 2.0 arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+---
+
+# Setup
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+baseDir <- getwd()
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results_new")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.revised.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=1
+```
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables, echo=TRUE}
+library(knitr) # for simple tables
+library(oligo) # array utilities
+library(arrayQualityMetrics) # array quality control reports
+library(limma) # array statistical analyses
+library(CHBUtils) # some homegrown functions
+library(reshape2) # data format utility
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(RColorBrewer) # more colors
+library(gridExtra) # for arranging multiple plots
+library(pheatmap) # pretty heatmaps
+library(corrgram)
+library(pvca)
+library(dplyr) # data format utility 
+library(hta20sttranscriptcluster.db) #new package for annotation
+library(sva) # Surrogate Variable Analysis (includes ComBat)
+
+```
+
+
+## Functions
+
+```{r functions, echo=FALSE}
+# for plotting amount of variation explained by principal components
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+
+# used for formatting labels on ggplots
+fmt <- function(){ 
+  function(x) format(x,nsmall = 1,scientific = FALSE)
+}
+
+
+plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
+  require(ggdendro)
+  meta.x <- pData(x)
+  # force the metadata into character format so you don't end up with gradient/continuous color schemes for numerical variables in the final plot  
+  meta.x <- as.matrix(meta.x) 
+  ## do the actual statistics and put into dendrogram 
+  myDist <- dist(t(exprs(x)))
+  myTree <-hclust(myDist)
+  dhc <- as.dendrogram(myTree)
+  ddata <- dendro_data(dhc, type="rectangle")
+  # the labels of the dendrogram are pulled from the Expression set exprs column names, it's nice to rename them to something more intelligible if you haven't already, as well as match them up to the metadata for label coloring
+  ## check to see if the column names of the expression set match anything in the metadata, or match the rownames
+  if (identical(colnames(exprs(x)), row.names(meta.x))) {
+    meta.x <- row2colnames(meta.x, "rownames")
+    matchcol <- "rownames"
+  } else if (any(apply(meta.x, 2, function(column) identical(as.character(unlist(column)), colnames(exprs(x)))))) {
+    matchcol <- names(which(apply(meta.x, 2, function(column) identical(as.character(unlist(column)), colnames(exprs(x))))))
+  } else {
+    print("ExpressionSet sampleNames and pData row.names or pData column must match")
+    stop()
+  }
+  ## merge the metadata with the dendrogram labels using the commmon column/rownames you just identified above
+  ddata$labels <- merge(ddata$labels, meta.x, by.x="label", by.y=matchcol)
+  # plot it like you mean it
+  ggplot(segment(ddata)) +
+    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+    theme_dendro() +
+    geom_text(data=label(ddata), aes_string(x='x', y='y', label=labels.colname, color=colors.colname, hjust=-0.1), size=4)+
+    scale_color_brewer(type = "seq", palette = "Set1")+
+    coord_flip() + scale_y_reverse(expand=c(0.2, 50)) +
+    theme(axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank()) +
+    ggtitle(title)
+}
+```
+
+---
+
+# Import Data and Metadata
+
+## Data
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+
+### Create new expression set objects to normalize within batch
+
+```{r dataload, results='hide'}
+covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) 
+
+# Load data Batch1
+covars.b1 <-covars[covars$batch==1,]
+celFiles <- file.path(dataDir, row.names(covars.b1))
+affyRaw.batch1 <- read.celfiles(celFiles)
+pData(affyRaw.batch1) <- covars.b1 
+sampleNames(affyRaw.batch1) <- pData(affyRaw.batch1)$sampleID
+
+# Load data Batch2
+covars.b2 <-covars[covars$batch==2,]
+celFiles <- file.path(dataDir, row.names(covars.b2))
+affyRaw.batch2 <- read.celfiles(celFiles)
+pData(affyRaw.batch2) <- covars.b2 
+sampleNames(affyRaw.batch2) <- pData(affyRaw.batch2)$sampleID
+
+```
+
+## Sample metadata Batch 1
+
+```{r covars-1, results='asis', echo=FALSE}
+# Sample information table
+kable(pData(affyRaw.batch1))
+```
+
+## Sample metadata Batch 2
+
+```{r covars-2, results='asis', echo=FALSE}
+# Sample information table
+kable(pData(affyRaw.batch2))
+```
+
+---
+
+# PreProcessing 
+
+## RMA Normalized Data
+
+- background correct and normalize each dataset with RMA `r citep("10.1093/bioinformatics/19.2.185")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core.b1 <- rma(affyRaw.batch1, target="core", background=TRUE, normalize=TRUE)
+affyNorm.core.b2 <- rma(affyRaw.batch2, target="core", background=TRUE, normalize=TRUE)
+```
+
+
+### Unsupervised Clustering of RMA Normalized Data
+
+#### Hierarchical Clustering
+The goal of these analyses are to naively evaluate the variability within the raw data and determine whether this variability can predict the different treatment groups. **Even within batch we find that the samples cluster better by donor than they do by treatment**
+
+**Batch 1**
+```{r cluster-b1, out.width='75%'}
+plot_dendro(affyNorm.core.b1, title="", labels.colname="sampleID", colors.colname="treatment")
+```
+
+**Batch 2**
+```{r cluster-b2, out.width='75%'}
+plot_dendro(affyNorm.core.b2, title="", labels.colname="sampleID", colors.colname="treatment")
+```
+
+
+#### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualization technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. **Similar to the clustering, samples cluster best by donor, and to some extent by treatment in Batch 2.**
+
+```{r PCAsd1, out.width='75%'}
+# PCA Batch1
+pca <- prcomp(t(exprs(affyNorm.core.b1)))
+df <- data.frame(cbind(pca$x, pData(affyNorm.core.b1)))
+  
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=treatment), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=blooddonor, vjust=-0.5), size=5) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") +
+  ggtitle('PCA for Batch 1 samples')
+
+# PCA Batch2 
+pca <- prcomp(t(exprs(affyNorm.core.b2)))
+df <- data.frame(cbind(pca$x, pData(affyNorm.core.b2)))
+  
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=treatment), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=blooddonor, vjust=-0.5), size=5) +
+    theme_bw() +
+   ylab("PC2") + xlab("PC1") +
+   ggtitle('PCA for Batch 2 samples') +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) 
+```
+
+
+## Annotate
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+
+```{r features-batch1, results='hide'}
+featureData(affyNorm.core.b1) <- getNetAffx(affyNorm.core.b1, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core.b1)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core.b1), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core.b1)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core.b1), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+
+```
+
+```{r features-batch2, results='hide'}
+featureData(affyNorm.core.b2) <- getNetAffx(affyNorm.core.b2, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core.b2)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core.b2), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core.b2)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core.b2), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+
+```
+
+
+## Statistical analyses
+A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+### Design matrix 
+To perform limma, we construct a design matrix which provides a representation of the different sample groups which have been analysed. _Remember that blooddonor is a not a continous variable even though they are numeric characters!_
+
+* make a matrix with arrays as rows, sample groups as columns
+* a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
+
+
+#### Batch 1
+
+```{r}
+# Make design matrix
+pData(affyNorm.core.b1)$blooddonor <- factor(pData(affyNorm.core.b1)$blooddonor)
+design.b1 <- model.matrix(~ 0 + treatment + blooddonor  ,  data=pData(affyNorm.core.b1))
+kable(design.b1)
+```
+
+
+#### Batch 2
+
+```{r}
+# Make design matrix
+pData(affyNorm.core.b2)$blooddonor <- factor(pData(affyNorm.core.b2)$blooddonor)
+design.b2 <- model.matrix(~ 0 + treatment + blooddonor,  data=pData(affyNorm.core.b2))
+kable(design.b2)
+```
+
+### Linear model
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r limma-b1,warning=FALSE, message=FALSE}
+
+# Setup constrasts
+contrast.b1 <- makeContrasts(treatment=treatment125D3-treatmentDMSO, levels=colnames(design.b1))
+
+# Fit model
+fit.core <- lmFit(affyNorm.core.b1, design.b1) 
+
+# Compute cofficients for constrasts
+fit2b1.core <- contrasts.fit(fit.core, contrast.b1) 
+
+# Bayes shrinkage
+fit2b1.core <- eBayes(fit2b1.core) 
+```
+
+```{r limma-b2, warning=FALSE, message=FALSE}
+
+# Setup constrasts
+contrast.b2 <- makeContrasts(treatment=treatment125D3-treatmentDMSO, levels=colnames(design.b2))
+
+# Fit model
+fit.core <- lmFit(affyNorm.core.b2, design.b2) 
+
+# Compute cofficients for constrasts
+fit2b2.core <- contrasts.fit(fit.core, contrast.b2)
+
+# Bayes shrinkage
+fit2b2.core <- eBayes(fit2b2.core) 
+```
+
+## Probe-level Results: No filtering
+
+### Batch 1
+
+**At an FDR < 0.05 there are 17 probes differentially expressed between treatments for Batch 1. All of these probes do NOT map to any known genes**. The p-value histogram illustrates how few genes are identified as significant before any multiple test correction. This is concordant with the PCA for Batch1 where we saw the samples displayed no obvious clustering.  
+
+```{r, fig.align='center'}
+
+resultsb1 <- topTable(fit2b1.core, coef=1, number=nrow(exprs(affyNorm.core.b1)))
+df <- cbind(resultsb1[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=P.Value)) +
+  theme_bw() +
+  xlab('p-value') 
+```
+
+#### Volcano plot
+
+This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an FDR < 0.05.** The fold changes are higher than those seen with the full dataset.
+
+```{r, fig.align='center'}
+
+df <- cbind(resultsb1[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+### Batch 2
+
+**At an FDR < 0.05 there are 27 probes differentially expressed between treatments for Batch 2. All but two of these probes do NOT map to any known genes**. The p-value distribution for Batch 2 demonstrates a larger number of significant p-values.
+
+```{r, fig.align='center'}
+resultsb2 <- topTable(fit2b2.core, coef=1, number=nrow(exprs(affyNorm.core.b2)))
+df <- cbind(resultsb2[,c('adj.P.Val','P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=P.Value)) +
+  theme_bw() +
+  xlab('p-value') 
+```
+
+
+#### Volcano plot
+
+```{r}
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+## Filter Probesets
+Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Starting  with `r nrow(fData(affyNorm.core.b1))` probes in Batch 1 and `r nrow(fData(affyNorm.core.b2))` probes in Batch 2 remaining we can filter:
+
+### By Annotation
+- remove the probes without annotated genes
+
+```{r filter1}
+affyNorm.filt.b1 <- affyNorm.core.b1[which(!is.na(fData(affyNorm.core.b1)$symbol) & fData(affyNorm.core.b1)$category=="main"),]
+affyNorm.filt.b2 <- affyNorm.core.b2[which(!is.na(fData(affyNorm.core.b2)$symbol) & fData(affyNorm.core.b2)$category=="main"),]
+
+```
+
+`r nrow(fData(affyNorm.filt.b1))` probes remaining in Batch 1
+`r nrow(fData(affyNorm.filt.b2))` probes remaining in Batch 2
+
+
+### By Low Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3, cache=TRUE}
+eset.core <- exprs(affyNorm.filt.b1)
+affyNorm.filt.b1 <- affyNorm.filt.b1[!(apply(eset.core, 1, 
+                                             function(x) all(x<quantile(exprs(affyNorm.filt.b1), 0.1)))),]
+eset.core <- exprs(affyNorm.filt.b2)
+affyNorm.filt.b2 <- affyNorm.filt.b2[!(apply(eset.core, 1, 
+                                             function(x) all(x<quantile(exprs(affyNorm.filt.b2), 0.1)))),]
+```
+
+`r nrow(fData(affyNorm.filt.b1))` probes remaining for Batch 1
+`r nrow(fData(affyNorm.filt.b2))` probes remaining for Batch 2
+
+
+### By Low Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+# Batch 1
+eset.core <- exprs(affyNorm.filt.b1)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.filt.b1 <- affyNorm.filt.b1[rowmads>mad.cutoff,]
+
+# Batch 2
+eset.core <- exprs(affyNorm.filt.b2)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.filt.b2<- affyNorm.filt.b2[rowmads>mad.cutoff,]
+```
+
+`r nrow(fData(affyNorm.filt.b1))` probes remaining for Batch 1
+`r nrow(fData(affyNorm.filt.b2))` probes remaining for Batch 2
+
+### Linear model: Post-filtering
+We will apply the same model fits to the reduced data matrix, after having applied several filters.
+
+```{r}
+
+# Fit model for BATCH 1
+fit.core <- lmFit(affyNorm.filt.b1, design.b1) 
+fit2b1.core <- contrasts.fit(fit.core, contrast.b1) 
+fit2b1.core <- eBayes(fit2b1.core) 
+
+# Fit model for BATCH 2
+fit.core <- lmFit(affyNorm.filt.b2, design.b2) 
+fit2b2.core <- contrasts.fit(fit.core, contrast.b2)# Bayes shrinkage
+fit2b2.core <- eBayes(fit2b2.core) 
+```
+
+### Volcano plots post-filtering
+
+We now find that with **Batch 1 there are zero probes being differentially expressed**. In contrast, we now observe **many more genes being differentially expressed with Batch 2 (652  probes).** 
+
+
+**However, in both cases, we see a very unusual volcano plot. There is an oddly perfect relationship between logFC and p-value, which cannot be explained!!**
+
+
+#### Batch 1
+
+```{r}
+resultsb1.filt <- topTable(fit2b1.core, coef=1, number=nrow(exprs(affyNorm.filt.b1)))
+
+df <- cbind(resultsb1.filt[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+
+#### Batch 2
+
+```{r}
+resultsb2.filt <- topTable(fit2b2.core, coef=1, number=nrow(exprs(affyNorm.filt.b2)))
+df <- cbind(resultsb2.filt[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+The **results table for this within batch re-analysis can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+```{r write-table, echo=FALSE, eval=FALSE}
+
+stats <- topTable(fit2b1.core, coef=1, sort.by="P",adjust.method="BH",number=nrow(exprs(affyNorm.filt.b1)), 
+                 genelist=fData(affyNorm.filt.b1)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt.b1)
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+write.table(stats.eset, file="results_new/allGenes_Batch1_stats_exprs_Analysis2.xls", sep="\t", quote=F, col.names=NA)
+
+```
+
+* [125D3 treatment results BATCH 1](results_new/allGenes_Batch1_stats_exprs_Analysis2.xls)
+* [125D3 treatment results BATCH 2](results_new/allGenes_Batch2_stats_exprs_Analysis2.xls)
+
+**The summary table above contains the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 4 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+
+## Aggregate probesets
+For any gene that has multiple probe mappings, aggregate expression data by taking a mean across all probes. We will be left with two gene level expression matrices; one for each Batch.
+
+```{r aggregate-batch1, echo=TRUE}
+df <- data.frame(exprs(affyNorm.filt.b1))
+symbol <- fData(affyNorm.filt.b1)$symbol
+df <- cbind(df, symbol)
+
+# Average by Gene Symbol
+genemeans <- aggregate(. ~ symbol, data=df, mean)
+row.names(genemeans) <- genemeans$symbol
+genemeans <- as.matrix(genemeans[,-1])
+colnames(genemeans) <- colnames(exprs(affyNorm.filt.b1))
+
+# Create new expression set object 
+affyNorm.gene.b1 <- ExpressionSet(genemeans)
+pData(affyNorm.gene.b1) <- pData(affyNorm.filt.b1)                                                             
+```
+
+`r nrow(exprs(affyNorm.gene.b1))` unique genes in **Batch 1** for differential expression analysis.
+
+
+```{r aggregate-batch2, echo=TRUE}
+df <- data.frame(exprs(affyNorm.filt.b2 ))
+symbol <- fData(affyNorm.filt.b2)$symbol
+df <- cbind(df, symbol)
+
+# Average by Gene Symbol
+genemeans <- aggregate(. ~ symbol, data=df, mean)
+row.names(genemeans) <- genemeans$symbol
+genemeans <- as.matrix(genemeans[,-1])
+colnames(genemeans) <- colnames(exprs(affyNorm.filt.b2))
+
+# Create new expression set object 
+affyNorm.gene.b2 <- ExpressionSet(genemeans)
+pData(affyNorm.gene.b2) <- pData(affyNorm.filt.b2)                                                             
+```
+
+`r nrow(exprs(affyNorm.gene.b2))` unique genes in **Batch 2** for differential expression analysis.
+
+
+### Linear model: Gene-level analysis
+We will apply the same model fits to the gene-level data matrix, after having aggregated probes for a single gene mapping (by taking an average).
+
+```{r, echo=TRUE}
+
+# Fit model for BATCH 1
+fit.core <- lmFit(affyNorm.gene.b1, design.b1) 
+fit2b1.core <- contrasts.fit(fit.core, contrast.b1) 
+fit2b1.core <- eBayes(fit2b1.core) 
+
+# Fit model for BATCH 2
+fit.core <- lmFit(affyNorm.gene.b2, design.b2) 
+fit2b2.core <- contrasts.fit(fit.core, contrast.b2)# Bayes shrinkage
+fit2b2.core <- eBayes(fit2b2.core) 
+```
+
+### Results
+
+For the gene-level analysis we expect to find fewer significant findings as the probes were collapsed down. **For Batch 2 there are 407 significant genes idenitified.**
+
+```{r}
+
+# Get results
+resultsb1.gene <- topTable(fit2b1.core, coef=1, number=nrow(exprs(affyNorm.gene.b1)))
+resultsb2.gene <- topTable(fit2b2.core, coef=1, number=nrow(exprs(affyNorm.gene.b2)))
+
+```
+
+The **results table for this gene-level within batch re-analysis can be downloaded using the links below**. 
+
+* [125D3 treatment gene-level results BATCH 1](./results_new/uniqueGenes_Batch1_stats_exprs_Analysis2.xls)
+* [125D3 treatment gene-level results BATCH 2](./results_new/uniqueGenes_Batch2_stats_exprs_Analysis2.xls)
+
+
+```{r write-table-gene, echo=FALSE, eval=FALSE}
+
+stats <- topTable(fit2b2.core, coef=1, sort.by="P",adjust.method="BH",number=nrow(exprs(affyNorm.gene.b2)))
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.gene.b2)
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+write.table(stats.eset, file="results_new/uniqueGenes_Batch2_stats_exprs_Analysis1.xls", sep="\t", quote=F, col.names=NA)
+
+```
+
+---
+
+# R Session Info
+
+(useful if replicating these results)
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+---
+
+# References
+
+```{r writebib, results='hide', echo=FALSE, message=FALSE}
+write.bibtex(file="references.bib")
+```
+
