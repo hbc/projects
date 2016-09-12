@@ -38,7 +38,7 @@ Contact `r analystname` (`r analystemail`) for additional details.
 
 The most recent update of this html document occurred: `r date()`
 
-[This file](./process_limma.rmd) provides code to reproduce the included results and plots. 
+The sections below provide code to reproduce the included results and plots. 
 
 ---
 
@@ -166,7 +166,6 @@ write.table(allresults.sub, file=file.path(resultsDir, "gprofiler.genes.stats.ex
 
 - as calculated by Limma
 
-We can say a gene is significantly differntially expressed genes when it's adjusted pvalue (adj.P.Val) is less than 0.05. You can't use the the raw pvalue (P.Value) because it doesn't take into account that you are doing many, many statistical tests. We adjust for this fact by doing multiple testing correction (described [here](http://www.biostathandbook.com/multiplecomparisons.html)) to get a more accurate sense of how likely are results are false positives.
 
 When using **all the probes**, there are no significant hits after adjusting for multiple testing. Here are the top 10 most differentially expressed genes.
 
