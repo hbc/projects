@@ -1,0 +1,472 @@
+---
+bibliography: "references.bib"
+csl: "bioinformatics.csl"
+title: "Anandasabpathy - IFN_gamma-R1 Knockout Analysis"
+output:
+  html_document:
+    code_folding: hide
+    theme: yeti
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+source("https://bioconductor.org/biocLite.R")
+
+library("knitcitations")
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Niroshana Anandasabapathy"
+clientemail="niroananda@gmail.com"
+labPI="Niroshana Anandasabapathy"
+lablocation="BWH"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+All MoGene 2.0 ST arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")`, normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+---
+
+# Setup
+
+### Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+if(file.exists("~/Work/projects/na_ifrgamma_ko")) {
+  baseDir <- "~/Work/projects/na_ifrgamma_ko"
+} else {
+  baseDir <- "~/projects/na_ifrgamma_ko"
+}
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="metadata.csv" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=1
+numpcs=4
+```
+
+### Libraries
+
+Bioconductor `r citep("10.1038/nmeth.3252")` and R `r citep("http://cran.r-project.org/")` libraries used to process the data.
+
+```{r libraries}
+library(oligo) # array utilities
+library(arrayQualityMetrics) # array quality control reports
+
+
+library(pd.mogene.2.0.st) # array layout annotation
+library(mogene20sttranscriptcluster.db) # array probe to gene annotations
+
+library(ggdendro)
+library(CHBUtils)
+library(limma)
+library(ggplot2)
+library(pheatmap) # pretty heatmaps
+
+```
+
+### Functions
+- some custom functions
+
+```{r functions}
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+```
+
+---
+
+# Import Data and Metadata
+
+- load in phenotypes and array names from metadata file [metadata file](../meta/metadata.csv)
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- used these file names to load in the CEL files
+
+```{r dataload, results='hide'}
+covars <- read.csv(file.path(metaDir, covarsfilename), header=TRUE)  # simple comma delimited file with CEL file in first column  and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+setwd(dataDir)
+affyRaw <- read.celfiles(as.character(covars$celfile))
+pData(affyRaw) <- covars 
+sampleNames(affyRaw) <- pData(affyRaw)$sampleid
+validObject(affyRaw)
+rm(covars)
+```
+
+### Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+---
+
+# Pre-Processing and Qualilty Control
+
+### Raw Data QC
+
+- using arrayQualityMetrics [library] `r citep("10.1093/bioinformatics/btn647")`
+
+```{r rawQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype"))
+```
+
+**[Raw Data QC Report](../results/report_raw/index.html)**
+
+Arrays 1, 3 and 8 (IL27KO1, IL27KO3 & IFNGR1KO2) are outliers for their intensity distributions, with their MA plots suggesitng higher background intensities than the median.
+
+ALL of the arrays show lower intensities than I would like, the three outliers are actually more what I would like to see, with a broader spread of intensities and higher median  With samples with intensiites this low, I expect to have fairly noisy results.
+
+Background correction and normalization may address this issue but at this point, with the raw data at least, the first principal component is capturing the variation between these 3 samples and the rest of the samples. Normally, I would suggest excluding these 3 samples, but haven't for now as 
+a) without them you lose all power to detect any differences betwen the WT and IL27KO samples (something yo umay want to do if the IL27rKO comparison is truly unimportant). 
+b) they are likely to  actually be your best samples
+
+For now I'll keep them in the analysis.
+
+### Background Correct and Normalize
+
+- using RMA `r citep("10.1093/biostatistics/4.2.249")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm.core <- oligo::rma(affyRaw,  target="core", background=TRUE, normalize=TRUE)
+```
+
+### Normalized Data QC
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+arrayQualityMetrics(expressionset=affyNorm.core, outdir=file.path(resultsDir, paste("report_rma.core", sep=".")), force=TRUE, do.logtransform=FALSE, intgroup=c("genotype"))
+```
+
+**[Normalized Data QC Report](../results/report_rma.core/index.html)**
+ 
+As expected after normalization , the intensity distributions all look similar now, but clustering of the IFNgammaR1 samples is now poor.
+
+---
+
+# Unsupervised Clustering
+
+### Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the raw data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+Sample IDs are shown and genotypes highlighted in red and blue. 
+
+```{r cluster, out.width='75%'}
+plot_dendro(affyNorm.core, title="Genotypes", labels.colname="sampleid", colors.colname="genotype")
+```
+
+Sample IDs are shown and genotypes highlighted in red, green and blue. 
+
+### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. 
+
+```{r PCAsd, out.width='75%'}
+PCAplot.sd.eset(affyNorm.core, title="")
+```
+
+Here, 2 dimensions explain only about ~30% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first `r numpcs` principal components. In the  plot, each genotype group is represented by a separate color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In this plot,  color is determined by genotype.
+
+```{r pca, fig.cap="Primary Component Analysis of samples - all combinations of the 5 first primary components", out.width='100%'}
+CHBUtils::PCAplot.eset(affyNorm.core,   categories="genotype", title="", colorpalette=cbPalette, numcomponents=numpcs)
+```
+
+There is some degree of clustering by both genotype, but it is not complete, with the IFNgammaR1 KO samples showing particularly poor clustering. The IL27RKO samples appear to be quite similar to the WT samples, suggesting a majority of the IFNgammaR1 differences from WT samples are driven by something other than IL27R signaling. There are no clear principal component combinations that cleanly separate the sample groups. (PC1 does appear to separate the IFNgammaR1 KO samples from the other samples).
+
+---
+
+# Annotate
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+
+```{r features, results='hide'}
+featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+```
+
+----
+ 
+# Pre-Filter Data
+
+Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
+
+`r nrow(affyNorm.core)` initial probes
+
+### By Annotation
+- remove the control probes
+
+```{r filter1}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$category=="main"),]
+```
+
+`r nrow(affyNorm.core)` probes remaining
+
+### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$crosshybtype=="1"),]
+```
+
+`r nrow(affyNorm.core)` probes remaining
+
+### By Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r filter3}
+eset.core <- exprs(affyNorm.core)
+affyNorm.core <- affyNorm.core[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.core), 0.1)))),]
+```
+
+`r nrow(affyNorm.core)` probes remaining
+
+### By Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r filter4}
+eset.core <- exprs(affyNorm.core)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+```
+
+`r nrow(affyNorm.core)` probes remaining
+
+---
+
+# Statistical Analyses
+
+A linear model for microarray data analysis Limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`  was performed on the samples to identify differentially expressed genes for all pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+### Design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+
+```{r design, results="asis"}
+design <- model.matrix(~0+  genotype,  data=pData(affyNorm.core))
+# make sure the headings match
+colnames(design) <- sub("genotype", "", colnames(design))
+
+kable(design)
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+### Contrasts/Comparisons
+- calculated statistics for 3 contrasts (i.e.comparisons)
+1) WT vs. IFNgammaR1 KOs
+2) WT vs. IL27R KOs
+3) Differences between IL27R KOs and IFNgammaR1 KOs with respect to WTs
+ (see [here](https://en.wikipedia.org/wiki/Difference_in_differences) for an explanation)
+
+
+```{r limma,warning=FALSE, message=FALSE}
+# Setup constrasts
+contrast.matrix <- makeContrasts(WTvIFNGR1KO=WT-IFNGR1KO, WTvIL27RKO=WT-IL27RKO,  IFNGR1KO_IL27RKO_differences=(WT-IFNGR1KO)-(WT-IL27RKO), levels=colnames(design))
+kable(contrast.matrix)
+
+# Fit model
+fit.core <- lmFit(affyNorm.core, design) 
+
+# Compute cofficients for constrasts
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+
+# Bayes shrinkage
+fit2.core <- eBayes(fit2.core) 
+```
+
+
+```{r allstats, results='hide'}
+all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affyNorm.core)), genelist=fData(affyNorm.core)[,c("probesetid", "symbol", "entrezID")])
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+
+  eset <- exprs(affyNorm.core)
+  eset  <-  eset[match(stats$probesetid, row.names(eset)),]
+  stats.eset <- cbind(stats, eset)
+  return(list(contrast=contrast, stats.eset=stats.eset))
+  })
+
+# output all results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(all.results[[num]]$stats.eset)
+  write.table(out.stats, file=file.path(resultsDir, paste("all.genes.stats.exprs", contrast, "xls", sep=".")),  sep ="\t",, row.names=F, col.names=T)
+})
+```
+
+### Results Summary
+
+At an adjusted pvalue of less than `r pvalue.cutoff` and a log2 fold change cutoff of more than `r lfc.cutoff` we see the following number of significant genes for each comparison:
+
+`r x=1`
+####Wildtype versus IFNgammaR1 KO
+`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+
+`r x=x+1`
+####Wildtype versus IL27R KO
+`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+
+`r x=x+1`
+####Differences in differences for IFNgammaR1 KO and IL27R KO with respect to wildtype
+`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+
+
+---
+
+# Visualizations
+
+- some quick ways of looking at the results to see if they make sense
+
+### Volcano plots
+
+- great way to visualize significance and effect size at the same time
+
+The plots represent each gene with a dot. The fold change (log2) is plotted on the x-axis and the adjusted p-value (log10, p-value adjusted/corrected for multiple testing) is on the y-axis. Density plots for these values are shown in the margins. 
+The highlighted regions (in `r highlight.color`) cover the genes that are differentially expressed (i.e. p-value < `r pvalue.cutoff`, log2 foldchange > `r lfc.cutoff`). Tables below the plot shows the differentially expressed genes.
+
+```{r volcanoplots, out.width='100%', dev='png'}
+library(DT)
+
+volcano_density_plot(as.data.frame(all.results[[1]]$stats.eset[,c("logFC", "adj.P.Val")]), pval.cutoff=pvalue.cutoff, lfc.cutoff=lfc.cutoff, shade.colour=highlight.color, title=dimnames(contrast.matrix)$Contrasts[1])
+datatable(subset(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff), rownames=FALSE, caption="Differentially Expressed Genes")
+
+volcano_density_plot(as.data.frame(all.results[[2]]$stats.eset[,c("logFC", "adj.P.Val")]), pval.cutoff=pvalue.cutoff, lfc.cutoff=lfc.cutoff, shade.colour=highlight.color, title=dimnames(contrast.matrix)$Contrasts[2])
+datatable(subset(all.results[[2]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff), rownames=FALSE, caption="Differentially Expressed Genes")
+
+volcano_density_plot(as.data.frame(all.results[[3]]$stats.eset[,c("logFC", "adj.P.Val")]), pval.cutoff=pvalue.cutoff, lfc.cutoff=lfc.cutoff, shade.colour=highlight.color, title=dimnames(contrast.matrix)$Contrasts[3])
+datatable(subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff), rownames=FALSE, caption="Differentiallly Expressed Genes")
+```
+
+### Heatmaps
+
+- quick way to look at how the differentially expressed genes look between the individual samples
+- only plotted comparisons with differentially expressed genes
+- only plotted up to the top 50 genes as determined by B-value (log odds of differential expression)
+- colours represent the log transformed normalized intensitiesnor
+
+```{r heatmaps, fig.height=8}
+library(dplyr)
+library(tidyr)
+x=1
+data.plot <- all.results[[x]]$stats.eset %>% 
+  filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  dplyr::select(., symbol,probesetid,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
+  unite(., uniqueid, symbol, probesetid) %>%
+  as.data.frame()
+data.plot <- col2rownames(data.plot, "uniqueid")  
+pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
+
+x=3
+data.plot <- all.results[[x]]$stats.eset %>% 
+  filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  dplyr::select(., symbol,probesetid,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
+  unite(., uniqueid, symbol, probesetid) %>%
+  as.data.frame()
+data.plot <- col2rownames(data.plot, "uniqueid")  
+pheatmap(data.plot[1:50,], cluster_cols = TRUE, main=all.results[[x]]$contrast)
+```
+
+----
+
+# Downloads
+
+### Statistics and expression levels of all genes for these comparisons
+
+*Note that for all these files, I have not summarized values for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+`r x=1`
+[wildtype versus IFNgammaR1 KO stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+`r x=x+1`
+[wildtype versus IL27R KO  stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+`r x=x+1`
+[differences in differences for IFNgammaR1 KO and IL27R KO with respect to wildtype stats - all genes](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xls)
+
+**These summary tables contain the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 9 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+---
+
+# R Session Info
+
+(useful if replicating these results)
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+
+---
+
+# References
+
+```{r writebib, results='hide', echo=FALSE, message=FALSE, cache=FALSE}
+write.bibtex(file="references.bib")
+```
