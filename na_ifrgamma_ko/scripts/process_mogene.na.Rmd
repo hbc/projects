@@ -9,12 +9,9 @@ output:
     toc: yes
     toc_float: true
     toc_depth: 3
-
 ---
 
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
-source("https://bioconductor.org/biocLite.R")
-
 library("knitcitations")
 cleanbib()
 options("citation_format" = "pandoc")
@@ -83,7 +80,6 @@ Bioconductor `r citep("10.1038/nmeth.3252")` and R `r citep("http://cran.r-proje
 library(oligo) # array utilities
 library(arrayQualityMetrics) # array quality control reports
 
-
 library(pd.mogene.2.0.st) # array layout annotation
 library(mogene20sttranscriptcluster.db) # array probe to gene annotations
 
@@ -92,6 +88,20 @@ library(CHBUtils)
 library(limma)
 library(ggplot2)
 library(pheatmap) # pretty heatmaps
+
+library(readr)
+library(dplyr)
+library(tidyr)
+
+library(biomaRt)
+mousemart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = 'mmusculus_gene_ensembl')
+humanmart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = 'hsapiens_gene_ensembl')
+mouseattributes = listAttributes(mousemart)
+mousefilters = listFilters(mousemart)
+
+humanattributes = listAttributes(humanmart)
+humanfilters = listFilters(humanmart)
+
 
 ```
 
@@ -453,6 +463,46 @@ pheatmap(data.plot[1:50,], cluster_cols = TRUE, main=all.results[[x]]$contrast)
 - the last 9 columns contain the log-transformed normalized expression levels for these genes in each sample
 
 ---
+
+# Signature Comparisons
+
+## Load Signatures and Filter
+- comparing Ifngr1 KO signatures to 
+  - skin_DC/lymph_DC DEGs 
+    - modify gene symbosl with two options to symbol accepted by NCBI
+    - add homologs from mouse using Biomart
+    - after first run, went back and re-checked any gnee symbols missing miouse homologs and updated file with current gene symbol if it existed
+  - IFNgamma stimulation of macrophages (GSE18686) 
+    - drop any probes that lack an EntrezID (i.e. unannotated probes)
+    - add EnsemblIDs
+    
+    
+http://guangchuangyu.github.io/2015/05/use-clusterprofiler-as-an-universal-enrichment-analysis-tool/  
+- annotate all genes within Ifngr1 KO analysis as to which gene signature they are part of
+  
+```{r loadsigs}
+# dropped non-accepted symbols prior to loading outside of R
+# currently as human gene symbols
+DCsig <- read_csv(file.path(dataDir, "20160901_Hutchinson_sigs.csv"))
+names(DCsig) <- "hgnc_symbol"
+genes = getLDS(attributes = c( "hgnc_symbol","entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)) ,mart = humanmart, attributesL = c("mgi_symbol",  "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
+names(genes) <- c("hgnc_symbol",  "human_entrezid", "mgi_symbol",  "mouse_entrezid")
+
+DCsig.annot <- dplyr::full_join(DCsig, genes, by="hgnc_symbol")
+
+# STOPPED HERE
+
+kable(DCsig.annot)
+
+IFNGsig <- read_csv(file.path(dataDir, "Results_GSE18686_IFNGsignature_DEG_byMSF.csv"))
+# drop probes without EntrezIDs
+
+
+
+
+```    
+
+## Hypergeom
 
 # R Session Info
 
