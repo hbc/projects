@@ -68,7 +68,7 @@ lowintensity.percentile=0.1
 mad.quantile.cutoff=0.1
 pvalue.cutoff=0.05
 highlight.color="green"
-lfc.cutoff=1
+lfc.cutoff=0.58496251
 numpcs=4
 ```
 
@@ -504,29 +504,61 @@ names(DCsig) <- "hgnc_symbol"
 genes = getLDS(attributes = c( "hgnc_symbol","ensembl_gene_id", "entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)) ,mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
 names(genes) <- c("hgnc_symbol",  "human_ensemblid","human_entrezid", "mgi_symbol", "mouse_ensemblid", "mouse_entrezid")
 DCsig.annot <- dplyr::full_join(DCsig, genes, by="hgnc_symbol")
-datatable(DCsig.annot, caption = "Updated signature with human and mouse homology gene annotations")
+datatable(DCsig.annot, caption = "Updated DC signature with human and mouse homology gene annotations")
 
 IFNGsig <- read_csv(file.path(dataDir, "Results_GSE18686_IFNGsignature_DEG_byMSF.csv"))
 # drop probes without EntrezIDs
-IFNsig <- dplyr::select(IFNGsig, SYMBOL, lgFCH_TrtIFNgIFNG, ENTREZID)
+IFNGsig <- dplyr::select(IFNGsig, SYMBOL, lgFCH_TrtIFNgIFNG, ENTREZID)
+genes <- getLDS(attributes = c( "hgnc_symbol","ensembl_gene_id", "entrezgene"), filters = "entrezgene", values = as.character(unlist(IFNGsig$ENTREZID)) ,mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T)
+names(genes) <- c("hgnc_symbol",  "human_ensemblid","human_entrezid", "mgi_symbol", "mouse_ensemblid", "mouse_entrezid")
+IFNGsig.annot <- dplyr::full_join(IFNGsig, genes, by=c("ENTREZID"="human_entrezid"))
+datatable(IFNGsig.annot, caption = "Updated IFNG signature with human and mouse homology gene annotations")
+
+IFNGsig.annot.up <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG>0)
+IFNGsig.annot.down <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG<0)
 ```    
 
 
 For both hypergeometric overlap and GSEA-style analyses, will use the two gene signatures as lists of genes without rank. Will try splitting the IFNG genes into those up/down regulated as well to see if anything interesting comes up.
 
-Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric and GSEA analyses of gene expression data. To do so, I have first have to annotate which genes analyzed in the Ifngr1 KO analysis are part of which gene signature. Used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis, removing any genes/probes without EntrezIDs.
+Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric and GSEA analyses of gene expression data. To do so, I have first have to annotate the genes analyzed in the Ifngr1 KO analysis as to whehter they are part of a gene signature. I used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis.
 
-```{r annotatebackgrou}
-bkgrndgenes <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrezID) %>% mutate(., DCsig=ifelse(entrezID %in% DCsig.annot$mouse_entrezid, 1, 0))
+```{r annotategenes}
+set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrezID) %>% 
+  mutate(., DCsig=ifelse(entrezID %in% DCsig.annot$mouse_entrezid, "DC", 0)) %>%
+  mutate(., IFNGsig=ifelse(entrezID %in% IFNGsig.annot$mouse_entrezid, "IFNG", 0)) %>% 
+  mutate(., IFNGsigup=ifelse(entrezID %in% IFNGsig.annot.up$mouse_entrezid, "IFNGup", 0)) %>% 
+   mutate(., IFNGsigdown=ifelse(entrezID %in% IFNGsig.annot.down$mouse_entrezid, "IFNGdown", 0)) %>% 
+   gather(., set, value, DCsig, IFNGsig, IFNGsigup, IFNGsigdown) %>% 
+  filter(., value!=0) %>%
+  arrange(., entrezID) %>%
+  dplyr::select(., set, entrezID)
+```  
 
+## Hypergeometric
 
+```{r hypergeometric}
+library(VennDiagram)
+library(clusterProfiler) 
+
+deg <- all.results[[1]]$stats.eset %>% 
+     tbl_df() %>% 
+     filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>% 
+     dplyr::select(., entrezID) %>%
+     unlist() %>% 
+     as.character()
+
+overlap.DC <- calculate.overlap(x=list("Ifngr1_KO"=deg, "DCsig"=DCsig.annot$mouse_entrezid))
+grid::grid.newpage()
+draw.pairwise.venn(length(overlap$a1), length(overlap$a2), length(overlap$a3), ext.text=FALSE, fill=c("red", "blue"), alpha=c(0.5, 0.5))
+
+# statistics uysing clusterprofiler
+results = enricher(deg, TERM2GENE=set2gene)
+kable(summary(results), caption="Significantly overlapping gene signatures")   
+
+kable(getBM(values=results@geneInCategory$DCsig, attributes=c("mgi_symbol", "entrezgene"), filters="entrezgene", mart=mousemart), caption="Overlapping genes")
 ```
 
-
-
-filter Ifngr1 KO data for NA values in entrezIDs
-
-## Hypergeom
 
 # R Session Info
 
