@@ -256,9 +256,11 @@ Reducing the number of genes assayed reduces the multiple test correction and ma
 
 ### By Annotation
 - remove the control probes
+- remove anything that doesn't have an annotated entrezID
 
 ```{r filter1}
 affyNorm.core <- affyNorm.core[which(fData(affyNorm.core)$category=="main"),]
+affyNorm.core <- affyNorm.core[which(!is.na(fData(affyNorm.core)$entrezID)),]
 ```
 
 `r nrow(affyNorm.core)` probes remaining
@@ -290,6 +292,23 @@ eset.core <- exprs(affyNorm.core)
 rowmads <- apply(eset.core, 1, mad)
 mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
 affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
+```
+
+`r nrow(affyNorm.core)` probes remaining
+
+## Collapse probes
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+
+```{r WGCNA}
+library(WGCNA)
+
+eset.core.annot <- cbind(exprs(affyNorm.core), fData(affyNorm.core)) %>%  tbl_df() %>% dplyr::select(., contains("IL27"), contains("WT"), contains("IFNGR"), entrezID, transcriptclusterid)
+eset.core <- dplyr::select(eset.core.annot, contains("IL27"), contains("WT"), contains("IFNGR")) %>% as.data.frame()
+row.names(eset.core) <- eset.core.annot$transcriptclusterid
+collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$transcriptclusterid, rowGroup=eset.core.annot$entrezID , method="MaxMean")
+
+affyNorm.core <- affyNorm.core[which(collapsed.data$selectedRow),]
 ```
 
 `r nrow(affyNorm.core)` probes remaining
@@ -413,6 +432,7 @@ datatable(subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalu
 - only plotted comparisons with differentially expressed genes
 - only plotted up to the top 50 genes as determined by B-value (log odds of differential expression)
 - colours represent the log transformed normalized intensitiesnor
+- IDs are the gene symbol and entrezID for the differentially expressed gene
 
 ```{r heatmaps, fig.height=8}
 library(dplyr)
@@ -420,8 +440,8 @@ library(tidyr)
 x=1
 data.plot <- all.results[[x]]$stats.eset %>% 
   filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
-  dplyr::select(., symbol,probesetid,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
-  unite(., uniqueid, symbol, probesetid) %>%
+  dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
+  unite(., uniqueid, symbol, entrezID) %>%
   as.data.frame()
 data.plot <- col2rownames(data.plot, "uniqueid")  
 pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
@@ -429,11 +449,11 @@ pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 x=3
 data.plot <- all.results[[x]]$stats.eset %>% 
   filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
-  dplyr::select(., symbol,probesetid,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
-  unite(., uniqueid, symbol, probesetid) %>%
+  dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
+  unite(., uniqueid, symbol, entrezID) %>%
   as.data.frame()
 data.plot <- col2rownames(data.plot, "uniqueid")  
-pheatmap(data.plot[1:50,], cluster_cols = TRUE, main=all.results[[x]]$contrast)
+pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 ```
 
 ----
@@ -471,36 +491,40 @@ pheatmap(data.plot[1:50,], cluster_cols = TRUE, main=all.results[[x]]$contrast)
   - skin_DC/lymph_DC DEGs 
     - modify gene symbosl with two options to symbol accepted by NCBI
     - add homologs from mouse using Biomart
-    - after first run, went back and re-checked any gnee symbols missing miouse homologs and updated file with current gene symbol if it existed
+    - after first run, went back and re-checked any gene symbols missing miouse homologs and updated file with current gene symbol if it existed
   - IFNgamma stimulation of macrophages (GSE18686) 
     - drop any probes that lack an EntrezID (i.e. unannotated probes)
     - add EnsemblIDs
-    
-    
-http://guangchuangyu.github.io/2015/05/use-clusterprofiler-as-an-universal-enrichment-analysis-tool/  
-- annotate all genes within Ifngr1 KO analysis as to which gene signature they are part of
   
 ```{r loadsigs}
 # dropped non-accepted symbols prior to loading outside of R
 # currently as human gene symbols
 DCsig <- read_csv(file.path(dataDir, "20160901_Hutchinson_sigs.csv"))
 names(DCsig) <- "hgnc_symbol"
-genes = getLDS(attributes = c( "hgnc_symbol","entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)) ,mart = humanmart, attributesL = c("mgi_symbol",  "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
-names(genes) <- c("hgnc_symbol",  "human_entrezid", "mgi_symbol",  "mouse_entrezid")
-
+genes = getLDS(attributes = c( "hgnc_symbol","ensembl_gene_id", "entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)) ,mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
+names(genes) <- c("hgnc_symbol",  "human_ensemblid","human_entrezid", "mgi_symbol", "mouse_ensemblid", "mouse_entrezid")
 DCsig.annot <- dplyr::full_join(DCsig, genes, by="hgnc_symbol")
-
-# STOPPED HERE
-
-kable(DCsig.annot)
+datatable(DCsig.annot, caption = "Updated signature with human and mouse homology gene annotations")
 
 IFNGsig <- read_csv(file.path(dataDir, "Results_GSE18686_IFNGsignature_DEG_byMSF.csv"))
 # drop probes without EntrezIDs
-
-
-
-
+IFNsig <- dplyr::select(IFNGsig, SYMBOL, lgFCH_TrtIFNgIFNG, ENTREZID)
 ```    
+
+
+For both hypergeometric overlap and GSEA-style analyses, will use the two gene signatures as lists of genes without rank. Will try splitting the IFNG genes into those up/down regulated as well to see if anything interesting comes up.
+
+Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric and GSEA analyses of gene expression data. To do so, I have first have to annotate which genes analyzed in the Ifngr1 KO analysis are part of which gene signature. Used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis, removing any genes/probes without EntrezIDs.
+
+```{r annotatebackgrou}
+bkgrndgenes <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrezID) %>% mutate(., DCsig=ifelse(entrezID %in% DCsig.annot$mouse_entrezid, 1, 0))
+
+
+```
+
+
+
+filter Ifngr1 KO data for NA values in entrezIDs
 
 ## Hypergeom
 
