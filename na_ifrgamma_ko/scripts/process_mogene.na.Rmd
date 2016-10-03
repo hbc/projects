@@ -300,7 +300,7 @@ affyNorm.core <- affyNorm.core[rowmads>mad.cutoff,]
 - the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
  - here I selected the probeset for each gene with with the maximum mean value for all samples
 
-```{r WGCNA}
+```{r WGCNA, results='hide'}
 library(WGCNA)
 
 eset.core.annot <- cbind(exprs(affyNorm.core), fData(affyNorm.core)) %>%  tbl_df() %>% dplyr::select(., contains("IL27"), contains("WT"), contains("IFNGR"), entrezID, transcriptclusterid)
@@ -509,19 +509,21 @@ datatable(DCsig.annot, caption = "Updated DC signature with human and mouse homo
 IFNGsig <- read_csv(file.path(dataDir, "Results_GSE18686_IFNGsignature_DEG_byMSF.csv"))
 # drop probes without EntrezIDs
 IFNGsig <- dplyr::select(IFNGsig, SYMBOL, lgFCH_TrtIFNgIFNG, ENTREZID)
+IFNGsig <- filter(IFNGsig, !is.na(ENTREZID))
+
 genes <- getLDS(attributes = c( "hgnc_symbol","ensembl_gene_id", "entrezgene"), filters = "entrezgene", values = as.character(unlist(IFNGsig$ENTREZID)) ,mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T)
 names(genes) <- c("hgnc_symbol",  "human_ensemblid","human_entrezid", "mgi_symbol", "mouse_ensemblid", "mouse_entrezid")
 IFNGsig.annot <- dplyr::full_join(IFNGsig, genes, by=c("ENTREZID"="human_entrezid"))
 datatable(IFNGsig.annot, caption = "Updated IFNG signature with human and mouse homology gene annotations")
 
+
 IFNGsig.annot.up <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG>0)
 IFNGsig.annot.down <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG<0)
 ```    
 
+Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric anbd gene set enrichment analyses of gene expression data. To do so, I have first have to annotate the genes analyzed in the Ifngr1 KO analysis as to whehter they are part of a gene signature. I used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis.
 
-For both hypergeometric overlap and GSEA-style analyses, will use the two gene signatures as lists of genes without rank. Will try splitting the IFNG genes into those up/down regulated as well to see if anything interesting comes up.
-
-Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric and GSEA analyses of gene expression data. To do so, I have first have to annotate the genes analyzed in the Ifngr1 KO analysis as to whehter they are part of a gene signature. I used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis.
+For both hypergeometric overlap and GSEA-style analyses, I used the two gene signatures as lists of genes without rank. I also tried splitting the IFNG genes into those up/down regulated as well to see if anything interesting comes up.
 
 ```{r annotategenes}
 set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrezID) %>% 
@@ -532,7 +534,8 @@ set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrez
    gather(., set, value, DCsig, IFNGsig, IFNGsigup, IFNGsigdown) %>% 
   filter(., value!=0) %>%
   arrange(., entrezID) %>%
-  dplyr::select(., set, entrezID)
+  dplyr::select(., set, entrezID) %>%
+  as.data.frame()
 ```  
 
 ## Hypergeometric
@@ -540,7 +543,7 @@ set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrez
 ```{r hypergeometric}
 library(VennDiagram)
 library(clusterProfiler) 
-
+background.genes <- all.results[[2]]$stats.eset$entrezID
 deg <- all.results[[1]]$stats.eset %>% 
      tbl_df() %>% 
      filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>% 
@@ -548,17 +551,84 @@ deg <- all.results[[1]]$stats.eset %>%
      unlist() %>% 
      as.character()
 
-overlap.DC <- calculate.overlap(x=list("Ifngr1_KO"=deg, "DCsig"=DCsig.annot$mouse_entrezid))
-grid::grid.newpage()
-draw.pairwise.venn(length(overlap$a1), length(overlap$a2), length(overlap$a3), ext.text=FALSE, fill=c("red", "blue"), alpha=c(0.5, 0.5))
-
 # statistics uysing clusterprofiler
-results = enricher(deg, TERM2GENE=set2gene)
+results = enricher(deg, TERM2GENE=set2gene, minGSSize=200, maxGSSize=1700, universe=background.genes)
 kable(summary(results), caption="Significantly overlapping gene signatures")   
 
 kable(getBM(values=results@geneInCategory$DCsig, attributes=c("mgi_symbol", "entrezgene"), filters="entrezgene", mart=mousemart), caption="Overlapping genes")
 ```
 
+### Venn Diagrams {.tabset}
+
+#### DC signature
+
+```{r dcsigoverlap}
+overlap.DCsig <- calculate.overlap(x=list("Ifngr1_KO"=deg, "DCsig"=DCsig.annot$mouse_entrezid))
+grid::grid.newpage()
+draw.pairwise.venn(length(overlap.DCsig$a1), length(overlap.DCsig$a2), length(overlap.DCsig$a3), ext.text=FALSE, fill=c("red", "blue"), alpha=c(0.5, 0.5))
+```
+
+#### IFNgamma signature
+
+```{r ifngsigoverlap}
+overlap.IFNGsig <- calculate.overlap(x=list("Ifngr1_KO"=deg, "IFNGsig"=IFNGsig.annot$mouse_entrezid))
+grid::grid.newpage()
+draw.pairwise.venn(length(overlap.IFNGsig$a1), length(overlap.IFNGsig$a2), length(overlap.IFNGsig$a3), ext.text=FALSE, fill=c("red", "blue"), alpha=c(0.5, 0.5))
+```
+
+
+## Gene Set Enrichment
+
+Gene set enrichment analysis tools like GAGE and clusterProfiler use ranked lists of genes (here ranked by log2FC) without using a threshold. This allows these gene set enrichment tools to use more information to identify enriched biological processes. The introduction to gene set enrichment analysis goes into more detail about some of the advantages of this approach: http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1239896/.
+
+```{r gsea, results='hide'}
+# get logfold  chnages and entrezids, sorted by logfoldchange
+entrez_results <- all.results[[1]]$stats.eset
+entrez_results <- entrez_results[order(entrez_results$logFC, decreasing = TRUE),]
+foldchanges <- entrez_results$logFC
+names(foldchanges) <- entrez_results$entrezID
+
+# run clusterprofiler  
+all.results.gsea <- all.results[[1]]$stats.eset
+lfcs <- all.results.gsea$logFC
+names(lfcs) <- all.results.gsea$entrezID
+lfcs <- sort(lfcs, decreasing=TRUE)
+
+results = GSEA(lfcs, TERM2GENE=set2gene, minGSSize=200, maxGSSize=1700) 
+```
+
+### Enrichment Plots {.tabset}
+
+#### DC signature
+
+```{r gseadcsigplot}
+gseaplot(results, "DCsig")
+```
+
+#### IFNG signature
+
+```{r gseaifngsigplot}
+gseaplot(results, "IFNGsig")
+```
+
+#### IFNG down signature
+
+```{r gseaifngsigdowngplot}
+gseaplot(results, "IFNGsigdown")
+```
+
+#### IFNG up signature
+
+```{r gseaifngsigupgplot}
+gseaplot(results, "IFNGsigup")
+```
+
+### GSEA Results
+
+```{r gagetable}
+kable(results@result)
+```  
+  
 
 # R Session Info
 
