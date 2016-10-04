@@ -156,7 +156,7 @@ kable(pData(affyRaw))
 
 ### Raw Data QC
 
-- using arrayQualityMetrics [library] `r citep("10.1093/bioinformatics/btn647")`
+- using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
 
 ```{r rawQC, eval=FALSE}
 arrayQualityMetrics(expressionset=affyRaw, outdir=file.path(resultsDir, 'report_raw'), force=TRUE, do.logtransform=TRUE, intgroup=c("genotype"))
@@ -172,7 +172,7 @@ Background correction and normalization may address this issue but at this point
 a) without them you lose all power to detect any differences betwen the WT and IL27KO samples (something yo umay want to do if the IL27rKO comparison is truly unimportant). 
 b) they are likely to  actually be your best samples
 
-For now I'll keep them in the analysis.
+For these reasons I decided to keep them in the analysis.
 
 ### Background Correct and Normalize
 
@@ -205,13 +205,11 @@ The goal of these analyses are to naiively evaluate the variability within the r
 The first method produces a dendrogram by performing  
 >  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
 
-Sample IDs are shown and genotypes highlighted in red and blue. 
+Sample IDs are shown and genotypes highlighted in red, green and blue. 
 
 ```{r cluster, out.width='75%'}
 plot_dendro(affyNorm.core, title="Genotypes", labels.colname="sampleid", colors.colname="genotype")
 ```
-
-Sample IDs are shown and genotypes highlighted in red, green and blue. 
 
 ### Principal Component Analysis (PCA)
 
@@ -221,7 +219,7 @@ This second approach is a dimension reduction and visualisation technique that i
 PCAplot.sd.eset(affyNorm.core, title="")
 ```
 
-Here, 2 dimensions explain only about ~30% of the variation observed in the samples.
+Here, 2 dimensions explain only about ~30% of the variation observed in the samples, which is quite low.
 
 As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first `r numpcs` principal components. In the  plot, each genotype group is represented by a separate color. 
 
@@ -231,7 +229,7 @@ You can use these plots to explore if the arrays cluster, find outliers, and det
 CHBUtils::PCAplot.eset(affyNorm.core,   categories="genotype", title="", colorpalette=cbPalette, numcomponents=numpcs)
 ```
 
-There is some degree of clustering by both genotype, but it is not complete, with the IFNgammaR1 KO samples showing particularly poor clustering. The IL27RKO samples appear to be quite similar to the WT samples, suggesting a majority of the IFNgammaR1 differences from WT samples are driven by something other than IL27R signaling. There are no clear principal component combinations that cleanly separate the sample groups. (PC1 does appear to separate the IFNgammaR1 KO samples from the other samples).
+There is some degree of clustering by both genotype, but it is not complete, with the IFNgammaR1 KO samples showing particularly poor clustering. The IL27RKO samples appear to be quite similar to the WT samples, suggesting a majority of the IFNgammaR1 differences from WT samples are driven by something other than IL27R signaling. There are no clear principal component combinations that cleanly separate all the sample groups. (PC1 does appear to separate the IFNgammaR1 KO samples from the other samples).
 
 ---
 
@@ -239,7 +237,7 @@ There is some degree of clustering by both genotype, but it is not complete, wit
 
 So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
 
-```{r features, results='hide'}
+```{r features}
 featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
 # get gene symbols and entrezIDs for all probesets
 fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), mogene20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
@@ -251,7 +249,7 @@ fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.
 # Pre-Filter Data
 
 Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
-
+ 
 `r nrow(affyNorm.core)` initial probes
 
 ### By Annotation
@@ -311,7 +309,7 @@ collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$transcriptcluster
 affyNorm.core <- affyNorm.core[which(collapsed.data$selectedRow),]
 ```
 
-`r nrow(affyNorm.core)` probes remaining
+`r nrow(affyNorm.core)` genes remaining
 
 ---
 
@@ -434,24 +432,35 @@ datatable(subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalu
 - colours represent the log transformed normalized intensitiesnor
 - IDs are the gene symbol and entrezID for the differentially expressed gene
 
-```{r heatmaps, fig.height=8}
+```{r heatmaps1, fig.height=8}
 library(dplyr)
 library(tidyr)
 x=1
 data.plot <- all.results[[x]]$stats.eset %>% 
   filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
-  dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
   unite(., uniqueid, symbol, entrezID) %>%
   as.data.frame()
+
+if(nrow(data.plot)>50){
+  data.plot <- data.plot[1:50,]
+}
 data.plot <- col2rownames(data.plot, "uniqueid")  
 pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
+```
 
+```{r heatmaps3, fig.height=10}
 x=3
 data.plot <- all.results[[x]]$stats.eset %>% 
   filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>%
   dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
   unite(., uniqueid, symbol, entrezID) %>%
   as.data.frame()
+if(nrow(data.plot)>50){
+  data.plot <- data.plot[1:50,]
+}
 data.plot <- col2rownames(data.plot, "uniqueid")  
 pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 ```
@@ -488,14 +497,18 @@ pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 
 ## Load Signatures and Filter
 - comparing Ifngr1 KO signatures to 
-  - skin_DC/lymph_DC DEGs 
-    - modify gene symbosl with two options to symbol accepted by NCBI
-    - add homologs from mouse using Biomart
-    - after first run, went back and re-checked any gene symbols missing miouse homologs and updated file with current gene symbol if it existed
-  - IFNgamma stimulation of macrophages (GSE18686) 
-    - drop any probes that lack an EntrezID (i.e. unannotated probes)
-    - add EnsemblIDs
-  
+  - skin_DC/lymph_DC DEGs  (DCsig)
+    - mix of human and mouse gene symbol IDs, needed mouse EntrezIDs
+    - modify any gene symbols with two options to symbol accepted by NCBI
+    - add homologs from mouse using Biomart, used EntrezIDs as common id between knockout and DC signature
+    - some of the gene symbols are out of date, so after a first run I went back and re-checked any gene symbols missing mouse homologs and updated the gene symbol lto the currently accepted version
+  - IFNgamma stimulation of macrophages (GSE18686) (IFNGsig)
+    - human study, needed to convert to mouse EntrezIDs
+    - dropped any probes that lacked an EntrezID (i.e. unannotated probes)
+    - add EnsemblIDs and EntrezIDs, used EntrezID as the common id between the Ifngr1 knockout and the IFNGamma signature
+    
+**Note that because of id conversion mismatches between mouse and human, the number of genes in the converted signatures may not match up with the original signature**
+
 ```{r loadsigs}
 # dropped non-accepted symbols prior to loading outside of R
 # currently as human gene symbols
@@ -521,9 +534,10 @@ IFNGsig.annot.up <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG>0)
 IFNGsig.annot.down <-filter(IFNGsig.annot, lgFCH_TrtIFNgIFNG<0)
 ```    
 
-Will perform these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric anbd gene set enrichment analyses of gene expression data. To do so, I have first have to annotate the genes analyzed in the Ifngr1 KO analysis as to whehter they are part of a gene signature. I used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis.
+Performed these analyses using the clusterProfiler `r citep("10.1089/omi.2011.0118")` package from Bioconductor, which lets you use custom gene sets to perform both hypergeometric anbd gene set enrichment analyses of gene expression data. To do so, I  first sannotate the genes analyzed in the Ifngr1 KO analysis as to whether they are part of one of the gene signatures. I used EntrezIDs to match up gene signatures to the Ifngr1 KO analysis.
 
-For both hypergeometric overlap and GSEA-style analyses, I used the two gene signatures as lists of genes without rank. I also tried splitting the IFNG genes into those up/down regulated as well to see if anything interesting comes up.
+For both hypergeometric overlap and GSEA-style analyses, I used the two gene signatures as lists of genes without rank. I also tried splitting the IFNGsig genes into those up/down regulated as well to see if anything interesting comes up.
+
 
 ```{r annotategenes}
 set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrezID) %>% 
@@ -539,6 +553,8 @@ set2gene <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., entrez
 ```  
 
 ## Hypergeometric
+
+This method uses hard cutoffs on the Ifngr1 knockout data to derive a list of genes to overlap with a gene signature. The statistical test calculates the likelihood of us seeing an overlap of the size observed given the background set of genes and the sizes of the two sets of genes. The list is treated as unordered, so each gene carries the same weight.
 
 ```{r hypergeometric}
 library(VennDiagram)
