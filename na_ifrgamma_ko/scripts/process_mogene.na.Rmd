@@ -94,15 +94,16 @@ library(dplyr)
 library(tidyr)
 
 library(biomaRt)
-mousemart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = 'mmusculus_gene_ensembl')
-humanmart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = 'hsapiens_gene_ensembl')
+
+# use older version of biomart to allow homology changes
+humanmart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="jul2016.archive.ensembl.org"))
+mousemart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="jul2016.archive.ensembl.org"))
+
 mouseattributes = listAttributes(mousemart)
 mousefilters = listFilters(mousemart)
 
 humanattributes = listAttributes(humanmart)
 humanfilters = listFilters(humanmart)
-
-
 ```
 
 ### Functions
@@ -387,15 +388,15 @@ At an adjusted pvalue of less than `r pvalue.cutoff` and a log2 fold change cuto
 
 `r x=1`
 ####Wildtype versus IFNgammaR1 KO
-`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+`r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
 
 `r x=x+1`
 ####Wildtype versus IL27R KO
-`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+`r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
 
 `r x=x+1`
 ####Differences in differences for IFNgammaR1 KO and IL27R KO with respect to wildtype
-`r nrow(subset(all.results[[x]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+`r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
 
 
 ---
@@ -433,11 +434,9 @@ datatable(subset(all.results[[3]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalu
 - IDs are the gene symbol and entrezID for the differentially expressed gene
 
 ```{r heatmaps1, fig.height=8}
-library(dplyr)
-library(tidyr)
 x=1
 data.plot <- all.results[[x]]$stats.eset %>% 
-  filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
   arrange(., desc(B)) %>% 
     dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
   unite(., uniqueid, symbol, entrezID) %>%
@@ -453,7 +452,7 @@ pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 ```{r heatmaps3, fig.height=10}
 x=3
 data.plot <- all.results[[x]]$stats.eset %>% 
-  filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
   arrange(., desc(B)) %>%
   dplyr::select(., symbol,entrezID,contains("IFNGR1"), contains("WT"), contains("IL27R")) %>%
   unite(., uniqueid, symbol, entrezID) %>%
@@ -513,8 +512,8 @@ pheatmap(data.plot, cluster_cols = TRUE, main=all.results[[x]]$contrast)
 # dropped non-accepted symbols prior to loading outside of R
 # currently as human gene symbols
 DCsig <- read_csv(file.path(dataDir, "20160901_Hutchinson_sigs.csv"))
-names(DCsig) <- "hgnc_symbol"
-genes = getLDS(attributes = c( "hgnc_symbol","ensembl_gene_id", "entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)) ,mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
+DCsig <- dplyr::select(DCsig, hgnc_symbol)
+genes = getLDS(attributes = c( "hgnc_symbol", "ensembl_gene_id", "entrezgene"), filters = "hgnc_symbol", values = as.character(unlist(DCsig$hgnc_symbol)), mart = humanmart, attributesL = c("mgi_symbol", "ensembl_gene_id", "entrezgene"), martL = mousemart, uniqueRows=T) %>% tbl_df()
 names(genes) <- c("hgnc_symbol",  "human_ensemblid","human_entrezid", "mgi_symbol", "mouse_ensemblid", "mouse_entrezid")
 DCsig.annot <- dplyr::full_join(DCsig, genes, by="hgnc_symbol")
 datatable(DCsig.annot, caption = "Updated DC signature with human and mouse homology gene annotations")
@@ -562,14 +561,14 @@ library(clusterProfiler)
 background.genes <- all.results[[2]]$stats.eset$entrezID
 deg <- all.results[[1]]$stats.eset %>% 
      tbl_df() %>% 
-     filter(., logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>% 
+     filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>% 
      dplyr::select(., entrezID) %>%
      unlist() %>% 
      as.character()
 
 # statistics uysing clusterprofiler
-results = enricher(deg, TERM2GENE=set2gene, minGSSize=200, maxGSSize=1700, universe=background.genes)
-kable(summary(results), caption="Significantly overlapping gene signatures")   
+results = enricher(deg, TERM2GENE=set2gene, minGSSize=200, maxGSSize=1700, universe=background.genes, pvalueCutoff = 1, qvalueCutoff = 1)
+kable(summary(results), caption="Overlapping gene signature statistics")   
 
 kable(getBM(values=results@geneInCategory$DCsig, attributes=c("mgi_symbol", "entrezgene"), filters="entrezgene", mart=mousemart), caption="Overlapping genes")
 ```
@@ -646,6 +645,41 @@ kable(results@result)
 ```  
   
 
+---
+
+# Compare to previous results
+
+```{r comparechris}
+library(readxl)
+library(janitor)
+results.chris <- read_excel("WT vs IFNgR KO Differentially Expressed Genes 1.5 and 2 fold Change P value 0.05.xlsx") %>% clean_names() %>%
+  filter(.,pvalue_wt)_vs_ifngr1_ko<0.05, fold_change_wt_vs_ifngr1_ko>1.5 )
+results.jh <- all.results[[1]]$stats.eset %>% tbl_df()
+
+
+results.merged <- dplyr::inner_join(results.chris, results.jh, by=c("column_id"="probesetid")) %>%
+  mutate(.,logfold_change_wt_vs_ifngr1_ko=log2(fold_change_wt_vs_ifngr1_ko) ) %>%
+  mutate(., fc=2^logFC)
+
+ggplot(results.merged, aes(x=logfold_change_wt_vs_ifngr1_ko, y=logFC))+geom_point()+xlab("log2 fold change - Chris")+ylab("log2 fold change - John")
+ggplot(results.merged, aes(x=fold_change_wt_vs_ifngr1_ko, y=logFC))+geom_point()+xlab("fold change - Chris")+ylab("log2 fold change - John")
+ggplot(results.merged, aes(x=fold_change_wt_vs_ifngr1_ko, y=fc))+geom_point()+xlab("fold change - Chris")+ylab("fold change - John")
+
+ggplot(results.merged, aes(x=ratio_wt_vs_ifngr1_ko, y=fc))+geom_point()+xlab("ratio - Chris")+ylab("fold change - John")
+
+ggplot(results.merged, aes(x=p_value_wt_vs_ifngr1_ko, y=adj.P.Val))+geom_point()+xlab("pvalue - Chris")+ylab("adjusted pvalue - John")
+ggplot(results.merged, aes(x=p_value_wt_vs_ifngr1_ko, y=P.Value))+geom_point()+xlab("pvalue - Chris")+ylab("pvalue - John")
+
+
+
+plot(density(table(results.merged$p_value_wt_vs_ifngr1_ko)))
+plot(density(table(results.merged$adj.P.Val)))
+plot(density(table(results.merged$P.Value)))
+```
+
+There are `r length(results.chris$gene_symbol))` probes in Chris's results, representing `r length(unique(results.chris$gene_symbol))` unique genes. My results only looked at one probeset per gene (the one with the highest average expression). Together, the two sets of results share `r nrow(results.merged)` genes/probes.
+
+---
 # R Session Info
 
 (useful if replicating these results)
