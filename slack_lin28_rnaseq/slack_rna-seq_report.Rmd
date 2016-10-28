@@ -1,0 +1,575 @@
+---    
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+        
+```{r setup0, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+                      cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+                      message=FALSE, prompt=TRUE, comment='', fig.cap='', fig.height = 9, fig.width = 12, bootstrap.show.code=FALSE)
+```
+
+```{r projsetup, echo=FALSE, warning=FALSE, message=FALSE}
+project="Slack RNA-seq - QC and Counts report"
+clientname="Giovanni Stefani"
+clientemail="giovanni.stefani-1@unitn.it"
+labPI="Frank Slack"
+analystname="Mary Piper"
+analystemail="piper@hsph.harvard.edu"
+```
+---
+        
+# Slack RNA-Seq Report
+        
+**Project description:**
+RNA-Seq report for the Slack project investigating the Lin28 gene in *C. elegans*.  
+
+**Experimental design for RNA-Seq:**
+The experimental groups are WT (RNA4), MT (RNA1, Lin28-mutant), and RS (RNA2 and RNA3, Lin28-mutant transgene rescued). Since WT and MT do not have any replicates, we cannot perform the differential expression analysis. However, we will examine the quality of the RNA-Seq data and explore fold changes in the normalized expression values between groups. 
+
+**Client:** `r clientname`, `r labPI` group.  
+
+**Analysts:** `r analystname` (`r analystemail`)
+
+The most recent update of this html document occurred: `r date()`
+
+---
+
+# Quality control metrics
+
+```{r qc-setup}
+# Libraries
+
+library(ggplot2)
+library(reshape)
+library(gplots)
+library(edgeR)
+library(CHBUtils)
+library(pheatmap)
+library(RColorBrewer)
+library(knitr)
+library(knitrBootstrap)
+library(tidyr)
+library(reshape)
+library(rmarkdown)
+library(dplyr)
+library(ggdendro)
+library(grid)
+library(reshape)
+library(gridExtra)
+library(Biobase)
+library(scales)
+library(DESeq2)
+library(gProfileR)
+library(DEGreport)
+library(vsn)
+library(ggrepel)
+library(genefilter)
+library(biomaRt)
+library(treemap)
+library(png)
+library(grid)
+
+project_summary = "/Users/marypiper/Dropbox/HBC consults/2016-05-31_slack-lin28/project-summary.csv"
+counts_file = "//Users/marypiper/Dropbox/HBC consults/2016-05-31_slack-lin28/combined.counts"
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+"#0072B2", "#D55E00", "#CC79A7")
+summarydata = data.frame(read.table(project_summary, header=TRUE, sep=","), row.names="Name", check.rows=FALSE)
+summarydata$Name = rownames(summarydata)
+summarydata = summarydata[order(summarydata$Name),]
+counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
+counts = counts[, order(colnames(counts))]
+colnames(counts) = gsub(".counts", "", colnames(counts))
+# this is a list of all non user-supplied metadata columns that could appear
+known_columns <- colnames(summarydata)
+
+# Removing metadata column from known columns
+known_columns <- known_columns[-21]
+```
+
+```{r heatmap-function}
+get_heatmap_fn = function(summarydata) {
+    # return the pheatmap function with or without metadata
+    metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+    if(ncol(metadata) == 0) {
+       return(pheatmap)
+    }
+    else {
+    # rownames(metadata) = summarydata$Name
+    heatmap_fn = function(data, ...) {
+        pheatmap(data, annotation=metadata, ...)
+    }
+    return(heatmap_fn)
+}}
+heatmap_fn = get_heatmap_fn(summarydata)
+```
+
+## Mapped reads
+The number of mapped reads is ~30-40 million per sample.
+
+```{r mapped-plot}
+ggplot(summarydata, aes(x=Name, y=Mapped/1e6, fill=condition)) +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    geom_bar(stat="identity") +
+    ylab("Mapped reads (million)") + xlab("")
+```
+
+## Genomic mapping rate
+The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts.
+
+The percent of input reads mapped is excellent (>90%) for all of the samples. 
+
+```{r mapping-rate-plot}
+ggplot(summarydata, aes(x=Name, y=Mapping.Rate, fill=condition)) +
+    geom_bar(stat="identity") +
+    ylab("mapping rate") + xlab("") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90))
+```
+
+## Number of genes detected
+The number of genes detected for each sample is good with nearly ~20,000 genes detected for all samples.
+
+```{r genes-detected-plot}
+dd = data.frame(Name=names(counts), Genes.Detected = colSums(counts > 0))
+ggplot(dd, aes(x=Name, y=Genes.Detected)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("")
+```
+
+## Gene detection saturation
+Gene detection is not completely saturated, since a greater depth of sequencing is able to detect more genes. 
+
+```{r saturation-plot}
+dd = data.frame(Mapped=summarydata$Mapped, Genes.Detected = colSums(counts > 0))
+ggplot(dd, aes(x=Mapped/1e6, y=Genes.Detected)) +
+    geom_point() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("genes detected") + xlab("reads mapped (million)")
+```
+
+## Exonic mapping rate
+The exonic mapping rates are very high, with all samples exhibiting rates ~95%.
+
+```{r exonic-mapping-plot}
+ggplot(summarydata, aes(x=Name, y=Exonic.Rate, fill=condition)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("exonic mapping rate") + xlab("")
+```
+
+## rRNA mapping rate
+The WT and a RS sample exhibited low rates of rRNA mapping, while MT and a RS sample exhibited high rates ~20%. If not removed, these contaminant rRNA genes are likely to be included with the genes with the greatest fold changes between samples.
+```{r rRNA-rate-plot}
+ggplot(summarydata, aes(x=Name, y=rRNA_rate, fill=condition)) +
+    geom_bar(stat="identity") +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) +
+    ylab("rRNA rate") + xlab("")
+```
+
+## Boxplot of log10 counts per gene
+Generally, we expect similar count spreads for all genes between samples unless the library sizes are different. These distributions appear quite similar.
+
+```{r boxplot-raw}
+melted = melt(counts)
+colnames(melted) = c("sample", "count")
+melted$sample = factor(melted$sample)
+melted = melted[order(melted$sample),]
+melted$count = log(melted$count)
+ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("")
+```
+
+## Boxplot of log10 TMM-normalized counts per gene
+Similar to the previous plot, only normalized for library size. The spread of the log10 TMM-normalized counts per gene data should be similar for every sample. The samples look good.
+Trimmed mean of M-values (TMM) normalization is described
+[here](http://genomebiology.com/2010/11/3/R25)
+
+Robinson, M. D., & Oshlack, A. (2010). A scaling normalization method for differential expression analysis of RNA-seq data. Genome Biology, 11(3). doi:10.1186/gb-2010-11-3-r25
+
+```{r boxplot-normalized}
+y = DGEList(counts=counts)
+y = calcNormFactors(y)
+normalized_counts = cpm(y, normalized.lib.sizes=TRUE)
+melted = melt(normalized_counts)
+colnames(melted) = c("gene", "sample", "count")
+melted$sample = factor(melted$sample)
+melted = melted[order(melted$sample),]
+melted$count = log(melted$count)
+ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("")
+```
+
+## Density of log10 TMM-normalized counts
+Generally, we expect similar count spreads for all genes between samples unless the library sizes are different. Below, the spreads look quite similar between samples.
+
+```{r density-normalized}
+ggplot(melted, aes(x=count, group=sample)) +
+    geom_density() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=90)) + xlab("")
+```
+
+## Exploring similarity using intercorrelation heatmaps
+An intercorrelation heatmap is a technique used to look at how well samples cluster by plotting the correlation between the expression profiles of the samples.
+
+### Correlation (Pearson) heatmap of TMM-normalized counts
+Correlation between samples of the same group is not great. The samples are likely clustering based on the rRNA genes expressed. We were expecting the WT and RS samples to cluster more together. 
+
+```{r pearson-heatmap-normalized}
+heatmap_fn(cor(normalized_counts, method="pearson"))
+```
+
+### Correlation (Spearman) heatmap of TMM-normalized counts
+The Spearman correlation heatmap is more resistant to outliers than the Pearson heatmap (above). The samples cluster better, although it is difficult to see clustering without replicates. 
+
+```{r spearman-heatmap-normalized}
+heatmap_fn(cor(normalized_counts, method="spearman"))
+```
+
+## Exploring similarity using PCA of normalized counts
+Principal components analysis is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is another way to look at how samples are clustering. 
+
+In the plot below, PC1 is likely due to the expression of the rRNA genes. It may be difficult to identify the affect of the Lin28 mutation with the large differences in rRNA expression.
+
+```{r pca-normalized}
+pca_matrix <- prcomp(t(normalized_counts))$x
+metadata <- summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
+df <- cbind(metadata, pca_matrix[, c("PC1", "PC2")])
+df$condition <- c("MT", "RS-RNA2", "RS-RNA3", "WT")
+ggplot(df, aes(PC1, PC2, color = condition)) + geom_text(aes(PC1, PC2, label = condition), 
+    size = 5, hjust = 0.1, vjust = 0.1) + scale_x_continuous(expand = c(0.3, 
+    0.3)) + ggtitle("PC1 vs PC2 :: normalized counts")
+```
+
+#Analysis without rRNA genes 
+Due to the high levels of reads aligning to rRNA for a subset of the samples, clustering analysis was performed after removal of count data for these rRNA genes. Reads aligning to the rRNA genes account for ~2 million of the reads aligning to exons in the datasets for two of the samples.
+
+```{r no rrna_marker_counts}
+ensembl <- useMart(biomart = "ENSEMBL_MART_ENSEMBL", host="www.ensembl.org")
+worm <- useDataset("celegans_gene_ensembl",mart=ensembl)
+filters <- listFilters(worm)
+attributes <- listAttributes(worm)
+conversions <- getBM(attributes=c("ensembl_gene_id", "external_gene_name", "gene_biotype", "description"), mart=worm)
+rrna_biotypes <- c("rRNA", "Mt_rRNA", "misc_RNA", "snRNA", "snoRNA",
+"tRNA", "Mt_tRNA")
+
+rrna_genes <- unique(subset(conversions, gene_biotype %in% rrna_biotypes)$ensembl_gene_id)
+
+#Protein coding genes
+protein_coding <- getBM(attributes=c("ensembl_gene_id", "external_gene_name", "gene_biotype"),filters = "biotype", values="protein_coding",mart=worm)
+pc_genes <- protein_coding[,1]
+
+counts_pc_genes <- counts[rownames(counts) %in% pc_genes,]
+sum_pc_genes <- colSums(counts_pc_genes, na.rm = FALSE, dims = 1)
+
+#Reads aligning to rRNA genes
+counts_rrna_genes <- counts[rownames(counts) %in% rrna_genes,]
+sum_rrna_genes <- colSums(counts_rrna_genes, na.rm = FALSE, dims = 1)
+percent <- sum_rrna_genes / sum_pc_genes
+```
+
+```{r no rrna_marker_heatmap}
+#Analysis without rRNA genes
+norm_counts_no_rrna <- normalized_counts[!rownames(normalized_counts) %in% rrna_genes,]
+
+## Recalculation of library sizes
+```{r Heatmap of markers}
+counts_no_rrna <- counts[!rownames(counts) %in% rrna_genes,]
+y = DGEList(counts=counts_no_rrna)
+y = calcNormFactors(y)
+norm_counts_no_rrna <- cpm(y, normalized.lib.sizes=TRUE)
+
+```
+
+## Correlation (Spearman) heatmap of TMM-normalized counts - no rRNA genes
+The plot hasn't changed to much with the removal of the rRNA genes. The WT sample still clusters a bit with a RS sample. 
+
+```{r no rrna_heatmap}
+heatmap_fn(cor(norm_counts_no_rrna, method="spearman"))
+```
+
+###PCA plot - no rRNA genes
+The groups still don't cluster very well, but one of the RS samples clusters more with WT now, similar to the heatmap.
+
+```{r no rrna_PCA}
+#mds(norm_counts_no_rrna, k=length(colnames(norm_counts_no_rrna)) - 1)
+
+pca_matrix <- prcomp(t(norm_counts_no_rrna))$x
+df <- cbind(metadata, pca_matrix[, c("PC1", "PC2")])
+df$condition <- c("MT", "RS-RNA2", "RS-RNA3", "WT")
+ggplot(df, aes(PC1, PC2, color = condition)) + geom_text(aes(PC1, PC2, label = condition), 
+                                                           size = 5, hjust = 0.1, vjust = 0.1) + scale_x_continuous(expand = c(0.3, 
+                                                                                                                               0.3)) + ggtitle("PC1 vs PC2 :: normalized counts (no rrna)")
+```
+
+# Expression differences between samples - no rRNA genes
+We compared the fold changes for WT versus MT samples, WT versus RS samples, and RS versus MT samples, and tables containing the genes ordered by the highest fold changes are given in the following sections. The tables contain the normalized counts for each gene, the log2 fold change between samples for each gene, and the gene name. The normalized counts are the counts per million (cpm) per gene adjusted for library size, with a small pseudocount (0.01) added for calculation purposes.
+
+The expression levels of Lin28 (WBGene00003014) for all samples is given below. The RS samples exhibit the highest levels of Lin28 expression, followed by the WT sample, and the MT sample has the lowest level of Lin28 expression.
+
+```{r foldchanges_all}
+foldchanges <- data.frame(norm_counts_no_rrna)
+
+# Add a pseudocount to allow division by 0
+foldchanges <- foldchanges + 0.01
+foldchanges$WTvsMT <- log2(foldchanges$RNA4/foldchanges$RNA1)
+foldchanges$WTvsRS <-  log2(foldchanges$RNA4/((foldchanges$RNA2 + foldchanges$RNA3)/2))
+#foldchanges$WTvsRSsd <-  log2(sqrt(((((foldchanges$RNA2-(foldchanges$RNA2 + foldchanges$RNA3)/2))^2) + ((((foldchanges$RNA3-(foldchanges$RNA2 + foldchanges$RNA3)/2))^2)))/2))
+foldchanges$MTvsRS <-  log2(((foldchanges$RNA2 + foldchanges$RNA3)/2)/foldchanges$RNA1)
+foldchanges$ensembl_gene_id <- row.names(foldchanges)
+lin28 <- subset(foldchanges, ensembl_gene_id == "WBGene00003014")
+lin28 <- lin28[, -8]
+names(lin28) <- c("MT" ,  "RS-RNA2"  , "RS-RNA3"  , "WT" ,  "WTvsMT" ,"WTvsRS", "RSvsMT")
+knitr::kable(lin28)
+```
+
+## Expression differences between wild type and mutant lin-28 samples
+In the table below, the fold changes are given as WT relative to MT. For example, for gene acdh-1, WT and MT samples have 5416 and 1.331 cpm, respectively, and the log2 fold change is 11.99. The fold change reflects up-regulation in the WT sample relative to the MT sample, since it is a positive fold change. Any identified genes should be verified extensively in the lab since statistical analysis could not be performed due to lack of replicates.
+
+```{r foldchanges WT vs. MT}
+
+# Extract only the wildtype versus mutant fold changes
+WTvsMT <- foldchanges[,c(4,1,5), drop=F]
+names(WTvsMT) <- c("WT", "MT", "log2FC")
+
+# Remove any rows with NaN for foldchanges
+WTvsMT <- WTvsMT[complete.cases(WTvsMT), ,drop=F]
+
+# Remove rows with rowsums less than a threshold
+WTvsMT$sum <- WTvsMT$WT + WTvsMT$MT
+WTvsMT <- subset(WTvsMT, sum >5)
+WTvsMT$absFC <- abs(WTvsMT$log2FC)
+
+# Order by largest fold changes
+WTvsMT <- WTvsMT[order(abs(WTvsMT$log2FC), decreasing = T), ,drop=F]
+WTvsMT <- WTvsMT[,c(1:3)]
+
+WTvsMT$ensembl_gene_id <- row.names(WTvsMT)
+WTvsMT <- merge(WTvsMT, conversions, by="ensembl_gene_id")
+row.names(WTvsMT) <- WTvsMT$ensembl_gene_id
+
+WTvsMT <- WTvsMT[,c(2:5)]
+WTvsMT <- WTvsMT[order(abs(WTvsMT$log2FC), decreasing = T), ,drop=F]
+
+knitr::kable(WTvsMT[1:20,])
+
+#write.csv(WTvsMT, "slack_WTvsMT_foldchanges.csv", quote=F)
+```
+[Download full list of fold changes between WT and MT genes](https://dl.dropboxusercontent.com/u/204381225/slack/slack_WTvsMt_foldchanges.csv) 
+
+## Expression differences between wild type and rescued lin-28 samples
+The fold changes below compare WT expression relative to RS.
+```{r foldchanges WT vs. RS}
+
+# Extract only the wildtype versus mutant fold changes
+WTvsRS <- foldchanges[,c(4,2,3,6), drop=F]
+names(WTvsRS) <- c("WT", "RS-RNA2", "RS-RNA3","log2FC")
+
+# Remove rows with rowsums less than a threshold
+WTvsRS$sum <- WTvsRS$WT + ((WTvsRS$`RS-RNA2` + WTvsRS$`RS-RNA3`)/2)
+WTvsRS <- subset(WTvsRS, sum >5)
+WTvsRS$absFC <- abs(WTvsRS$log2FC)
+
+# Order by largest fold changes
+WTvsRS <- WTvsRS[order(abs(WTvsRS$log2FC), decreasing = T), ,drop=F]
+WTvsRS <- WTvsRS[,c(1:4)]
+
+WTvsRS$ensembl_gene_id <- row.names(WTvsRS)
+WTvsRS <- merge(WTvsRS, conversions, by="ensembl_gene_id")
+row.names(WTvsRS) <- WTvsRS$ensembl_gene_id
+
+WTvsRS <- WTvsRS[,c(2:6)]
+WTvsRS <- WTvsRS[order(abs(WTvsRS$log2FC), decreasing = T), ,drop=F]
+
+knitr::kable(WTvsRS[1:20,])
+
+#write.csv(WTvsRS, "slack_WTvsRS_foldchanges.csv", quote=F)
+```
+[Download full list of fold changes between WT and RS genes](https://dl.dropboxusercontent.com/u/204381225/slack/slack_WTvsRS_foldchanges.csv) 
+
+## Expression differences between rescued lin-28 samples and mutant lin-28 samples
+In the table below, the fold changes are given as RS relative to MT. The genes with the greatest fold changes between RS and MT also had large fold changes between WT and MT, such as acdh-1 and vit-3. 
+```{r foldchanges RS vs. MT}
+
+# Extract only the wildtype versus mutant fold changes
+MTvsRS <- foldchanges[,c(2,3,1,7), drop=F]
+names(MTvsRS) <- c("RS-RNA2", "RS-RNA3", "MT", "log2FC")
+
+# Remove rows with rowsums less than a threshold
+MTvsRS$sum <- ((MTvsRS$`RS-RNA2` + MTvsRS$`RS-RNA3`)/2) + MTvsRS$MT
+MTvsRS <- subset(MTvsRS, sum >5)
+MTvsRS$absFC <- abs(MTvsRS$log2FC)
+
+# Order by largest fold changes
+MTvsRS <- MTvsRS[order(abs(MTvsRS$log2FC), decreasing = T), ,drop=F]
+MTvsRS <- MTvsRS[,c(1:4)]
+
+MTvsRS$ensembl_gene_id <- row.names(MTvsRS)
+MTvsRS <- merge(MTvsRS, conversions, by="ensembl_gene_id")
+row.names(MTvsRS) <- MTvsRS$ensembl_gene_id
+
+MTvsRS <- MTvsRS[,c(2:6)]
+MTvsRS <- MTvsRS[order(abs(MTvsRS$log2FC), decreasing = T), ,drop=F]
+
+knitr::kable(MTvsRS[1:20,])
+
+#write.csv(MTvsRS, "slack_MTvsRS_foldchanges.csv", quote=F)
+```
+[Download full list of fold changes between RS and MT genes](https://dl.dropboxusercontent.com/u/204381225/slack/slack_MTvsRS_foldchanges.csv) 
+
+# Exploration of gene fold changes 
+Since we expect the Lin28 mutant sample to differ in the expression of Lin28-affected genes similar when compared to WT and RS samples, we created a Venn diagram using [Venny](http://bioinfogp.cnb.csic.es/tools/venny/) to determine the genes with greater than 4-fold differences between WT versus MT **AND** between RS versus MT. There were 1187 genes that exhibited over 4-fold differences in both analyses.
+
+Oliveros, J.C. (2007-2015) Venny. An interactive tool for comparing lists with Venn's diagrams. http://bioinfogp.cnb.csic.es/tools/venny/index.html
+
+```{r venn_graphs}
+setwd("/Users/marypiper/Dropbox/hbc consults/2016-05-31_slack-lin28/R_reports/slack_lin28")
+
+threshold_fc <- 2.0
+
+top_fc_WTvsMT <- subset(WTvsMT, abs(log2FC) > threshold_fc)
+top_fc_MTvsRS <- subset(MTvsRS, abs(log2FC) > threshold_fc)
+top_fc_WTvsRS <- subset(WTvsRS, abs(log2FC) > threshold_fc)
+
+write(top_fc_WTvsMT[,4], "topWTvsMT_genes.txt", ncolumns=1)
+write(top_fc_MTvsRS[,5], "topMTvsRS_genes.txt", ncolumns=1)
+write(top_fc_WTvsRS[,5], "topWTvsRS_genes.txt", ncolumns=1)
+
+shared_WTvsMT_RSvsMT <- scan("fold_changes_WTvsMT_and_RSvsMT.txt", what=character())
+WTvsMT_RSvsMT <- WTvsMT$external_gene_name %in% shared_WTvsMT_RSvsMT
+WTvsMT_RSvsMT <- WTvsMT[WTvsMT_RSvsMT,]
+WTvsMT_RSvsMT$absFC <- abs(WTvsMT_RSvsMT$log2FC)
+WTvsMT_RSvsMT_genes <- WTvsMT_RSvsMT[,4]
+
+img_venn <- readPNG("venn_diagram.png")
+grid.raster(img_venn)
+```
+
+# Functional analysis
+The 1187 genes identified using Venny were downloaded and used as input for functional analysis.
+
+A list of statistically enriched gene ontology (GO) and human phenotype ontology (HP) terms was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/). A list including only the significant GO terms was then used as input to [REViGO](http://revigo.irb.hr/), which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories. 
+
+***NOTE:*** Since there are no replicates, and statistical analysis was not performed to identify differentially expressed genes, the differences in expression levels between conditions observed for some genes may only be a result of natural variation. This functional analysis is performed only for hypothesis generation, to help narrow down those genes that might be involved in processes that are especially relevant for Lin28.
+
+Using these tools, we found the genes with high fold changes shared between the two groups exhibited significant enrichment for processes related to mRNA-binding, germ plasm, spermatogenesis, aminoglycan metabolism, and defense response. The significant GO terms and the associated genes are output in the table below. 
+
+The list of the significant GO terms can be downloaded using the link below the table. 
+
+J. Reimand, T. Arak, P. Adler, L. Kolberg, S. Reisberg, H. Peterson, J. Vilo. g:Profiler -- a web server for functional interpretation of gene lists (2016 update). Nucleic Acids Research 2016; doi: 10.1093/nar/gkw199
+
+Supek F, Bošnjak M, Škunca N, Šmuc T. REVIGO summarizes and visualizes long lists of Gene Ontology terms. PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+```{r gprofileR}
+
+library(gProfileR)
+gprofiler_results <- gprofiler(query = WTvsMT_RSvsMT_genes, organism = "celegans", ordered_query = F, 
+                               exclude_iea = F, max_set_size = 0, correction_method = "fdr", 
+                               hier_filtering = "none", domain_size = "annotated", custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+GO.pval <- data.frame(gprofiler_results$term.id, gprofiler_results$p.value)
+GO.pval <- GO.pval[grep("GO:", GO.pval$gprofiler_results.term.id),]
+GO.pval <- GO.pval[order(GO.pval$gprofiler_results.p.value),]
+GO_genes <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "overlap.size", "intersection")]
+names(GO_genes) <- c("term.id", "term.name", "p.value", "term.size", "overlap.size", "assoc.gene.ids")
+GO_genes_ordered <- GO_genes[order(GO_genes$p.value),]
+knitr::kable(GO_genes_ordered)
+#write.csv(GO_genes_ordered, file ="slack_full_GO_results.csv", quote = FALSE, row.names=T)              
+#write.table(GO.pval, file ="slack_GO_names.txt", quote = FALSE, sep = "\t", row.names=F, col.names = F)
+
+# Input GO terms in the REViGO website, then downloaded the Rscript for the treemap, then pasted the contents below.
+
+# A treemap R script produced by the REVIGO server at http://revigo.irb.hr/
+# If you found REVIGO useful in your work, please cite the following reference:
+# Supek F et al. "REVIGO summarizes and visualizes long lists of Gene Ontology
+# terms" PLoS ONE 2011. doi:10.1371/journal.pone.0021800
+
+# author: Anton Kratz <anton.kratz@gmail.com>, RIKEN Omics Science Center, Functional Genomics Technology Team, Japan
+# created: Fri, Nov 02, 2012  7:25:52 PM
+# last change: Fri, Nov 09, 2012  3:20:01 PM
+
+# -----------------------------------------------------------------------------
+# If you don't have the treemap package installed, uncomment the following line:
+# install.packages( "treemap" );
+# library(treemap)   							# treemap package by Martijn Tennekes
+# 
+# # Set the working directory if necessary
+# # setwd("C:/Users/username/workingdir");
+# 
+# # --------------------------------------------------------------------------
+# # Here is your data from REVIGO. Scroll down for plot configuration options.
+# 
+# revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+# revigo.data <- rbind(c("GO:0001906","cell killing",0.151,1.6861,0.892,0.000,"cell killing"),
+# c("GO:0006022","aminoglycan metabolic process",1.095,1.9872,0.788,0.000,"aminoglycan metabolism"),
+# c("GO:1901071","glucosamine-containing compound metabolic process",0.131,1.9469,0.749,0.341,"aminoglycan metabolism"),
+# c("GO:0006040","amino sugar metabolic process",0.387,1.6757,0.793,0.377,"aminoglycan metabolism"),
+# c("GO:0006952","defense response",0.569,3.8097,0.563,0.000,"defense response"),
+# c("GO:0050830","defense response to Gram-positive bacterium",0.005,1.3010,0.366,0.700,"defense response"),
+# c("GO:0006955","immune response",0.380,1.4067,0.605,0.412,"defense response"),
+# c("GO:0009607","response to biotic stimulus",0.465,2.2255,0.601,0.420,"defense response"),
+# c("GO:0098542","defense response to other organism",0.402,2.2765,0.258,0.572,"defense response"),
+# c("GO:0007283","spermatogenesis",0.022,3.1720,0.469,0.000,"spermatogenesis"),
+# c("GO:0042006","masculinization of hermaphroditic germ-line",0.000,2.6055,0.780,0.550,"spermatogenesis"),
+# c("GO:0031640","killing of cells of other organism",0.089,1.6861,0.511,0.451,"spermatogenesis"));
+# 
+# stuff <- data.frame(revigo.data);
+# names(stuff) <- revigo.names;
+# 
+# stuff$abslog10pvalue <- as.numeric( as.character(stuff$abslog10pvalue) );
+# stuff$freqInDbPercent <- as.numeric( as.character(stuff$freqInDbPercent) );
+# stuff$uniqueness <- as.numeric( as.character(stuff$uniqueness) );
+# stuff$dispensability <- as.numeric( as.character(stuff$dispensability) );
+# 
+# # by default, outputs to a PDF file
+# pdf( file="revigo_treemap.pdf", width=16, height=9 ) # width and height are in inches
+# 
+# # check the tmPlot command documentation for all possible parameters - there are a lot more
+# tmPlot(
+# 	stuff,
+# 	index = c("representative","description"),
+# 	vSize = "abslog10pvalue",
+# 	type = "categorical",
+# 	vColor = "representative",
+# 	title = "REVIGO Gene Ontology treemap",
+# 	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+# 	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+# 	bg.labels = "#CCCCCCAA",     # define background color of group labels
+# 												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+# 	position.legend = "none"
+# )
+
+#dev.off()
+setwd("/Users/marypiper/Dropbox/hbc consults/2016-05-31_slack-lin28/R_reports/slack_lin28")
+img_revigo <- readPNG("revigo.png")
+grid.raster(img_revigo)
+```
+
+[Download GO results](https://dl.dropboxusercontent.com/u/204381225/slack/slack_full_GO_results.csv)
