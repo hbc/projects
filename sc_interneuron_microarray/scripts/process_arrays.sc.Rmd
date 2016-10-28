@@ -1,0 +1,751 @@
+---
+bibliography: "references.bib"
+csl: "bioinformatics.csl"
+title: "Chung - Interneuron Stage  Analysis"
+output:
+  html_document:
+    code_folding: hide
+    theme: yeti
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+library("knitcitations")
+cleanbib()
+options("citation_format" = "pandoc")
+
+clientname="Sangmi Chung"
+clientemail="sangmichung@gmail.com"
+labPI="Sangmi Chung"
+lablocation="McLean Hospital"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+library(knitr)
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+
+The purpose of this analysis is to find differentially expressed genes between:
+
+- P40 interneurons and E13 cortex
+- E13 cortex and E13 GE  
+
+Will use microarray data from two separate studies:
+
+- P40 interneurons are from  `r citep("10.1523/JNEUROSCI.0105-09.2009")` (GSE17806) 
+- E12 samples  are from `r citep("10.1002/cne.22271")`
+
+All MoGene 1.0 ST arrays (Faux et al.) were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")` and all Mouse 430A2 arrays (Okaty et al.)  with the 'affy' Bioconductor package `r citep("10.1093/bioinformatics/btg405")`. All arrays were quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")`, normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`, filtered, subset to one probe per gene and further subset to common genes between teh two datasets. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+
+# Setup
+
+### Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+# Setup Data and Results directory variables
+if(file.exists("~/Work/projects/sc_interneuron_microarray")) {
+  baseDir <- "~/Work/projects/sc_interneuron_microarray"
+} else {
+  baseDir <- "~/projects/sc_interneuron_microarray"
+}
+dataDir <- file.path(baseDir, "data")
+metaDir <- file.path(baseDir, "meta")
+resultsDir <- file.path(baseDir, "results")
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="metadata.tab" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=1
+numpcs=4
+```
+
+### Libraries
+
+Bioconductor `r citep("10.1038/nmeth.3252")` and R `r citep("http://cran.r-project.org/")` libraries used to process the data.
+
+```{r libraries, results='hide'}
+library(oligo) # array utilities
+library(affy)
+library(arrayQualityMetrics) # array quality control reports
+library(GEOquery)
+library(WGCNA)
+library(mogene10stprobeset.db) # array layout annotation
+library(mogene10sttranscriptcluster.db) # array probe to gene annotations
+library(mouse430a2.db)
+library(gProfileR)
+library(clusterProfiler)
+library(DOSE)
+
+
+library(inSilicoDb)
+library(inSilicoMerging)
+
+library(ggdendro)
+library(CHBUtils)
+library(limma)
+library(ggplot2)
+library(pheatmap) # pretty heatmaps
+
+library(readr)
+library(dplyr)
+library(tidyr)
+library(rio)
+library(DT)
+
+library(biomaRt)
+
+# use older version of biomart to allow homology changes
+mousemart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="useast.ensembl.org"))
+
+mouseattributes = listAttributes(mousemart)
+mousefilters = listFilters(mousemart)
+```
+
+### Functions
+- some custom functions
+
+```{r functions}
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+
+```
+
+---
+
+# Import Data and Metadata {.tabset}
+
+## Faux Data
+
+- load in phenotypes and array names from metadata file for Faux data [metadata file](../meta/faux/metadata.tsv)
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+- used these file names to load in the CEL files using the oligo package
+
+```{r dataload.faux, results='hide'}
+# simple tab delimited file with CEL file in first column  and sample metadata (i.e. sampleID, treatment group, batch etc.) in subsequent columns
+covars <- import(file.path(metaDir, "faux", "metadata.tsv")) %>%
+  tbl_df() %>% 
+  unite(., sampleid, age, tissue, replicate, sep="_", remove=FALSE) %>%
+  mutate(., study="faux") %>%
+  unite(., sampletype, age, tissue, remove=FALSE) %>%
+  as.data.frame()
+row.names(covars) <- covars$sampleid
+setwd(file.path(dataDir, "faux"))
+affyRaw.faux <- read.celfiles(as.character(covars$filename))
+pData(affyRaw.faux) <- covars 
+sampleNames(affyRaw.faux) <- pData(affyRaw.faux)$sampleid
+validObject(affyRaw.faux)
+rm(covars)
+setwd(baseDir)
+```
+
+### Faux sample metadata
+
+```{r covars.faux, results='asis'}
+# Sample information table
+kable(pData(affyRaw.faux), caption = "Faux dataset metadata")
+```
+
+## Okaty Data
+
+Here I pulled down the metadata and data from GEO using the GEOquery package `r citep("10.1093/bioinformatics/btm254")`. Data will be loaded in using the affy package.
+
+```{r download.okaty.CELfiles}
+getGEOSuppFiles("GSE17806", makeDirectory = FALSE, baseDir=file.path(dataDir, "okaty"))
+# decompress data
+setwd(file.path(dataDir, "okaty", "GSE17806"))
+system("tar -xvf *.tar")
+system ("gzip -d *.gz")
+```
+
+```{r dataload.okaty, results='hide'}
+gse <- getGEO("GSE17806", getGPL=FALSE)
+covars <- pData(gse[[1]]) %>%  tbl_df() %>%
+  dplyr::select(.,geo_accession, characteristics_ch1, supplementary_file) %>%
+  mutate(., filename=gsub(".*/", "", supplementary_file)) %>%
+  mutate(., filename=sub(".gz$", "", filename)) %>%
+  mutate(.,age=sub("age: ", "", characteristics_ch1)) %>% 
+  mutate(., tissue="cortex", study="okaty") %>%
+  mutate(., temp=1) %>% group_by(., age) %>% mutate(., replicate=cumsum(temp)) %>%
+  unite(., sampleid, age, tissue, replicate, sep="_", remove=FALSE) %>%
+  mutate(., study="okaty") %>%
+  dplyr::select(., filename, sampleid, age, tissue, replicate,study) %>%
+  unite(., sampletype,age, tissue, remove=FALSE) %>%
+  as.data.frame()
+row.names(covars) <- covars$sampleid
+export(covars,file = file.path(metaDir, "okaty", "metadata.tsv"))
+
+# load in cel files
+celfiles <- as.character(unlist(covars$filename))
+setwd(file.path(dataDir, "okaty", "GSE17806"))
+affyRaw.okaty <- read.affybatch(filenames=celfiles)
+pData(affyRaw.okaty) <- covars
+sampleNames(affyRaw.okaty) <- covars$sampleid
+validObject(affyRaw.okaty)
+rm(covars)
+setwd(baseDir)
+
+# only care about the P40 samples, drop everything else
+
+affyRaw.okaty <- affyRaw.okaty[,which(pData(affyRaw.okaty)$age=="P40")]
+```
+
+### Okaty sample metadata
+
+```{r covars.okaty, results='asis'}
+# Sample information table
+kable(pData(affyRaw.okaty), caption = "Okaty dataset metadata")
+```
+
+---
+
+# Raw Data Qualilty Control {.tabset}
+
+## Faux Data
+
+### Raw Data QC
+
+- using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
+
+```{r rawQC.faux}
+affyRaw.eset <- ExpressionSet(assayData=exprs(affyRaw.faux))
+pData(affyRaw.eset) <- pData(affyRaw.faux)
+data.prepped <- prepdata(affyRaw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_raw"), arrayTable = pData(affyRaw.eset), reporttitle = "Raw QC Report - Faux Data ")
+```
+
+The arrays all look good.
+
+**[Raw Data QC Report - Faux Data](../results/faux/report_raw/index.html)**
+
+## Okaty Data
+
+### Raw Data QC
+
+- using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
+
+```{r rawQC.okaty}
+affyRaw.eset <- ExpressionSet(assayData=exprs(affyRaw.okaty))
+pData(affyRaw.eset) <- pData(affyRaw.okaty)
+data.prepped <- prepdata(affyRaw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_raw"), arrayTable = pData(affyRaw.eset), reporttitle = "Raw QC Report - Okaty Data ")
+```
+
+There is some variation in intensity distributions between the samples, but nothing terribly out of normal range.
+
+**[Raw Data QC Report - Okaty Data](../results/okaty/report_raw/index.html)**
+
+---
+
+# Normalize Arrays (within dataset) {.tabset}
+
+## Faux Data
+
+### Background Correct and Normalize
+
+- using RMA `r citep("10.1093/biostatistics/4.2.249")`
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize.faux, results='hide'}
+affyNorm.core.faux <- oligo::rma(affyRaw.faux,  target="core", background=TRUE, normalize=TRUE)
+```
+
+```{r normQC.faux}
+data.prepped <- prepdata(affyNorm.core.faux, do.logtransform = FALSE, intgroup=c("tissue","age"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_rma_core"), arrayTable = pData(affyNorm.core.faux), reporttitle = "Normalized QC Report - Faux Data")
+```
+
+The data now looks really good, good separation between the cortex and GE samples.
+
+**[Normalized Data QC Report - Faux Data](../results/faux/report_rma_core/index.html)**
+
+## Okaty Data
+
+### Background Correct and Normalize
+
+- using RMA `r citep("10.1093/biostatistics/4.2.249")`
+
+```{r normalize.okaty, results='hide'}
+affyNorm.okaty <- affy::rma(affyRaw.okaty,   background=TRUE, normalize=TRUE)
+```
+
+```{r normQC.okaty}
+data.prepped <- prepdata(affyNorm.okaty, do.logtransform = FALSE, intgroup=c("tissue","age"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_rma"), arrayTable = pData(affyNorm.okaty), reporttitle = "Normalized QC Report - Okaty Data")
+```
+
+The one array is still an outlier but will leave in for now as there are so few replicates.
+
+**[Normalized Data QC Report - Okaty Data](../results/okaty/report_rma/index.html)**
+
+--- 
+
+# Combining Datasets
+
+- annotate probes with gene names, collapse to single probe/measurement per gene and combine array platforms on common genes assayed
+
+## Annotate Datasets {.tabset}
+
+So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols and Entrez Gene IDs in particular.
+
+### Faux Data
+
+```{r features_faux}
+featureData(affyNorm.core.faux) <- getNetAffx(affyNorm.core.faux, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm.core.faux)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core.faux), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm.core.faux)$entrezid <- as.character(unlist(mget(featureNames(affyNorm.core.faux), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+kable(head(fData(affyNorm.core.faux)), caption = "Subset of array annotations")
+```
+
+### Okaty Data
+
+```{r features_okaty}
+entrezids <- unlist(mget(featureNames(affyNorm.okaty), mouse430a2ENTREZID, ifnotfound=NA))
+symbols <- unlist(mget(featureNames(affyNorm.okaty), mouse430a2SYMBOL, ifnotfound=NA))
+probeids <- featureNames(affyNorm.okaty)
+annots <- do.call(cbind, list(probeids, entrezids, symbols)) %>% as.data.frame()
+names(annots) <- c("probeid", "entrezid", "symbol")
+fData(affyNorm.okaty) <- annots
+kable(head(fData(affyNorm.okaty)),caption = "Subset of array annotations")
+
+```
+
+## Pre-Filter and Summarize Data {.tabset}
+
+Dropping unwanted probes and collapsing to a single probe per gene before combining datasets.
+
+### Faux Data
+
+#### By Annotation
+- subset to "main" category probes i.e. probes that assay genes
+  - will also remove the control probes
+- remove anything that doesn't have an annotated entrezID
+
+```{r filter1_faux}
+affyNorm.core.faux <- affyNorm.core.faux[which(fData(affyNorm.core.faux)$category=="main"),]
+affyNorm.core.faux <- affyNorm.core.faux[which(!is.na(fData(affyNorm.core.faux)$entrezid)),]
+```
+
+`r nrow(affyNorm.core.faux)` probes remaining
+
+#### By Cross Hybridization
+- some probes are annotated as potentially hybridizing to multiple targets
+
+```{r filter2}
+affyNorm.core.faux <- affyNorm.core.faux[which(fData(affyNorm.core.faux)$crosshybtype=="1"),]
+```
+
+`r nrow(affyNorm.core.faux)` probes remaining
+
+#### Collapse probes
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+
+```{r WGCNA_faux, results='hide'}
+eset.core.annot <- cbind(exprs(affyNorm.core.faux), fData(affyNorm.core.faux)) %>%  tbl_df() %>% dplyr::select(., contains("E13"), entrezid, transcriptclusterid)
+eset.core <- dplyr::select(eset.core.annot, contains("E13")) %>% as.data.frame()
+row.names(eset.core) <- eset.core.annot$transcriptclusterid
+collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$transcriptclusterid, rowGroup=eset.core.annot$entrezid , method="MaxMean")
+affyNorm.core.faux <- affyNorm.core.faux[which(collapsed.data$selectedRow),]
+
+fData(affyNorm.core.faux) <- fData(affyNorm.core.faux)[,c("symbol", "entrezid")]
+row.names(fData(affyNorm.core.faux)) <- fData(affyNorm.core.faux)$entrezid
+featureNames(affyNorm.core.faux) <- fData(affyNorm.core.faux)$entrezid
+kable(head(fData(affyNorm.core.faux)),caption = "Subset of collapsed array annotations")
+```
+
+`r nrow(affyNorm.core.faux)` genes remaining
+
+### Okaty Data
+
+#### By Annotation
+- remove anything that doesn't have an annotated entrezID
+
+```{r filter1_okaty}
+affyNorm.okaty <- affyNorm.okaty[which(!is.na(fData(affyNorm.okaty)$entrezid)),]
+```
+
+`r nrow(affyNorm.okaty)` probes remaining
+
+#### Collapse probes
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+
+```{r WGCNA_okaty, results='hide'}
+eset.core.annot <- cbind(exprs(affyNorm.okaty), fData(affyNorm.okaty)) %>%  tbl_df() %>% dplyr::select(., contains("P40"), entrezid, probeid)
+eset.core <- dplyr::select(eset.core.annot, contains("P40")) %>% as.data.frame()
+row.names(eset.core) <- eset.core.annot$probeid
+collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$probeid, rowGroup=eset.core.annot$entrezid , method="MaxMean")
+affyNorm.okaty <- affyNorm.okaty[which(collapsed.data$selectedRow),]
+
+fData(affyNorm.okaty) <- fData(affyNorm.okaty)[,c("symbol", "entrezid")]
+row.names(fData(affyNorm.okaty)) <- fData(affyNorm.okaty)$entrezid
+featureNames(affyNorm.okaty) <- fData(affyNorm.okaty)$entrezid
+kable(head(fData(affyNorm.okaty)), caption = "Subset of collapsed array annotations")
+```
+
+`r nrow(affyNorm.okaty)` genes remaining
+
+## Merge Datasets
+
+Using the insilicoDB Bioconductor package `r citep("10.1186/1471-2105-13-335")`.
+
+```{r insilicomerge}
+affynorm.merged <- merge(esets=list(affyNorm.core.faux, affyNorm.okaty),method='NONE')
+kable(head(fData(affynorm.merged)), caption = "Subset of merged array annotations")
+```
+
+
+### QC measures on merged data, without re-normalization
+
+- these are the same plots as found in the QC reports on raw and normalized data above
+
+
+```{r QC.merged}
+data.prepped <- prepdata(affynorm.merged, do.logtransform = FALSE, intgroup=c("age","tissue", "study"))
+
+aqm.heatmap(data.prepped)@plot
+aqm.boxplot(data.prepped)@plot
+aqm.density(data.prepped)@plot
+aqm.maplot(data.prepped)@plot
+```
+
+## Re-normazlie merged datasets
+
+The array distributions are really different, so I normalized between the two datsets to remove those differences using cyclic loess normalizatio as proposed in `r citep("10.1093/bioinformatics/19.2.185")`. 
+
+Please note that it is well established that **attempting anything like this with confounded studies like we have here is ineffective and will lead to inaccurate results**
+
+I'm also not sure what the best method to renormalize the merged data is, as it is completely non-standard and unrecommended. So, essentially, I'm picking what I think is best, but with strong doubts that there is any good method. I used this method as it seemed to be the best compromise between allowing completely different distributions and forcing them to be identical.
+
+```{r mergenorm}
+eset <- exprs(affynorm.merged)
+
+eset.mednorm <- limma::normalizeCyclicLoess(eset)
+```
+
+### QC measures on merged data, without re-normalization
+
+```{r QCmergedcloess}
+affynorm.merged.cloess <- affynorm.merged
+exprs(affynorm.merged.cloess) <- eset.mednorm
+
+data.prepped <- prepdata(affynorm.merged.cloess, do.logtransform = FALSE, intgroup=c("age","tissue","study"))
+
+aqm.heatmap(data.prepped)@plot
+aqm.boxplot(data.prepped)@plot
+aqm.density(data.prepped)@plot
+aqm.maplot(data.prepped)@plot
+```
+
+---
+
+# Functional Annotation
+
+Used results from a curation attempt which used  Gene Ontology annotations to annotate specific DNA binding transcription factors (DbTFs) based on experimental evidence reported in literature `r citep("10.1093/database/bat062")`
+
+```{r GO_annots}
+TFannots <- import(file.path(metaDir, "TFCheckpoint_download_180515.tsv")) %>% 
+  tbl_df() %>%
+  dplyr::select(entrez_mouse, DbTF, evidence.type) %>%
+  filter(DbTF=="yes") %>%
+  mutate(entrez_mouse=as.character(entrez_mouse))
+
+annots <- fData(affynorm.merged.cloess) %>% tbl_df()
+annots <- dplyr::left_join(annots, TFannots, by=c("entrezid"="entrez_mouse"))
+
+fData(affynorm.merged.cloess) <- annots
+kable(head(fData(affynorm.merged.cloess)), caption = "Subset of merged array annotations, with TF annotations")
+```
+
+---
+
+# Unsupervised Clustering {.tabset}
+
+## Hierarchical Clustering
+The goal of these analyses are to naiively evaluate the variability within the merged data and determine whether this variability can predict the different sample groups
+
+The first method produces a dendrogram by performing  
+>  a hierarchical cluster analysis using a set of dissimilarities for the n objects being clustered
+
+Sample IDs are shown and genotypes highlighted in red, green and blue. 
+
+```{r cluster, out.width='75%'}
+plot_dendro(affynorm.merged.cloess, title="Age", labels.colname="sampleid", colors.colname="age")
+plot_dendro(affynorm.merged.cloess, title="Tissue", labels.colname="sampleid", colors.colname="tissue")
+plot_dendro(affynorm.merged.cloess, title="Study", labels.colname="sampleid", colors.colname="study")
+```
+
+There does appear to be clustering based on batch (i.e. two P40 cortex samples cluster separate from the E13 samples).
+
+## Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualisation technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. The data is typically reduced to a small number of dimensions (or components) which explain most of the sample variability. 
+
+```{r PCAsd, out.width='75%'}
+PCAplot.sd.eset(affynorm.merged.cloess, title="")
+```
+
+Here, 2 dimensions (i.e. the number of unique categories examined) explain almost >75% of the variation observed in the samples.
+
+As plots with more than 2 dimensions are difficult to visualize, we typically  split up the dimensions/components and plot them pairwise against each other; the plots here show scatterplots of the arrays along all dual combinations of the first `r numpcs` principal components. In the  plot, each genotype group is represented by a separate color. 
+
+You can use these plots to explore if the arrays cluster, find outliers, and determine whether this is according to an intended experimental factor or according to unintended causes such as batch effects. In this plot,  color is determined by genotype.
+
+```{r pca, fig.cap="Primary Component Analysis of samples - all combinations of the 4 first primary components", out.width='100%'}
+library(GGally)
+eset.core <- exprs(affynorm.merged.cloess)
+pd <- pData(affynorm.merged.cloess)
+
+myPca.core <- prcomp(t(eset.core))
+tmpPCAData.core <- as.data.frame(myPca.core$x[, 1:4])
+
+plotme <- cbind(tmpPCAData.core, pd) %>% tbl_df()
+
+ggpairs(plotme, aes(color=tissue), columns=1:4, title="Tissue")
+ggpairs(plotme, aes(color=age), columns=1:4, title="Age")
+ggpairs(plotme, aes(color=study), columns=1:4, title="Study")
+```
+
+PC1 captures the differences between the different sample class ages (and study origin). PC2 is capturing tissue origin variation.
+
+---
+
+# Pre-Filter Merged Data
+
+Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
+ 
+`r nrow(affynorm.merged.cloess)` initial genes
+
+### By Expression Level
+- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
+
+```{r expresssionfilter}
+eset.core <- exprs(affynorm.merged.cloess)
+affynorm.merged.cloess <- affynorm.merged.cloess[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affynorm.merged.cloess), 0.1)))),]
+```
+
+`r nrow(affynorm.merged.cloess)` genes remaining
+
+### By Variability
+- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
+
+```{r madfilter}
+eset.core <- exprs(affynorm.merged.cloess)
+rowmads <- apply(eset.core, 1, mad)
+mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
+affynorm.merged.cloess <- affynorm.merged.cloess[rowmads>mad.cutoff,]
+```
+
+`r nrow(affynorm.merged.cloess)` genes remaining
+
+---
+
+# Statistical Analyses
+
+A linear model for microarray data analysis Limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`  was performed on the samples to identify differentially expressed genes for all pair-wise comparisons of the sample groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+To perform limma, we construct two matrices. The design matrix provides a representation of the different sample groups which have been analysed. The contrast matrix allows the coefficients defined by the design matrix to be combined into contrasts of interest. Each contrast corresponds to a pairwise comparison between sample groups.
+
+## Design matrix 
+- make a matrix with arrays as rows, sample groups as columns
+- a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group 
+
+```{r design, results="asis"}
+design <- model.matrix(~0+sampletype,  data=pData(affynorm.merged.cloess))
+# make sure the headings match
+colnames(design) <- sub("tissue", "", colnames(design))
+colnames(design) <- sub("sampletype", "", colnames(design))
+
+kable(design,caption="Study design")
+```
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+## Contrasts/Comparisons
+- calculated statistics for 3 contrasts (i.e.comparisons)
+1) P40_cortex interneurons vs. E13_cortex interneurons
+2) E13_GE interneurons vs. E13_cortex interneurons
+
+```{r limma,warning=FALSE, message=FALSE}
+# Setup constrasts
+contrast.matrix <- makeContrasts(E13cortex_v_P40cortex=E13_cortex-P40_cortex, E13cortex_v_E13GE=E13_cortex-E13_GE,  levels=colnames(design))
+kable(contrast.matrix)
+
+# Fit model
+fit.core <- lmFit(affynorm.merged.cloess, design) 
+
+# Compute cofficients for constrasts
+fit2.core <- contrasts.fit(fit.core, contrast.matrix) 
+
+# Bayes shrinkage
+fit2.core <- eBayes(fit2.core) 
+```
+
+
+```{r allstats, results='hide'}
+all.results <- lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  stats <- topTable(fit2.core, coef=num, sort.by="B",adjust.method="BH",number=nrow(fData(affynorm.merged.cloess)), genelist=fData(affynorm.merged.cloess)[,c( "symbol", "entrezid", "DbTF")])
+  stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+  eset <- exprs(affynorm.merged.cloess)
+  eset  <-  eset[match(stats$entrezid, row.names(eset)),]
+  stats.eset <- cbind(stats, eset)
+  return(list(contrast=contrast, stats.eset=stats.eset))
+  })
+
+# output all results to files
+lapply(seq(1:length(dimnames(contrast.matrix)$Contrasts)), function(num) {
+  contrast <- dimnames(contrast.matrix)$Contrasts[num]
+  out.stats=as.data.frame(all.results[[num]]$stats.eset)
+  export(out.stats, file=file.path(resultsDir, paste("all.genes.stats.exprs", contrast, "xlsx", sep=".")))
+})
+```
+
+## Results Summary
+
+At an adjusted pvalue of less than `r pvalue.cutoff` and a log2 fold change cutoff of more than `r lfc.cutoff` we see the following number of significant genes for each comparison:
+
+`r x=1`
+### E13 cortex vs P40 cortex
+`r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+
+`r x=x+1`
+### E13 cortex vs E13 GE
+`r nrow(subset(all.results[[x]]$stats.eset, abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff))` differentially expressed genes.
+
+---
+
+----
+
+# Downloads {.tabset}
+
+Statistics and expression levels of all genes for these comparisons
+
+`r x=1`
+**[E13 cortex vs P40 cortex](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xlsx)**
+`r x=x+1`
+**[E13 cortex vs E13 GE](../results/all.genes.stats.exprs.`r all.results[[x]]$contrast`.xlsx)**
+
+**These summary tables contain the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- columns containg the log-transformed normalized expression levels for these genes in each sample
+- DbTF, whether the gene is a DNA-binding, RNApolII activating, transcription factor
+
+---
+
+
+# Over-representation analysis
+- for  differentially expressed genes  and top fold change genes
+
+## ClusterProfiler {.tabset}
+
+The **clusterProfiler** `r citep(" 10.1089/omi.2011.0118")` package was used to perform over-representation analysis on GO terms associated with the top 200 (by log odds of differential expression, B) significant differentially expressed genes (padj < 0.05, FC > 2). The table displays the list of GO terms that were significantly enriched among these significant DE genes.
+
+### E13 cortex vs P40 cortex
+
+```{r goanalysis1}
+num=1
+contrast <- dimnames(contrast.matrix)$Contrasts[num]
+top.results.df.annot <- subset(all.results[[num]]$stats.eset,adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff )
+sig_genes <- top.results.df.annot$entrezid
+all_genes <- all.results[[num]]$stats.eset$entrezid
+ego <- enrichGO(gene=sig_genes, universe=all_genes, keytype="ENTREZID", ont="BP", OrgDb=org.Mm.eg.db)
+
+GO_processes <- ego@result
+datatable(GO_processes)
+dotplot(ego)
+````
+
+### E13 cortex vs E13 GE
+
+```{r goanalysis2}
+num=2
+contrast <- dimnames(contrast.matrix)$Contrasts[num]
+top.results.df.annot <- subset(all.results[[num]]$stats.eset,adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff )
+sig_genes <- top.results.df.annot$entrezid
+all_genes <- all.results[[num]]$stats.eset$entrezid
+ego <- enrichGO(gene=sig_genes, universe=all_genes, keytype="ENTREZID", ont="BP", OrgDb=org.Mm.eg.db)
+
+GO_processes <- ego@result
+datatable(GO_processes)
+dotplot(ego)
+````
+
+
+---
+
+# References
+
+```{r writebib, results='hide', echo=FALSE, message=FALSE, cache=FALSE}
+write.bibtex(file="references.bib")
+```
