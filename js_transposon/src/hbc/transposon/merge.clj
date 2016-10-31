@@ -63,16 +63,22 @@
 
 ;; Read from custom tab-delimited input files
 
+(defn- parse-pos-line
+  "Convert line of position input into a map, handling old and new cases."
+  [parts]
+  (if (> (count parts) 3)
+    (let [[_ strand space start seq _ _ n _ _] parts]
+      {:strand strand :space space
+       :pos (if (= strand "+") (Integer/parseInt start)
+                (+ (Integer/parseInt start) (count seq)))
+       :seq seq :count (Integer/parseInt n)})
+    (let [[space pos seq] parts]
+      {:space space :pos (Integer/parseInt pos) :seq seq :count 1})))
+
 (defn read-custom-positions [file-name]
   "Read custom position file into location details on each line."
   (with-open [rdr (io/reader file-name)]
-    (doall (map
-            (fn [[_ strand space start seq _ _ n _ _]]
-              {:strand strand :space space
-               :pos (if (= strand "+") (Integer/parseInt start)
-                        (+ (Integer/parseInt start) (count seq)))
-               :seq seq :count (Integer/parseInt n)})
-            (csv/read-csv rdr :separator \tab)))))
+    (doall (map parse-pos-line (csv/read-csv rdr :separator \tab)))))
 
 ;; Read configuration details from input YAML file
 
@@ -95,7 +101,7 @@
 (defn write-merged-file
   "Output merged CSV file of counts at each position."
   [work-dir config-file excel-file]
-  (let [config (tconfig/do-load work-dir config-file excel-file) 
+  (let [config (tconfig/do-load work-dir config-file excel-file)
         exps (prepare-experiments work-dir config)
         out-dir (if (fs/absolute? (get-in config [:dir :out]))
                   (get-in config [:dir :out])

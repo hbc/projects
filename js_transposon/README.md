@@ -32,3 +32,20 @@ directly from source:
 
 [1]: https://github.com/technomancy/leiningen
 [2]: https://s3.amazonaws.com/hbc.transposon/hbc.transposon-0.0.4-standalone.jar
+
+# UMI analyses
+
+We're revisiting this project using UMI tagged transposons sequences to identify
+duplicates in the analysis. The workflow for starting from raw fastq files.
+
+- Overlap paired end reads and extract genomic sequence for the insertion site
+  and UMI barcodes, creating a fastq file for each:
+
+      python scripts/prepare_umis.py <fastq read 1> <fastq read 2>
+
+- Using genomic fastq as single end data and UMIs as barcodes (`umi_type`), run
+  an alignment with bcbio (https://github.com/chapmanb/bcbio-nextgen)
+
+- Convert UMI tagged BAMs into unique genome positions:
+
+      python scripts/bams_to_insertionsites.py <BAM file 1> <BAM file 2>

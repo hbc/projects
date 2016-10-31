@@ -39,11 +39,18 @@
          (map excel/cell-seq)
          (map process-row))))
 
+(defn- finalize-config
+  "Finalize paths in the configuration file"
+  [config base-dir]
+  (letfn [(update-file [exp]
+            (assoc exp :name (str (fs/file base-dir (get-in config [:dir :orig]) (:name exp)))))]
+    (assoc config :experiments (map update-file (:experiments config)))))
+
 (defn do-load
   "Load configuration, potentially adding experimental details from input Excel."
   [base-dir yaml-file excel-file]
   (let [config (if yaml-file
-                 (-> yaml-file slurp yaml/parse-string)
+                 (-> yaml-file slurp yaml/parse-string (finalize-config base-dir))
                  {:algorithm {:rownorm "" :distance 25}
                   :dir {:orig base-dir :out (if (.endsWith base-dir "merge")
                                               base-dir
