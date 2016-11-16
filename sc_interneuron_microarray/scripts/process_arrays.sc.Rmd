@@ -54,11 +54,16 @@ Will use microarray data from two separate studies:
 - P40 interneurons are from  `r citep("10.1523/JNEUROSCI.0105-09.2009")` (GSE17806) 
 - E12 samples  are from `r citep("10.1002/cne.22271")`
 
-All MoGene 1.0 ST arrays (Faux et al.) were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")` and all Mouse 430A2 arrays (Okaty et al.)  with the 'affy' Bioconductor package `r citep("10.1093/bioinformatics/btg405")`. 
 
-All arrays were quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")`, normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`, filtered, subset to one probe per gene and further subset to common genes between teh two datasets. 
+Two other studies will be used to filter these results, including a single cell RNAseq study of adult mouse frontal cortex interneurons [GSE74049](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=gse75049) and a finally microarray study of  human parvalbumin-immunoreactive neurons in superior temporal cortex [GSE46509](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE46509).
 
-Genes most likely to be differentially expressed were identified by custom rank based means.
+All MoGene 1.0 ST arrays (Faux et al.) were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")` and all Mouse 430A2 arrays (Okaty et al.)  with the 'affy' Bioconductor package `r citep("10.1093/bioinformatics/btg405")`.
+
+All Faux and Okaty array data was quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")`, normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`, filtered, subset to one probe per gene and further subset to common genes between the two datasets. 
+
+GSE74049 and GSE46509 data from GEO was used for the analysis without renormalization. Human gene ids were converted to mouse ids to allow direct comparisons between datasets.
+
+Genes most likely to be differentially expressed were identified by custom rank based means as described below.
 
 # Setup
 
@@ -99,8 +104,12 @@ library(WGCNA)
 library(mogene10stprobeset.db) # array layout annotation
 library(mogene10sttranscriptcluster.db) # array probe to gene annotations
 library(mouse430a2.db)
+library(u133x3p.db)
 library(clusterProfiler)
 library(DOSE)
+library(org.Mm.eg.db)
+library(org.Hs.eg.db)
+library(hom.Hs.inp.db)
 
 library(inSilicoDb)
 library(inSilicoMerging)
@@ -122,10 +131,13 @@ library(janitor)
 library(biomaRt)
 
 # use older version of biomart to allow homology changes
-mousemart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL", host="useast.ensembl.org"))
-
+mousemart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
 mouseattributes = listAttributes(mousemart)
 mousefilters = listFilters(mousemart)
+
+humanmart <- useDataset("hsapiens_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
+humanattributes = listAttributes(humanmart)
+humanfilters = listFilters(humanmart)
 ```
 
 ---
@@ -148,10 +160,10 @@ covars <- import(file.path(metaDir, "faux", "metadata.tsv")) %>%
   as.data.frame()
 row.names(covars) <- covars$sampleid
 setwd(file.path(dataDir, "faux"))
-affyRaw.faux <- read.celfiles(as.character(covars$filename))
-pData(affyRaw.faux) <- covars 
-sampleNames(affyRaw.faux) <- pData(affyRaw.faux)$sampleid
-validObject(affyRaw.faux)
+affyraw.faux <- read.celfiles(as.character(covars$filename))
+pData(affyraw.faux) <- covars 
+sampleNames(affyraw.faux) <- pData(affyraw.faux)$sampleid
+validObject(affyraw.faux)
 rm(covars)
 setwd(baseDir)
 ```
@@ -160,7 +172,7 @@ setwd(baseDir)
 
 ```{r covars.faux, results='asis'}
 # Sample information table
-kable(pData(affyRaw.faux), caption = "Faux dataset metadata", row.names=FALSE)
+kable(pData(affyraw.faux), caption = "Faux dataset metadata", row.names=FALSE)
 ```
 
 ## Okaty Data
@@ -195,23 +207,80 @@ export(covars,file = file.path(metaDir, "okaty", "metadata.tsv"))
 # load in cel files
 celfiles <- as.character(unlist(covars$filename))
 setwd(file.path(dataDir, "okaty", "GSE17806"))
-affyRaw.okaty <- read.affybatch(filenames=celfiles)
-pData(affyRaw.okaty) <- covars
-sampleNames(affyRaw.okaty) <- covars$sampleid
-validObject(affyRaw.okaty)
+affyraw.okaty <- read.affybatch(filenames=celfiles)
+pData(affyraw.okaty) <- covars
+sampleNames(affyraw.okaty) <- covars$sampleid
+validObject(affyraw.okaty)
 rm(covars)
 setwd(baseDir)
 
 # only care about the P40 samples, drop everything else
 
-affyRaw.okaty <- affyRaw.okaty[,which(pData(affyRaw.okaty)$age=="P40")]
+affyraw.okaty <- affyraw.okaty[,which(pData(affyraw.okaty)$age=="P40")]
 ```
 
 ### Okaty sample metadata
 
 ```{r covars.okaty, results='asis'}
 # Sample information table
-kable(pData(affyRaw.okaty), caption = "Okaty dataset metadata", row.names=FALSE)
+kable(pData(affyraw.okaty), caption = "Okaty dataset metadata", row.names=FALSE)
+```
+
+## GSE75049
+
+- download supplemental count data from web page before loading into R
+- subset to Pv samples
+- drop Pv-27 unamplified sample 
+
+```{r getGSE75049data}
+dat.GSE75049 <- import(file.path(dataDir, "GSE75049","GSE75049_ChC-Pv-WT-Mus.musculus.tsv" )) %>% tbl_df() %>%
+ dplyr::select(contains("gene.name"),contains("Pv"), -contains("Pv-27"))
+```
+
+## GSE46509
+
+- downloaad raw data
+- subset to control samples
+- ignore all other metadata
+
+```{r download.GSE46509.CELfiles, eval=FALSE}
+getGEOSuppFiles("GSE46509", makeDirectory = FALSE, baseDir=file.path(dataDir, "GSE46509"))
+# decompress data
+setwd(file.path(dataDir, "GSE46509"))
+system("tar -xvf *.tar")
+system ("gzip -d *.gz")
+```
+
+
+```{r download.GSE46509}
+gse <- getGEO(GEO="GSE46509", getGPL=FALSE)
+
+covars <- pData(gse[[1]]) %>% 
+  tbl_df() %>% 
+  dplyr::select(.,geo_accession, characteristics_ch1.5, supplementary_file, supplementary_file.1) %>%
+  mutate(phenotype=characteristics_ch1.5) %>%
+  mutate(., supplementary_file=gsub(".*/", "", supplementary_file), supplementary_file.1=gsub(".*/", "", supplementary_file.1)) %>%
+  mutate(., supplementary_file=sub(".gz$", "", supplementary_file), supplementary_file.1=sub(".gz$", "", supplementary_file.1)) %>%
+  mutate(phenotype=gsub("phenotype: ", "", phenotype)) %>%
+  mutate(., filename=ifelse(grepl("CEL", supplementary_file), supplementary_file, supplementary_file.1)) %>%
+  dplyr::select(geo_accession, phenotype, filename) %>% 
+  unite(., sampleid, phenotype, geo_accession, remove=FALSE) %>%
+  as.data.frame()
+row.names(covars) <- covars$sampleid
+export(covars, file=file.path(metaDir, "GSE46509", "metadata.csv"))
+
+# load in cel files
+celfiles <- as.character(unlist(covars$filename))
+setwd(file.path(dataDir, "GSE46509"))
+affyraw.GSE46509 <- read.affybatch(filenames=celfiles)
+pData(affyraw.GSE46509) <- covars
+sampleNames(affyraw.GSE46509) <- covars$sampleid
+validObject(affyraw.GSE46509)
+
+affyraw.GSE46509 <- affyraw.GSE46509[,which(pData(affyraw.GSE46509)$phenotype=="control")]
+
+rm(covars)
+setwd(baseDir)
 ```
 
 ---
@@ -225,16 +294,16 @@ kable(pData(affyRaw.okaty), caption = "Okaty dataset metadata", row.names=FALSE)
 - using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
 
 ```{r rawQC.faux}
-affyRaw.eset <- ExpressionSet(assayData=exprs(affyRaw.faux))
-pData(affyRaw.eset) <- pData(affyRaw.faux)
-data.prepped <- prepdata(affyRaw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
+affyraw.eset <- ExpressionSet(assayData=exprs(affyraw.faux))
+pData(affyraw.eset) <- pData(affyraw.faux)
+data.prepped <- prepdata(affyraw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
 
 aqmheat <- aqm.heatmap(data.prepped)
 aqmbox <- aqm.boxplot(data.prepped)
 aqmdens <- aqm.density(data.prepped)
 aqmma <- aqm.maplot(data.prepped)
 
-aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_raw"), arrayTable = pData(affyRaw.eset), reporttitle = "Raw QC Report - Faux Data ")
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_raw"), arrayTable = pData(affyraw.eset), reporttitle = "Raw QC Report - Faux Data ")
 ```
 
 The arrays all look good.
@@ -248,21 +317,48 @@ The arrays all look good.
 - using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
 
 ```{r rawQC.okaty}
-affyRaw.eset <- ExpressionSet(assayData=exprs(affyRaw.okaty))
-pData(affyRaw.eset) <- pData(affyRaw.okaty)
-data.prepped <- prepdata(affyRaw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
+affyraw.eset <- ExpressionSet(assayData=exprs(affyraw.okaty))
+pData(affyraw.eset) <- pData(affyraw.okaty)
+data.prepped <- prepdata(affyraw.eset, do.logtransform = TRUE, intgroup=c("age","tissue"))
 
 aqmheat <- aqm.heatmap(data.prepped)
 aqmbox <- aqm.boxplot(data.prepped)
 aqmdens <- aqm.density(data.prepped)
 aqmma <- aqm.maplot(data.prepped)
 
-aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_raw"), arrayTable = pData(affyRaw.eset), reporttitle = "Raw QC Report - Okaty Data ")
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_raw"), arrayTable = pData(affyraw.eset), reporttitle = "Raw QC Report - Okaty Data ")
 ```
 
 There is some variation in intensity distributions between the samples, but nothing terribly out of normal range.
 
 **[Raw Data QC Report - Okaty Data](../results/okaty/report_raw/index.html)**
+
+## GSE75049 Data
+
+Using data as is.
+
+## GSE46509 Data
+
+### Raw Data QC
+
+- using arrayQualityMetrics library `r citep("10.1093/bioinformatics/btn647")`
+
+```{r rawQC.GSE46509}
+affyraw.eset <- ExpressionSet(assayData=exprs(affyraw.GSE46509))
+pData(affyraw.eset) <- pData(affyraw.GSE46509)
+data.prepped <- prepdata(affyraw.eset, do.logtransform = TRUE, intgroup=c("phenotype"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "GSE46509", "report_raw"), arrayTable = pData(affyraw.GSE46509), reporttitle = "Raw QC Report - GSE46509 Data ")
+```
+
+The arrays all look fine
+
+**[Raw Data QC Report - Faux Data](../results/GSE46509/report_raw/index.html)**
 
 ---
 
@@ -277,18 +373,18 @@ There is some variation in intensity distributions between the samples, but noth
 - summarize probesets on the gene ('core') level
 
 ```{r normalize.faux, results='hide'}
-affyNorm.core.faux <- oligo::rma(affyRaw.faux,  target="core", background=TRUE, normalize=TRUE)
+affynorm.faux <- oligo::rma(affyraw.faux,  target="core", background=TRUE, normalize=TRUE)
 ```
 
 ```{r normQC.faux}
-data.prepped <- prepdata(affyNorm.core.faux, do.logtransform = FALSE, intgroup=c("tissue","age"))
+data.prepped <- prepdata(affynorm.faux, do.logtransform = FALSE, intgroup=c("tissue","age"))
 
 aqmheat <- aqm.heatmap(data.prepped)
 aqmbox <- aqm.boxplot(data.prepped)
 aqmdens <- aqm.density(data.prepped)
 aqmma <- aqm.maplot(data.prepped)
 
-aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_rma_core"), arrayTable = pData(affyNorm.core.faux), reporttitle = "Normalized QC Report - Faux Data")
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "faux", "report_rma_core"), arrayTable = pData(affynorm.faux), reporttitle = "Normalized QC Report - Faux Data")
 ```
 
 The data now looks really good, good separation between the cortex and GE samples.
@@ -302,23 +398,52 @@ The data now looks really good, good separation between the cortex and GE sample
 - using RMA `r citep("10.1093/biostatistics/4.2.249")`
 
 ```{r normalize.okaty, results='hide'}
-affyNorm.okaty <- affy::rma(affyRaw.okaty,   background=TRUE, normalize=TRUE)
+affynorm.okaty <- affy::rma(affyraw.okaty,   background=TRUE, normalize=TRUE)
 ```
 
 ```{r normQC.okaty}
-data.prepped <- prepdata(affyNorm.okaty, do.logtransform = FALSE, intgroup=c("tissue","age"))
+data.prepped <- prepdata(affynorm.okaty, do.logtransform = FALSE, intgroup=c("tissue","age"))
 
 aqmheat <- aqm.heatmap(data.prepped)
 aqmbox <- aqm.boxplot(data.prepped)
 aqmdens <- aqm.density(data.prepped)
 aqmma <- aqm.maplot(data.prepped)
 
-aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_rma"), arrayTable = pData(affyNorm.okaty), reporttitle = "Normalized QC Report - Okaty Data")
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "okaty", "report_rma"), arrayTable = pData(affynorm.okaty), reporttitle = "Normalized QC Report - Okaty Data")
 ```
 
 The one array is still an outlier but will leave in for now as there are so few replicates.
 
 **[Normalized Data QC Report - Okaty Data](../results/okaty/report_rma/index.html)**
+
+## GSE75049 Data
+
+Data is already normalized and using data as is.
+
+## GSE46509 Data
+
+### Background Correct and Normalize
+
+- using RMA `r citep("10.1093/biostatistics/4.2.249")`
+
+```{r normalize.GSE46509, results='hide'}
+affynorm.GSE46509 <- affy::rma(affyraw.GSE46509,   background=TRUE, normalize=TRUE)
+```
+
+```{r normQC.GSE46509}
+data.prepped <- prepdata(affynorm.GSE46509, do.logtransform = FALSE, intgroup=c("phenotype"))
+
+aqmheat <- aqm.heatmap(data.prepped)
+aqmbox <- aqm.boxplot(data.prepped)
+aqmdens <- aqm.density(data.prepped)
+aqmma <- aqm.maplot(data.prepped)
+
+aqm.writereport(list(aqmheat,  aqmbox, aqmdens, aqmma), outdir = file.path(resultsDir, "GSE46509", "report_rma"), arrayTable = pData(affynorm.GSE46509), reporttitle = "Normalized QC Report - GSE46509 Data")
+```
+
+The arrays still look good.
+
+**[Normalized Data QC Report - Okaty Data](../results/GSE46509/report_rma/index.html)**
 
 --- 
 
@@ -333,26 +458,47 @@ So far we have only been working with the probesets,without reference to the gen
 ### Faux Data
 
 ```{r features_faux}
-featureData(affyNorm.core.faux) <- getNetAffx(affyNorm.core.faux, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+featureData(affynorm.faux) <- getNetAffx(affynorm.faux, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
 # get gene symbols and entrezIDs for all probesets
-fData(affyNorm.core.faux)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core.faux), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
-fData(affyNorm.core.faux)$entrezid <- as.character(unlist(mget(featureNames(affyNorm.core.faux), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
-kable(head(fData(affyNorm.core.faux)), caption = "Subset of array annotations", row.names=FALSE)
+fData(affynorm.faux)$symbol <- as.character(unlist(mget(featureNames(affynorm.faux), mogene10sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affynorm.faux)$entrezid <- as.character(unlist(mget(featureNames(affynorm.faux), mogene10sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+kable(head(fData(affynorm.faux)), caption = "Subset of array annotations", row.names=FALSE)
 ```
 
 ### Okaty Data
 
 ```{r features_okaty}
-entrezids <- unlist(mget(featureNames(affyNorm.okaty), mouse430a2ENTREZID, ifnotfound=NA))
-symbols <- unlist(mget(featureNames(affyNorm.okaty), mouse430a2SYMBOL, ifnotfound=NA))
-probeids <- featureNames(affyNorm.okaty)
+entrezids <- unlist(mget(featureNames(affynorm.okaty), mouse430a2ENTREZID, ifnotfound=NA))
+symbols <- unlist(mget(featureNames(affynorm.okaty), mouse430a2SYMBOL, ifnotfound=NA))
+probeids <- featureNames(affynorm.okaty)
 annots <- do.call(cbind, list(probeids, entrezids, symbols)) %>% as.data.frame()
 names(annots) <- c("probeid", "entrezid", "symbol")
-fData(affyNorm.okaty) <- annots
-kable(head(fData(affyNorm.okaty)),caption = "Subset of array annotations", row.names=FALSE)
-
+fData(affynorm.okaty) <- annots
+kable(head(fData(affynorm.okaty)),caption = "Subset of array annotations", row.names=FALSE)
 ```
 
+### GSE75049 Data
+
+Data is already annotated with gene names, but we can add Entrez IDs
+
+```{r features_GSE75049}
+annots <- getBM(value=as.character(unlist(dat.GSE75049$gene.name)), filters = c("mgi_symbol"), attributes=c("mgi_symbol", "entrezgene"), mart=mousemart) %>% tbl_df()
+dat.GSE75049 <-   dplyr::left_join(dat.GSE75049, annots, by=c("gene.name"="mgi_symbol")) %>%  mutate(., entrezid=entrezgene) %>% dplyr::select(.,gene.name, entrezid, contains("Pv")) 
+```
+
+### GSE46509 Data
+- this is human data, we will need to convert it to the Entrez IDs of the mouse homologs at some point
+
+```{r features_GSE46509}
+entrezids <- unlist(mget(featureNames(affynorm.GSE46509), u133x3pENTREZID, ifnotfound=NA))
+symbols <- unlist(mget(featureNames(affynorm.GSE46509), u133x3pSYMBOL, ifnotfound=NA)) 
+probeids <- featureNames(affynorm.GSE46509)
+annots <-do.call(cbind, list(probeids, entrezids, symbols)) %>% as.data.frame()
+names(annots) <- c("probeid", "entrezid", "symbol")
+fData(affynorm.GSE46509) <- annots
+kable(head(fData(affynorm.GSE46509)),caption = "Subset of array annotations", row.names=FALSE)
+```
+ 
 ## Pre-Filter and Summarize Data {.tabset}
 
 Dropping unwanted probes and collapsing to a single probe per gene before combining datasets.
@@ -365,39 +511,39 @@ Dropping unwanted probes and collapsing to a single probe per gene before combin
 - remove anything that doesn't have an annotated entrezID
 
 ```{r filter1_faux}
-affyNorm.core.faux <- affyNorm.core.faux[which(fData(affyNorm.core.faux)$category=="main"),]
-affyNorm.core.faux <- affyNorm.core.faux[which(!is.na(fData(affyNorm.core.faux)$entrezid)),]
+affynorm.faux <- affynorm.faux[which(fData(affynorm.faux)$category=="main"),]
+affynorm.faux <- affynorm.faux[which(!is.na(fData(affynorm.faux)$entrezid)),]
 ```
-
-`r nrow(affyNorm.core.faux)` probes remaining
 
 #### By Cross Hybridization
 - some probes are annotated as potentially hybridizing to multiple targets
 
 ```{r filter2}
-affyNorm.core.faux <- affyNorm.core.faux[which(fData(affyNorm.core.faux)$crosshybtype=="1"),]
+affynorm.faux <- affynorm.faux[which(fData(affynorm.faux)$crosshybtype=="1"),]
 ```
-
-`r nrow(affyNorm.core.faux)` probes remaining
 
 #### Collapse probes
 - the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
  - here I selected the probeset for each gene with with the maximum mean value for all samples
+- also dropped the E13 GE samples
 
 ```{r WGCNA_faux, results='hide'}
-eset.core.annot <- cbind(exprs(affyNorm.core.faux), fData(affyNorm.core.faux)) %>%  tbl_df() %>% dplyr::select(., contains("E13"), entrezid, transcriptclusterid)
+eset.core.annot <- cbind(exprs(affynorm.faux), fData(affynorm.faux)) %>%  tbl_df() %>% dplyr::select(., contains("E13"), entrezid, transcriptclusterid)
 eset.core <- dplyr::select(eset.core.annot, contains("E13")) %>% as.data.frame()
 row.names(eset.core) <- eset.core.annot$transcriptclusterid
 collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$transcriptclusterid, rowGroup=eset.core.annot$entrezid , method="MaxMean")
-affyNorm.core.faux <- affyNorm.core.faux[which(collapsed.data$selectedRow),]
+affynorm.faux <- affynorm.faux[which(collapsed.data$selectedRow),]
 
-fData(affyNorm.core.faux) <- fData(affyNorm.core.faux)[,c("symbol", "entrezid")]
-row.names(fData(affyNorm.core.faux)) <- fData(affyNorm.core.faux)$entrezid
-featureNames(affyNorm.core.faux) <- fData(affyNorm.core.faux)$entrezid
-kable(head(fData(affyNorm.core.faux)),caption = "Subset of collapsed array annotations", row.names=FALSE)
+fData(affynorm.faux) <- fData(affynorm.faux)[,c("symbol", "entrezid")]
+row.names(fData(affynorm.faux)) <- fData(affynorm.faux)$entrezid
+featureNames(affynorm.faux) <- fData(affynorm.faux)$entrezid
+kable(head(fData(affynorm.faux)),caption = "Subset of collapsed array annotations", row.names=FALSE)
+
+#subset to samples of interest
+affynorm.faux <- affynorm.faux[,grep("cortex", pData(affynorm.faux)$tissue)]
 ```
 
-`r nrow(affyNorm.core.faux)` genes remaining
+`r nrow(affynorm.faux)` genes remaining
 
 ### Okaty Data
 
@@ -405,52 +551,180 @@ kable(head(fData(affyNorm.core.faux)),caption = "Subset of collapsed array annot
 - remove anything that doesn't have an annotated entrezID
 
 ```{r filter1_okaty}
-affyNorm.okaty <- affyNorm.okaty[which(!is.na(fData(affyNorm.okaty)$entrezid)),]
+affynorm.okaty <- affynorm.okaty[which(!is.na(fData(affynorm.okaty)$entrezid)),]
 ```
 
-`r nrow(affyNorm.okaty)` probes remaining
+#### Collapse probes
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+ - also annotated the samples as adult samples
+
+```{r WGCNA_okaty, results='hide'}
+eset.core.annot <- cbind(exprs(affynorm.okaty), fData(affynorm.okaty)) %>%  tbl_df() %>% dplyr::select(., contains("P40"), entrezid, probeid)
+eset.core <- dplyr::select(eset.core.annot, contains("P40")) %>% as.data.frame()
+row.names(eset.core) <- eset.core.annot$probeid
+collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$probeid, rowGroup=eset.core.annot$entrezid , method="MaxMean")
+affynorm.okaty <- affynorm.okaty[which(collapsed.data$selectedRow),]
+
+fData(affynorm.okaty) <- fData(affynorm.okaty)[,c("symbol", "entrezid")]
+row.names(fData(affynorm.okaty)) <- fData(affynorm.okaty)$entrezid
+featureNames(affynorm.okaty) <- fData(affynorm.okaty)$entrezid
+kable(head(fData(affynorm.okaty)), caption = "Subset of collapsed array annotations", row.names=FALSE)
+
+pData(affynorm.okaty)$age <- "adult"
+```
+
+`r nrow(affynorm.okaty)` genes remaining
+
+### GSE75049 Data
+
+- remove any genes without entreziids
+- remove any genes with no measurements for all samples
+- collapse to single measure per gene, this dataset has multiple measures per gene
+- I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
+  - here I selected the probeset for each gene with with the maximum mean value for all samples
+  - also annotated samples with their study and age
+
+```{r filter1GSE75049}
+dat.GSE75049 <- filter(dat.GSE75049, !is.na(entrezid)) # no entrezid
+dat.GSE75049 <- dat.GSE75049 %>% 
+  mutate(., rowsum=dplyr::select(., contains("Pv")) %>% rowSums()) %>% 
+  filter(., rowsum>0) %>% 
+  arrange(., entrezid)
+
+dat.GSE75049 <- distinct(dat.GSE75049)
+
+eset.core.annot <- dat.GSE75049 %>% as.data.frame() %>% mutate(., rownum =seq(1:nrow(.)))
+eset.core <- dplyr::select(eset.core.annot, contains("Pv")) %>% as.data.frame()
+row.names(eset.core) <- eset.core.annot$rownum
+collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$rownum, rowGroup=eset.core.annot$entrezid , method="MaxMean")
+dat.GSE75049 <- dat.GSE75049[collapsed.data$selectedRow,] 
+
+eset.GSE75049 <- as.data.frame(dat.GSE75049) %>% col2rownames(colname="entrezid", removecol = TRUE)
+eset.GSE75049$gene.name <- NULL
+eset.GSE75049$rowsum <- NULL
+expressionset.GSE75049 <-  ExpressionSet(assayData=as.matrix(eset.GSE75049))
+
+pd <- matrix(c(names(eset.GSE75049), rep("cortex", ncol(eset.GSE75049)), rep("adult", ncol(eset.GSE75049)), rep("GSE75049", ncol(eset.GSE75049))), ncol=4) %>% as.data.frame()
+names(pd) <- c("sampleid", "tissue", "age", "study")
+pData(expressionset.GSE75049) <- pd
+sampleNames(expressionset.GSE75049) <- names(eset.GSE75049)
+
+fd <- dat.GSE75049[, c("gene.name", "entrezid")] %>% as.data.frame() %>% col2rownames("entrezid", removecol = FALSE)
+fData(expressionset.GSE75049) <- fd
+```
+
+`r nrow(expressionset.GSE75049)` probes remaining
+
+### GSE46509 Data
+
+#### By Annotation
+- remove anything that doesn't have an annotated entrezID
+
+```{r filter1_GSE46509}
+affynorm.GSE46509 <- affynorm.GSE46509[which(!is.na(fData(affynorm.GSE46509)$entrezid)),]
+```
+
+`r nrow(affynorm.GSE46509)` probes remaining
 
 #### Collapse probes
 - the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function `r citep("10.1186/1471-2105-12-322")` in the WGCNA package.
  - here I selected the probeset for each gene with with the maximum mean value for all samples
 
-```{r WGCNA_okaty, results='hide'}
-eset.core.annot <- cbind(exprs(affyNorm.okaty), fData(affyNorm.okaty)) %>%  tbl_df() %>% dplyr::select(., contains("P40"), entrezid, probeid)
-eset.core <- dplyr::select(eset.core.annot, contains("P40")) %>% as.data.frame()
+```{r WGCNA_GSE46509, results='hide'}
+eset.core.annot <- cbind(exprs(affynorm.GSE46509), fData(affynorm.GSE46509)) %>%  tbl_df() %>% dplyr::select(., contains("control"), entrezid, probeid)
+eset.core <- dplyr::select(eset.core.annot, contains("control")) %>% as.data.frame()
 row.names(eset.core) <- eset.core.annot$probeid
 collapsed.data <- collapseRows(eset.core,rowID=eset.core.annot$probeid, rowGroup=eset.core.annot$entrezid , method="MaxMean")
-affyNorm.okaty <- affyNorm.okaty[which(collapsed.data$selectedRow),]
+affynorm.GSE46509 <- affynorm.GSE46509[which(collapsed.data$selectedRow),]
 
-fData(affyNorm.okaty) <- fData(affyNorm.okaty)[,c("symbol", "entrezid")]
-row.names(fData(affyNorm.okaty)) <- fData(affyNorm.okaty)$entrezid
-featureNames(affyNorm.okaty) <- fData(affyNorm.okaty)$entrezid
-kable(head(fData(affyNorm.okaty)), caption = "Subset of collapsed array annotations", row.names=FALSE)
+fData(affynorm.GSE46509) <- fData(affynorm.GSE46509)[,c("symbol", "entrezid")]
+row.names(fData(affynorm.GSE46509)) <- fData(affynorm.GSE46509)$entrezid
+featureNames(affynorm.GSE46509) <- fData(affynorm.GSE46509)$entrezid
+kable(head(fData(affynorm.GSE46509)), caption = "Subset of collapsed array annotations", row.names=FALSE)
 ```
 
-`r nrow(affyNorm.okaty)` genes remaining
+`r nrow(affynorm.GSE46509)` probes remaining
+
+#### Convert Human Entrez IDs to Mouse Homolog Entrez IDs
+
+```{r converttomouse}
+hs_annots <- fData(affynorm.GSE46509) %>% 
+  tbl_df() %>% 
+  setNames(., c("hs_symbol", "hs_entrezid")) %>% 
+  mutate(., hs_symbol=as.character(as.numeric(hs_symbol)), hs_entrezid=as.character(hs_entrezid))
+
+# use biomart to get human ensemblids for the human entrez ids
+hs_ensemblids <- getBM(mart=humanmart,values=hs_annots$hs_entrezid, filters = "entrezgene", attributes=c("entrezgene", "ensembl_gene_id")) %>% 
+  tbl_df() %>% 
+  setNames(., c("hs_entrezid", "hs_ensemblid")) %>% 
+  mutate(.,hs_entrezid=as.character(hs_entrezid)) %>% 
+  mutate(., hs_ensemblid=ifelse(hs_ensemblid=="", NA, hs_ensemblid))
+                                                                                     
+# use biomart to get mouse ensemblids for the human ensemblids
+mm_ensemblids <- getBM(values=as.character(hs_ensemblids$hs_ensemblid), filter="ensembl_gene_id",attributes=c("ensembl_gene_id", "mmusculus_homolog_ensembl_gene"), mart=humanmart) %>% 
+  tbl_df() %>% 
+  setNames(., c("hs_ensemblid", "mm_ensemblid")) %>% 
+  mutate(., mm_ensemblid=ifelse(mm_ensemblid=="", NA, mm_ensemblid))
+
+  # use the mouse ensemblids to get the moues entrezids with Biomart
+mm_entrezids <- getBM(values=as.character(mm_ensemblids$mm_ensemblid), filter="ensembl_gene_id",attributes=c("ensembl_gene_id", "entrezgene"), mart=mousemart) %>% 
+  tbl_df() %>% 
+  setNames(., c("mm_ensemblid", "mm_entrezid")) %>%  
+    mutate(.,mm_entrezid=as.character(mm_entrezid)) %>% 
+  mutate(., mm_entrezid=ifelse(mm_entrezid=="", NA, mm_entrezid))
+
+  
+annots <- inner_join(hs_annots, hs_ensemblids, by="hs_entrezid") %>% 
+  distinct() %>% 
+  inner_join(., mm_ensemblids, by="hs_ensemblid") %>% 
+  distinct() %>% 
+  inner_join(., mm_entrezids, by="mm_ensemblid")
+```
+
+#### Remove ambiguous annotations
+
+- some of the human entrez ids (`r length(which(table(annots$hs_entrezid)>1))` genes) had multiple mouse entrez ids (usually for clustered genes with lots of homologs like olfactory receptors)
+- some of the mouse entrez ids (`r length(which(table(annots$mm_entrezid)>1))` genes) had multiple human entrez ids
+  - some of these may overlap with the duplicate human ids
+- for the sake of clarity and simplicity, I simply discarded all of these genes
+- also annotated the samples with their study and age
+
+```{r removemultis}
+# remove duplicates entrezids for human and mouse
+annots <- annots[which(!(duplicated(annots$hs_entrezid) | duplicated(annots$hs_entrezid, fromLast=TRUE) | duplicated(annots$mm_entrezid) | duplicated(annots$mm_entrezid, fromLast=TRUE))),]
+
+eset.annot <- exprs(affynorm.GSE46509)
+eset.annot <- row2colnames(eset.annot, "hs_entrezid") %>%  tbl_df()
+  
+eset.annot <- inner_join(eset.annot, annots, by="hs_entrezid")
+eset <- dplyr::select(eset.annot, mm_entrezid, contains("control")) %>% as.data.frame()
+eset <- col2rownames(eset, "mm_entrezid")
+
+annots <- dplyr::select(eset.annot, -contains("control")) %>% as.data.frame()
+row.names(annots) <- annots$mm_entrezid
+
+fData(affynorm.GSE46509) <- annots
+exprs(affynorm.GSE46509) <- as.matrix(eset)
+
+kable(head(fData(affynorm.GSE46509)),caption = "Subset of array annotations", row.names=FALSE)
+
+pData(affynorm.GSE46509)$age <- "adult"
+pData(affynorm.GSE46509)$study <- "GSE46509"
+```
+
+`r nrow(affynorm.GSE46509)` genes remaining
 
 ## Merge Datasets
 
 Using the insilicoDB Bioconductor package `r citep("10.1186/1471-2105-13-335")`.
 
 ```{r insilicomerge}
-affynorm.merged <- merge(esets=list(affyNorm.core.faux, affyNorm.okaty),method='NONE')
+# eset.faux <- exprs(affynorm.faux) %>% as.data.frame() %>% row2colnames("entrezid") %>% tbl_df() %>% mutate(., entrezid=as.character(entrezid))
+# eset.okaty <- exprs(affynorm.okaty) %>% as.data.frame() %>% row2colnames("entrezid") %>% tbl_df() %>% mutate(., entrezid=as.character(entrezid))
+# eset.GSE75049 <- dat.GSE75049 %>% muta dplyr::select(., contains("entrez"), contains("Pv")) %>% mul
+affynorm.merged <- merge(esets=list(affynorm.faux, affynorm.okaty, expressionset.GSE75049, affynorm.GSE46509),method='NONE')
 kable(head(fData(affynorm.merged)), caption = "Subset of merged array annotations", row.names=FALSE)
-```
-
-
-### QC measures on merged data, without re-normalization
-
-- these are the same plots as found in the QC reports on raw and normalized data above
-
-
-```{r QC.merged}
-data.prepped <- prepdata(affynorm.merged, do.logtransform = FALSE, intgroup=c("age","tissue", "study"))
-
-aqm.heatmap(data.prepped)@plot
-aqm.boxplot(data.prepped)@plot
-aqm.density(data.prepped)@plot
-aqm.maplot(data.prepped)@plot
 ```
 
 ---
@@ -484,36 +758,43 @@ kable(output, caption = "Subset of merged array annotations, with TF annotations
 
 # Rank-based Analysis
 
-- drop the E13 GE samples
-- transform expression intensities into ranks for each sample and compare mean squared ranks for E14 and P40 samples
-
+- transform expression intensities into ranks for each sample, 
+- embryonic samples were ranked in reverse
+- squared all samples ranked and then took the mean squared rank for each study
+- to compare between studies, took the mean of each studies mean squared ranks
+- ranked these intergroup means to figure out which genes were higheset ranked overall, which are the genes with high expression in adults and low in embryonic samples
+    - this works because I reversed the ranking in the embryonic sample so a high ranked gene in those samples is actually low expressed
+  
 ```{r ranking}
-affynorm.merged <- affynorm.merged[,which(pData(affynorm.merged)$tissue=="cortex")]
-
 eset <- exprs(affynorm.merged) %>%   
   tbl_df() %>%
   mutate(., entrezid=fData(affynorm.merged)$entrezid) %>%
   mutate(., symbol=fData(affynorm.merged)$symbol) %>%
   mutate(., tf=fData(affynorm.merged)$tf) %>%
   mutate(., tf_family=fData(affynorm.merged)$tf_family) %>%
-  dplyr::select(., symbol, entrezid, tf, tf_family, contains("cortex"))
+  mutate_each(., funs(exprs=as.numeric(.)),-entrezid, -symbol, -tf, -tf_family) %>% 
+  dplyr::select(., symbol, entrezid, tf, tf_family, contains("exprs"))
 
-eset.ranked <-   mutate_each(eset, funs(ranked=min_rank), -entrezid, -symbol, -tf, -tf_family) %>%
-  mutate_each(., funs(squared = (.)^2), contains("ranked")) %>%
-  mutate(., E13_mean_squared_rank=dplyr::select(., contains("E13_cortex")) %>% 
-           dplyr::select(., ends_with("squared")) %>% 
-           rowMeans %>% 
-           sqrt(.) %>%
-           round(.,digits=0)) %>% 
-  mutate(., P40_mean_squared_rank=dplyr::select(., contains("P40_cortex")) %>% 
-           dplyr::select(., ends_with("squared")) %>% 
-           rowMeans %>% 
-           sqrt(.) %>% 
-           round(.,digits=0)) %>%
-  mutate(., rank_difference=P40_mean_squared_rank-E13_mean_squared_rank) %>%
-  mutate(., ranked_rank_difference=percent_rank(rank_difference) ) %>%
-  arrange(., desc(ranked_rank_difference, )) %>%
-  dplyr::select(-contains("ranked_squared"))
+eset.ranked <- mutate_each(eset, funs(ranked=min_rank), -entrezid, -symbol, -tf, -tf_family, -contains("E13")) %>% 
+  mutate_each(., funs(reverse_ranked=min_rank(desc(.))), -entrezid, -symbol, -tf, -tf_family, -contains("P40"), -contains("Pv"), -contains("control")) %>% 
+  mutate_each(., funs(squared = (.)^2), contains("ranked")) %>% 
+  mutate(., Faux_embryonic_reverse_mean_squared_rank=dplyr::select(., contains("E13_cortex")) %>% 
+           dplyr::select(., ends_with("ranked_squared")) %>% 
+           rowMeans) %>% 
+  mutate(., Okaty_adult_mean_squared_rank=dplyr::select(., contains("P40_cortex")) %>% 
+           dplyr::select(., ends_with("ranked_squared")) %>% 
+           rowMeans) %>% 
+  mutate(., GSE75049_adult_mean_squared_rank=dplyr::select(., contains("Pv")) %>% 
+           dplyr::select(., ends_with("ranked_squared")) %>% 
+           rowMeans) %>% 
+  mutate(., GSE46509_adult_mean_squared_rank=dplyr::select(., contains("control")) %>% 
+           dplyr::select(., ends_with("ranked_squared")) %>% 
+           rowMeans) %>% 
+  mutate(., intergroup_mean_squared_rank=dplyr::select(., ends_with("mean_squared_rank")) %>% 
+           rowMeans) %>% 
+  mutate(., ranked_intergroup_mean_squared_rank=percent_rank(intergroup_mean_squared_rank) ) %>%
+  arrange(., desc(ranked_intergroup_mean_squared_rank, )) %>% 
+  dplyr::select(.,  entrezid, symbol, tf, tf_family,contains("ranked_intergroup"),intergroup_mean_squared_rank, contains("mean_squared_rank"), ends_with("exprs"), ends_with("ranked"), ends_with("ranked_squared"))
 
 export(eset.ranked,file.path(resultsDir, "ranked.results.xlsx"))
 
@@ -524,20 +805,22 @@ kable(head(eset.ranked,n=10), caption="Subset of ranked results, sorted by rank"
 
 # Downloads
 
-[Ranks and expression levels of all genes for the comparison](../results/ranked.results.xlsx)
+[**Ranks and expression levels of all genes for the comparison**](../results/ranked.results.xlsx)
 
 **The table contains the following information:**
 
-- symbol - gene symbol
-- entrezid - Entrez Gene ID
-- _cortex - six columns of log normalized array intensities for each sample
-- _ranked - six columns of gene ranks for each sample
-    - **the higher the rank, the more the gene is expressed, so rank=1 means its the lowest expressed gene**
-- _mean_squared_rank - 2 columns of mean of the squared ranks for each sample type (E13 & P40)
-- rank_difference - the difference between the mean sequared ranks for P40 and E13, 
-    - **a large value means the gene is higher expressed in P40 than in E13**
-- ranked_rank_difference - the differences ranked for easy comparison from 0 to 1
-    - **the closer the value to 1, the gene is higher expressed in P40 than in E13**
+- symbol - mouse gene symbol
+- entrezid - mouse Entrez Gene ID
+- tf - is the gene a transcription factor
+- tf_family - which family of transcription factor the gene is
+- ranked_intergroup_mean_squared_rank - summarized ranks of genes listed from 0 to 1
+    - **the closer the value to 1, the gene is higher expressed in adult interneurons than in embryonic**
+- _mean_squared_rank - 4 columns of mean of the squared ranks for each study's samples
+- _exprs - original expression levels of samples
+- _ranked - columns of gene ranks for each sample
+    - **for the adult samples, the higher the rank, the more the gene is expressed, so rank=1 means its the lowest expressed gene**
+    - **for the embryonic samples, the reverse is true**
+- _ranked_squared - the squared values of the ranks
 
 ---
 
