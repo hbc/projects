@@ -19,10 +19,11 @@
                [(:space all)
                 (string/join ";" (:pos all))]
                (map #(get-in pos-data [% :count] 0) exps)
-               [(string/join ";" (:seq all))])))]
+               [(string/join ";" (:seq all))
+                (string/join ";" (:umi all))])))]
     (with-open [out-h (io/writer out-fname)]
       (csv/write-csv out-h (concat
-                            [(concat ["chr" "pos"] exps ["seq"])]
+                            [(concat ["chr" "pos"] exps ["seq" "umi"])]
                             (map output-a-pos combo)))
       out-h)))
 
@@ -30,10 +31,18 @@
   "Combine data locations, grouped by experiment at each insertion position"
   (letfn [(collapse-an-exp [[k v] all-info]
             [k (assoc all-info :count (apply + (map :count v)))])
+          (combine-umis [coll cur]
+            (if-let [umi (:umi cur)]
+              (assoc coll umi (conj (get coll umi #{}) (:sample cur)))
+              coll))
+          (collapse-umis [[umi samples]]
+            (when (> (count samples) 1)
+              (format "%s:%s" umi (string/join ":" samples))))
           (collapse-a-pos [pos-data]
             (let [all-info {:space (-> pos-data first :space)
-                             :pos (set (map :pos pos-data))
-                             :seq (set (map :seq pos-data))}]
+                            :pos (set (map :pos pos-data))
+                            :umi (remove nil? (map collapse-umis (reduce combine-umis {} pos-data)))
+                            :seq (set (map :seq pos-data))}]
               (apply hash-map (flatten
                                (map #(collapse-an-exp % all-info) (group-by :exp pos-data))))))]
     (map collapse-a-pos data)))
@@ -65,20 +74,22 @@
 
 (defn- parse-pos-line
   "Convert line of position input into a map, handling old and new cases."
-  [parts]
-  (if (> (count parts) 3)
+  [parts sample]
+  (if (> (count parts) 4)
     (let [[_ strand space start seq _ _ n _ _] parts]
-      {:strand strand :space space
+      {:strand strand :space space :sample sample
        :pos (if (= strand "+") (Integer/parseInt start)
                 (+ (Integer/parseInt start) (count seq)))
-       :seq seq :count (Integer/parseInt n)})
-    (let [[space pos seq] parts]
-      {:space space :pos (Integer/parseInt pos) :seq seq :count 1})))
+       :seq seq :umi nil :count (Integer/parseInt n)})
+    (let [[space pos umi seq] parts]
+      {:space space :sample sample :pos (Integer/parseInt pos)
+       :seq seq :umi umi :count 1})))
 
 (defn read-custom-positions [file-name]
   "Read custom position file into location details on each line."
   (with-open [rdr (io/reader file-name)]
-    (doall (map parse-pos-line (csv/read-csv rdr :separator \tab)))))
+    (doall (map #(parse-pos-line % (fs/base-name file-name true))
+                (csv/read-csv rdr :separator \tab)))))
 
 ;; Read configuration details from input YAML file
 
