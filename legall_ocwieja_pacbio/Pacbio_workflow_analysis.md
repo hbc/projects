@@ -383,12 +383,14 @@ blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -ti
 ## Change coordinate system by creating a LFT file
 
 ```bash
-~/tools/kentUtils/bin/liftUp -pslQ ../psl/89_to_nl.psl 89_to_nl.lft warn 89_to_nl_old.psl
+mv ../psl/89_to_nl.psl ../psl/89_to_nl_old.psl
+
+~/tools/kentUtils/bin/liftUp -pslQ ../psl/89_to_nl.psl 89_to_nl.lft warn ../psl/89_to_nl_old.psl
 ```
 ## Chain together the coordinates from the LFT file to create a CHAIN file
 
 ```bash
-~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
+~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  ../psl/89_to_nl.chain -linearGap=loose
 ```
 
 ## Make alignment nets from chains
