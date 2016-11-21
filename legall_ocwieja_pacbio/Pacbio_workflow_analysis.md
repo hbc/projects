@@ -463,7 +463,7 @@ in vim, add new line after ] ':%s/]\s/]\r/g'
 in command line, collapse duplicates
 awk '!x[$0]++' potential_orfs.fa_copy > unique_potential_orfs.fa
 
-# Remove header lines for the duplicated sequences that were already removed in text wrangler by finding and deleting
+## Remove header lines for the duplicated sequences that were already removed in text wrangler by finding and deleting
 
-# Align sequences using blat to HIV strain NL4-3 accession number AF324493.2 - did not do this
+## Align sequences using blat to HIV strain NL4-3 accession number AF324493.2 - did not do this
 blat AF324493_hiv_nl43_ref_seq.fa ../ocwieja_transcript_sequences.fa -t=dna -q=dna -out=blast aligned_transcripts_NL43.blast
