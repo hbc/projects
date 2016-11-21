@@ -407,6 +407,36 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data
  ```bash
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
+# NL4-3 proteins from Pacbio data
+
+# Extracting HIV sequences from BAM file
+
+module load seq/BEDtools/2.26.0
+
+bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/hiv_converted_to_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43.fa
+
+# Combine exons for each read
+
+## Create a list of read header names to automate merging exons together
+
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | cut -c 2- | sort -u > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt
+
+## Create a script, transcript_sequences_extraction.sh, to combine exons:
+
+# Echo name of transcript, then merge sequences of exons together
+
+for name in $(cat /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt)
+do
+echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
+grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
+done
+
+# Exons for each read are on separate lines, so need to merge the lines together for each read
+
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa
+
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 230016
+
 # Ocwieja analysis
 
 ## Extracting sequences using a GTF-like file of transcripts
