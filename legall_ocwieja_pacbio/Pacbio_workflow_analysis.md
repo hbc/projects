@@ -410,26 +410,52 @@ mv ../psl/89_to_nl.psl ../psl/89_to_nl_old.psl
  ```
 # Ocwieja analysis
 
-# Extracting sequences using a GTF-like file of transcripts
+## Extracting sequences using a GTF-like file of transcripts
 
-vim ocwieja_transcripts_bed.txt ":%s/^M/\r/g"
-remove spaces and "" 
-remove any old .fai files
+Need to remove spaces and "" from the transcripts bed file prior to extraction. Also, remove any old .fai files in the directory
 
-#Using HIV 89.6 strain - accession # U39362.2
+```
+vim ocwieja_transcripts_bed.txt 
+
+":%s/^M/\r/g"
+```
+
+Using HIV 89.6 strain - accession #U39362.2 with bedtools `getfasta` to extract sequences using the given coordinates
+
+```bash
 bedtools getfasta -fi U39362.2_hiv_sequence.fasta -bed ocwieja_transcripts_bed.txt -name -fo ocwieja_transcript_sequences.fa
+```
 
-# Merge sequences for each individual transcript
-Use transcript_sequences_extraction.sh
+## Merge sequences for each individual transcript
+
+Use transcript_sequences_extraction.sh to perform the merging of files:
+
+```bash
+# Echo name of transcript, then merge sequences of exons together
+
+for name in vif2_ vpr3_ vpr4_ tat5_ tat6_ tat7_ tat8_ env4_ env8_ env12_ env16_ env3_ env7_ env11_ env15_ env2_ env6_ env10_ env14_ env1_ env5_ env9_ env13_ vpr1_ vpr2_ tat1_ tat2_ tat3_ tat4_ rev3_ rev6_ rev9_ rev12_ rev2_ rev5_ rev8_ rev11_ rev1_ rev4_ rev7_ rev10_ nef2_ nef3_ nef4_ nef5_ nef9_ nef11_ nef1_ novel1_ novel2_ novel3_ novel4_ novel5_ novel6_ novel7_ novel8_ novel9_ d1a8a_ tat8c_ ref3_ ref6_ ref9_ ref2_ ref1_ ref4_ ref7_ novel10_ novel11_ novel12_ novel13_ novel14_ novel15_ novel16_ novel17_ novel18_ novel19_ d1a5d4a8_ d1a8_
+
+do
+
+echo ">$name" >> merged_transcript_sequences.fa
+grep -A1 $name ocwieja_transcript_sequences.fa | grep -v $name >> merged_transcript_sequences.fa
+
+done
+```
+
 Merge consequtive sequences in vim by "gJ" in command mode
 
-# Get ORFs using standard code with alternative initiation codons, min nucleotide size of 30, with ORF defined as a region that begins with a START and ends with a STOP codon, and only finding ORFs in the forward sequence (not including reverse complement - using emboss suite getorf command available on Orchestra version 6.6.0
+## Identification of ORFs and potential proteins
 
+To identify the potential open reading frames (ORFs) using the `getorf` tool from the Emboss suite of tools available on Orchestra version 6.6.0. Any ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
+
+```bash
 getorf -sequence merged_transcript_sequences.fa -outseq ./potential_orfs.fa -table 1 -find 1 -reverse No 
 
 cp potential_orfs.fa potential_orfs.fa_copy
+```
 
-# Collapse redundant protein fasta sequences using awk
+## Collapse redundant protein fasta sequences using awk
 Using the potential_orfs.fa_copy file do the following:
 in vim, remove all new lines ':% s/\n/'
 in vim, add new lines before > ':%s/>/\r>/g'
@@ -439,5 +465,5 @@ awk '!x[$0]++' potential_orfs.fa_copy > unique_potential_orfs.fa
 
 # Remove header lines for the duplicated sequences that were already removed in text wrangler by finding and deleting
 
-# Align sequences using blat to HIV strain NL4-3 accession number AF324493.2
+# Align sequences using blat to HIV strain NL4-3 accession number AF324493.2 - did not do this
 blat AF324493_hiv_nl43_ref_seq.fa ../ocwieja_transcript_sequences.fa -t=dna -q=dna -out=blast aligned_transcripts_NL43.blast
