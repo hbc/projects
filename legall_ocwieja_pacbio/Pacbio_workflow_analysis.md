@@ -407,3 +407,36 @@ blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -ti
  ```bash
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
+# Ocwieja analysis
+
+# Extracting sequences using a GTF-like file of transcripts
+
+vim ocwieja_transcripts_bed.txt ":%s/^M/\r/g"
+remove spaces and "" 
+remove any old .fai files
+
+#Using HIV 89.6 strain - accession # U39362.2
+bedtools getfasta -fi U39362.2_hiv_sequence.fasta -bed ocwieja_transcripts_bed.txt -name -fo ocwieja_transcript_sequences.fa
+
+# Merge sequences for each individual transcript
+Use transcript_sequences_extraction.sh
+Merge consequtive sequences in vim by "gJ" in command mode
+
+# Get ORFs using standard code with alternative initiation codons, min nucleotide size of 30, with ORF defined as a region that begins with a START and ends with a STOP codon, and only finding ORFs in the forward sequence (not including reverse complement - using emboss suite getorf command available on Orchestra version 6.6.0
+
+getorf -sequence merged_transcript_sequences.fa -outseq ./potential_orfs.fa -table 1 -find 1 -reverse No 
+
+cp potential_orfs.fa potential_orfs.fa_copy
+
+# Collapse redundant protein fasta sequences using awk
+Using the potential_orfs.fa_copy file do the following:
+in vim, remove all new lines ':% s/\n/'
+in vim, add new lines before > ':%s/>/\r>/g'
+in vim, add new line after ] ':%s/]\s/]\r/g'
+in command line, collapse duplicates
+awk '!x[$0]++' potential_orfs.fa_copy > unique_potential_orfs.fa
+
+# Remove header lines for the duplicated sequences that were already removed in text wrangler by finding and deleting
+
+# Align sequences using blat to HIV strain NL4-3 accession number AF324493.2
+blat AF324493_hiv_nl43_ref_seq.fa ../ocwieja_transcript_sequences.fa -t=dna -q=dna -out=blast aligned_transcripts_NL43.blast
