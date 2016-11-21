@@ -364,10 +364,10 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 ## Change FASTA files to 2bit to use kenttools
 
 ```bash
-~/tools/kentUtils/bin/faToTwoBit ../../references/hiv.U39362.fa U39362_hiv_896.2bit
-~/tools/kentUtils/bin/faToTwoBit ../../references/AF324493_hiv_nl43_ref_seq.fasta AF324493_hiv_nl43.2bit
-~/tools/kentUtils/bin/twoBitInfo U39362_hiv_896.2bit U39362_hiv_896.chromInfo
-~/tools/kentUtils/bin/twoBitInfo AF324493_hiv_nl43.2bit AF324493_hiv_nl43.chromInfo
+~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/hiv.U39362.fa /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit
+~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit
+~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.chromInfo
+~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.chromInfo
 ```
 
 ## Use BLAT to create PSL file aligning 89.6 to NL4-3
@@ -375,21 +375,19 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 ```bash
 module load seq/blat/35
 
-blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -tileSize=12 -noHead -minScore=100
-
+blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl.psl -tileSize=12 -noHead -minScore=100
 ```
 
 ## Change coordinate system by creating a LFT file
 
 ```bash
-mv ../psl/89_to_nl.psl ../psl/89_to_nl_old.psl
 
-~/tools/kentUtils/bin/liftUp -pslQ ../psl/89_to_nl.psl 89_to_nl.lft warn ../psl/89_to_nl_old.psl
+~/tools/kentUtils/bin/liftUp 89_to_nl_NEW.psl 89_to_nl.lft warn 89_to_nl.psl
 ```
 ## Chain together the coordinates from the LFT file to create a CHAIN file
 
 ```bash
-~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  ../psl/89_to_nl.chain -linearGap=loose
+~/tools/kentUtils/bin/axtChain -psl 89_to_nl_NEW.psl U39362_hiv_896.2bit AF324493_hiv_nl43.2bit 89_to_nl.chain -linearGap=loose
 ```
 
 ## Make alignment nets from chains
