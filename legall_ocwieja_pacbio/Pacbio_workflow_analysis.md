@@ -367,8 +367,6 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 ~/tools/kentUtils/bin/faToTwoBit ../../references/AF324493_hiv_nl43_ref_seq.fasta AF324493_hiv_nl43.2bit
 ~/tools/kentUtils/bin/twoBitInfo U39362_hiv_896.2bit U39362_hiv_896.chromInfo
 ~/tools/kentUtils/bin/twoBitInfo AF324493_hiv_nl43.2bit AF324493_hiv_nl43.chromInfo
-
-~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
 ```
 
 ## Use BLAT to create PSL file aligning 89.6 to NL4-3
@@ -377,6 +375,9 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 module load seq/blat/35
 
 blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -tileSize=12 -noHead -minScore=100
+
+~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
+
 ```
 
 ## Change coordinate system by creating a LFT file
