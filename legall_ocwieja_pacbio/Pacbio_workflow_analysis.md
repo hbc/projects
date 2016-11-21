@@ -435,7 +435,7 @@ done
 
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 230016
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 
 
 # Ocwieja analysis
 
