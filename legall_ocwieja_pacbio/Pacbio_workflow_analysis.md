@@ -403,7 +403,7 @@ mv ../psl/89_to_nl.psl ../psl/89_to_nl_old.psl
  ~/tools/kentUtils/bin/netChainSubset ../net/89_to_nl.net 89_to_nl.chain ../89_to_nl_chain_net.chain 
  ```
  
- ## Liftover of 89.6 coordinates to NL4-3 using net chain files
+## Liftover of 89.6 coordinates to NL4-3 using net chain files
  
  ```bash
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
