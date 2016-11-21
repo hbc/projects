@@ -1,4 +1,6 @@
-Create script to download data from SRA website. A text file is created with the FTP site for each sample as a line in the file, then a script is created to download the data for each line in the file
+# Downloading Pacbio Consensus Reads
+
+Script to download data from SRA website uses a text file with the FTP site for each sample as a line in the file. Use script to download the data for each line in the file (sample)
 
 ```bash
 while IFS='' read -r line || [[ -n "$line" ]]; do
@@ -18,6 +20,8 @@ Combine all fasta files together into a single file for alignment since we do no
 cat "names of all fasta files"
 ```
 
+# Filtering the Pacbio sequences for length and contamination with RT primer
+
 Remove sequences less than 40 nucleotides and sequences matching the RT primer similar to the Ocwieja paper (Ocwieja protocol removed sequences with subreads less than 100nt - these should have been removed prior to generation of the consensus reads, so we do not need to perform this step)
 
 ```bash
@@ -25,6 +29,8 @@ fasta_formatter -i SRR528772.fasta -w 10000 | fastx_clipper -l 40
 
 fastx_clipper -a CTCCACACTAACACTTGTCTCTCCG #RTPrime
 ```
+
+# Align Pacbio reads
 
 Align consensus reads against HIV strain 89.6 reference and human reference using STAR. STAR is the recommended aligner by PacBio as detailed [here](https://github.com/PacificBiosciences/cDNA_primer/wiki/Bioinfx-study:-Optimizing-STAR-aligner-for-Iso-Seq-data). However, GMAP is the aligner used in the Pacbio pipeline.
 
@@ -114,6 +120,8 @@ grep "U39362.2" SJ.out.tab | wc -l: 617
 
 The total number of input reads to STAR was 512,181, with an average input read length of 789. The number of reads that were uniquely mapping was 230,631 (45.03%). The number of identified splice junctions had the following breakdown: 219425 GT/AG, 6807 GC/AG, 8882 AT/AC, and 7236 non-canonical. The mismatch rate per base was 2.53%. 673 reads mapped to multiple loci (0.13%), and 842 mapped to too many loci (0.16%) and were dropped. **The main concern with the alignment is the loss of over half of the reads identified as 'too short' (53.37%). To note, the STAR default requires mapped length to be > 2/3 of the total read length.**
 
+# Remove human contamination from the Pacbio reads
+
 Currently, the aligned reads have both HIV reads and human contamination. To remove human contamination by extracting reads mapping to HIV. Reads mapping only to HIV 89.6 genome, U39362.2, were extracted.
 
 ```bash
@@ -136,7 +144,9 @@ samtools view human_hiv_aligned_sorted.bam | wc -l: 233262
 samtools view hiv_aligned.bam | wc -l: 230016
 ```
 
-After removing human contamination, 230,016 reads remained. To generate potential open reading frames for the read sequences generated from the Pacbio data, nucleotide sequences for the reads from the BAM files needed to be extracted. A BED file was required to generate the FASTA sequences, so the coordinates were first converted to BED format.
+# Nucleotide sequence extraction
+
+After removing human contamination, 230,016 reads remained. To generate potential open reading frames, the nucleotide sequences were extracted. A BED file was required to generate the FASTA sequences, so the coordinates were first converted to BED format prior to extraction.
 
 ```bash
 # Extracting HIV sequences from BAM file
@@ -172,6 +182,9 @@ fasta_formatter -i hiv_aligned_reads_merged.fa -w 0 > hiv_aligned_reads_final.fa
 grep ">" hiv_aligned_reads_final.fa | wc -l: 230016
 
 ```
+
+# Identification of ORFs and potential proteins
+
 To identify the potential open reading frames (ORFs) using the getorf tool from the Emboss suite of tools, any ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
 
 ```bash
@@ -271,7 +284,7 @@ uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matc
 full_length_uniq_matching <- fl_matching[uniq_matching, ]
 ```
 
-49,797 of the 149,239 of the Pacbio potential proteins were full-length (included Start codon) and aligned uniquely to a single Ocwieja protein
+49,797 of the 149,239 of the Pacbio potential proteins were full-length and aligned uniquely to a single Ocwieja protein
 
 ```r
 length(which(levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14))
@@ -292,7 +305,7 @@ partial_uniq_matching <- which(!(pacbio_to_ocwieja$V10 %in% pacbio_to_ocwieja$V1
 partial_length_uniq_matching <- pacbio_to_ocwieja[partial_uniq_matching, ]
 ```
 
-34,642 of the 149,239 pacbio potential proteins were partial-length (did not include the Start codon) and aligned uniquely to a single Ocwieja protein
+34,642 of the 149,239 pacbio potential proteins were partial-length and aligned uniquely to a single Ocwieja protein
 
 ```r
 length(which(levels(partial_length_uniq_matching$V14) %in% partial_length_uniq_matching$V14))
