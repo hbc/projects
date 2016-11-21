@@ -376,8 +376,6 @@ module load seq/blat/35
 
 blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -tileSize=12 -noHead -minScore=100
 
-~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
-
 ```
 
 ## Change coordinate system by creating a LFT file
