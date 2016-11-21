@@ -131,19 +131,20 @@ Currently, the aligned reads have both HIV reads and human contamination. To rem
 module load seq/samtools/1.3 
 
 ## Convert SAM with header to BAM
-samtools view -bS Aligned.out.sam > human_hiv_aligned.bam
+samtools view -bS /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/Aligned.out.sam > /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned.bam
 
 ## Sort and index bam to use ‘view’ command
-samtools sort human_hiv_aligned.bam -o human_hiv_aligned_sorted.bam
-samtools index human_hiv_aligned_sorted.bam
+samtools sort /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned.bam -o /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned_sorted.bam
+
+samtools index /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned_sorted.bam
 
 ## Extract only those reads aligning to HIV (U39362.2)
-samtools view human_hiv_aligned_sorted.bam "U39362.2" -o hiv_aligned.bam
+samtools view /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned_sorted.bam "U39362.2" -o /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/hiv_aligned.bam
 
 ## Check extraction
-samtools view human_hiv_aligned_sorted.bam | grep U39362.2 | wc -l: 230016
-samtools view human_hiv_aligned_sorted.bam | wc -l: 233262
-samtools view hiv_aligned.bam | wc -l: 230016
+samtools view /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned_sorted.bam | grep U39362.2 | wc -l: 230016
+samtools view /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/human_hiv_aligned_sorted.bam | wc -l: 233262
+samtools view /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/hiv_aligned.bam | wc -l: 230016
 ```
 
 ## Nucleotide sequence extraction
@@ -155,33 +156,33 @@ After removing human contamination, 230,016 reads remained. To generate potentia
 
 module load seq/BEDtools/2.26.0
 
-bedtools bamtobed -i ../STAR/pass2/hiv_aligned.bam -split > hiv_aligned.bed
+bedtools bamtobed -i /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/hiv_aligned.bam -split > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned.bed
 
 # The "-split" argument reports each portion of a “split” BAM (i.e., having an “N” CIGAR operation) alignment as distinct BED intervals. Therefore, the BED file does not output the intronic sequences, only the exons if the read is split.
 
-bedtools getfasta -fi ../references/hiv.U39362.fa -bed hiv_aligned.bed -name -fo hiv_aligned_reads_split.fa
+bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/hiv.U39362.fa -bed /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_split.fa
 
 # Combine exons for each read
 
 ## Create a list of read header names to automate merging exons together
 
-grep ">" hiv_aligned_reads_split.fa | cut -c 2- | sort -u > header_list
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_split.fa | cut -c 2- | sort -u > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/header_list
 
 ## Create a script, transcript_sequences_extraction.sh, to combine exons:
 
 # Echo name of transcript, then merge sequences of exons together
 
->for name in $(cat header_list.txt)
+>for name in $(cat /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/header_list.txt)
 >do
->echo ">$name" >> hiv_aligned_reads_merged.fa
->grep -A1 $name hiv_aligned_reads_split.fa | grep -v $name >> hiv_aligned_reads_merged.fa
+>echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa
+>grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa
 >done
 
 # Exons for each read are on separate lines, so need to merge the lines together for each read
 
-fasta_formatter -i hiv_aligned_reads_merged.fa -w 0 > hiv_aligned_reads_final.fa
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_final.fa
 
-grep ">" hiv_aligned_reads_final.fa | wc -l: 230016
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_final.fa | wc -l: 230016
 
 ```
 
@@ -194,13 +195,13 @@ To identify the potential open reading frames (ORFs) using the getorf tool from 
 
 module load seq/emboss/6.6.0
 
-getorf -sequence hiv_aligned_reads_merged.fa -outseq ./pacbio_potential_orfs_split.fa -table 1 -find 1 -reverse No
+getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -table 1 -find 1 -reverse No
 
 # Does not wrap lines of peptides, so need to merge the lines together for each read
 
-fasta_formatter -i pacbio_potential_orfs_split.fa -w 0 > pacbio_potential_orfs_merged.fa
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
 
-cp pacbio_potential_orfs_merged.fa pacbio_potential_orfs_merged.fa_copy
+cp /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa_copy
 ```
 
 463,629 potential proteins were identified using the getorf program. To determine whether the potential proteins from the Pacbio analysis corresponded to the potential proteins identified from the transcript coordinates given in the Ocwieja paper, the Pacbio proteins were compared to those in the paper using BLAT with a filter for minimum identity equal to 100%. 
@@ -208,7 +209,7 @@ cp pacbio_potential_orfs_merged.fa pacbio_potential_orfs_merged.fa_copy
 ```bash
 ## BLAT the sequences against the ocwieja transcripts to determine known transcripts for the pacbio data 
 
-blat ../ocwieja_analysis/unique_896_potential_proteins.fa pacbio_potential_orfs_merged.fa -prot -minIdentity=100 -out=pslx pacbio_orfs_in_ocwieja_data_100ident.pslx
+blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potential_proteins.fa /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa -prot -minIdentity=100 -out=pslx /n/data1/cores/bcbio/legall_hiv_pacbio/blat/pacbio_orfs_in_ocwieja_data_100ident.pslx
 ```
 # Statistical analysis in R
 
