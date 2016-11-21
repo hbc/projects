@@ -358,3 +358,52 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
         group_by(V14) %>%
         summarise(no_rows = length(V14))
 ```
+# Liftover from HIV strain 89.6 to NL4-3
+
+## Change FASTA files to 2bit to use kenttools
+
+```bash
+~/tools/kentUtils/bin/faToTwoBit ../../references/hiv.U39362.fa U39362_hiv_896.2bit
+~/tools/kentUtils/bin/faToTwoBit ../../references/AF324493_hiv_nl43_ref_seq.fasta AF324493_hiv_nl43.2bit
+~/tools/kentUtils/bin/twoBitInfo U39362_hiv_896.2bit U39362_hiv_896.chromInfo
+~/tools/kentUtils/bin/twoBitInfo AF324493_hiv_nl43.2bit AF324493_hiv_nl43.chromInfo
+
+~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
+```
+
+## Use BLAT to create PSL file aligning 89.6 to NL4-3
+
+```bash
+module load seq/blat/35
+
+blat chain/AF324493_hiv_nl43.2bit chain/U39362_hiv_896.2bit psl/89_to_nl.psl -tileSize=12 -noHead -minScore=100
+```
+
+## Change coordinate system by creating a LFT file
+
+```bash
+~/tools/kentUtils/bin/liftUp -pslQ ../psl/89_to_nl.psl 89_to_nl.lft warn 89_to_nl_old.psl
+```
+## Chain together the coordinates from the LFT file to create a CHAIN file
+
+```bash
+~/tools/kentUtils/bin/axtChain -psl ../psl/89_to_nl.psl AF324493_hiv_nl43.2bit U39362_hiv_896.2bit  89_to_nl.chain -linearGap=loose
+```
+
+## Make alignment nets from chains
+
+```bash
+~/tools/kentUtils/bin/chainNet 89_to_nl.chain AF324493_chrom.sizes U39362_chrom.sizes ../net/89_to_nl.net /dev/null
+```
+
+## Create liftover chain file
+
+```bash
+ ~/tools/kentUtils/bin/netChainSubset ../net/89_to_nl.net 89_to_nl.chain ../89_to_nl_chain_net.chain 
+ ```
+ 
+ ## Liftover of 89.6 coordinates to NL4-3 using net chain files
+ 
+ ```bash
+ ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
+ ```
