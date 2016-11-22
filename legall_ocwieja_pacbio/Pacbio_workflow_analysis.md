@@ -151,7 +151,7 @@ samtools view /n/data1/cores/bcbio/legall_hiv_pacbio/STAR/pass2/hiv_aligned.bam 
 
 ## Nucleotide sequence extraction
 
-After removing human contamination, 230,016 reads remained. To generate potential open reading frames, the nucleotide sequences were extracted. A BED file was required to generate the FASTA sequences, so the coordinates were first converted to BED format prior to extraction.
+After removing human contamination, 230,016 reads of the 233,262 total reads remained. To generate potential open reading frames, the nucleotide sequences were extracted. A BED file was required to generate the FASTA sequences, so the coordinates were first converted to BED format prior to extraction.
 
 ```bash
 # Extracting HIV sequences from BAM file
