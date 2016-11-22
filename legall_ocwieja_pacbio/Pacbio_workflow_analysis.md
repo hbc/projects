@@ -221,7 +221,7 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potentia
 
 Analyzing the correspondence between the proteins identified from the Pacbio analysis and the proteins identified in the Ocwieja paper. The similarity between the protein sequences was determined by using BLAT to align the Pacbio proteins to the proteins from the Ocwieja paper. A summary of the Pacbio proteins alignment to the proteins from the Ocwieja paper is displayed in the table below (the R code used to generate the table is given following the table).
 
-|               | # Reads Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
+|               | # Pacbio proteins Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
 | ----------------------------- |:------------------------------------:|:-----------------------------:|
 | Total Pacbio proteins | 149,239 / 463,629 | 94 / 108 |
 | Full length (FL) Pacbio proteins | 69,290 / 463,629 | 69 / 108 |
