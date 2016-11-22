@@ -219,7 +219,7 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potentia
 ```
 ## Statistical analysis in R
 
-Analyzing the correspondence between the Pacbio analysis proteins and the Ocwieja paper proteins by importing the output of BLAT into R.
+Analyzing the correspondence between the Pacbio analysis proteins and the Ocwieja paper proteins by importing the output of BLAT into R.ne
 
 |               | # Reads Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
 | ----------------------------- |:------------------------------------:|:-----------------------------:|
