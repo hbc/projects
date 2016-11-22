@@ -408,15 +408,16 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data
 
 ## Extracting HIV sequences from BAM file
 
+Using the coordinates lifted over from 89.6 HIV strain to NL4-3, the nucleotide sequences were extracted. 
+
 ```bash
+
 module load seq/BEDtools/2.26.0
 
 bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/hiv_converted_to_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43.fa
-```
 
 ## Combine exons for each read
 
-```bash
 ## Create a list of read header names to automate merging exons together
 
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | cut -c 2- | sort -u > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt
@@ -439,9 +440,12 @@ fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_alig
 
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
 ```
+
 ## Identification of ORFs and potential proteins
 
-To identify the potential open reading frames (ORFs) using the getorf tool from the Emboss suite of tools, any ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
+Using the extracted nucleotide sequences of the exons, potential ORFs and proteins for strain NL4-3 were determined.
+
+To identify the potential open reading frames (ORFs) using the `getorf` tool from the Emboss suite of tools, any ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
 
 ```bash
 # Get ORFs using standard code with alternative initiation codons, min nucleotide size of 30, with ORF defined as a region that begins with a START and ends with a STOP codon, and only finding ORFs in the forward sequence (not including reverse complement - using emboss suite getorf command available on Orchestra version 6.6.0
@@ -459,10 +463,9 @@ fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potenti
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa | wc -l: 490717
 
 cp /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy
-```
 
 ## Collapse redundant protein fasta sequences using awk
-```bash
+
 awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy > hiv_pacbio_nl43_unique_potential_orfs.fa
 
 # Remove headers
