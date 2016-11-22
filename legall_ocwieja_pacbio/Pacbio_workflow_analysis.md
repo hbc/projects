@@ -219,7 +219,7 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potentia
 ```
 ## Statistical analysis in R
 
-Analyzing the correspondence between the Pacbio analysis proteins and the Ocwieja paper proteins by importing the output of BLAT into R.ne
+Analyzing the correspondence between the proteins identified from the Pacbio analysis and the proteins identified in the Ocwieja paper. The similarity between the protein sequences was determined by using BLAT to align the Pacbio proteins to the proteins from the Ocwieja paper. A summary of the Pacbio proteins alignment to the proteins from the Ocwieja paper is displayed below
 
 |               | # Reads Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
 | ----------------------------- |:------------------------------------:|:-----------------------------:|
@@ -242,11 +242,9 @@ all_ocwieja_proteins <- scan("../../ocwieja_analysis/all_ocwieja_protein_names.t
 all_ocwieja_proteins <- all_ocwieja_proteins[grep(">", all_ocwieja_proteins)]
 
 all_ocwieja_proteins <- sapply(strsplit(as.character(all_ocwieja_proteins), ">"), "[", 2)
-```
 
-Exploring the output of BLAT, which aligned only those pacbio proteins with 100% minimum identity to the ocwieja paper-derived proteins.
+# Exploring the output of BLAT, which aligned only those pacbio proteins with 100% minimum identity to the ocwieja paper-derived proteins.
 
-```r
 summary_all_proteins <- summary(pacbio_to_ocwieja$V14)
 capture.output(summary_all_proteins, file = "summary_all_proteins.txt")
 levels(pacbio_to_ocwieja$V14)
