@@ -228,7 +228,7 @@ Analyzing the correspondence between the proteins identified from the Pacbio ana
 | Partial length (PL) Pacbio proteins | 111,141 / 463,629 | 86 / 108
 | Uniquely aligning FL Pacbio proteins | 49,797 / 463,629 | 51 / 108 |
 | Uniquely aligning PL Pacbio proteins | 34,642 / 463,629 | 44 / 108 |
-| Total uniquely aligning Pacbio proteins | 84,439 / 463,629 | 56 / 108 |
+| Total uniquely aligning Pacbio proteins | 54,411 / 463,629 | 56 / 108 |
 
 ```r
 library(ggplot2)
