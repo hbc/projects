@@ -404,9 +404,9 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
  
-# NL4-3 proteins from Pacbio data
+## NL4-3 proteins from Pacbio data
 
-## Extracting HIV sequences from BAM file
+### Extracting HIV sequences from BAM file
 
 Using the coordinates lifted over from 89.6 HIV strain to NL4-3, the nucleotide sequences were extracted. 
 
@@ -441,7 +441,7 @@ fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_alig
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
 ```
 
-## Identification of ORFs and potential proteins
+### Identification of ORFs and potential proteins
 
 Using the extracted nucleotide sequences of the exons, potential ORFs and proteins for strain NL4-3 were determined.
 
@@ -570,9 +570,9 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
  
-# NL4-3 proteins from Pacbio data
+## NL4-3 proteins from Pacbio data
 
-## Extracting HIV sequences from BAM file
+### Extracting HIV sequences from BAM file
 
 Using the coordinates lifted over from 89.6 HIV strain to NL4-3, the nucleotide sequences were extracted. 
 
@@ -607,7 +607,7 @@ fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_alig
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
 ```
 
-## Identification of ORFs and potential proteins
+### Identification of ORFs and potential proteins
 
 Using the extracted nucleotide sequences of the exons, potential ORFs and proteins for strain NL4-3 were determined.
 
