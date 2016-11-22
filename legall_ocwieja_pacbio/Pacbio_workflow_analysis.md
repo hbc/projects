@@ -570,7 +570,7 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
  
-## NL4-3 proteins from Pacbio data
+## NL4-3 proteins from Ocwieja data
 
 ### Extracting HIV sequences from BAM file
 
