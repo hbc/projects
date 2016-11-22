@@ -1,4 +1,4 @@
-(defproject hbc.transposon "0.0.5"
+(defproject hbc.transposon "0.0.6"
   :description "Track and analyze transposon insertion points over time."
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/data.csv "0.1.2"]
