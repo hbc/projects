@@ -577,7 +577,7 @@ grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_prot
 
 done
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_final.fa
 ```
 
 ### Identification of ORFs and potential proteins
@@ -591,24 +591,24 @@ To identify the potential open reading frames (ORFs) using the `getorf` tool fro
 
 module load seq/emboss/6.6.0
 
-getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
+getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
 
 # Does not wrap lines of peptides, so need to merge the lines together for each read
 
 module load seq/fastx/0.0.13 
 
-fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa | wc -l: 490717
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa | wc -l: 2542
 
-cp /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy
+cp /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa_copy
 
 ## Collapse redundant protein fasta sequences using awk
 
-awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy > hiv_pacbio_nl43_unique_potential_orfs.fa
+awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa_copy > hiv_ocwieja_nl43_unique_potential_orfs.fa
 
 # Remove headers
-grep -v ">" hiv_pacbio_nl43_unique_potential_orfs.fa > hiv_pacbio_nl43_unique_potential_orfs_list.fa
+grep -v ">" hiv_ocwieja_nl43_unique_potential_orfs.fa > hiv_ocwieja_nl43_unique_potential_orfs_list.fa
 
-mv hiv_pacbio_nl43_unique_potential_orfs_list.fa hiv_pacbio_nl43_unique_potential_orfs.fa
+mv hiv_ocwieja_nl43_unique_potential_orfs_list.fa hiv_ocwieja_nl43_unique_potential_orfs.fa
 ```
