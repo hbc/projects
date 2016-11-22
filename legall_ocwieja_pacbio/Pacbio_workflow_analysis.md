@@ -472,10 +472,15 @@ cp /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orf
 
 ## Collapse redundant protein fasta sequences using awk
 Using the `/n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy` file do the following:
+
 in vim, remove all new lines ':% s/\n/'
+
 in vim, add new lines before > ':%s/>/\r>/g'
+
 in vim, add new line after ] ':%s/]\s/]\r/g'
+
 in command line, collapse duplicates
+
 awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy > hiv_pacbio_nl43_unique_potential_orfs.fa
 
 # Ocwieja analysis
