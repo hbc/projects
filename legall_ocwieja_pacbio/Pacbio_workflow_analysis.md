@@ -367,52 +367,41 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 ```
 # Liftover from HIV strain 89.6 to NL4-3
 
+```bash
 ## Change FASTA files to 2bit to use kenttools
 
-```bash
 ~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/hiv.U39362.fa /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit
 ~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit
 ~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.chromInfo
 ~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.chromInfo
-```
 
 ## Use BLAT to create PSL file aligning 89.6 to NL4-3
 
-```bash
 module load seq/blat/35
 
 blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl.psl -tileSize=12 -noHead -minScore=100
-```
 
 ## Change coordinate system by creating a LFT file
 
-```bash
-
 ~/tools/kentUtils/bin/liftUp 89_to_nl_NEW.psl 89_to_nl.lft warn 89_to_nl.psl
-```
+
 ## Chain together the coordinates from the LFT file to create a CHAIN file
 
-```bash
 ~/tools/kentUtils/bin/axtChain -psl 89_to_nl_NEW.psl U39362_hiv_896.2bit AF324493_hiv_nl43.2bit 89_to_nl.chain -linearGap=loose
-```
 
 ## Make alignment nets from chains
 
-```bash
 ~/tools/kentUtils/bin/chainNet 89_to_nl.chain AF324493_chrom.sizes U39362_chrom.sizes ../net/89_to_nl.net /dev/null
-```
 
 ## Create liftover chain file
 
-```bash
  ~/tools/kentUtils/bin/netChainSubset ../net/89_to_nl.net 89_to_nl.chain ../89_to_nl_chain_net.chain 
- ```
- 
+
 ## Liftover of 89.6 coordinates to NL4-3 using net chain files
- 
- ```bash
+
  ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
  ```
+ 
 # NL4-3 proteins from Pacbio data
 
 ## Extracting HIV sequences from BAM file
