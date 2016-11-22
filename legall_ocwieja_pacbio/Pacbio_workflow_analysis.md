@@ -612,3 +612,5 @@ grep -v ">" hiv_ocwieja_nl43_unique_potential_orfs.fa > hiv_ocwieja_nl43_unique_
 
 mv hiv_ocwieja_nl43_unique_potential_orfs_list.fa hiv_ocwieja_nl43_unique_potential_orfs.fa
 ```
+
+Upon exploration of the NL4-3 HIV strain proteins, the novel proteins, Tat8c and Ref, identified in the Ocwieja paper with the corresponding protein sequences for 89.6 strain, were found within the NL4-3 strain. A protein similar to Ref with a similar length was identified with the sequence, MAGRSGDSDEELIRTVRLIKLLYQSNYTPGPGVRYPLTFGWCYKLVPVEPDKVEEANKGENTSLLHPVSLHGMDDPEREVLEWRFDSRLAFHHVARELHPEYFKNC, and a shorter protein similar to Tat8c was identified with the sequence, MEPVDPRLEPWKHPGSQPKTACTNCYCKKCCFHCQVCFMTKALGISYGRKKRRQRRRAHQNSQTHQASLSKQ (missing the last 25 amino acids).
