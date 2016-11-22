@@ -27,6 +27,8 @@ cat "names of all fasta files"
 Remove sequences less than 40 nucleotides and sequences matching the RT primer similar to the Ocwieja paper (Ocwieja protocol removed sequences with subreads less than 100nt - these should have been removed prior to generation of the consensus reads, so we do not need to perform this step)
 
 ```bash
+module load seq/fastx/0.0.13 
+
 fasta_formatter -i SRR528772.fasta -w 10000 | fastx_clipper -l 40
 
 fastx_clipper -a CTCCACACTAACACTTGTCTCTCCG #RTPrime
@@ -180,6 +182,8 @@ grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_split.
 
 # Exons for each read are on separate lines, so need to merge the lines together for each read
 
+module load seq/fastx/0.0.13 
+
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_final.fa
 
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_final.fa | wc -l: 230016
@@ -198,6 +202,8 @@ module load seq/emboss/6.6.0
 getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_aligned_reads_merged.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -table 1 -find 1 -reverse No
 
 # Does not wrap lines of peptides, so need to merge the lines together for each read
+
+module load seq/fastx/0.0.13 
 
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
 
@@ -436,6 +442,8 @@ done
 
 # Exons for each read are on separate lines, so need to merge the lines together for each read
 
+module load seq/fastx/0.0.13 
+
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa
 
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
@@ -452,6 +460,8 @@ module load seq/emboss/6.6.0
 getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
 
 # Does not wrap lines of peptides, so need to merge the lines together for each read
+
+module load seq/fastx/0.0.13 
 
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
 
