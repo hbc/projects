@@ -221,6 +221,15 @@ blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potentia
 
 Analyzing the correspondence between the Pacbio analysis proteins and the Ocwieja paper proteins by importing the output of BLAT into R.
 
+|               | # Reads Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
+| ----------------------------- |:------------------------------------:|:-----------------------------:|
+| Total Pacbio proteins | 149,239 / 463,629 | 94 / 108 |
+| Full length (FL) Pacbio proteins | 69,290 / 463,629 | 69 / 108 |
+| Partial length (PL) Pacbio proteins | 111,141 / 463,629 | 86 / 108
+| Uniquely aligning FL Pacbio proteins | 49,797 / 463,629 | 51 / 108 |
+| Uniquely aligning PL Pacbio proteins | 34,642 / 463,629 | 44 / 108 |
+| Total uniquely aligning Pacbio proteins | 84,439 / 463,629 | 56 / 108 |
+
 ```r
 library(ggplot2)
 
@@ -241,109 +250,85 @@ Exploring the output of BLAT, which aligned only those pacbio proteins with 100%
 summary_all_proteins <- summary(pacbio_to_ocwieja$V14)
 capture.output(summary_all_proteins, file = "summary_all_proteins.txt")
 levels(pacbio_to_ocwieja$V14)
-```
-108 theoretical proteins were identified by the predicting ORFs from the transcripts in the Ocwieja paper
 
-```r
+# 108 theoretical proteins were identified by the predicting ORFs from the transcripts in the Ocwieja paper
+
 length(unique(pacbio_to_ocwieja$V10))
-```
-149,239 of the 463,629 HIV Pacbio proteins were returned from the BLAT analysis as aligning to the proteins from the Ocwieja paper
 
-To determine which proteins identified by Ocwieja are or are not present in the Pacbio proteins identified by BLAT
+# 149,239 of the 463,629 HIV Pacbio proteins were returned from the BLAT analysis as aligning to the proteins from the Ocwieja paper
 
-```r
+# To determine which proteins identified by Ocwieja are or are not present in the Pacbio proteins identified by BLAT
+
 proteins_present <- all_ocwieja_proteins[which(all_ocwieja_proteins %in% levels(pacbio_to_ocwieja$V14))]
-```
-94 proteins of the 108 are present in the Pacbio output
 
-```r
+# 94 proteins of the 108 are present in the Pacbio output
+
 proteins_not_present <- all_ocwieja_proteins[which(!(all_ocwieja_proteins %in% levels(pacbio_to_ocwieja$V14)))]
-```
-14 proteins are not present in the Pacbio output
 
-```r
-## Proteins identified during the Ocwieja analysis that did not have Pacbio protein align had the following headings: 
+# 14 proteins are not present in the Pacbio output
+
+# Proteins identified during the Ocwieja analysis that did not have Pacbio protein align had the following headings: 
 
 ## [1] "vif2__5"  "vif2__9"  "vif2__10" "vif2__12" "vif2__17"
 ## [6] "vif2__27" "vif2__30" "vif2__32" "vif2__34" "vif2__35"
 ## [11] "vif2__49" "vpr3__11" "tat5__11" "env4__11"
-```
 
-Identification of which Ocwieja proteins had full pacbio potential proteins that aligned identically to them.
+#Identification of which Ocwieja proteins had full pacbio potential proteins that aligned identically to them.
 
-```r
 ## Indicating full length read by specifying the Query start = 0 (.psl is zero-based) and the Query end = the length of the Query
 
 fl_matching <- subset(pacbio_to_ocwieja, V12 == 0 & V13 == V11)
 levels(fl_matching$V14)
-```
 
-69 proteins from the Ocwieja paper had full-length Pacbio proteins that aligned to them; however, some of the full-length Pacbio proteins aligned uniquely to proteins, while other full-length reads aligned to multiple proteins
+# 69 proteins from the Ocwieja paper had full-length Pacbio proteins that aligned to them; however, some of the full-length Pacbio proteins aligned uniquely to proteins, while other full-length reads aligned to multiple proteins
 
-```r
 summary_nonunique_proteins <- summary(fl_matching$V14)
 capture.output(summary_nonunique_proteins, file = "summary_full_nonunique_proteins.txt")
-```
 
-Identification of the number of Pacbio proteins that had full-length reads aligning uniquely to proteins in the Ocwieja paper
+# Identification of the number of Pacbio proteins that had full-length reads aligning uniquely to proteins in the Ocwieja paper
 
-```r
 uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matching$V10)]))
 
 full_length_uniq_matching <- fl_matching[uniq_matching, ]
-```
 
-49,797 of the 149,239 of the Pacbio potential proteins were full-length and aligned uniquely to a single Ocwieja protein
+# 49,797 of the 149,239 of the Pacbio potential proteins were full-length and aligned uniquely to a single Ocwieja protein
 
-```r
 length(which(levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14))
-```
 
-51 proteins from the Ocwieja paper have full-length Pacbio proteins uniquely aligning to them
+# 51 proteins from the Ocwieja paper have full-length Pacbio proteins uniquely aligning to them
 
-```r
 summary_unique_proteins <- summary(full_length_uniq_matching$V14)
 capture.output(summary_unique_proteins, file = "summary_full_unique_proteins.txt")
-```
 
-Identification of the number of proteins that had partial-length reads aligning uniquely to proteins in the Ocwieja paper
+# Identification of the number of proteins that had partial-length reads aligning uniquely to proteins in the Ocwieja paper
 
-```r
 partial_uniq_matching <- which(!(pacbio_to_ocwieja$V10 %in% pacbio_to_ocwieja$V10[duplicated(pacbio_to_ocwieja$V10)]))
 
 partial_length_uniq_matching <- pacbio_to_ocwieja[partial_uniq_matching, ]
-```
 
-34,642 of the 149,239 pacbio potential proteins were partial-length and aligned uniquely to a single Ocwieja protein
+# 34,642 of the 149,239 pacbio potential proteins were partial-length and aligned uniquely to a single Ocwieja protein
 
-```r
 length(which(levels(partial_length_uniq_matching$V14) %in% partial_length_uniq_matching$V14))
-```
 
-44 proteins have partial-length pacbio reads uniquely aligning to them
+# 44 proteins have partial-length pacbio reads uniquely aligning to them
 
-```r
 summary_partial_unique_proteins <- summary(partial_length_uniq_matching$V14)
 capture.output(summary_partial_unique_proteins, file = "summary_partial_unique_proteins.txt")
-```
 
-How many of the partial-length pacbio reads align to proteins not identified with full-length uniquely aligning reads?
+# How many of the partial-length pacbio reads align to proteins not identified with full-length uniquely aligning reads?
 
-```r
 partial_uniq_proteins <- levels(partial_length_uniq_matching$V14)[levels(partial_length_uniq_matching$V14) %in% partial_length_uniq_matching$V14]
 
 full_length_uniq_proteins <- levels(full_length_uniq_matching$V14)[levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14]
 
 length(which(!(partial_uniq_proteins %in% full_length_uniq_proteins)))
-```
 
-5 proteins with partial-length pacbio reads uniquely aligning to them did not have full-length pacbio reads uniquely aligning to them. 
+# 5 proteins with partial-length pacbio reads uniquely aligning to them did not have full-length pacbio reads uniquely aligning to them. 
 
-Therefore, a total of 51 + 5 = 56 proteins of the 108 (51.9%)identified in the Ocwieja paper were supported by full-length or partial-length Pacbio potential proteins that were uniquely aligning. 
+# Therefore, a total of 51 + 5 = 56 proteins of the 108 (51.9%)identified in the Ocwieja paper were supported by full-length or partial-length Pacbio potential proteins that were uniquely aligning. 
 
-The proteins identified from the Pacbio analysis included novel proteins identified in the Ocwieja paper.
+# The proteins identified from the Pacbio analysis included novel proteins identified in the Ocwieja paper.
 
-```r
 # Plotting
 
 summary_pb_to_oc <- pacbio_to_ocwieja %>% 
@@ -365,6 +350,7 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
         group_by(V14) %>%
         summarise(no_rows = length(V14))
 ```
+
 ## Liftover from HIV strain 89.6 to NL4-3
 
 The HIV strain used to generate the Pacbio reads was 89.6, but the HIV strain used for MS analysis is NL4-3. Therefore, we need to liftover the coordinates for the exons from HIV strain 89.6 to NL4-3.
