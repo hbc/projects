@@ -367,6 +367,8 @@ summary_uniq_pl_matching <- partial_length_uniq_matching %>%
 ```
 # Liftover from HIV strain 89.6 to NL4-3
 
+The HIV strain used to generate the Pacbio reads was 89.6, but the HIV strain used for MS analysis is NL4-3. Therefore, we need to liftover the coordinates for the exons from HIV strain 89.6 to NL4-3.
+
 ```bash
 ## Change FASTA files to 2bit to use kenttools
 
