@@ -440,6 +440,23 @@ fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_alig
 
 grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
 ```
+## Identification of ORFs and potential proteins
+
+To identify the potential open reading frames (ORFs) using the getorf tool from the Emboss suite of tools, any ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
+
+```bash
+# Get ORFs using standard code with alternative initiation codons, min nucleotide size of 30, with ORF defined as a region that begins with a START and ends with a STOP codon, and only finding ORFs in the forward sequence (not including reverse complement - using emboss suite getorf command available on Orchestra version 6.6.0
+
+module load seq/emboss/6.6.0
+
+getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
+
+# Does not wrap lines of peptides, so need to merge the lines together for each read
+
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
+
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
+```
 
 # Ocwieja analysis
 
