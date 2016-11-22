@@ -483,7 +483,7 @@ Need to remove spaces and "" from the transcripts bed file prior to extraction. 
 ```
 vim ocwieja_transcripts_bed.txt 
 
-":%s/^M/\r/g"
+":%s/^M/\r/g" # Need to type :%s/<CtrlV><CtrlM>/\r/g
 ```
 
 Using HIV 89.6 strain - accession #U39362.2 with bedtools `getfasta` to extract sequences using the given coordinates
@@ -536,38 +536,15 @@ Remove header lines for the duplicated sequences that were already removed in te
 The HIV strain used to generate the Pacbio reads was 89.6, but the HIV strain used for MS analysis is NL4-3. Therefore, we need to liftover the coordinates for the exons from HIV strain 89.6 to NL4-3.
 
 ```bash
-## Change FASTA files to 2bit to use kenttools
+## Create bedfile in excel based on the GTF file, ocwieja_transcripts_bed.txt, and save as ocwieja_transcripts.bed
 
-~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/hiv.U39362.fa /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit
-~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit
-~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.chromInfo
-~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.chromInfo
+vim ocwieja_transcripts.bed
 
-## Use BLAT to create PSL file aligning 89.6 to NL4-3
+":%s/^M/\r/g" # Need to type :%s/<CtrlV><CtrlM>/\r/g
 
-module load seq/blat/35
+## Liftover of 89.6 coordinates to NL4-3 using net chain files created previously for the Pacbio liftover, 
 
-blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl.psl -tileSize=12 -noHead -minScore=100
-
-## Change coordinate system by creating a LFT file
-
-~/tools/kentUtils/bin/liftUp 89_to_nl_NEW.psl 89_to_nl.lft warn 89_to_nl.psl
-
-## Chain together the coordinates from the LFT file to create a CHAIN file
-
-~/tools/kentUtils/bin/axtChain -psl 89_to_nl_NEW.psl U39362_hiv_896.2bit AF324493_hiv_nl43.2bit 89_to_nl.chain -linearGap=loose
-
-## Make alignment nets from chains
-
-~/tools/kentUtils/bin/chainNet 89_to_nl.chain AF324493_chrom.sizes U39362_chrom.sizes ../net/89_to_nl.net /dev/null
-
-## Create liftover chain file
-
- ~/tools/kentUtils/bin/netChainSubset ../net/89_to_nl.net 89_to_nl.chain ../89_to_nl_chain_net.chain 
-
-## Liftover of 89.6 coordinates to NL4-3 using net chain files
-
- ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
+~/tools/kentUtils/bin/liftOver /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/ocwieja_transcripts.bed /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl_chain_net.chain /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_converted_nl.bed /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/unmapped_ocwieja_89_to_nl
  ```
  
 ## NL4-3 proteins from Ocwieja data
@@ -580,31 +557,27 @@ Using the coordinates lifted over from 89.6 HIV strain to NL4-3, the nucleotide 
 
 module load seq/BEDtools/2.26.0
 
-bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/hiv_converted_to_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43.fa
+bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_converted_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_split.fa
 
 ## Combine exons for each read
 
-## Create a list of read header names to automate merging exons together
+## Copy over script used previously to merge exons for Ocwieja data
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | cut -c 2- | sort -u > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt
 
-## Create a script, transcript_sequences_extraction.sh, to combine exons:
+## Edit the copied transcript_sequences_extraction.sh, to combine exons:
 
 # Echo name of transcript, then merge sequences of exons together
 
-for name in $(cat /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt)
+for name in vif2_ vpr3_ vpr4_ tat5_ tat6_ tat7_ tat8_ env4_ env8_ env12_ env16_ env3_ env7_ env11_ env15_ env2_ env6_ env10_ env14_ env1_ env5_ env9_ env13_ vpr1_ vpr2_ tat1_ tat2_ tat3_ tat4_ rev3_ rev6_ rev9_ rev12_ rev2_ rev5_ rev8_ rev11_ rev1_ rev4_ rev7_ rev10_ nef2_ nef3_ nef4_ nef5_ nef9_ nef11_ nef1_ novel1_ novel2_ novel3_ novel4_ novel5_ novel6_ novel7_ novel8_ novel9_ d1a8a_ tat8c_ ref3_ ref6_ ref9_ ref2_ ref1_ ref4_ ref7_ novel10_ novel11_ novel12_ novel13_ novel14_ novel15_ novel16_ novel17_ novel18_ novel19_ d1a5d4a8_ d1a8_
+
 do
-echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
-grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
+
+echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa
+grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa
+
 done
 
-# Exons for each read are on separate lines, so need to merge the lines together for each read
-
-module load seq/fastx/0.0.13 
-
-fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa
-
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 
 ```
 
 ### Identification of ORFs and potential proteins
