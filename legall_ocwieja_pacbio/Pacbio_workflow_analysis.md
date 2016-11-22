@@ -224,7 +224,7 @@ Analyzing the correspondence between the proteins identified from the Pacbio ana
 |               | # Pacbio proteins Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
 | ----------------------------- |:------------------------------------:|:-----------------------------:|
 | Total Pacbio proteins | 149,239 / 463,629 | 94 / 108 |
-| Uniquely aligning FL Pacbio proteins | 49,797 / 463,629 | 51 / 108 |
+| Uniquely aligning full-length Pacbio proteins | 49,797 / 463,629 | 51 / 108 |
 | Total uniquely aligning Pacbio proteins | 54,411 / 463,629 | 56 / 108 |
 
 ```r
