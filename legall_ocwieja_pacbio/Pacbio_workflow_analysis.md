@@ -344,6 +344,55 @@ summary_uniq_fl_matching <- full_length_uniq_matching %>%
 summary_uniq_pl_matching <- partial_length_uniq_matching %>% 
         group_by(V14) %>%
         summarise(no_rows = length(V14))
+vif2__16 = VIF gene
+vif2__19 = VPR gene
+vpr1__17 = TAT gene (one amino acid Q insertion in Ocwieja but not in Pacbio (SRR528781.73802_3 [118 - 420] )) 
+vpr1__19 = REV gene (one amino acid N insertion in Ocwieja) - SRR528804.76011_2 [172 - 519] 
+vif2__24 = VPU gene (SRR528804.7660_1 [73 - 312])
+pacbio (SRR528779.22652_7 [97 - 519] ) = GAG polyprotein gene - only first third of gene (140aa)
+vif2__48 = ENV gene (SRR528779.43085_6 [239 - 733]  - only first fifth of gene, but aligns uniquely to the ENV gene (165aa))
+vif2__55 = NEF gene (SRR528776.45492_10 [566 - 1111] -  lacking last 22aa, but aligns uniquely to NEF gene (165aa)
+tat8c__14 = TAT8C gene first identified in the Ocwieja paper (SRR528833.57982_3 [13 - 303]) tat8c__16 = REF gene first identified in the Ocwieja paper (SRR528818.59842_4 [62 - 310] - lacking last 23aa, but aligns uniquely to the REF protein (83aa))
+
+Only proteins identified in Ocwieja, but not the Pacbio proteins are 14 potential proteins that are only between 10-15aa in length.
+
+# Unique VIF reads (vif2__16)
+VIF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__16")
+VIF_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__16")
+VIF_gene_unique_reads_pl <- VIF_gene_unique_reads_pl[which(!(VIF_gene_unique_reads_pl$V10 %in% VIF_gene_unique_reads_fl$V10)), ]
+VIF_gene_unique_reads <- rbind(VIF_gene_unique_reads_fl, VIF_gene_unique_reads_pl)
+which(duplicated(VIF_gene_unique_reads$V10))
+
+# Unique VPR reads (vif2__19)
+VPR_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__19")
+VPR_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__19")
+VPR_gene_unique_reads_pl <- VPR_gene_unique_reads_pl[which(!(VPR_gene_unique_reads_pl$V10 %in% VPR_gene_unique_reads_fl$V10)), ]
+VPR_gene_unique_reads <- rbind(VPR_gene_unique_reads_fl, VPR_gene_unique_reads_pl)
+which(duplicated(VPR_gene_unique_reads$V10))
+
+# Unique TAT reads (vpr1__17)
+TAT_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__17")
+TAT_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vpr1__17")
+TAT_gene_unique_reads_pl <- TAT_gene_unique_reads_pl[which(!(TAT_gene_unique_reads_pl$V10 %in% TAT_gene_unique_reads_fl$V10)), ]
+TAT_gene_unique_reads <- rbind(TAT_gene_unique_reads_fl, TAT_gene_unique_reads_pl)
+which(duplicated(TAT_gene_unique_reads$V10))
+
+# Unique REV reads (vpr1__19)
+## To attain reads unique to REV protein, need to include rev1__12 because REV is completely within this predicted protein
+REV_genes <- pacbio_to_ocwieja[pacbio_to_ocwieja$V14 == "vpr1__19" | pacbio_to_ocwieja$V14 == "rev1__12", ]
+no_REV_genes <- subset(pacbio_to_ocwieja, V14 != "vpr1__19" & V14 != "rev1__12")
+which(!(REV_genes[REV_genes %in% no_REV_genes, ]))
+REV_genes_fl_vpr1__19 <- subset(REV_genes_vpr1__19, V12 == 0 & V13 == V11)
+REV_genes_fl_vpr1__19 %in% pacbio_to_ocwieja$V14
+uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matching$V10)]))
+
+full_length_uniq_matching <- fl_matching[uniq_matching, ]
+
+REV_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__19")
+REV_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vpr1__19")
+REV_gene_unique_reads_pl <- REV_gene_unique_reads_pl[which(!(REV_gene_unique_reads_pl$V10 %in% REV_gene_unique_reads_fl$V10)), ]
+REV_gene_unique_reads <- rbind(REV_gene_unique_reads_fl, REV_gene_unique_reads_pl)
+which(duplicated(REV_gene_unique_reads$V10))
 ```
 
 ## Liftover from HIV strain 89.6 to NL4-3
