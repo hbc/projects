@@ -1,6 +1,6 @@
 # Identification of unknown HIV proteins through re-analysis of Pacbio data
 
-The goal of this project is to provide analysis of Pacbio RNA-Seq reads for to generate a more complete database of possible HIV proteins for analysis of Mass Spectrometry data from HIV experiments for the Le Gall group. The reads were obtained from the [SRA database](http://www.ncbi.nlm.nih.gov/sra/), which had been deposited for the publication of the paper, [Dynamic regulation of HIV-1 mRNA populations analyzed by single-molecule enrichment and long-read sequencing](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3488221/) by Ocwieja et. al (Nucleic Acids Res. 2012 Nov; 40(20): 10345–10355). 
+The goal of this project is to provide analysis of Pacbio RNA-Seq reads to generate a more complete database of possible HIV proteins for analysis of Mass Spectrometry data from HIV experiments for the Le Gall group. The reads were obtained from the [SRA database](http://www.ncbi.nlm.nih.gov/sra/), which had been deposited for the publication of the paper, [Dynamic regulation of HIV-1 mRNA populations analyzed by single-molecule enrichment and long-read sequencing](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3488221/) by Ocwieja et. al (Nucleic Acids Res. 2012 Nov; 40(20): 10345–10355). 
 
 The Ocwieja paper had identified novel splice sites, leading to identification of a new class of HIV transcripts and two confirmed new proteins for the HIV 89.6 strain (Tat8c and Ref). Within the Ocwieja paper, the genomic coordinates for splice sites identified from the Pacbio reads were given along with how the splice sites were combined to form transcripts in tables within the supplement of the paper. We performed two different analyses to help identify any possible proteins generated from HIV strain 89.6:
 
@@ -73,7 +73,7 @@ The Pacbio potential proteins were also examined to ensure the analysis was able
 | Env | 4,464 |
 | Nef| 1,469 | 
 | Tat8c | 12 |
-| Ref | 41 * |
+| Ref | 295 * |
 
 	* The Rev and Ref proteins do not have uniquely mapping reads because both full-length proteins are entirely within a different full-length potential proteins identified during the Ocwieja analysis. However, there are  many Pacbio proteins that contain the exact same sequences as the Rev and Ref proteins. The number for the Rev protein reflects the number of full-length Pacbio potential proteins that align to the entire Rev protein, without the beginning of the other potential proteins that they are entirely contained within. The number for the Ref represents the longest potential protein aligning only to the Ref protein and the protein it is contained within.
 	
