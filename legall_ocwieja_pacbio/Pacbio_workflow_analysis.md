@@ -215,8 +215,8 @@ cp /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.f
 
 awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa_copy > hiv_pacbio_896_unique_potential_orfs.fa
 
-# Remove headers
-grep -v ">" hiv_pacbio_896_unique_potential_orfs.fa | wc -l : 7797
+## Remove headers
+grep -v ">"  /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_pacbio_896_unique_potential_orfs.fa | wc -l : 7797
 ```
 
 463,629 potential proteins were identified using the getorf program. To determine whether the potential proteins from the Pacbio analysis corresponded to the potential proteins identified from the transcript coordinates given in the Ocwieja paper, the Pacbio proteins were compared to those in the paper using BLAT with a filter for minimum identity equal to 100%. 
@@ -225,6 +225,14 @@ grep -v ">" hiv_pacbio_896_unique_potential_orfs.fa | wc -l : 7797
 ## BLAT the sequences against the ocwieja transcripts to determine known transcripts for the pacbio data 
 
 blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potential_proteins.fa /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa -prot -minIdentity=100 -out=pslx /n/data1/cores/bcbio/legall_hiv_pacbio/blat/pacbio_orfs_in_ocwieja_data_100ident.pslx
+
+# Determine how many protein sequences were aligned to the Ocwieja proteins
+
+cut -f10 pacbio_orfs_in_ocwieja_data_100ident.pslx > read_names_in_ocwieja.txt
+
+## Collapse redundant protein fasta sequences using awk
+
+awk '!x[$0]++' read_names_in_ocwieja.txt | wc -l: 3983
 ```
 ## Statistical analysis in R
 
