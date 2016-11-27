@@ -216,7 +216,7 @@ cp /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.f
 awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa_copy > hiv_pacbio_896_unique_potential_orfs.fa
 
 # Remove headers
-grep -v ">" hiv_pacbio_896_unique_potential_orfs.fa | wc -l :  
+grep -v ">" hiv_pacbio_896_unique_potential_orfs.fa | wc -l : 7797
 ```
 
 463,629 potential proteins were identified using the getorf program. To determine whether the potential proteins from the Pacbio analysis corresponded to the potential proteins identified from the transcript coordinates given in the Ocwieja paper, the Pacbio proteins were compared to those in the paper using BLAT with a filter for minimum identity equal to 100%. 
