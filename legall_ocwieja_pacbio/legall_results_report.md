@@ -57,7 +57,7 @@ Of the total 7,797 unique potential proteins identified by the Pacbio reads, 1,0
 
 Of the 108 potential proteins identified from the Ocwieja paper coordinates, 94 were identified within the Pacbio potential proteins. The 14 potential proteins not identified by the Pacbio data corresponded to very short proteins between 10-15 amino acids in length. Of the 463,629 potential proteins identified by the Pacbio data, 149,239 were identified by BLAT as aligning to at least some portion of the 108 Ocwieja potential proteins. Many of the 149,239 potential proteins aligned to more than a single protein in the 108, with only 54,411 potential proteins aligning uniquely to a single Ocwieja protein. 
 
-A Pacbio protein that aligned in it's entirety (full length) to an Ocwieja protein is more likely to have originated from the designated HIV Ocwieja protein than a Pacbio protein that did not completely align to the Ocwieja protein. Descriptive statistics describing the Pacbio proteins can be found in the table below:
+A Pacbio protein that aligned in it's entirety (full length) to an Ocwieja protein is more likely to have originated from the designated HIV Ocwieja protein than a Pacbio protein that did not completely align to the Ocwieja protein. Uniquely aligning full-length Pacbio proteins identified 51 of the 108 Ocwieja proteins. Descriptive statistics describing the Pacbio proteins can be found in the table below:
 
 
 |               | # Pacbio proteins Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
