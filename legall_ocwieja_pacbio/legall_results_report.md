@@ -53,7 +53,7 @@ ORFs and potential proteins were identified similar to the procedure used in the
 
 >Kent WJ. BLAT - the BLAST-like alignment tool. Genome Res. 2002 Apr;12(4):656-64.
 
-Of the total 7,797 unique potential proteins identified by the Pacbio reads, 1,089 of the proteins aligned to the Ocwieja potential proteins. Therefore, the remaining 6,708 potential proteins include potential novel HIV proteins, in addition to false positives (proteins with incorrectly identified splice junctions and ORFs not actually translated in HIV). 
+Of the total 7,797 unique potential proteins identified by the Pacbio reads, 1,089 of the proteins aligned completely to the Ocwieja potential proteins. Therefore, the remaining 6,708 potential proteins include potential novel HIV proteins, in addition to false positives (proteins with incorrectly identified splice junctions and ORFs not actually translated in HIV). 
 
 Of the 108 potential proteins identified from the Ocwieja paper coordinates, 94 were identified within the Pacbio potential proteins. The 14 potential proteins not identified by the Pacbio data corresponded to very short proteins between 10-15 amino acids in length. Of the 463,629 potential proteins identified by the Pacbio data, 149,239 were identified by BLAT as aligning to at least some portion of the 108 Ocwieja potential proteins. Many of the 149,239 potential proteins aligned to more than a single protein in the 108, with only 54,411 potential proteins aligning uniquely to a single Ocwieja protein. 
 
