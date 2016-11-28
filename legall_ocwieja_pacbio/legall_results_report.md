@@ -67,7 +67,7 @@ A Pacbio protein that aligned in it's entirety (full length) to an Ocwieja prote
 | Total uniquely aligning Pacbio proteins | 54,411 / 463,629 | 56 / 108 |
 
 
-The Pacbio potential proteins were also examined to ensure the analysis was able to identify all known HIV proteins and the two novel proteins identified in the Ocwieja paper. All known HIV proteins were identified by uniquely aligning Pacbio potential proteins among the list of 108 potential proteins generated from the Ocwieja tables, including Env, Vpu, Vif, Tat, Vpr, Rev, and Nef. The two novel proteins identified in the Ocwieja paper were also present, Tat8c and Ref. 
+The Pacbio potential proteins were also examined to ensure the analysis was able to identify all known HIV proteins and the two novel proteins identified in the Ocwieja paper. All known HIV proteins were identified by uniquely aligning full-length Pacbio potential proteins, including Env, Vpu, Vif, Tat, Vpr, Rev, and Nef. The two novel proteins identified in the Ocwieja paper were also present, Tat8c and Ref. 
 
 Pacbio proteins that did not align completely to HIV proteins could indicate that these potential proteins originiated from a different splice variant. Therefore, to be conservative, we estimated only full-length, uniquely aligning Pacbio proteins to determine the number of Pacbio reads aligning to each HIV protein. The numbers of uniquely full-length Pacbio proteins aligning to each of the known HIV proteins are displayed in the table below:
 
