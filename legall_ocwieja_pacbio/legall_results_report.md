@@ -13,13 +13,13 @@ Since the Pacbio data was generated from the HIV strain 89.6, and Mass Spec faci
 
 For the analysis of reconstructing transcripts from the Ocwieja paper, we manually entered the coordinates for each exon, then generated the HIV 89.6 nucleotide sequence for those genomic coordinates using BEDTools (version 2.26.0) and the reference sequence for HIV strain 89.6 (GenBank: U39362.2). The start of the first exon and stop of the last exon for each transcript were extended to begin at the beginning and end at the end of the HIV genome, respectively.  
 
-Quinlan, AR, Hall, IM. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 2010 Mar 15; 26(6): 841–842.
+>Quinlan, AR, Hall, IM. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 2010 Mar 15; 26(6): 841–842.
 
 The sequences were output for each exon, and for processing the exons into transcripts, we combined exons with the same header information, and removed lines separating the combined sequences using the [FASTX Toolkit](http://hannonlab.cshl.edu/fastx_toolkit/) (version 0.0.13).
 
 To identify potential ORFs, the Emboss suite of tools was used (version 6.6.0). ORFs were identified at any location in the read sequences using standard code and alternative initiation codons. The lowest minimum nucleotide size (30) was used, and ORFs were defined as a region that began with a START codon and ended with a STOP codon. We only found ORFs on the forward sequence, as no known transcripts are known to be encoded on the reverse strand for HIV. The identified ORFs were output as potential proteins.
 
-Rice,P. Longden,I. and Bleasby,A. EMBOSS: The European Molecular Biology Open Software Suite. Trends Genet. 2000 Jun; 16(6):276-7.
+>Rice,P. Longden,I. and Bleasby,A. EMBOSS: The European Molecular Biology Open Software Suite. Trends Genet. 2000 Jun; 16(6):276-7.
 
 Finally, redundant proteins were removed and a total of 108 potential proteins were identified. The potential proteins were examined to ensure the analysis was able to identify all known HIV proteins and the two novel proteins identified in the Ocwieja paper. The proteins Gag and Pol are not generated from a spliced transcript; therefore, they were not listed within the splice tables identified from the Ocwieja paper and not pursued for further investigation for novel splice sites. 
 
