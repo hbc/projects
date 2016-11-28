@@ -71,7 +71,7 @@ The Pacbio potential proteins were also examined to ensure the analysis was able
 
 To be conservative, we estimated only full-length, uniquely aligning Pacbio proteins to determine the number of Pacbio reads aligning to each HIV protein. The numbers of unique full-length Pacbio proteins aligning to each of the known HIV proteins are displayed in the table below:
 
-| # HIV Protein | # Uniquely Aligning Pacbio Full-Length Proteins |
+| # HIV Protein | # Reads Resulting in Uniquely Aligning Pacbio Full-Length Proteins |
 |:-------------:|:-----------------------------------:|
 | Vif | 126 |
 | Vpr | 116 |
