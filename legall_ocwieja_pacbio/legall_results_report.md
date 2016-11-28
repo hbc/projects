@@ -83,6 +83,6 @@ To be conservative, we estimated only full-length, uniquely aligning Pacbio prot
 | Tat8c | 12 |
 | Ref | 295 * |
 
-/* The Rev and Ref proteins do not have uniquely mapping reads because both full-length proteins are entirely contained within different full-length potential proteins identified during the Ocwieja analysis. The numbers for the Rev and Ref proteins reflect the number of full-length Pacbio potential proteins that align to the entire Rev/Ref protein, without containing any additional sequence.
+>* The Rev and Ref proteins do not have uniquely mapping reads because both full-length proteins are entirely contained within different full-length potential proteins identified during the Ocwieja analysis. The numbers for the Rev and Ref proteins reflect the number of full-length Pacbio potential proteins that align to the entire Rev/Ref protein, without containing any additional sequence.
 	
 Finally, to identify the corresponding proteins for the HIV NL4-3 strain, the genomic coordinates for the each exon identified during the Pacbio analysis was converted from the genomic coordinates of the HIV 89.6 strain (GenBank: U39362.2) to the NL4-3 strain (GenBank: AF324493.2) using KentUtils liftover similar to the Ocwieja analysis. Using the new coordinates the same workflow was completed as for the 89.6 strain to identify potential ORFs and proteins. 
