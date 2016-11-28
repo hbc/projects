@@ -11,7 +11,7 @@ Since the Pacbio data was generated from the HIV strain 89.6, and Mass Spec faci
 
 ## Analysis of splice sites identified in the Ocwieja paper
 
-For the analysis of reconstructing transcripts from the Ocwieja paper, we manually entered the coordinates for each exon, then generated the HIV 89.6 nucleotide sequence for those genomic coordinates using BEDTools (version 2.26.0) and the reference sequence for HIV strain 89.6 (GenBank: U39362.2). The start of the first exon and stop of the last exon for each transcript begin at the beginning and end of the HIV genome, respectively.  
+For the analysis of reconstructing transcripts from the Ocwieja paper, we manually entered the coordinates for each exon, then generated the HIV 89.6 nucleotide sequence for those genomic coordinates using BEDTools (version 2.26.0) and the reference sequence for HIV strain 89.6 (GenBank: U39362.2). The start of the first exon and stop of the last exon for each transcript were extended to begin at the beginning and end at the end of the HIV genome, respectively.  
 
 Quinlan, AR, Hall, IM. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 2010 Mar 15; 26(6): 841–842.
 
