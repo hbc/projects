@@ -257,6 +257,20 @@ all_ocwieja_proteins <- all_ocwieja_proteins[grep(">", all_ocwieja_proteins)]
 
 all_ocwieja_proteins <- sapply(strsplit(as.character(all_ocwieja_proteins), ">"), "[", 2)
 
+# Determining how many unique Pacbio proteins present in Ocwieja proteins
+
+pacbio_total_proteins <- scan("../total_pacbio_896_unique_orfs.fa", what=character())
+
+head(pacbio_total_proteins)
+
+oc_protein_sequences <- as.character(pacbio_to_ocwieja$V22)
+head(oc_protein_sequences)
+
+oc_protein_sequences_trim <- sapply(strsplit(as.character(oc_protein_sequences), ","), "[", 1)
+
+pc_in_oc <- pacbio_total_proteins[pacbio_total_proteins %in% oc_protein_sequences_trim]
+pc_in_oc # 1089
+
 # Exploring the output of BLAT, which aligned only those pacbio proteins with 100% minimum identity to the ocwieja paper-derived proteins.
 
 summary_all_proteins <- summary(pacbio_to_ocwieja$V14)
@@ -291,11 +305,21 @@ proteins_not_present <- all_ocwieja_proteins[which(!(all_ocwieja_proteins %in% l
 
 fl_matching <- subset(pacbio_to_ocwieja, V12 == 0 & V13 == V11)
 levels(fl_matching$V14)
+length(unique((fl_matching$V10)))
+length((fl_matching$V10))
 
 # 69 proteins from the Ocwieja paper had full-length Pacbio proteins that aligned to them; however, some of the full-length Pacbio proteins aligned uniquely to proteins, while other full-length reads aligned to multiple proteins
 
 summary_nonunique_proteins <- summary(fl_matching$V14)
 capture.output(summary_nonunique_proteins, file = "summary_full_nonunique_proteins.txt")
+
+# Determine number of partial length reads and proteins they align to
+
+pl_matching <- subset(pacbio_to_ocwieja, !(V12 == 0 & V13 == V11))
+length(unique((pl_matching$V10)))
+
+summary_pl_nonunique_proteins <- summary(pl_matching$V14)
+capture.output(summary_pl_nonunique_proteins, file = "summary_full_nonunique_partial_proteins.txt")
 
 # Identification of the number of Pacbio proteins that had full-length reads aligning uniquely to proteins in the Ocwieja paper
 
@@ -312,7 +336,7 @@ length(which(levels(full_length_uniq_matching$V14) %in% full_length_uniq_matchin
 summary_unique_proteins <- summary(full_length_uniq_matching$V14)
 capture.output(summary_unique_proteins, file = "summary_full_unique_proteins.txt")
 
-# Identification of the number of proteins that had partial-length reads aligning uniquely to proteins in the Ocwieja paper
+# Determine the number of proteins that had partial-length reads aligning uniquely to them and no others
 
 partial_uniq_matching <- which(!(pacbio_to_ocwieja$V10 %in% pacbio_to_ocwieja$V10[duplicated(pacbio_to_ocwieja$V10)]))
 
@@ -333,6 +357,8 @@ partial_uniq_proteins <- levels(partial_length_uniq_matching$V14)[levels(partial
 
 full_length_uniq_proteins <- levels(full_length_uniq_matching$V14)[levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14]
 
+unique_matching <- rbind(full_length_uniq_matching, partial_length_uniq_matching)
+length(unique((unique_matching$V10)))
 length(which(!(partial_uniq_proteins %in% full_length_uniq_proteins)))
 
 # 5 proteins with partial-length pacbio reads uniquely aligning to them did not have full-length pacbio reads uniquely aligning to them. 
@@ -341,26 +367,8 @@ length(which(!(partial_uniq_proteins %in% full_length_uniq_proteins)))
 
 # The proteins identified from the Pacbio analysis included novel proteins identified in the Ocwieja paper.
 
-# Plotting
+# Tabulation
 
-summary_pb_to_oc <- pacbio_to_ocwieja %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-ggplot(summary_fl_matching) +
-        geom_histogram(aes(x = no_rows))
-
-summary_fl_matching <- fl_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-summary_uniq_fl_matching <- full_length_uniq_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-summary_uniq_pl_matching <- partial_length_uniq_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
 vif2__16 = VIF gene
 vif2__19 = VPR gene
 vpr1__17 = TAT gene (one amino acid Q insertion in Ocwieja but not in Pacbio (SRR528781.73802_3 [118 - 420] )) 
@@ -374,42 +382,97 @@ tat8c__14 = TAT8C gene first identified in the Ocwieja paper (SRR528833.57982_3 
 Only proteins identified in Ocwieja, but not the Pacbio proteins are 14 potential proteins that are only between 10-15aa in length.
 
 # Unique VIF reads (vif2__16)
-VIF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__16")
+VIF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__16") # 126
 VIF_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__16")
 VIF_gene_unique_reads_pl <- VIF_gene_unique_reads_pl[which(!(VIF_gene_unique_reads_pl$V10 %in% VIF_gene_unique_reads_fl$V10)), ]
 VIF_gene_unique_reads <- rbind(VIF_gene_unique_reads_fl, VIF_gene_unique_reads_pl)
 which(duplicated(VIF_gene_unique_reads$V10))
+length(VIF_gene_unique_reads$V10)
 
 # Unique VPR reads (vif2__19)
-VPR_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__19")
+VPR_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__19") # 116
 VPR_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__19")
 VPR_gene_unique_reads_pl <- VPR_gene_unique_reads_pl[which(!(VPR_gene_unique_reads_pl$V10 %in% VPR_gene_unique_reads_fl$V10)), ]
 VPR_gene_unique_reads <- rbind(VPR_gene_unique_reads_fl, VPR_gene_unique_reads_pl)
 which(duplicated(VPR_gene_unique_reads$V10))
+length(VPR_gene_unique_reads$V10)
 
 # Unique TAT reads (vpr1__17)
-TAT_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__17")
+TAT_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__17") # 651
 TAT_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vpr1__17")
 TAT_gene_unique_reads_pl <- TAT_gene_unique_reads_pl[which(!(TAT_gene_unique_reads_pl$V10 %in% TAT_gene_unique_reads_fl$V10)), ]
 TAT_gene_unique_reads <- rbind(TAT_gene_unique_reads_fl, TAT_gene_unique_reads_pl)
 which(duplicated(TAT_gene_unique_reads$V10))
+length(TAT_gene_unique_reads$V10)
 
 # Unique REV reads (vpr1__19)
 ## To attain reads unique to REV protein, need to include rev1__12 because REV is completely within this predicted protein
 REV_genes <- pacbio_to_ocwieja[pacbio_to_ocwieja$V14 == "vpr1__19" | pacbio_to_ocwieja$V14 == "rev1__12", ]
 no_REV_genes <- subset(pacbio_to_ocwieja, V14 != "vpr1__19" & V14 != "rev1__12")
-which(!(REV_genes[REV_genes %in% no_REV_genes, ]))
+grep("vpr1__19", no_REV_genes$V14)
+all(which(REV_genes$V10 %in% no_REV_genes$V10))
+REV_non_unique <- !(which(REV_genes$V10 %in% no_REV_genes$V10))
+all(REV_non_unique == FALSE)
 REV_genes_fl_vpr1__19 <- subset(REV_genes_vpr1__19, V12 == 0 & V13 == V11)
 REV_genes_fl_vpr1__19 %in% pacbio_to_ocwieja$V14
 uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matching$V10)]))
 
 full_length_uniq_matching <- fl_matching[uniq_matching, ]
 
-REV_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__19")
-REV_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vpr1__19")
-REV_gene_unique_reads_pl <- REV_gene_unique_reads_pl[which(!(REV_gene_unique_reads_pl$V10 %in% REV_gene_unique_reads_fl$V10)), ]
-REV_gene_unique_reads <- rbind(REV_gene_unique_reads_fl, REV_gene_unique_reads_pl)
-which(duplicated(REV_gene_unique_reads$V10))
+# Unique REV reads (vpr1__19) entirely within vpr1__19 and rev1__12
+REV_genes_fl <- fl_matching[fl_matching$V14 == "vpr1__19" | fl_matching$V14 == "rev1__12", ]
+no_REV_genes_fl <- subset(fl_matching, V14 != "vpr1__19" & V14 != "rev1__12")
+head(which(!(REV_genes$V10 %in% no_REV_genes$V10)))
+REV_unique_fl <- REV_genes[which(!(REV_genes$V10 %in% no_REV_genes$V10)), ]
+
+# Unique VPU reads (vif2__24)
+VPU_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__24") # 2545
+VPU_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__24")
+VPU_gene_unique_reads_pl <- VPU_gene_unique_reads_pl[which(!(VPU_gene_unique_reads_pl$V10 %in% VPU_gene_unique_reads_fl$V10)), ]
+VPU_gene_unique_reads <- rbind(VPU_gene_unique_reads_fl, VPU_gene_unique_reads_pl)
+which(duplicated(VPU_gene_unique_reads$V10))
+length(VPU_gene_unique_reads$V10)
+
+# Unique ENV reads (vif2__48)
+ENV_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__48") # 3206
+ENV_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__48")
+ENV_gene_unique_reads_pl <- ENV_gene_unique_reads_pl[which(!(ENV_gene_unique_reads_pl$V10 %in% ENV_gene_unique_reads_fl$V10)), ]
+ENV_gene_unique_reads <- rbind(ENV_gene_unique_reads_fl, ENV_gene_unique_reads_pl)
+which(duplicated(ENV_gene_unique_reads$V10))
+length(ENV_gene_unique_reads$V10)
+
+# Unique NEF reads (vif2__55)
+NEF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__55") # 1263
+NEF_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__55")
+NEF_gene_unique_reads_pl <- NEF_gene_unique_reads_pl[which(!(NEF_gene_unique_reads_pl$V10 %in% NEF_gene_unique_reads_fl$V10)), ]
+NEF_gene_unique_reads <- rbind(NEF_gene_unique_reads_fl, NEF_gene_unique_reads_pl)
+which(duplicated(NEF_gene_unique_reads$V10))
+length(NEF_gene_unique_reads$V10)
+
+# Unique TAT8C reads (tat8c__14)
+TAT8C_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "tat8c__14") # 12
+TAT8C_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "tat8c__14")
+TAT8C_gene_unique_reads_pl <- TAT8C_gene_unique_reads_pl[which(!(TAT8C_gene_unique_reads_pl$V10 %in% TAT8C_gene_unique_reads_fl$V10)), ]
+TAT8C_gene_unique_reads <- rbind(TAT8C_gene_unique_reads_fl, TAT8C_gene_unique_reads_pl)
+which(duplicated(TAT8C_gene_unique_reads$V10))
+length(TAT8C_gene_unique_reads$V10)
+
+# Unique REF reads (tat8c__16) entirely within ref1__13
+REF_genes_fl <- fl_matching[fl_matching$V14 == "tat8c__16" | fl_matching$V14 == "ref1__13", ] # 589 = 295 tat8c_16 and 294 ref1_13 
+no_REF_genes_fl <- subset(fl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
+head(which(!(REF_genes$V10 %in% no_REF_genes$V10)))
+REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ]
+
+REF_genes_pl <- pl_matching[pl_matching$V14 == "tat8c__16" | pl_matching$V14 == "ref1__13", ]
+no_REF_genes_pl <- subset(pl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
+no_REF_genes_pl_uniq_idx <- which(!(no_REF_genes_pl$V10 %in% no_REF_genes_pl$V10[duplicated(no_REF_genes_pl$V10)]))
+partial_length_uniq_matching <- no_REF_genes_pl[no_REF_genes_pl_uniq_idx, ]
+REF_pl <- REF_genes_pl[which(!(REF_genes_pl$V10 %in% partial_length_uniq_matching$V10)), ]        
+head(which(!(REF_pl$V10 %in% no_REF_genes_pl$V10)))
+REF_unique_pl <- REF_genes_pl[which(!(REF_genes_pl$V10 %in% no_REF_genes_pl$V10)), ]
+REF_gene_unique_reads <- rbind(REF_unique_fl, REF_unique_pl)
+which(duplicated(REF_gene_unique_reads$V10))
+length(REF_gene_unique_reads$V10)
 ```
 
 ## Liftover from HIV strain 89.6 to NL4-3
@@ -660,4 +723,9 @@ grep -v ">" hiv_ocwieja_nl43_unique_potential_orfs.fa > hiv_ocwieja_nl43_unique_
 mv hiv_ocwieja_nl43_unique_potential_orfs_list.fa hiv_ocwieja_nl43_unique_potential_orfs.fa
 ```
 
-Upon exploration of the NL4-3 HIV strain proteins, the novel proteins, Tat8c and Ref, identified in the Ocwieja paper with the corresponding protein sequences for 89.6 strain, were found within the NL4-3 strain. A protein similar to Ref with a similar length was identified with the sequence, MAGRSGDSDEELIRTVRLIKLLYQSNYTPGPGVRYPLTFGWCYKLVPVEPDKVEEANKGENTSLLHPVSLHGMDDPEREVLEWRFDSRLAFHHVARELHPEYFKNC, and a shorter protein similar to Tat8c was identified with the sequence, MEPVDPRLEPWKHPGSQPKTACTNCYCKKCCFHCQVCFMTKALGISYGRKKRRQRRRAHQNSQTHQASLSKQ (missing the last 25 amino acids).
+Upon exploration of the NL4-3 HIV strain proteins, the novel proteins, Tat8c and Ref, identified in the Ocwieja paper with the corresponding protein sequences for 89.6 strain, were found within the NL4-3 strain. 
+
+A protein similar to Ref with a similar length was identified with the sequence:
+MAGRSGDSDEELIRTVRLIKLLYQSNYTPGPGVRYPLTFGWCYKLVPVEPDKVEEANKGENTSLLHPVSLHGMDDPEREVLEWRFDSRLAFHHVARELHPEYFKNC
+
+A shorter protein similar to Tat8c was identified with the sequence: MEPVDPRLEPWKHPGSQPKTACTNCYCKKCCFHCQVCFMTKALGISYGRKKRRQRRRAHQNSQTHQASLSKQ (missing the last 25 amino acids).
