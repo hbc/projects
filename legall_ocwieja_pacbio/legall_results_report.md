@@ -74,7 +74,7 @@ To be conservative, we estimated only Pacbio proteins that completely aligned to
 | Vif | 126 |
 | Vpr | 116 |
 | Tat | 651 |
-| Rev | 4 * |
+| Rev | 5464 * |
 | Vpu | 2,545 |
 | Env | 3,206 |
 | Nef | 1,263 |
@@ -82,8 +82,6 @@ To be conservative, we estimated only Pacbio proteins that completely aligned to
 | Ref | 295 * |
 
 _* The Rev and Ref HIV proteins do not have Pacbio proteins that aligned uniquely because both full-length proteins are entirely contained within different full-length potential proteins identified during the Ocwieja analysis. The numbers for the Rev and Ref proteins reflect the number of full-length Pacbio potential proteins that align to the entire Rev/Ref protein, without containing any additional sequence._
-
-The low number of uniquely aligning proteins for Rev are likely due to the fact that the majority of the protein overlaps the Tat protein. Therefore, it is likely that many reads may have originated from Rev or Tat, but were not counted since they were not unique to either protein.
 
 To examine how many unique protein sequences were identified with the Pacbio reads, redundant proteins were collapsed, and the 463,629 potential proteins identified corresponded to a total of 7,797 unique protein sequences. Of the total 7,797 unique potential proteins identified by the Pacbio reads, 1,089 of the proteins aligned completely to the Ocwieja potential proteins. Therefore, the remaining 6,708 potential protein sequences include potential novel HIV proteins, in addition to false positives (proteins with incorrectly identified splice junctions and ORFs not actually translated in HIV). 
 
