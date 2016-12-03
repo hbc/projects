@@ -458,10 +458,10 @@ which(duplicated(TAT8C_gene_unique_reads$V10))
 length(TAT8C_gene_unique_reads$V10)
 
 # Unique REF reads (tat8c__16) entirely within ref1__13
-REF_genes_fl <- fl_matching[fl_matching$V14 == "tat8c__16" | fl_matching$V14 == "ref1__13", ] # 589 = 295 tat8c_16 and 294 ref1_13 
+REF_genes_fl <- fl_matching[fl_matching$V14 == "tat8c__16" | fl_matching$V14 == "ref1__13", ] 
 no_REF_genes_fl <- subset(fl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
 head(which(!(REF_genes$V10 %in% no_REF_genes$V10)))
-REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ]
+REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ] # 589 = 295 tat8c_16 and 294 ref1_13 
 
 REF_genes_pl <- pl_matching[pl_matching$V14 == "tat8c__16" | pl_matching$V14 == "ref1__13", ]
 no_REF_genes_pl <- subset(pl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
