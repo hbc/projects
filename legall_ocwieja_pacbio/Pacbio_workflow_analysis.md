@@ -383,96 +383,39 @@ Only proteins identified in Ocwieja, but not the Pacbio proteins are 14 potentia
 
 # Unique VIF reads (vif2__16)
 VIF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__16") # 126
-VIF_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__16")
-VIF_gene_unique_reads_pl <- VIF_gene_unique_reads_pl[which(!(VIF_gene_unique_reads_pl$V10 %in% VIF_gene_unique_reads_fl$V10)), ]
-VIF_gene_unique_reads <- rbind(VIF_gene_unique_reads_fl, VIF_gene_unique_reads_pl)
-which(duplicated(VIF_gene_unique_reads$V10))
-length(VIF_gene_unique_reads$V10)
 
 # Unique VPR reads (vif2__19)
 VPR_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__19") # 116
-VPR_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__19")
-VPR_gene_unique_reads_pl <- VPR_gene_unique_reads_pl[which(!(VPR_gene_unique_reads_pl$V10 %in% VPR_gene_unique_reads_fl$V10)), ]
-VPR_gene_unique_reads <- rbind(VPR_gene_unique_reads_fl, VPR_gene_unique_reads_pl)
-which(duplicated(VPR_gene_unique_reads$V10))
-length(VPR_gene_unique_reads$V10)
 
 # Unique TAT reads (vpr1__17)
 TAT_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__17") # 651
-TAT_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vpr1__17")
-TAT_gene_unique_reads_pl <- TAT_gene_unique_reads_pl[which(!(TAT_gene_unique_reads_pl$V10 %in% TAT_gene_unique_reads_fl$V10)), ]
-TAT_gene_unique_reads <- rbind(TAT_gene_unique_reads_fl, TAT_gene_unique_reads_pl)
-which(duplicated(TAT_gene_unique_reads$V10))
-length(TAT_gene_unique_reads$V10)
 
 # Unique REV reads (vpr1__19)
 ## To attain reads unique to REV protein, need to include rev1__12 because REV is completely within this predicted protein
-REV_genes <- pacbio_to_ocwieja[pacbio_to_ocwieja$V14 == "vpr1__19" | pacbio_to_ocwieja$V14 == "rev1__12", ]
-no_REV_genes <- subset(pacbio_to_ocwieja, V14 != "vpr1__19" & V14 != "rev1__12")
-grep("vpr1__19", no_REV_genes$V14)
-all(which(REV_genes$V10 %in% no_REV_genes$V10))
-REV_non_unique <- !(which(REV_genes$V10 %in% no_REV_genes$V10))
-all(REV_non_unique == FALSE)
-REV_genes_fl_vpr1__19 <- subset(REV_genes_vpr1__19, V12 == 0 & V13 == V11)
-REV_genes_fl_vpr1__19 %in% pacbio_to_ocwieja$V14
-uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matching$V10)]))
-
-full_length_uniq_matching <- fl_matching[uniq_matching, ]
-
-# Unique REV reads (vpr1__19) entirely within vpr1__19 and rev1__12
 REV_genes_fl <- fl_matching[fl_matching$V14 == "vpr1__19" | fl_matching$V14 == "rev1__12", ]
 no_REV_genes_fl <- subset(fl_matching, V14 != "vpr1__19" & V14 != "rev1__12")
-head(which(!(REV_genes$V10 %in% no_REV_genes$V10)))
-REV_unique_fl <- REV_genes[which(!(REV_genes$V10 %in% no_REV_genes$V10)), ]
+head(which(!(REV_genes_fl$V10 %in% no_REV_genes_fl$V10)))
+REV_unique_fl <- REV_genes_fl[which(!(REV_genes_fl$V10 %in% no_REV_genes_fl$V10)), ]
+REV_unique_fl <- REV_unique_fl[REV_unique_fl$V16 == 0, ] # 5464
 
 # Unique VPU reads (vif2__24)
 VPU_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__24") # 2545
-VPU_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__24")
-VPU_gene_unique_reads_pl <- VPU_gene_unique_reads_pl[which(!(VPU_gene_unique_reads_pl$V10 %in% VPU_gene_unique_reads_fl$V10)), ]
-VPU_gene_unique_reads <- rbind(VPU_gene_unique_reads_fl, VPU_gene_unique_reads_pl)
-which(duplicated(VPU_gene_unique_reads$V10))
-length(VPU_gene_unique_reads$V10)
 
 # Unique ENV reads (vif2__48)
 ENV_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__48") # 3206
-ENV_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__48")
-ENV_gene_unique_reads_pl <- ENV_gene_unique_reads_pl[which(!(ENV_gene_unique_reads_pl$V10 %in% ENV_gene_unique_reads_fl$V10)), ]
-ENV_gene_unique_reads <- rbind(ENV_gene_unique_reads_fl, ENV_gene_unique_reads_pl)
-which(duplicated(ENV_gene_unique_reads$V10))
-length(ENV_gene_unique_reads$V10)
 
 # Unique NEF reads (vif2__55)
 NEF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__55") # 1263
-NEF_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "vif2__55")
-NEF_gene_unique_reads_pl <- NEF_gene_unique_reads_pl[which(!(NEF_gene_unique_reads_pl$V10 %in% NEF_gene_unique_reads_fl$V10)), ]
-NEF_gene_unique_reads <- rbind(NEF_gene_unique_reads_fl, NEF_gene_unique_reads_pl)
-which(duplicated(NEF_gene_unique_reads$V10))
-length(NEF_gene_unique_reads$V10)
 
 # Unique TAT8C reads (tat8c__14)
 TAT8C_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "tat8c__14") # 12
-TAT8C_gene_unique_reads_pl <- subset(partial_length_uniq_matching, V14 == "tat8c__14")
-TAT8C_gene_unique_reads_pl <- TAT8C_gene_unique_reads_pl[which(!(TAT8C_gene_unique_reads_pl$V10 %in% TAT8C_gene_unique_reads_fl$V10)), ]
-TAT8C_gene_unique_reads <- rbind(TAT8C_gene_unique_reads_fl, TAT8C_gene_unique_reads_pl)
-which(duplicated(TAT8C_gene_unique_reads$V10))
-length(TAT8C_gene_unique_reads$V10)
 
 # Unique REF reads (tat8c__16) entirely within ref1__13
 REF_genes_fl <- fl_matching[fl_matching$V14 == "tat8c__16" | fl_matching$V14 == "ref1__13", ] 
 no_REF_genes_fl <- subset(fl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
 head(which(!(REF_genes$V10 %in% no_REF_genes$V10)))
-REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ] # 589 = 295 tat8c_16 and 294 ref1_13 
-
-REF_genes_pl <- pl_matching[pl_matching$V14 == "tat8c__16" | pl_matching$V14 == "ref1__13", ]
-no_REF_genes_pl <- subset(pl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
-no_REF_genes_pl_uniq_idx <- which(!(no_REF_genes_pl$V10 %in% no_REF_genes_pl$V10[duplicated(no_REF_genes_pl$V10)]))
-partial_length_uniq_matching <- no_REF_genes_pl[no_REF_genes_pl_uniq_idx, ]
-REF_pl <- REF_genes_pl[which(!(REF_genes_pl$V10 %in% partial_length_uniq_matching$V10)), ]        
-head(which(!(REF_pl$V10 %in% no_REF_genes_pl$V10)))
-REF_unique_pl <- REF_genes_pl[which(!(REF_genes_pl$V10 %in% no_REF_genes_pl$V10)), ]
-REF_gene_unique_reads <- rbind(REF_unique_fl, REF_unique_pl)
-which(duplicated(REF_gene_unique_reads$V10))
-length(REF_gene_unique_reads$V10)
+REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ] 
+REF_unique_fl <- REF_unique_fl[REF_unique_fl$V16 == 0, ] # 295 
 ```
 
 ## Liftover from HIV strain 89.6 to NL4-3
