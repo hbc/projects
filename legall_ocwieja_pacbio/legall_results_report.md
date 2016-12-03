@@ -74,7 +74,7 @@ To be conservative, we estimated only Pacbio proteins that completely aligned to
 | Vif | 126 |
 | Vpr | 116 |
 | Tat | 651 |
-| Rev | 5464 * |
+| Rev | 5,464 * |
 | Vpu | 2,545 |
 | Env | 3,206 |
 | Nef | 1,263 |
