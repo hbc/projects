@@ -208,6 +208,15 @@ module load seq/fastx/0.0.13
 fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
 
 cp /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa_copy
+
+# Determine total number of unique proteins present
+
+## Collapse redundant protein fasta sequences using awk
+
+awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa_copy > hiv_pacbio_896_unique_potential_orfs.fa
+
+## Remove headers
+grep -v ">"  /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/hiv_pacbio_896_unique_potential_orfs.fa | wc -l : 7797
 ```
 
 463,629 potential proteins were identified using the getorf program. To determine whether the potential proteins from the Pacbio analysis corresponded to the potential proteins identified from the transcript coordinates given in the Ocwieja paper, the Pacbio proteins were compared to those in the paper using BLAT with a filter for minimum identity equal to 100%. 
@@ -216,10 +225,24 @@ cp /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.f
 ## BLAT the sequences against the ocwieja transcripts to determine known transcripts for the pacbio data 
 
 blat /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/unique_896_potential_proteins.fa /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa -prot -minIdentity=100 -out=pslx /n/data1/cores/bcbio/legall_hiv_pacbio/blat/pacbio_orfs_in_ocwieja_data_100ident.pslx
+
+# Determine how many protein sequences were aligned to the Ocwieja proteins
+
+cut -f10 pacbio_orfs_in_ocwieja_data_100ident.pslx > read_names_in_ocwieja.txt
+
+## Collapse redundant protein fasta sequences using awk
+
+awk '!x[$0]++' read_names_in_ocwieja.txt | wc -l: 3983
 ```
 ## Statistical analysis in R
 
-Analyzing the correspondence between the Pacbio analysis proteins and the Ocwieja paper proteins by importing the output of BLAT into R.
+Analyzing the correspondence between the proteins identified from the Pacbio analysis and the proteins identified in the Ocwieja paper. The similarity between the protein sequences was determined by using BLAT to align the Pacbio proteins to the proteins from the Ocwieja paper. A summary of the Pacbio proteins alignment to the proteins from the Ocwieja paper is displayed in the table below (the R code used to generate the table is given following the table).
+
+|               | # Pacbio proteins Aligning to Ocwieja Proteins | # Ocwieja Proteins Identified |
+| ----------------------------- |:------------------------------------:|:-----------------------------:|
+| Total Pacbio proteins | 149,239 / 463,629 | 94 / 108 |
+| Uniquely aligning full-length Pacbio proteins | 49,797 / 463,629 | 51 / 108 |
+| Total uniquely aligning Pacbio proteins | 54,411 / 463,629 | 56 / 108 |
 
 ```r
 library(ggplot2)
@@ -233,138 +256,168 @@ all_ocwieja_proteins <- scan("../../ocwieja_analysis/all_ocwieja_protein_names.t
 all_ocwieja_proteins <- all_ocwieja_proteins[grep(">", all_ocwieja_proteins)]
 
 all_ocwieja_proteins <- sapply(strsplit(as.character(all_ocwieja_proteins), ">"), "[", 2)
-```
 
-Exploring the output of BLAT, which aligned only those pacbio proteins with 100% minimum identity to the ocwieja paper-derived proteins.
+# Determining how many unique Pacbio proteins present in Ocwieja proteins
 
-```r
+pacbio_total_proteins <- scan("../total_pacbio_896_unique_orfs.fa", what=character())
+
+head(pacbio_total_proteins)
+
+oc_protein_sequences <- as.character(pacbio_to_ocwieja$V22)
+head(oc_protein_sequences)
+
+oc_protein_sequences_trim <- sapply(strsplit(as.character(oc_protein_sequences), ","), "[", 1)
+
+pc_in_oc <- pacbio_total_proteins[pacbio_total_proteins %in% oc_protein_sequences_trim]
+pc_in_oc # 1089
+
+# Exploring the output of BLAT, which aligned only those pacbio proteins with 100% minimum identity to the ocwieja paper-derived proteins.
+
 summary_all_proteins <- summary(pacbio_to_ocwieja$V14)
 capture.output(summary_all_proteins, file = "summary_all_proteins.txt")
 levels(pacbio_to_ocwieja$V14)
-```
-108 theoretical proteins were identified by the predicting ORFs from the transcripts in the Ocwieja paper
 
-```r
+# 108 theoretical proteins were identified by the predicting ORFs from the transcripts in the Ocwieja paper
+
 length(unique(pacbio_to_ocwieja$V10))
-```
-149,239 of the 463,629 HIV Pacbio proteins were returned from the BLAT analysis as aligning to the proteins from the Ocwieja paper
 
-To determine which proteins identified by Ocwieja are or are not present in the Pacbio proteins identified by BLAT
+# 149,239 of the 463,629 HIV Pacbio proteins were returned from the BLAT analysis as aligning to the proteins from the Ocwieja paper
 
-```r
+# To determine which proteins identified by Ocwieja are or are not present in the Pacbio proteins identified by BLAT
+
 proteins_present <- all_ocwieja_proteins[which(all_ocwieja_proteins %in% levels(pacbio_to_ocwieja$V14))]
-```
-94 proteins of the 108 are present in the Pacbio output
 
-```r
+# 94 proteins of the 108 are present in the Pacbio output
+
 proteins_not_present <- all_ocwieja_proteins[which(!(all_ocwieja_proteins %in% levels(pacbio_to_ocwieja$V14)))]
-```
-14 proteins are not present in the Pacbio output
 
-```r
-## Proteins identified during the Ocwieja analysis that did not have Pacbio protein align had the following headings: 
+# 14 proteins are not present in the Pacbio output
+
+# Proteins identified during the Ocwieja analysis that did not have Pacbio protein align had the following headings: 
 
 ## [1] "vif2__5"  "vif2__9"  "vif2__10" "vif2__12" "vif2__17"
 ## [6] "vif2__27" "vif2__30" "vif2__32" "vif2__34" "vif2__35"
 ## [11] "vif2__49" "vpr3__11" "tat5__11" "env4__11"
-```
 
-Identification of which Ocwieja proteins had full pacbio potential proteins that aligned identically to them.
+#Identification of which Ocwieja proteins had full pacbio potential proteins that aligned identically to them.
 
-```r
 ## Indicating full length read by specifying the Query start = 0 (.psl is zero-based) and the Query end = the length of the Query
 
 fl_matching <- subset(pacbio_to_ocwieja, V12 == 0 & V13 == V11)
 levels(fl_matching$V14)
-```
+length(unique((fl_matching$V10)))
+length((fl_matching$V10))
 
-69 proteins from the Ocwieja paper had full-length Pacbio proteins that aligned to them; however, some of the full-length Pacbio proteins aligned uniquely to proteins, while other full-length reads aligned to multiple proteins
+# 69 proteins from the Ocwieja paper had full-length Pacbio proteins that aligned to them; however, some of the full-length Pacbio proteins aligned uniquely to proteins, while other full-length reads aligned to multiple proteins
 
-```r
 summary_nonunique_proteins <- summary(fl_matching$V14)
 capture.output(summary_nonunique_proteins, file = "summary_full_nonunique_proteins.txt")
-```
 
-Identification of the number of Pacbio proteins that had full-length reads aligning uniquely to proteins in the Ocwieja paper
+# Determine number of partial length reads and proteins they align to
 
-```r
+pl_matching <- subset(pacbio_to_ocwieja, !(V12 == 0 & V13 == V11))
+length(unique((pl_matching$V10)))
+
+summary_pl_nonunique_proteins <- summary(pl_matching$V14)
+capture.output(summary_pl_nonunique_proteins, file = "summary_full_nonunique_partial_proteins.txt")
+
+# Identification of the number of Pacbio proteins that had full-length reads aligning uniquely to proteins in the Ocwieja paper
+
 uniq_matching <- which(!(fl_matching$V10 %in% fl_matching$V10[duplicated(fl_matching$V10)]))
 
 full_length_uniq_matching <- fl_matching[uniq_matching, ]
-```
 
-49,797 of the 149,239 of the Pacbio potential proteins were full-length and aligned uniquely to a single Ocwieja protein
+# 49,797 of the 149,239 of the Pacbio potential proteins were full-length and aligned uniquely to a single Ocwieja protein
 
-```r
 length(which(levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14))
-```
 
-51 proteins from the Ocwieja paper have full-length Pacbio proteins uniquely aligning to them
+# 51 proteins from the Ocwieja paper have full-length Pacbio proteins uniquely aligning to them
 
-```r
 summary_unique_proteins <- summary(full_length_uniq_matching$V14)
 capture.output(summary_unique_proteins, file = "summary_full_unique_proteins.txt")
-```
 
-Identification of the number of proteins that had partial-length reads aligning uniquely to proteins in the Ocwieja paper
+# Determine the number of proteins that had partial-length reads aligning uniquely to them and no others
 
-```r
 partial_uniq_matching <- which(!(pacbio_to_ocwieja$V10 %in% pacbio_to_ocwieja$V10[duplicated(pacbio_to_ocwieja$V10)]))
 
 partial_length_uniq_matching <- pacbio_to_ocwieja[partial_uniq_matching, ]
-```
 
-34,642 of the 149,239 pacbio potential proteins were partial-length and aligned uniquely to a single Ocwieja protein
+# 34,642 of the 149,239 pacbio potential proteins were partial-length and aligned uniquely to a single Ocwieja protein
 
-```r
 length(which(levels(partial_length_uniq_matching$V14) %in% partial_length_uniq_matching$V14))
-```
 
-44 proteins have partial-length pacbio reads uniquely aligning to them
+# 44 proteins have partial-length pacbio reads uniquely aligning to them
 
-```r
 summary_partial_unique_proteins <- summary(partial_length_uniq_matching$V14)
 capture.output(summary_partial_unique_proteins, file = "summary_partial_unique_proteins.txt")
-```
 
-How many of the partial-length pacbio reads align to proteins not identified with full-length uniquely aligning reads?
+# How many of the partial-length pacbio reads align to proteins not identified with full-length uniquely aligning reads?
 
-```r
 partial_uniq_proteins <- levels(partial_length_uniq_matching$V14)[levels(partial_length_uniq_matching$V14) %in% partial_length_uniq_matching$V14]
 
 full_length_uniq_proteins <- levels(full_length_uniq_matching$V14)[levels(full_length_uniq_matching$V14) %in% full_length_uniq_matching$V14]
 
+unique_matching <- rbind(full_length_uniq_matching, partial_length_uniq_matching)
+length(unique((unique_matching$V10)))
 length(which(!(partial_uniq_proteins %in% full_length_uniq_proteins)))
+
+# 5 proteins with partial-length pacbio reads uniquely aligning to them did not have full-length pacbio reads uniquely aligning to them. 
+
+# Therefore, a total of 51 + 5 = 56 proteins of the 108 (51.9%)identified in the Ocwieja paper were supported by full-length or partial-length Pacbio potential proteins that were uniquely aligning. 
+
+# The proteins identified from the Pacbio analysis included novel proteins identified in the Ocwieja paper.
+
+# Tabulation
+
+vif2__16 = VIF gene
+vif2__19 = VPR gene
+vpr1__17 = TAT gene (one amino acid Q insertion in Ocwieja but not in Pacbio (SRR528781.73802_3 [118 - 420] )) 
+vpr1__19 = REV gene (one amino acid N insertion in Ocwieja) - SRR528804.76011_2 [172 - 519] 
+vif2__24 = VPU gene (SRR528804.7660_1 [73 - 312])
+pacbio (SRR528779.22652_7 [97 - 519] ) = GAG polyprotein gene - only first third of gene (140aa)
+vif2__48 = ENV gene (SRR528779.43085_6 [239 - 733]  - only first fifth of gene, but aligns uniquely to the ENV gene (165aa))
+vif2__55 = NEF gene (SRR528776.45492_10 [566 - 1111] -  lacking last 22aa, but aligns uniquely to NEF gene (165aa)
+tat8c__14 = TAT8C gene first identified in the Ocwieja paper (SRR528833.57982_3 [13 - 303]) tat8c__16 = REF gene first identified in the Ocwieja paper (SRR528818.59842_4 [62 - 310] - lacking last 23aa, but aligns uniquely to the REF protein (83aa))
+
+Only proteins identified in Ocwieja, but not the Pacbio proteins are 14 potential proteins that are only between 10-15aa in length.
+
+# Unique VIF reads (vif2__16)
+VIF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__16") # 126
+
+# Unique VPR reads (vif2__19)
+VPR_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__19") # 116
+
+# Unique TAT reads (vpr1__17)
+TAT_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vpr1__17") # 651
+
+# Unique REV reads (vpr1__19)
+## To attain reads unique to REV protein, need to include rev1__12 because REV is completely within this predicted protein
+REV_genes_fl <- fl_matching[fl_matching$V14 == "vpr1__19" | fl_matching$V14 == "rev1__12", ]
+no_REV_genes_fl <- subset(fl_matching, V14 != "vpr1__19" & V14 != "rev1__12")
+head(which(!(REV_genes_fl$V10 %in% no_REV_genes_fl$V10)))
+REV_unique_fl <- REV_genes_fl[which(!(REV_genes_fl$V10 %in% no_REV_genes_fl$V10)), ]
+REV_unique_fl <- REV_unique_fl[REV_unique_fl$V16 == 0, ] # 5464
+
+# Unique VPU reads (vif2__24)
+VPU_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__24") # 2545
+
+# Unique ENV reads (vif2__48)
+ENV_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__48") # 3206
+
+# Unique NEF reads (vif2__55)
+NEF_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "vif2__55") # 1263
+
+# Unique TAT8C reads (tat8c__14)
+TAT8C_gene_unique_reads_fl <- subset(full_length_uniq_matching, V14 == "tat8c__14") # 12
+
+# Unique REF reads (tat8c__16) entirely within ref1__13
+REF_genes_fl <- fl_matching[fl_matching$V14 == "tat8c__16" | fl_matching$V14 == "ref1__13", ] 
+no_REF_genes_fl <- subset(fl_matching, V14 != "tat8c__16" & V14 != "ref1__13")
+head(which(!(REF_genes$V10 %in% no_REF_genes$V10)))
+REF_unique_fl <- REF_genes[which(!(REF_genes$V10 %in% no_REF_genes$V10)), ] 
+REF_unique_fl <- REF_unique_fl[REF_unique_fl$V16 == 0, ] # 295 
 ```
 
-5 proteins with partial-length pacbio reads uniquely aligning to them did not have full-length pacbio reads uniquely aligning to them. 
-
-Therefore, a total of 51 + 5 = 56 proteins of the 108 (51.9%)identified in the Ocwieja paper were supported by full-length or partial-length Pacbio potential proteins that were uniquely aligning. 
-
-The proteins identified from the Pacbio analysis included novel proteins identified in the Ocwieja paper.
-
-```r
-# Plotting
-
-summary_pb_to_oc <- pacbio_to_ocwieja %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-ggplot(summary_fl_matching) +
-        geom_histogram(aes(x = no_rows))
-
-summary_fl_matching <- fl_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-summary_uniq_fl_matching <- full_length_uniq_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-
-summary_uniq_pl_matching <- partial_length_uniq_matching %>% 
-        group_by(V14) %>%
-        summarise(no_rows = length(V14))
-```
 ## Liftover from HIV strain 89.6 to NL4-3
 
 The HIV strain used to generate the Pacbio reads was 89.6, but the HIV strain used for MS analysis is NL4-3. Therefore, we need to liftover the coordinates for the exons from HIV strain 89.6 to NL4-3.
@@ -483,7 +536,7 @@ Need to remove spaces and "" from the transcripts bed file prior to extraction. 
 ```
 vim ocwieja_transcripts_bed.txt 
 
-":%s/^M/\r/g"
+":%s/^M/\r/g" # Need to type :%s/<CtrlV><CtrlM>/\r/g
 ```
 
 Using HIV 89.6 strain - accession #U39362.2 with bedtools `getfasta` to extract sequences using the given coordinates
@@ -536,38 +589,15 @@ Remove header lines for the duplicated sequences that were already removed in te
 The HIV strain used to generate the Pacbio reads was 89.6, but the HIV strain used for MS analysis is NL4-3. Therefore, we need to liftover the coordinates for the exons from HIV strain 89.6 to NL4-3.
 
 ```bash
-## Change FASTA files to 2bit to use kenttools
+## Create bedfile in excel based on the GTF file, ocwieja_transcripts_bed.txt, and save as ocwieja_transcripts.bed
 
-~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/hiv.U39362.fa /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit
-~/tools/kentUtils/bin/faToTwoBit /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit
-~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.chromInfo
-~/tools/kentUtils/bin/twoBitInfo /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.chromInfo
+vim ocwieja_transcripts.bed
 
-## Use BLAT to create PSL file aligning 89.6 to NL4-3
+":%s/^M/\r/g" # Need to type :%s/<CtrlV><CtrlM>/\r/g
 
-module load seq/blat/35
+## Liftover of 89.6 coordinates to NL4-3 using net chain files created previously for the Pacbio liftover, 
 
-blat /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/U39362_hiv_896.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/AF324493_hiv_nl43.2bit /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl.psl -tileSize=12 -noHead -minScore=100
-
-## Change coordinate system by creating a LFT file
-
-~/tools/kentUtils/bin/liftUp 89_to_nl_NEW.psl 89_to_nl.lft warn 89_to_nl.psl
-
-## Chain together the coordinates from the LFT file to create a CHAIN file
-
-~/tools/kentUtils/bin/axtChain -psl 89_to_nl_NEW.psl U39362_hiv_896.2bit AF324493_hiv_nl43.2bit 89_to_nl.chain -linearGap=loose
-
-## Make alignment nets from chains
-
-~/tools/kentUtils/bin/chainNet 89_to_nl.chain AF324493_chrom.sizes U39362_chrom.sizes ../net/89_to_nl.net /dev/null
-
-## Create liftover chain file
-
- ~/tools/kentUtils/bin/netChainSubset ../net/89_to_nl.net 89_to_nl.chain ../89_to_nl_chain_net.chain 
-
-## Liftover of 89.6 coordinates to NL4-3 using net chain files
-
- ~/tools/kentUtils/bin/liftOver ../../getORFs/hiv_aligned.bed ../89_to_nl_chain_net.chain hiv_converted_to_nl.bed ../unMapped/unmapped_89_to_nl
+~/tools/kentUtils/bin/liftOver /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/ocwieja_transcripts.bed /n/data1/cores/bcbio/legall_hiv_pacbio/liftover/89_to_nl_chain_net.chain /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_converted_nl.bed /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/unmapped_ocwieja_89_to_nl
  ```
  
 ## NL4-3 proteins from Ocwieja data
@@ -580,31 +610,27 @@ Using the coordinates lifted over from 89.6 HIV strain to NL4-3, the nucleotide 
 
 module load seq/BEDtools/2.26.0
 
-bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/hiv_converted_to_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43.fa
+bedtools getfasta -fi /n/data1/cores/bcbio/legall_hiv_pacbio/references/AF324493_hiv_nl43_ref_seq.fasta -bed /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_converted_nl.bed -name -fo /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_split.fa
 
 ## Combine exons for each read
 
-## Create a list of read header names to automate merging exons together
+## Copy over script used previously to merge exons for Ocwieja data
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | cut -c 2- | sort -u > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt
 
-## Create a script, transcript_sequences_extraction.sh, to combine exons:
+## Edit the copied transcript_sequences_extraction.sh, to combine exons:
 
 # Echo name of transcript, then merge sequences of exons together
 
-for name in $(cat /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/header_list_nl43.txt)
+for name in vif2_ vpr3_ vpr4_ tat5_ tat6_ tat7_ tat8_ env4_ env8_ env12_ env16_ env3_ env7_ env11_ env15_ env2_ env6_ env10_ env14_ env1_ env5_ env9_ env13_ vpr1_ vpr2_ tat1_ tat2_ tat3_ tat4_ rev3_ rev6_ rev9_ rev12_ rev2_ rev5_ rev8_ rev11_ rev1_ rev4_ rev7_ rev10_ nef2_ nef3_ nef4_ nef5_ nef9_ nef11_ nef1_ novel1_ novel2_ novel3_ novel4_ novel5_ novel6_ novel7_ novel8_ novel9_ d1a8a_ tat8c_ ref3_ ref6_ ref9_ ref2_ ref1_ ref4_ ref7_ novel10_ novel11_ novel12_ novel13_ novel14_ novel15_ novel16_ novel17_ novel18_ novel19_ d1a5d4a8_ d1a8_
+
 do
-echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
-grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa
+
+echo ">$name" >> /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa
+grep -A1 $name /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_split.fa | grep -v $name >> /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa
+
 done
 
-# Exons for each read are on separate lines, so need to merge the lines together for each read
-
-module load seq/fastx/0.0.13 
-
-fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa
-
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa | wc -l: 447549
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_merged.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_final.fa
 ```
 
 ### Identification of ORFs and potential proteins
@@ -618,24 +644,31 @@ To identify the potential open reading frames (ORFs) using the `getorf` tool fro
 
 module load seq/emboss/6.6.0
 
-getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
+getorf -sequence /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_aligned_reads_nl43_final.fa -outseq /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_split.fa -table 1 -find 1 -reverse No
 
 # Does not wrap lines of peptides, so need to merge the lines together for each read
 
 module load seq/fastx/0.0.13 
 
-fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/getORFs/pacbio_potential_orfs_merged.fa
+fasta_formatter -i /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_split.fa -w 0 > /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa
 
-grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa | wc -l: 490717
+grep ">" /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa | wc -l: 2542
 
-cp /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy
+cp /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa_copy
 
 ## Collapse redundant protein fasta sequences using awk
 
-awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/NL43_proteins/hiv_pacbio_potential_orfs_nl43_merged.fa_copy > hiv_pacbio_nl43_unique_potential_orfs.fa
+awk '!x[$0]++' /n/data1/cores/bcbio/legall_hiv_pacbio/ocwieja_analysis/NL43_proteins/hiv_ocwieja_potential_orfs_nl43_merged.fa_copy > hiv_ocwieja_nl43_unique_potential_orfs.fa
 
 # Remove headers
-grep -v ">" hiv_pacbio_nl43_unique_potential_orfs.fa > hiv_pacbio_nl43_unique_potential_orfs_list.fa
+grep -v ">" hiv_ocwieja_nl43_unique_potential_orfs.fa > hiv_ocwieja_nl43_unique_potential_orfs_list.fa
 
-mv hiv_pacbio_nl43_unique_potential_orfs_list.fa hiv_pacbio_nl43_unique_potential_orfs.fa
+mv hiv_ocwieja_nl43_unique_potential_orfs_list.fa hiv_ocwieja_nl43_unique_potential_orfs.fa
 ```
+
+Upon exploration of the NL4-3 HIV strain proteins, the novel proteins, Tat8c and Ref, identified in the Ocwieja paper with the corresponding protein sequences for 89.6 strain, were found within the NL4-3 strain. 
+
+A protein similar to Ref with a similar length was identified with the sequence:
+MAGRSGDSDEELIRTVRLIKLLYQSNYTPGPGVRYPLTFGWCYKLVPVEPDKVEEANKGENTSLLHPVSLHGMDDPEREVLEWRFDSRLAFHHVARELHPEYFKNC
+
+A shorter protein similar to Tat8c was identified with the sequence: MEPVDPRLEPWKHPGSQPKTACTNCYCKKCCFHCQVCFMTKALGISYGRKKRRQRRRAHQNSQTHQASLSKQ (missing the last 25 amino acids).
