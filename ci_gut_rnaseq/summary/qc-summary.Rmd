@@ -317,6 +317,10 @@ heatmap_fn(cor(normalized_counts, method="spearman"))
 
 ## PCA plots {.tabset}
 ```{r pca, eval=ncol(counts) > 1}
+
+Xist <- counts[grep("ENSMUSG00000086503", row.names(counts)),]
+summarydata <- cbind(summarydata, t(Xist))
+
 dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~Name)
 vst = varianceStabilizingTransformation(dds)
 pca_loadings = function(object, ntop=500) {
@@ -337,7 +341,7 @@ colorby = "Name"
 ```
 
 ```{r pca-plotter}
-pca_plot = function(comps, nc1, nc2, colorby) {
+pca_plot = function(comps, nc1, nc2, colorby, ...) {
    c1str = paste0("PC", nc1)
    c2str = paste0("PC", nc2)
   ggplot(comps, aes_string(c1str, c2str, color=colorby)) +
@@ -350,6 +354,15 @@ pca_plot = function(comps, nc1, nc2, colorby) {
 ### PC1 vs. PC2
 ```{r PC1-PC2, fig.height=6}
 pca_plot(comps, 1, 2, colorby="sampletype")
+pca_plot(comps, 1,2, colorby="ENSMUSG00000086503")
+
+ggplot(comps, aes(x=PC1,y=PC2, color=ENSMUSG00000086503)) +
+  geom_point() +
+ # xlab(paste0("PC1", ": ", round(pc$percentVar[1] * 100), "% variance")) +
+  #ylab(paste0("PC2", ": ", round(pc$percentVar[2] * 100), "% variance"))+
+  scale_color_gradient2(low = "darkblue", mid = "white", high ="red", midpoint=1000 )
+
+
 ```
 
 ### PC3 vs. PC4
@@ -369,3 +382,6 @@ ggplot(data.frame(component=reorder(names(pc$percentVar), -pc$percentVar),
        aes(component, percent_var)) + geom_bar(stat='identity') +
   ylab("percent of total variation") + xlab("") + theme_bw()
 ```
+
+
+
