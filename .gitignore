@@ -6,3 +6,4 @@
 *.pyc
 build
 dist
+.Rproj.user
