@@ -1,7 +1,8 @@
-*.pyc
-*.egg-info
-build
-dist
-*.#*
+.DS_Store
 .Rhistory
 .snakemake
+*.#*
+*.egg-info
+*.pyc
+build
+dist
