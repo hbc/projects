@@ -1,0 +1,9 @@
+bookdown::html_document2:
+    df_print: kable
+    highlight: pygments
+    toc: true
+BiocStyle::pdf_document:
+    fig_width: 6
+    fig_height: 4
+github_document:
+    html_preview: false
