@@ -5,24 +5,16 @@ author: "Michael J. Steinbaugh"
 bibliography: bibliography.bib
 ---
 
-[Bioconductor]: https://bioconductor.org
-[Ensembl]: http://useast.ensembl.org/Mus_musculus/Info/Index
-[R]: https://www.r-project.org
-
-[`DESeq2`]: https://bioconductor.org/packages/release/bioc/html/DESeq2.html
-[`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
-
-```{r setup, include = FALSE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
                       echo = FALSE,
                       message = FALSE,
                       warning = FALSE)
 
-# S4Vectors standardGeneric `rename()` masks `dplyr::rename()`
 library(DESeq2)
-library(DEGreport)
-library(pheatmap)
+library(basejump)  # devtools::install_github("steinbaugh/basejump")
 library(tidyverse)
+# S4Vectors standardGeneric `rename()` masks `dplyr::rename()`
 
 data(dds,
      dds_rlog,
@@ -32,6 +24,21 @@ data(dds,
      normalized_counts,
      summary_data)
 ```
+
+[Bioconductor]: https://bioconductor.org
+[Ensembl]: http://useast.ensembl.org/Mus_musculus/Info/Index
+[R]: https://www.r-project.org
+
+[`DESeq2`]: https://bioconductor.org/packages/release/bioc/html/DESeq2.html
+[`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
+
+[`expt_vs_control_de_dn.csv`]: expt_vs_control_de_dn.csv
+[`expt_vs_control_de_up.csv`]: expt_vs_control_de_up.csv
+[`expt_vs_control_de.csv`]: expt_vs_control_de.csv
+[`expt_vs_control.csv`]: expt_vs_control.csv
+[`normalized_counts.csv`]: normalized_counts.csv
+[`raw_counts.csv`]: raw_counts.csv
+[`tpm.csv`]: tpm.csv
 
 ```{r ensembl}
 library(biomaRt)
@@ -54,7 +61,7 @@ detach("package:biomaRt", unload = TRUE)
 
 
 
-# Preface
+# Overview
 
 Differential gene expression (DGE) analysis of count data from [`sailfish`][] [@patro2014sailfish] was performed with the [Bioconductor][] [R][] package [`DESeq2`][] [@love2014deseq2]. Counts were fit to a negative binomial model [@hilbe2011negative], and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log<sub>2</sub> fold changes, optimizing the Cox-Reid adjusted profile likelihood [@cox-reid1987].
 
@@ -119,30 +126,38 @@ summary(results(dds, alpha = 0.05))
 ```
 
 
-## `alpha` = 0.01
+## `alpha` = 0.01 (used)
 
 ```{r}
 summary(results(dds, alpha = 0.01))
+alpha <- 0.01
 ```
 
-
-## `alpha` = 1e-6
+## `alpha` = 0.001
 
 ```{r}
-summary(results(dds, alpha = 1e-6))
+summary(results(dds, alpha = 0.001))
 ```
 
 
-Based on these results, it appears that an `alpha` cutoff of **0.01** is the sweet spot.
+## `alpha` = 1e-06
+
+```{r}
+summary(results(dds, alpha = 1e-06))
+```
+
+
+
+# Results
 
 ```{r res}
-res <- results(dds, alpha = 0.01)
-alpha <- res@metadata$alpha
+res <- results(dds, alpha = alpha)
 saveData(res)
+# res@metadata$alpha
 # mcols(res)
 ```
 
-```{r expt_vs_control, include = FALSE}
+```{r expt_vs_control}
 expt_vs_control <- res %>%
     as.data.frame %>%
     rownames_to_column("ensembl_gene_id") %>%
@@ -163,19 +178,10 @@ writeCsv(expt_vs_control,
          expt_vs_control_de,
          expt_vs_control_de_dn,
          expt_vs_control_de_up)
-
-nrow(expt_vs_control)
-nrow(expt_vs_control_de)
-nrow(expt_vs_control_de_dn)
-nrow(expt_vs_control_de_up)
 ```
 
-
-
-# Summary
-
 - `r nrow(expt_vs_control)` genes evaluated
-- `r nrow(expt_vs_control_de)` genes differentially expressed
+- `r nrow(expt_vs_control_de)` genes differentially expressed, at an alpha of `r alpha`
 - `r nrow(expt_vs_control_de_up)` genes up-regulated
 - `r nrow(expt_vs_control_de_dn)` genes down-regulated
 
@@ -183,73 +189,49 @@ nrow(expt_vs_control_de_up)
 
 # Plots
 
-## Mean average (MA) plot
+## Mean average (MA)
 
 An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales [@yang2002ma].
 
-```{r ma, fig.width = 7, fig.height = 7}
-plotMA(res, ylim = c(-6, 6))
+```{r ma}
+plotMA(res, ylim = c(-1, 1))
 ```
 
 
-## Volcano plot
+## Volcano
 
-A volcano plot compares significance (BH-adjusted *P* value) against fold change (log<sub>2</sub>) [@cui2003volcano; @li2014volcano]. We observe a few genes with very high changes in expression (LFC > 5).
+```{r volcano_cutoff}
+volcano_plot_text_alpha <- 1e-6
+volcano_plot_text_lfc <- 1
+```
 
-```{r volcano}
+A volcano plot compares significance (BH-adjusted *P* value) against fold change (log<sub>2</sub>) [@cui2003volcano; @li2014volcano]. We can see **Klf9** on the volcano plot clearly as the top upregulated gene. Genes in the green box with text labels have an adjusted *P* value below `r volcano_plot_text_alpha` and a LFC above `r volcano_plot_text_lfc`. These are likely the top candidate genes of interest.
+
+```{r volcano, fig.width=7, fig.height=7}
 library(CHBUtils)
 library(ggrepel)
-volcano_alpha <- 1e-3
-volcano_lfc <- 1
-volcano_lfc_outlier <- 10
-
+# https://github.com/hbc/CHBUtils/blob/master/R/volcanoPlot.R
 # `volcano_density_plot()` requires a `data.frame` with two columns:
 # `logFC` and `Adjusted.Pvalue`
-# First show the high logFC outliers, then filter and re-graph.
 volcano_df <- res %>%
     as.data.frame %>%
     dplyr::rename(Adjusted.Pvalue = padj,
                   logFC = log2FoldChange) %>%
-    .[, c("logFC", "Adjusted.Pvalue")] %>%
-    # Filter zero counts
-    .[!is.na(.$logFC), ]
-
-# https://github.com/hbc/CHBUtils/blob/master/R/volcanoPlot.R
+    # Filter zero counts, select columns
+    .[!is.na(.$logFC), c("logFC", "Adjusted.Pvalue")]
 volcano_plot_text <- volcano_df %>%
     rownames_to_column("ensembl_gene_id") %>%
     left_join(metadata_ensembl, by = "ensembl_gene_id") %>%
     mutate(name = external_gene_name) %>%
     select(logFC, Adjusted.Pvalue, name) %>%
     arrange(name) %>%
-    subset(Adjusted.Pvalue < volcano_alpha &
-               (logFC < -volcano_lfc | logFC > volcano_lfc))
-```
-
-```{r volcano_outlier, fig.width = 6, fig.height = 6}
-volcano_plot_text_outlier <- subset(volcano_plot_text,
-                                   logFC < -volcano_lfc_outlier |
-                                       logFC > volcano_lfc_outlier)
+    subset(Adjusted.Pvalue < volcano_plot_text_alpha &
+               (logFC < -volcano_plot_text_lfc |
+                    logFC > volcano_plot_text_lfc))
 volcano_density_plot(volcano_df,
-                     lfc.cutoff = volcano_lfc_outlier,
-                     plot_text = volcano_plot_text_outlier,
-                     pval.cutoff = volcano_alpha,
-                     shade.colour = "yellow",
-                     title = "Volcano Plot: High Fold-Change Outliers")
-```
-
-Let's filter those outliers on our graph to have a clearer looks at the results. Now we can see **Klf9** on the volcano plot clearly. Genes in the green box with text labels have an LFC above `r volcano_lfc` and an adjusted *P* value below `r volcano_alpha`. These are likely the top candidate genes of interest.
-
-```{r volcano_outlier_removed, fig.width = 8, fig.height = 8}
-volcano_df_subset <- subset(volcano_df,
-                            logFC > -volcano_lfc_outlier &
-                                logFC < volcano_lfc_outlier)
-volcano_plot_text_subset <- subset(volcano_plot_text,
-                                   Adjusted.Pvalue < volcano_alpha &
-                                       (logFC < -volcano_lfc | logFC > volcano_lfc))
-volcano_density_plot(volcano_df_subset,
-                     lfc.cutoff = volcano_lfc,
-                     plot_text = volcano_plot_text_subset,
-                     pval.cutoff = volcano_alpha)
+                     lfc.cutoff = 0,
+                     plot_text = volcano_plot_text,
+                     pval.cutoff = alpha)
 detach("package:CHBUtils", unload = TRUE)
 ```
 
@@ -259,18 +241,16 @@ detach("package:CHBUtils", unload = TRUE)
 This plot shows only differentially expressed genes (n = `r nrow(expt_vs_control_de)`) on a per-sample basis. We have scaled the data by row and used the `ward.D2` method for clustering [@ward1963clustering]. We can see that the samples cluster nicely across conditions.
 
 ```{r heatmap_de}
-# Alternate inputs: tpm, normalized_counts
 dds_rlog %>%
     assay %>%
     # DE genes only
     .[expt_vs_control_de$ensembl_gene_id, ] %>%
-    pheatmap(annotation = heatmap_annotation,
-             # color = heatmap_color,
-             clustering_distance_cols = "correlation",
-             clustering_method = "ward.D2",
-             main = "Differentially expressed genes",
-             scale = "row",
-             show_rownames = FALSE)
+    pheatmap::pheatmap(., annotation = heatmap_annotation,
+                       clustering_distance_cols = "correlation",
+                       clustering_method = "ward.D2",
+                       main = "Differentially expressed genes",
+                       scale = "row",
+                       show_rownames = FALSE)
 ```
 
 
@@ -279,12 +259,12 @@ dds_rlog %>%
 
 Only the top 50 up- and down-regulated genes (arranged by *P* value) are shown.
 
-```{r expt_vs_control_de_up}
-top_table <- function(df, caption) {
+```{r top_table}
+top_table <- function(df, caption = NULL) {
     df %>%
         dplyr::select(-c(description, lfc_se, pvalue, stat)) %>%
         head(n = 50) %>%
-        kable(caption = caption)
+        printTable(., caption = caption)
 }
 top_table(expt_vs_control_de_up, "Top upregulated genes")
 top_table(expt_vs_control_de_dn, "Top downregulated genes")
@@ -296,20 +276,16 @@ top_table(expt_vs_control_de_dn, "Top downregulated genes")
 
 ## Differential expression
 
-- **[`expt_vs_control.csv`](../results/expt_vs_control.csv)**:
-    All genes
-- **[`expt_vs_control_de.csv`](../results/expt_vs_control_de.csv)**:
-    Differentially expressed (DE) genes, both negative and positive
-- **[`expt_vs_control_de_dn.csv`](../results/expt_vs_control_de_dn.csv)**:
-    Downregulated DE genes
-- **[`expt_vs_control_de_up.csv`](../results/expt_vs_control_de_up.csv)**:
-    Upregulated DE genes
+- [`expt_vs_control.csv`][]: All genes
+- [`expt_vs_control_de.csv`][]: Differentially expressed (DE) genes, both negative and positive
+- [`expt_vs_control_de_dn.csv`][]: Downregulated DE genes
+- [`expt_vs_control_de_up.csv`][]: Upregulated DE genes
 
 These files contain the following columns:
 
 - `ensembl_gene_id`: [Ensembl][] gene identifier
-- `base_mean`: The mean of the normalized counts for that gene for all samples
-- `log2_fold_change`: log<sub>2</sub> fold change (MLE)
+- `base_mean`: Mean of the normalized counts per gene for all samples
+- `log2_fold_change`: log<sub>2</sub> fold change
 - `lfc_se`: log<sub>2</sub> standard error
 - `stat`: Wald statistic
 - `pvalue`: Walt test *P* value
@@ -321,20 +297,31 @@ These files contain the following columns:
 
 ## Counts
 
+### Normalized (preferred)
+
 We advise using only these files to assess and/or graph genes on an individual basis:
 
-- **[`normalized_counts`](../results/normalized_counts.csv)**:
-    [`DESeq2`][] normalized counts
-- **[`tpm`](../results/tpm.csv)**:
-    [`sailfish`][]-generated transcripts per million (TPM)
+- [`normalized_counts.csv`][]: Normalized counts, generated by [`DESeq2`][]
+- [`tpm.csv`][]: Transcripts per million (TPM), generated by [`sailfish`][]
 
-Raw counts should **only** be used to perform a new differential expression analysis. We can provide this file upon request. These counts will vary across samples due to differences in sequencing depth, and have not been normalized.
+### Raw
+
+[`raw_counts.csv`][] (generated by [`sailfish`][]) should **only** be used to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized.
 
 
 
 # Methods
 
-Gene annotations were obtained from `r ensembl_version`.
+Differential expression analysis was performed by [`DESeq2`] [@love2014deseq2]. Gene annotations were obtained from `r ensembl_version`.
+
+
+## R session information
+
+`sessionInfo()` output of the workstation that generated this report:
+
+```{r session_info}
+sessionInfo()
+```
 
 
 

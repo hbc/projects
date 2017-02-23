@@ -1,9 +1,21 @@
 ---
-title: "Sahay Lab Klf9 overexpression RNA-seq quality control"
+title: "Sahay Lab Klf9 RNA-seq quality control"
 date: "`r BiocStyle::doc_date()`"
 author: "Michael J. Steinbaugh"
 bibliography: bibliography.bib
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE,
+                      echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+
+library(RColorBrewer)
+library(DESeq2)
+library(basejump)  # devtools::install_github("steinbaugh/basejump")
+library(tidyverse)
+```
 
 [Klf9]: https://www.omim.org/entry/602902
 [R]: https://www.r-project.org
@@ -17,34 +29,11 @@ bibliography: bibliography.bib
 [`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
 [`tximport`]: https://bioconductor.org/packages/release/bioc/html/tximport.html
 
-```{r setup, include = FALSE}
-knitr::opts_chunk$set(cache = TRUE,
-                      echo = FALSE,
-                      message = FALSE,
-                      warning = FALSE)
-
-library(DESeq2)
-library(pheatmap)
-library(RColorBrewer)
-library(knitr)
-library(readxl)
-library(basejump)  # devtools::install_github("steinbaugh/basejump")
-library(tidyverse)
-
-# `ggplot2` theme
-theme_set(theme_light())
-
-# Set seed for reproducibility
-set.seed(1454944673)
-```
-
-```{r bcbio, include = FALSE}
+```{r bcbio}
 # HPC mount point over `sshfs` connection
 hpc_dir <- "/Users/mike/Orchestra/hbc/PIs/amar_sahay/klf9_overexpression_rnaseq"
 if (!length(dir(hpc_dir))) {
     stop("Project on HPC server not loaded.")
-} else {
-    dir(hpc_dir)
 }
 # `bcbio-nextgen`
 bcbio_dir <- file.path(hpc_dir, "bcbio", "final")
@@ -52,7 +41,6 @@ bcbio_dir <- file.path(hpc_dir, "bcbio", "final")
 summary_dir <- file.path(bcbio_dir) %>%
     dir(full.names = TRUE) %>%
     .[grepl("/\\d{4}-\\d{2}-\\d{2}_bcbio$", .)]
-dir(summary_dir)
 ```
 
 
@@ -70,8 +58,8 @@ Notes from Kathleen McAvoy:
 > As we know that there are differences in the proportion of some cells and their status, we know that we will likely see global differences in gene expression that are related to the population level, but not necessarily to the single cell level. We'll have to tease this apart in subsequent experiments.
 
 ```{r metadata}
-metadata <- file.path("samples.xlsx") %>%
-    read_excel %>%
+metadata <- file.path("data-raw/samples.xlsx") %>%
+    readxl::read_excel(.) %>%
     setNamesSnake %>%
     select(name,
            condition,
@@ -84,7 +72,7 @@ metadata <- file.path("samples.xlsx") %>%
            age_weeks = factor(age_weeks))
 saveData(metadata)
 writeCsv(metadata)
-kable(metadata, caption = "Samples")
+printTable(metadata, caption = "Samples")
 ```
 
 ```{r summary_data}
@@ -98,7 +86,7 @@ saveData(summary_data)
 writeCsv(summary_data)
 ```
 
-```{r txi, include = FALSE}
+```{r txi, include=FALSE}
 # `bcbio-nextgen` `sailfish`
 tx2gene <- file.path(summary_dir, "tx2gene.csv") %>%
     read.csv(header = FALSE)
@@ -122,7 +110,7 @@ saveData(tpm)
 writeCsv(tpm)
 ```
 
-```{r dds, include = FALSE}
+```{r dds, include=FALSE}
 # `DESeq2` dataset from `sailfish` output
 # Re-adjust for batch effects, if necessary
 # ~ genotype + condition + genotype:condition
@@ -130,8 +118,8 @@ writeCsv(tpm)
 dds <- txi %>%
     DESeqDataSetFromTximport(colData = metadata,
                              design = ~ condition) %>%
-    # `betaPrior = FALSE` recommended, default in 2017
-    DESeq(betaPrior = FALSE)
+    # `betaPrior = FALSE` will default in 2017
+    DESeq
 resultsNames(dds)
 sizeFactors(dds)
 # `blind = TRUE` (default) treats all replicates separately
@@ -151,14 +139,11 @@ saveData(raw_counts,
          raw_counts_nonzero,
          normalized_counts,
          normalized_counts_nonzero)
-writeCsv(normalized_counts)
-```
+writeCsv(raw_counts, normalized_counts)
 
-```{r raw_counts_featureCounts, include = FALSE}
-# `bcbio-nextgen` `featureCounts`:
+# `bcbio-nextgen` `featureCounts` (unused)
 raw_counts_featureCounts <- file.path(summary_dir, "combined.counts") %>%
     read.table(header = TRUE, row.names = 1)
-saveData(raw_counts_featureCounts)
 ```
 
 
@@ -196,10 +181,10 @@ plot_gene("ENSMUSG00000033863")
 
 We can evaluate the expression counts of gender-specific markers [@karyagyna2010gender; @staedtler2013gender] to blindly determine gender. Based on these expression profiles, it appears that all the mice studied were male.
 
-```{r gender}
-gender_csv <- read_csv("gender.csv", na = c("", "#N/A")) %>%
+```{r gender_markers}
+gender_markers <- read_csv("data-raw/gender_markers.csv", na = c("", "#N/A")) %>%
     arrange(chromosome, gene_symbol)
-gender_gene_identifier <- gender_csv %>%
+gender_gene_identifier <- gender_markers %>%
     filter(include == TRUE) %>%
     select(ensembl_gene) %>%
     .[[1]] %>%
@@ -209,7 +194,7 @@ tpm[gender_gene_identifier, ] %>%
     rownames_to_column %>%
     reshape2::melt(.) %>%
     setNames(c("ensembl_gene", "name", "counts")) %>%
-    left_join(gender_csv, by = "ensembl_gene") %>%
+    left_join(gender_markers, by = "ensembl_gene") %>%
     ggplot(aes(x = gene_symbol,
                y = counts,
                color = name,
@@ -472,7 +457,7 @@ dds_rlog %>%
 
 ### Grouped by `age`
 
-The variation in age across samples (8.5-18 weeks) appears to have a significant confounding effect on the study. We see grouping of the samples by age, except the 12-18 age group, which separates into two clusters. Is there any possible explanation for this effect in the sample preparation?
+The variation in age across samples (8.5-18 weeks) appears to have a significant confounding effect on the study. We see grouping of the samples by age, except the 12-18 age group, which separates into two clusters.
 
 ```{r pca_age_weeks}
 dds_rlog %>%
@@ -484,7 +469,7 @@ dds_rlog %>%
 
 ### Ungrouped
 
-There appears to be something distinct and perhaps uncontrolled about the `control_pool3` sample. Is there anything known about this replicate that would cause it to vary so significantly?
+There appears to be something distinct and perhaps uncontrolled about the `kmc03` sample.
 
 ```{r pca_name}
 dds_rlog %>%
@@ -514,34 +499,38 @@ saveData(heatmap_annotation, heatmap_color)
 dds_rlog %>%
     assay %>%
     cor(method = "pearson") %>%
-    pheatmap(annotation = heatmap_annotation,
-             color = heatmap_color,
-             main = "Pearson correlation")
+    pheatmap::pheatmap(.,
+                       annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Pearson correlation")
 ```
 
-```{r heatmap_spearman, include = FALSE}
+```{r heatmap_spearman, include=FALSE}
 dds_rlog %>%
     assay %>%
     cor(method = "spearman") %>%
-    pheatmap(annotation = annotation,
-             color = heatmap_color,
-             main = "Spearman correlation")
+    pheatmap::pheatmap(.,
+                       annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Spearman correlation")
 ```
 
-```{r heatmap_pearson_tmm, include = FALSE}
+```{r heatmap_pearson_tmm, include=FALSE}
 tmm_normalized_counts %>%
     cor(method = "pearson") %>%
-    pheatmap(annotation = annotation,
-             color = heatmap_color,
-             main = "Pearson correlation (TMM-normalized)")
+    pheatmap::pheatmap(.,
+                       annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Pearson correlation (TMM-normalized)")
 ```
 
-```{r heatmap_spearman_tmm, include = FALSE}
+```{r heatmap_spearman_tmm, include=FALSE}
 tmm_normalized_counts %>%
     cor(method = "spearman") %>%
-    pheatmap(annotation = annotation,
-             color = heatmap_color,
-             main = "Spearman correlation (TMM-normalized)")
+    pheatmap::pheatmap(.,
+                       annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Spearman correlation (TMM-normalized)")
 ```
 
 
