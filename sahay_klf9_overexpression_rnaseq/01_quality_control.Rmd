@@ -129,10 +129,10 @@ saveData(dds, dds_rlog, dds_vst)
 ```
 
 ```{r counts}
-raw_counts <- counts(dds)
+raw_counts <- DESeq2::counts(dds)
 raw_counts_nonzero <- raw_counts %>%
     .[rowSums(.) > 0, ]
-normalized_counts <- counts(dds, normalized = TRUE)
+normalized_counts <- DESeq2::counts(dds, normalized = TRUE)
 normalized_counts_nonzero <- normalized_counts %>%
     .[rowSums(.) > 0, ]
 saveData(raw_counts,
@@ -371,7 +371,7 @@ melt_log10 <- function(counts) {
 }
 ```
 
-Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different. The log<sub>10</sub> count spreads look good for all samples.
+Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different. The log10 count spreads look good for all samples.
 
 ```{r log10_boxplot}
 raw_counts %>%
@@ -386,7 +386,7 @@ raw_counts %>%
     ylab(expression(log[10]~counts~per~gene))
 ```
 
-The log<sub>10</sub> TMM-normalized counts per gene normalization method [@robinson2010tmm] equates the overall expression levels of genes between samples under the assumption that the majority of them are not differentially expressed. Therefore, by normalizing for total RNA expression by sample, we expect the spread of the log<sub>10</sub> TMM-normalized counts per gene to be similar for every sample. The samples look good, with similar log<sub>10</sub> TMM-normalized counts per gene distributions.
+The log10 TMM-normalized counts per gene normalization method [@robinson2010tmm] equates the overall expression levels of genes between samples under the assumption that the majority of them are not differentially expressed. Therefore, by normalizing for total RNA expression by sample, we expect the spread of the log10 TMM-normalized counts per gene to be similar for every sample. The samples look good, with similar log10 TMM-normalized counts per gene distributions.
 
 ```{r log10_tmm_boxplot}
 tmm_normalized_counts <- raw_counts %>%
@@ -408,7 +408,7 @@ tmm_normalized_counts %>%
 
 ## Count density
 
-Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different. The samples look good, with similar log<sub>10</sub> TMM-normalized counts per gene densities.
+Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different. The samples look good, with similar log10 TMM-normalized counts per gene densities.
 
 ```{r log10_tmm_density}
 tmm_normalized_counts %>%
@@ -425,7 +425,7 @@ tmm_normalized_counts %>%
 
 # Sample similarity analysis
 
-Before performing similarity analysis, we transform counts to log<sub>2</sub>, which acts to minimize large differences in sequencing depth and helps normalize all samples to a similar dynamic range. For RNA-seq count data, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log<sub>2</sub> transformation will amplify this noise, and instead, low count genes will now dominate the PCA plots. So instead, we use a transformation (`rlog`) that gives similar results for high counts as a log<sub>2</sub> transformation but also shrinks the values of low counts towards the genes’ average across samples. We do this with the `rlog` function in the [`DESeq2`][] package [@love2014deseq2], which we will later use for differential gene expression analysis.
+Before performing similarity analysis, we transform counts to log2, which acts to minimize large differences in sequencing depth and helps normalize all samples to a similar dynamic range. For RNA-seq count data, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log2 transformation will amplify this noise, and instead, low count genes will now dominate the PCA plots. So instead, we use a transformation (`rlog`) that gives similar results for high counts as a log2 transformation but also shrinks the values of low counts towards the genes’ average across samples. We do this with the `rlog` function in the [`DESeq2`][] package [@love2014deseq2], which we will later use for differential gene expression analysis.
 
 
 ## Principal component analysis (PCA)

@@ -32,13 +32,13 @@ data(dds,
 [`DESeq2`]: https://bioconductor.org/packages/release/bioc/html/DESeq2.html
 [`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
 
-[`expt_vs_control_de_dn.csv`]: expt_vs_control_de_dn.csv
-[`expt_vs_control_de_up.csv`]: expt_vs_control_de_up.csv
-[`expt_vs_control_de.csv`]: expt_vs_control_de.csv
-[`expt_vs_control.csv`]: expt_vs_control.csv
-[`normalized_counts.csv`]: normalized_counts.csv
-[`raw_counts.csv`]: raw_counts.csv
-[`tpm.csv`]: tpm.csv
+[`expt_vs_control_de_down.csv`]: results/expt_vs_control_de_down.csv
+[`expt_vs_control_de_up.csv`]: results/expt_vs_control_de_up.csv
+[`expt_vs_control_de.csv`]: results/expt_vs_control_de.csv
+[`expt_vs_control.csv`]: results/expt_vs_control.csv
+[`normalized_counts.csv`]: results/normalized_counts.csv
+[`raw_counts.csv`]: results/raw_counts.csv
+[`tpm.csv`]: results/tpm.csv
 
 ```{r ensembl}
 library(biomaRt)
@@ -63,7 +63,7 @@ detach("package:biomaRt", unload = TRUE)
 
 # Overview
 
-Differential gene expression (DGE) analysis of count data from [`sailfish`][] [@patro2014sailfish] was performed with the [Bioconductor][] [R][] package [`DESeq2`][] [@love2014deseq2]. Counts were fit to a negative binomial model [@hilbe2011negative], and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log<sub>2</sub> fold changes, optimizing the Cox-Reid adjusted profile likelihood [@cox-reid1987].
+Differential gene expression (DGE) analysis of count data from [`sailfish`][] [@patro2014sailfish] was performed with the [Bioconductor][] [R][] package [`DESeq2`][] [@love2014deseq2]. Counts were fit to a negative binomial model [@hilbe2011negative], and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood [@cox-reid1987].
 
 
 
@@ -114,35 +114,34 @@ Let's take a look at the number of genes we get with different false discovery r
 
 ## `alpha` = 0.1 (default)
 
-```{r}
+```{r alpha1}
 summary(results(dds))
 ```
 
 
 ## `alpha` = 0.05
 
-```{r}
+```{r alpha2}
 summary(results(dds, alpha = 0.05))
 ```
 
 
-## `alpha` = 0.01 (used)
+## `alpha` = 0.01
 
-```{r}
+```{r alpha3}
 summary(results(dds, alpha = 0.01))
-alpha <- 0.01
 ```
 
 ## `alpha` = 0.001
 
-```{r}
+```{r alpha4}
 summary(results(dds, alpha = 0.001))
 ```
 
 
 ## `alpha` = 1e-06
 
-```{r}
+```{r alpha5}
 summary(results(dds, alpha = 1e-06))
 ```
 
@@ -150,40 +149,53 @@ summary(results(dds, alpha = 1e-06))
 
 # Results
 
-```{r res}
+```{r results, include = FALSE}
+# Alpha cutoff
+alpha <- 0.001
+alpha_pct <- sprintf("%1.1f%%", alpha * 100)
+
+# LFC cutoff
+lfc <- 0.25
+
 res <- results(dds, alpha = alpha)
 saveData(res)
 # res@metadata$alpha
 # mcols(res)
-```
 
-```{r expt_vs_control}
 expt_vs_control <- res %>%
     as.data.frame %>%
     rownames_to_column("ensembl_gene_id") %>%
     as_tibble %>%
-    left_join(metadata_ensembl, by = "ensembl_gene_id") %>%
     setNamesSnake %>%
+    left_join(metadata_ensembl, by = "ensembl_gene_id") %>%
     arrange(padj)
 
-expt_vs_control_de <- subset(expt_vs_control, padj < alpha)
-expt_vs_control_de_dn <- subset(expt_vs_control_de, log2_fold_change < 0)
-expt_vs_control_de_up <- subset(expt_vs_control_de, log2_fold_change > 0)
+expt_vs_control_de <- expt_vs_control %>%
+    subset(padj < alpha) %>%
+    subset(log2_fold_change < -lfc | log2_fold_change > lfc)
+
+# Apply the fold change cutoffs only to the down/up tables
+expt_vs_control_de_down <- subset(expt_vs_control_de, log2_fold_change < 0) %>%
+    arrange(log2_fold_change)
+expt_vs_control_de_up <- subset(expt_vs_control_de, log2_fold_change > 0) %>%
+    arrange(-log2_fold_change)
 
 saveData(expt_vs_control,
          expt_vs_control_de,
-         expt_vs_control_de_dn,
+         expt_vs_control_de_down,
          expt_vs_control_de_up)
 writeCsv(expt_vs_control,
          expt_vs_control_de,
-         expt_vs_control_de_dn,
+         expt_vs_control_de_down,
          expt_vs_control_de_up)
 ```
 
+We performed the analysis using a BH adjusted *P* value cutoff of `r alpha` and a log fold-change (LFC) ratio cutoff of `r lfc`.
+
 - `r nrow(expt_vs_control)` genes evaluated
-- `r nrow(expt_vs_control_de)` genes differentially expressed, at an alpha of `r alpha`
-- `r nrow(expt_vs_control_de_up)` genes up-regulated
-- `r nrow(expt_vs_control_de_dn)` genes down-regulated
+- `r nrow(expt_vs_control_de)` genes differentially expressed (DE)
+- `r nrow(expt_vs_control_de_down)` genes downregulated
+- `r nrow(expt_vs_control_de_up)` genes upregulated
 
 
 
@@ -205,7 +217,7 @@ volcano_plot_text_alpha <- 1e-6
 volcano_plot_text_lfc <- 1
 ```
 
-A volcano plot compares significance (BH-adjusted *P* value) against fold change (log<sub>2</sub>) [@cui2003volcano; @li2014volcano]. We can see **Klf9** on the volcano plot clearly as the top upregulated gene. Genes in the green box with text labels have an adjusted *P* value below `r volcano_plot_text_alpha` and a LFC above `r volcano_plot_text_lfc`. These are likely the top candidate genes of interest.
+A volcano plot compares significance (BH-adjusted *P* value) against fold change (log2) [@cui2003volcano; @li2014volcano]. We can see **Klf9** on the volcano plot clearly as the top upregulated gene. Genes in the green box with text labels have an adjusted *P* value below `r volcano_plot_text_alpha` and a LFC above `r volcano_plot_text_lfc`. These are likely the top candidate genes of interest.
 
 ```{r volcano, fig.width=7, fig.height=7}
 library(CHBUtils)
@@ -223,13 +235,13 @@ volcano_plot_text <- volcano_df %>%
     rownames_to_column("ensembl_gene_id") %>%
     left_join(metadata_ensembl, by = "ensembl_gene_id") %>%
     mutate(name = external_gene_name) %>%
-    select(logFC, Adjusted.Pvalue, name) %>%
+    .[, c("logFC", "Adjusted.Pvalue", "name")] %>%
     arrange(name) %>%
     subset(Adjusted.Pvalue < volcano_plot_text_alpha &
                (logFC < -volcano_plot_text_lfc |
                     logFC > volcano_plot_text_lfc))
 volcano_density_plot(volcano_df,
-                     lfc.cutoff = 0,
+                     lfc.cutoff = lfc,
                      plot_text = volcano_plot_text,
                      pval.cutoff = alpha)
 detach("package:CHBUtils", unload = TRUE)
@@ -257,7 +269,7 @@ dds_rlog %>%
 
 # Tables
 
-Only the top 50 up- and down-regulated genes (arranged by *P* value) are shown.
+Only the top 50 up- and down-regulated genes (arranged by log2 fold change) are shown.
 
 ```{r top_table}
 top_table <- function(df, caption = NULL) {
@@ -267,7 +279,7 @@ top_table <- function(df, caption = NULL) {
         printTable(., caption = caption)
 }
 top_table(expt_vs_control_de_up, "Top upregulated genes")
-top_table(expt_vs_control_de_dn, "Top downregulated genes")
+top_table(expt_vs_control_de_down, "Top downregulated genes")
 ```
 
 
@@ -277,16 +289,16 @@ top_table(expt_vs_control_de_dn, "Top downregulated genes")
 ## Differential expression
 
 - [`expt_vs_control.csv`][]: All genes
-- [`expt_vs_control_de.csv`][]: Differentially expressed (DE) genes, both negative and positive
-- [`expt_vs_control_de_dn.csv`][]: Downregulated DE genes
-- [`expt_vs_control_de_up.csv`][]: Upregulated DE genes
+- [`expt_vs_control_de.csv`][]: DE genes, sorted by BH-adjusted *P* value
+- [`expt_vs_control_de_down.csv`][]: Downregulated DE genes, sorted by log2FC
+- [`expt_vs_control_de_up.csv`][]: Upregulated DE genes, reverse sorted by log2FC
 
 These files contain the following columns:
 
 - `ensembl_gene_id`: [Ensembl][] gene identifier
 - `base_mean`: Mean of the normalized counts per gene for all samples
-- `log2_fold_change`: log<sub>2</sub> fold change
-- `lfc_se`: log<sub>2</sub> standard error
+- `log2_fold_change`: log2 fold change
+- `lfc_se`: log2 standard error
 - `stat`: Wald statistic
 - `pvalue`: Walt test *P* value
 - `padj`: BH adjusted Wald test *P* value (corrected for multiple comparisons; FDR)
