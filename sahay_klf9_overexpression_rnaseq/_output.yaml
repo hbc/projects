@@ -3,7 +3,7 @@ bookdown::html_document2:
     highlight: pygments
     toc: true
 BiocStyle::pdf_document:
-    fig_width: 6
-    fig_height: 4
+    toc: true
+    toc_depth: 1
 github_document:
     html_preview: false
