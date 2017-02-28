@@ -1,0 +1,13 @@
+install.packages(c("knitr",
+                   "pheatmap",
+                   "RColorBrewer",
+                   "readxl",
+                   "reshape2",
+                   "tidyverse"))
+source("https://bioconductor.org/biocLite.R")
+biocLite(c("BiocStyle",
+           "biomaRt",
+           "DESeq2",
+           "edgeR",
+           "tximport",
+           "steinbaugh/basejump"))
