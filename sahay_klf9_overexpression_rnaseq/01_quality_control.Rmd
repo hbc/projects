@@ -1,5 +1,5 @@
 ---
-title: "Sahay Lab Klf9 RNA-seq quality control"
+title: "Sahay Lab Klf9 RNA-Seq quality control"
 date: "`r BiocStyle::doc_date()`"
 author: "Michael J. Steinbaugh"
 bibliography: bibliography.bib
@@ -10,11 +10,15 @@ knitr::opts_chunk$set(cache = TRUE,
                       echo = FALSE,
                       message = FALSE,
                       warning = FALSE)
-
-library(RColorBrewer)
+library(basejump)
 library(DESeq2)
-library(basejump)  # devtools::install_github("steinbaugh/basejump")
+library(edgeR)
+library(pheatmap)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
 library(tidyverse)
+library(tximport)
 ```
 
 [Klf9]: https://www.omim.org/entry/602902
@@ -60,30 +64,30 @@ Notes from Kathleen McAvoy:
 ```{r metadata}
 metadata <- file.path("data-raw/samples.xlsx") %>%
     readxl::read_excel(.) %>%
-    setNamesSnake %>%
-    select(name,
-           condition,
-           genotype,
-           cage,
-           age_weeks) %>%
-    mutate(condition = factor(condition),
-           genotype = factor(genotype),
-           cage = factor(cage),
-           age_weeks = factor(age_weeks))
-saveData(metadata)
-writeCsv(metadata)
-printTable(metadata, caption = "Samples")
+    basejump::setNamesSnake(.) %>%
+    dplyr::select(name,
+                  condition,
+                  genotype,
+                  cage,
+                  age_weeks) %>%
+    dplyr::mutate(condition = factor(condition),
+                  genotype = factor(genotype),
+                  cage = factor(cage),
+                  age_weeks = factor(age_weeks))
+save(metadata, file = "data/metadata.rda")
+write.csv(metadata, file = "results/metadata.csv")
+basejump::printTable(metadata, caption = "Samples")
 ```
 
 ```{r summary_data}
 summary_data <- file.path(summary_dir, "project-summary.csv") %>%
-    read_csv %>%
-    setNamesSnake %>%
-    select(noquote(order(names(.)))) %>%
-    mutate(condition = factor(condition)) %>%
-    arrange(name)
-saveData(summary_data)
-writeCsv(summary_data)
+    readr::read_csv(.) %>%
+    basejump::setNamesSnake(.) %>%
+    dplyr::select(noquote(order(names(.)))) %>%
+    dplyr::mutate(condition = factor(condition)) %>%
+    dplyr::arrange(name)
+save(summary_data, file = "data/summary_data.rda")
+write.csv(summary_data, file = "results/summary_data.csv")
 ```
 
 ```{r txi, include=FALSE}
@@ -100,14 +104,14 @@ txi <- tximport::tximport(sailfish_files,
                           tx2gene = tx2gene,
                           reader = readr::read_tsv,
                           countsFromAbundance = "lengthScaledTPM")
-saveData(txi)
+save(txi, file = "data/txi.rda")
 ```
 
 ```{r tpm}
 # Transcripts per million
 tpm <- txi$abundance
-saveData(tpm)
-writeCsv(tpm)
+save(tpm, file = "data/tpm.rda")
+write.csv(tpm, file = "results/tpm.csv")
 ```
 
 ```{r dds, include=FALSE}
@@ -116,16 +120,16 @@ writeCsv(tpm)
 # ~ genotype + condition + genotype:condition
 # ~ condition + age_weeks
 dds <- txi %>%
-    DESeqDataSetFromTximport(colData = metadata,
-                             design = ~ condition) %>%
+    DESeq2::DESeqDataSetFromTximport(colData = metadata,
+                                     design = ~ condition) %>%
     # `betaPrior = FALSE` will default in 2017
-    DESeq
-resultsNames(dds)
-sizeFactors(dds)
+    DESeq2::DESeq(.)
+DESeq2::resultsNames(dds)
+DESeq2::sizeFactors(dds)
 # `blind = TRUE` (default) treats all replicates separately
-dds_rlog <- rlog(dds)
-dds_vst <- varianceStabilizingTransformation(dds)
-saveData(dds, dds_rlog, dds_vst)
+dds_rlog <- DESeq2::rlog(dds)
+dds_vst <- DESeq2::varianceStabilizingTransformation(dds)
+save(dds, dds_rlog, dds_vst, file = "data/dds.rda")
 ```
 
 ```{r counts}
@@ -135,15 +139,17 @@ raw_counts_nonzero <- raw_counts %>%
 normalized_counts <- DESeq2::counts(dds, normalized = TRUE)
 normalized_counts_nonzero <- normalized_counts %>%
     .[rowSums(.) > 0, ]
-saveData(raw_counts,
-         raw_counts_nonzero,
-         normalized_counts,
-         normalized_counts_nonzero)
-writeCsv(raw_counts, normalized_counts)
+save(raw_counts,
+     raw_counts_nonzero,
+     normalized_counts,
+     normalized_counts_nonzero,
+     file = "data/counts.rda")
+write.csv(raw_counts, file = "results/raw_counts.csv")
+write.csv(normalized_counts, file = "results/normalized_counts.csv")
 
 # `bcbio-nextgen` `featureCounts` (unused)
-raw_counts_featureCounts <- file.path(summary_dir, "combined.counts") %>%
-    read.table(header = TRUE, row.names = 1)
+# raw_counts_featureCounts <- file.path(summary_dir, "combined.counts") %>%
+#     read.table(header = TRUE, row.names = 1)
 ```
 
 
@@ -163,14 +169,15 @@ plot_gene <- function(gene,
     df <- data.frame(condition = factor(condition),
                      counts = counts,
                      name = names(counts))
-    plot <- ggplot(df, aes(x = name,
-                           y = counts,
-                           fill = condition)) +
-        ggtitle(gene) +
-        geom_dotplot(binaxis = "y") +
-        theme(axis.text.x = element_text(angle = 90)) +
-        xlab("sample") +
-        ylab(ylab)
+    plot <- ggplot2::ggplot(df,
+                            ggplot2::aes(x = name,
+                                         y = counts,
+                                         fill = condition)) +
+        ggplot2::ggtitle(gene) +
+        ggplot2::geom_dotplot(binaxis = "y") +
+        ggplot2::theme(axis.text.x = element_text(angle = 90)) +
+        ggplot2::xlab("sample") +
+        ggplot2::ylab(ylab)
     return(plot)
 }
 plot_gene("ENSMUSG00000033863")
@@ -182,19 +189,20 @@ plot_gene("ENSMUSG00000033863")
 We can evaluate the expression counts of gender-specific markers [@karyagyna2010gender; @staedtler2013gender] to blindly determine gender. Based on these expression profiles, it appears that all the mice studied were male.
 
 ```{r gender_markers}
-gender_markers <- read_csv("data-raw/gender_markers.csv", na = c("", "#N/A")) %>%
-    arrange(chromosome, gene_symbol)
+gender_markers <- readr::read_csv("data-raw/gender_markers.csv",
+                                  na = c("", "#N/A")) %>%
+    dplyr::arrange(chromosome, gene_symbol)
 gender_gene_identifier <- gender_markers %>%
-    filter(include == TRUE) %>%
-    select(ensembl_gene) %>%
+    dplyr::filter(include == TRUE) %>%
+    dplyr::select(ensembl_gene) %>%
     .[[1]] %>%
-    sortUnique
+    basejump::sortUnique(.)
 tpm[gender_gene_identifier, ] %>%
     data.frame %>%
-    rownames_to_column %>%
+    tibble::rownames_to_column(.) %>%
     reshape2::melt(.) %>%
     setNames(c("ensembl_gene", "name", "counts")) %>%
-    left_join(gender_markers, by = "ensembl_gene") %>%
+    dplyr::left_join(gender_markers, by = "ensembl_gene") %>%
     ggplot(aes(x = gene_symbol,
                y = counts,
                color = name,
@@ -214,9 +222,9 @@ Overall read depths for the experiment were good, with all samples having at lea
 data.frame(name = summary_data$name,
            total_reads = summary_data$total_reads / 1e6,
            condition = metadata$condition) %>%
-ggplot(aes(x = name,
-           y = total_reads,
-           fill = condition)) +
+    ggplot(aes(x = name,
+               y = total_reads,
+               fill = condition)) +
     ggtitle("Total reads") +
     geom_bar(stat = "identity") +
     geom_hline(size = 2, yintercept = 20) +
@@ -234,9 +242,9 @@ The number of mapped reads corresponds to the number of total reads, as desired.
 data.frame(name = summary_data$name,
            mapped_reads = summary_data$mapped_reads / 1e6,
            condition = metadata$condition) %>%
-ggplot(aes(x = name,
-           y = mapped_reads,
-           fill = condition)) +
+    ggplot(aes(x = name,
+               y = mapped_reads,
+               fill = condition)) +
     ggtitle("Mapped reads") +
     geom_bar(stat = "identity") +
     geom_hline(size = 2,
@@ -255,9 +263,9 @@ The genomic mapping rate represents the percentage of reads mapping to the refer
 data.frame(name = summary_data$name,
            genomic_mapping_rate = summary_data$mapped_reads / summary_data$total_reads * 100,
            condition = metadata$condition) %>%
-ggplot(aes(x = name,
-           y = genomic_mapping_rate,
-           fill = condition)) +
+    ggplot(aes(x = name,
+               y = genomic_mapping_rate,
+               fill = condition)) +
     ggtitle("Genomic mapping rate") +
     geom_bar(stat = "identity") +
     geom_hline(size = 2,
@@ -318,9 +326,9 @@ The exonic mapping rates are good, with over 60% of total reads mapping to exons
 data.frame(name = summary_data$name,
            exonic_mapping_rate = summary_data$exonic_rate * 100,
            condition = metadata$condition) %>%
-ggplot(aes(x = name,
-           y = exonic_mapping_rate,
-           fill = condition)) +
+    ggplot(aes(x = name,
+               y = exonic_mapping_rate,
+               fill = condition)) +
     ggtitle("Exonic mapping rate") +
     geom_bar(stat = "identity") +
     geom_hline(size = 2,
@@ -339,9 +347,9 @@ All samples are within an acceptable range (<10%). Samples were purified using t
 data.frame(name = summary_data$name,
            rrna_mapping_rate = summary_data$rrna_rate * 100,
            condition = metadata$condition) %>%
-ggplot(aes(x = name,
-           y = rrna_mapping_rate,
-           fill = condition)) +
+    ggplot(aes(x = name,
+               y = rrna_mapping_rate,
+               fill = condition)) +
     ggtitle("rRNA mapping rate") +
     geom_bar(stat = "identity") +
     geom_hline(linetype = 2,
@@ -364,10 +372,10 @@ melt_log10 <- function(counts) {
         reshape2::melt(.,
                        variable.name = "name",
                        value.name = "counts") %>%
-        filter(counts > 0) %>%
+        dplyr::filter(counts > 0) %>%
         merge(metadata) %>%
-        mutate(counts = log(counts)) %>%
-        arrange(name, -counts)
+        dplyr::mutate(counts = log(counts)) %>%
+        dplyr::arrange(name, -counts)
 }
 ```
 
@@ -439,20 +447,20 @@ PCA [@jolliffe2002pca] is a multivariate technique that allows us to summarize t
 # `plotPCA()` uses `ntop = 500` by default
 # `returnData = FALSE`
 dds_rlog %>%
-    plotPCA(intgroup = "condition",
-            ntop = nrow(.),
-            returnData = FALSE) +
-    ggtitle("PCA, grouped by condition")
+    DESeq2::plotPCA(intgroup = "condition",
+                    ntop = nrow(.),
+                    returnData = FALSE) +
+    ggplot2::ggtitle("PCA, grouped by condition")
 ```
 
 ### Grouped by `genotype`
 
 ```{r pca_genotype}
 dds_rlog %>%
-    plotPCA(intgroup = "genotype",
-            ntop = nrow(.),
-            returnData = FALSE) +
-    ggtitle("PCA, grouped by genotype")
+    DESeq2::plotPCA(intgroup = "genotype",
+                    ntop = nrow(.),
+                    returnData = FALSE) +
+    ggplot2::ggtitle("PCA, grouped by genotype")
 ```
 
 ### Grouped by `age`
@@ -461,10 +469,10 @@ The variation in age across samples (8.5-18 weeks) appears to have a significant
 
 ```{r pca_age_weeks}
 dds_rlog %>%
-    plotPCA(intgroup = "age_weeks",
-            ntop = nrow(.),
-            returnData = FALSE) +
-    ggtitle("PCA, grouped by age")
+    DESeq2::plotPCA(intgroup = "age_weeks",
+                    ntop = nrow(.),
+                    returnData = FALSE) +
+    ggplot2::ggtitle("PCA, grouped by age")
 ```
 
 ### Ungrouped
@@ -473,10 +481,10 @@ There appears to be something distinct and perhaps uncontrolled about the `kmc03
 
 ```{r pca_name}
 dds_rlog %>%
-    plotPCA(intgroup = "name",
-            ntop = nrow(.),
-            returnData = FALSE) +
-    ggtitle("PCA, ungrouped")
+    DESeq2::plotPCA(intgroup = "name",
+                    ntop = nrow(.),
+                    returnData = FALSE) +
+    ggplot2::ggtitle("PCA, ungrouped")
 ```
 
 
@@ -486,21 +494,19 @@ Inter-correlation analysis (ICA) is another way to look at how well samples clus
 
 ```{r heatmap_setup}
 heatmap_annotation <- metadata %>%
-    select(age_weeks,
-           condition,
-           genotype) %>%
-    data.frame
+    dplyr::select(age_weeks,
+                  condition,
+                  genotype) %>% data.frame
 rownames(heatmap_annotation) <- metadata$name
-heatmap_color <- colorRampPalette(brewer.pal(n = 7, name = "Greys"))(100)
-saveData(heatmap_annotation, heatmap_color)
+save(heatmap_annotation, file = "data/heatmap_annotation.rda")
+heatmap_color <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "Greys"))(100)
 ```
 
 ```{r heatmap_pearson}
 dds_rlog %>%
     assay %>%
     cor(method = "pearson") %>%
-    pheatmap::pheatmap(.,
-                       annotation = heatmap_annotation,
+    pheatmap::pheatmap(annotation = heatmap_annotation,
                        color = heatmap_color,
                        main = "Pearson correlation")
 ```
@@ -509,8 +515,7 @@ dds_rlog %>%
 dds_rlog %>%
     assay %>%
     cor(method = "spearman") %>%
-    pheatmap::pheatmap(.,
-                       annotation = heatmap_annotation,
+    pheatmap::pheatmap(annotation = heatmap_annotation,
                        color = heatmap_color,
                        main = "Spearman correlation")
 ```
@@ -518,8 +523,7 @@ dds_rlog %>%
 ```{r heatmap_pearson_tmm, include=FALSE}
 tmm_normalized_counts %>%
     cor(method = "pearson") %>%
-    pheatmap::pheatmap(.,
-                       annotation = heatmap_annotation,
+    pheatmap::pheatmap(annotation = heatmap_annotation,
                        color = heatmap_color,
                        main = "Pearson correlation (TMM-normalized)")
 ```
@@ -527,8 +531,7 @@ tmm_normalized_counts %>%
 ```{r heatmap_spearman_tmm, include=FALSE}
 tmm_normalized_counts %>%
     cor(method = "spearman") %>%
-    pheatmap::pheatmap(.,
-                       annotation = heatmap_annotation,
+    pheatmap::pheatmap(annotation = heatmap_annotation,
                        color = heatmap_color,
                        main = "Spearman correlation (TMM-normalized)")
 ```
