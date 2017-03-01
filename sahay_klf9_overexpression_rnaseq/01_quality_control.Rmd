@@ -39,12 +39,22 @@ hpc_dir <- "/Users/mike/Orchestra/hbc/PIs/amar_sahay/klf9_overexpression_rnaseq"
 if (!length(dir(hpc_dir))) {
     stop("Project on HPC server not loaded.")
 }
+
 # `bcbio-nextgen`
 bcbio_dir <- file.path(hpc_dir, "bcbio", "final")
+
 # Default naming scheme is `bcbio/final/YYYY-MM-DD_bcbio`
 summary_dir <- file.path(bcbio_dir) %>%
     dir(full.names = TRUE) %>%
     .[grepl("/\\d{4}-\\d{2}-\\d{2}_bcbio$", .)]
+
+# Create directories if necessary
+if (!file.exists("data")) {
+    dir.create("data")
+}
+if (!file.exists("results")) {
+    dir.create("results")
+}
 ```
 
 
