@@ -1,8 +1,11 @@
-install.packages(c("knitr",
+install.packages(c("bookdown",
+                   "ggrepel",
+                   "knitr",
                    "pheatmap",
                    "RColorBrewer",
                    "readxl",
                    "reshape2",
+                   "rmarkdown",
                    "tidyverse"))
 source("https://bioconductor.org/biocLite.R")
 biocLite(c("BiocStyle",
@@ -10,4 +13,6 @@ biocLite(c("BiocStyle",
            "DESeq2",
            "edgeR",
            "tximport",
+           "vsn",
+           "hbc/CHBUtils",
            "steinbaugh/basejump"))
