@@ -183,7 +183,7 @@ save(expt_vs_control,
      file = "data/expt_vs_control.rda")
 write.csv(expt_vs_control, file = "results/expt_vs_control.csv")
 write.csv(expt_vs_control_de, file = "results/expt_vs_control_de.csv")
-write.csv(expt_vs_control_de_down, file = "results/expt_vs_control_de.csv")
+write.csv(expt_vs_control_de_down, file = "results/expt_vs_control_de_down.csv")
 write.csv(expt_vs_control_de_up, file = "results/expt_vs_control_de_up.csv")
 ```
 
