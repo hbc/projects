@@ -331,31 +331,11 @@ data.frame(description = summary_data$description,
 
 ## Counts per gene
 
-```{r}
-#' @export
-#' @importFrom reshape2 melt
-#' @param raw_counts Raw counts `matrix`
-#' @param metadata Metadata `data.frame`
-#' @return log10 melted `data.frame`
-meltLog10 <- function(raw_counts,
-                      metadata = get("metadata", envir = globalenv())) {
-    raw_counts %>%
-        as.data.frame %>%
-        reshape2::melt(.,
-                       variable.name = "description",
-                       value.name = "counts") %>%
-        dplyr::filter(counts > 0) %>%
-        merge(metadata) %>%
-        dplyr::mutate(counts = log(counts)) %>%
-        dplyr::arrange(description, -counts)
-}
-```
-
 Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different.
 
 ```{r log10_boxplot, fig.width=6, fig.height=10}
 raw_counts %>%
-    meltLog10 %>%
+    basejump::meltLog10(., metadata = metadata) %>%
     ggplot(aes(x = description,
                y = counts,
                color = genotype)) +
@@ -377,7 +357,7 @@ tmm_normalized_counts <- raw_counts %>%
 
 ```{r log10_tmm_boxplot, fig.width=6, fig.height=10}
 tmm_normalized_counts %>%
-    meltLog10 %>%
+    basejump::meltLog10(., metadata = metadata) %>%
     ggplot(aes(x = description,
                y = counts,
                color = genotype)) +
@@ -395,7 +375,7 @@ Generally, we expect similar count spreads for all genes between samples unless 
 
 ```{r log10_tmm_density}
 tmm_normalized_counts %>%
-    meltLog10 %>%
+    basejump::meltLog10(., metadata = metadata) %>%
     ggplot(aes(x = counts,
                group = description)) +
     ggtitle("Count density (TMM-normalized)") +
