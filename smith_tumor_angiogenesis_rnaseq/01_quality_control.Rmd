@@ -1,0 +1,520 @@
+---
+title: "Smith Lab small molecule effects on tumor angiogenesis RNA-Seq quality control"
+date: "`r BiocStyle::doc_date()`"
+author: "Michael J. Steinbaugh"
+bibliography: bibliography.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE,
+                      echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+library(basejump)
+library(DESeq2)
+library(edgeR)
+library(pheatmap)
+library(RColorBrewer)
+library(readxl)
+library(reshape2)
+library(tidyverse)
+library(tximport)
+```
+
+[R]: https://www.r-project.org
+[RStudio]: https://www.rstudio.com
+
+[`bcbio-nextgen`]: https://github.com/chapmanb/bcbio-nextgen
+[`bcbio-rnaseq`]: https://github.com/roryk/bcbio.rnaseq
+[`DESeq2`]: https://bioconductor.org/packages/release/bioc/html/DESeq2.html
+[`ggplot2`]: http://ggplot2.org
+[`pheatmap`]: https://cran.r-project.org/web/packages/pheatmap/index.html
+[`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
+[`tximport`]: https://bioconductor.org/packages/release/bioc/html/tximport.html
+
+```{r bcbio, include=FALSE}
+# HPC mount point over `sshfs` connection
+hpc_dir <- "/Users/mike/Orchestra/hbc/PIs/lois_smith/rnaseq_angio_tumor"
+if (!length(dir(hpc_dir))) {
+    stop("Project on HPC server not loaded.")
+}
+dir(hpc_dir)
+
+# `bcbio-nextgen`
+bcbio_dir <- file.path(hpc_dir, "illumina_rnaseq", "final")
+dir(bcbio_dir)
+
+# Default naming scheme is `illumina_rnaseq/final/YYYY-MM-DD_illumina_rnaseq`
+summary_dir <- file.path(bcbio_dir) %>%
+    dir(full.names = TRUE) %>%
+    .[grepl("/\\d{4}-\\d{2}-\\d{2}_illumina_rnaseq$", .)]
+dir(summary_dir)
+
+# Create directories if necessary
+if (!file.exists("data")) {
+    dir.create("data")
+}
+if (!file.exists("results")) {
+    dir.create("results")
+}
+```
+
+
+
+# Overview
+
+```{r metadata}
+metadata <- file.path("data-raw/illumina_rnaseq.xlsx") %>%
+    readxl::read_excel(.) %>%
+    as.data.frame %>%
+    basejump::setNamesSnake(.) %>%
+    dplyr::mutate(genotype = factor(genotype),
+                  treatment = factor(treatment),
+                  sampleindex = factor(sampleindex),
+                  laneindex = factor(laneindex)) %>%
+    dplyr::arrange(description)
+rownames(metadata) <- metadata$description
+save(metadata, file = "data/metadata.rda")
+write.csv(metadata, file = "results/metadata.csv")
+basejump::printTable(metadata, caption = "Samples")
+```
+
+```{r summary_data}
+summary_data <- file.path(summary_dir, "project-summary.csv") %>%
+    readr::read_csv(.) %>%
+    basejump::setNamesSnake(.) %>%
+    dplyr::select(noquote(order(names(.)))) %>%
+    dplyr::select(description, dplyr::everything()) %>%
+    dplyr::arrange(description)
+save(summary_data, file = "data/summary_data.rda")
+write.csv(summary_data, file = "results/summary_data.csv")
+```
+
+```{r txi, include=FALSE}
+# `bcbio-nextgen` `sailfish`
+tx2gene <- file.path(summary_dir, "tx2gene.csv") %>%
+    read.csv(header = FALSE)
+sailfish_files <- dir(bcbio_dir) %>%
+    .[. %in% summary_data$description] %>%
+    file.path(bcbio_dir, .) %>%
+    file.path(., "sailfish", "quant", "quant.sf") %>%
+    sort
+names(sailfish_files) <- sort(summary_data$description)
+sailfish_files
+txi <- tximport::tximport(sailfish_files,
+                          type = "sailfish",
+                          tx2gene = tx2gene,
+                          reader = readr::read_tsv,
+                          countsFromAbundance = "lengthScaledTPM")
+save(txi, file = "data/txi.rda")
+```
+
+```{r tpm}
+# Transcripts per million
+tpm <- txi$abundance
+save(tpm, file = "data/tpm.rda")
+write.csv(tpm, file = "results/tpm.csv")
+```
+
+```{r dds}
+# `DESeq2` dataset from `sailfish` output
+# Multi-factor design
+design <- formula(~ genotype + treatment + genotype:treatment)
+dds <- DESeq2::DESeqDataSetFromTximport(txi,
+                                        colData = metadata,
+                                        design = design) %>%
+    # `betaPrior = FALSE` will default in 2017
+    DESeq2::DESeq(.)
+DESeq2::resultsNames(dds)
+DESeq2::sizeFactors(dds)
+# `blind = TRUE` (default) treats all replicates separately
+# We may not want to leave this on if samples were run across multiple flow cells
+dds_rlog <- DESeq2::rlog(dds)
+dds_vst <- DESeq2::varianceStabilizingTransformation(dds)
+save(dds, dds_rlog, dds_vst, file = "data/dds.rda")
+```
+
+```{r counts}
+raw_counts <- DESeq2::counts(dds)
+raw_counts_nonzero <- raw_counts %>%
+    .[rowSums(.) > 0, ]
+normalized_counts <- DESeq2::counts(dds, normalized = TRUE)
+normalized_counts_nonzero <- normalized_counts %>%
+    .[rowSums(.) > 0, ]
+save(raw_counts,
+     raw_counts_nonzero,
+     normalized_counts,
+     normalized_counts_nonzero,
+     file = "data/counts.rda")
+write.csv(raw_counts, file = "results/raw_counts.csv")
+write.csv(normalized_counts, file = "results/normalized_counts.csv")
+```
+
+
+
+# Quality control metrics
+
+## Gender-specific markers
+
+We can evaluate the expression counts of gender-specific markers [@karyagyna2010gender; @staedtler2013gender] to blindly determine gender.
+
+Based on these biomarkers, it appears that all the mice studied were female.
+
+```{r gender_markers, fig.width=10, fig.height=6}
+gender_markers <- readr::read_csv("data-raw/gender_markers.csv",
+                                  na = c("", "#N/A")) %>%
+    dplyr::arrange(chromosome, gene_symbol)
+gender_gene_identifier <- gender_markers %>%
+    dplyr::filter(include == TRUE) %>%
+    dplyr::select(ensembl_gene) %>%
+    .[[1]] %>%
+    basejump::sortUnique(.)
+tpm[gender_gene_identifier, ] %>%
+    data.frame %>%
+    tibble::rownames_to_column(.) %>%
+    reshape2::melt(.) %>%
+    setNames(c("ensembl_gene", "description", "counts")) %>%
+    dplyr::left_join(gender_markers, by = "ensembl_gene") %>%
+    ggplot(aes(x = gene_symbol,
+               y = counts,
+               color = description,
+               shape = chromosome)) +
+    ggtitle("Gender-specific markers") +
+    geom_jitter(size = 4) +
+    xlab("gene") +
+    ylab("tpm")
+```
+
+
+## Total reads
+
+We advise that samples should have a read depth of at least 20 million counts.
+
+```{r total_reads, fig.width=6, fig.height=10}
+data.frame(description = summary_data$description,
+           total_reads = summary_data$total_reads / 1e6,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = total_reads,
+               fill = genotype)) +
+    ggtitle("Total reads") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 20) +
+    xlab("sample") +
+    ylab("total reads (million)") +
+    coord_flip()
+```
+
+
+## Mapped reads
+
+The number of mapped reads should correspond to the number of total reads.
+
+```{r mapped_reads, fig.width=6, fig.height=10}
+data.frame(description = summary_data$description,
+           mapped_reads = summary_data$mapped_reads / 1e6,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = mapped_reads,
+               fill = genotype)) +
+    ggtitle("Mapped reads") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 20) +
+    xlab("sample") +
+    ylab("mapped reads (million)") +
+    coord_flip()
+```
+
+
+## Genomic mapping rate
+
+The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts.
+
+```{r genome_mapping_rate, fig.width=6, fig.height=10}
+data.frame(description = summary_data$description,
+           genomic_mapping_rate = summary_data$mapped_reads / summary_data$total_reads * 100,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = genomic_mapping_rate,
+               fill = genotype)) +
+    ggtitle("Genomic mapping rate") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 90) +
+    xlab("sample") +
+    ylab("genomic mapping rate (%)") +
+    ylim(0, 100) +
+    coord_flip()
+```
+
+
+## Number of genes detected
+
+```{r genes_detected, fig.width=6, fig.height=10}
+data.frame(description = colnames(raw_counts),
+           genes_detected = colSums(raw_counts > 0),
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = genes_detected,
+               fill = genotype)) +
+    ggtitle("Number of genes detected") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 20000) +
+    xlab("sample") +
+    ylab("gene count") +
+    coord_flip()
+```
+
+
+## Gene detection saturation
+
+Gene detection saturation was nearly reached for the majority of the samples, which means that most of the samples were able to detect the majority of expressed genes. This is good to see. Also, we observe a linear trend in the number of genes detected with the number of mapped reads, which indicates that the sample input was not overloaded.
+
+```{r saturation}
+data.frame(genes_detected = colSums(raw_counts > 0),
+           mapped = summary_data$mapped_reads / 1e6,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = mapped,
+               y = genes_detected,
+               color = genotype,
+               fill = genotype,
+               shape = genotype)) +
+    ggtitle("Gene detection saturation") +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm", se = FALSE) +
+    xlab("mapped reads (million)") +
+    ylab("gene count") +
+    xlim(0, 60) +
+    ylim(0, 30000)
+```
+
+
+## Exonic mapping rate
+
+The exonic mapping rates are good, with over 60% of total reads mapping to exons.
+
+```{r exonic_mapping_rate, fig.width=6, fig.height=10}
+data.frame(description = summary_data$description,
+           exonic_mapping_rate = summary_data$exonic_rate * 100,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = exonic_mapping_rate,
+               fill = genotype)) +
+    ggtitle("Exonic mapping rate") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 60) +
+    xlab("sample") +
+    ylab("exonic mapping rate (%)") +
+    coord_flip()
+```
+
+
+## rRNA mapping rate
+
+All samples are within an acceptable range (<10%). Samples were purified using the polyA method, which can result in variable rRNA levels from sample to sample. We see higher rRNA mapping rates (>5%) in four samples: `kmc03`, `kmc05`, `kmc10`, `kmc12`.
+
+```{r rrna_mapping_rate, fig.width=6, fig.height=10}
+data.frame(description = summary_data$description,
+           rrna_mapping_rate = summary_data$rrna_rate * 100,
+           genotype = summary_data$genotype) %>%
+    ggplot(aes(x = description,
+               y = rrna_mapping_rate,
+               fill = genotype)) +
+    ggtitle("rRNA mapping rate") +
+    geom_bar(stat = "identity") +
+    geom_hline(linetype = 2, yintercept = 5) +
+    geom_hline(size = 2, yintercept = 10) +
+    xlab("sample") +
+    ylab("rRNA mapping rate (%)") +
+    coord_flip()
+```
+
+
+## Counts per gene
+
+Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different.
+
+```{r log10_boxplot, fig.width=6, fig.height=10}
+raw_counts %>%
+    basejump::meltLog10(., metadata = metadata) %>%
+    ggplot(aes(x = description,
+               y = counts,
+               color = genotype)) +
+    ggtitle("Counts per gene") +
+    geom_boxplot(outlier.shape = NA) +
+    xlab("sample") +
+    ylab(expression(log[10]~counts~per~gene)) +
+    coord_flip()
+```
+
+The log10 TMM-normalized counts per gene normalization method [@robinson2010tmm] equates the overall expression levels of genes between samples under the assumption that the majority of them are not differentially expressed. Therefore, by normalizing for total RNA expression by sample, we expect the spread of the log10 TMM-normalized counts per gene to be similar for every sample.
+
+```{r tmm_normalized_counts}
+tmm_normalized_counts <- raw_counts %>%
+    edgeR::DGEList(.) %>%
+    edgeR::calcNormFactors(.) %>%
+    edgeR::cpm(normalized.lib.sizes = TRUE)
+```
+
+```{r log10_tmm_boxplot, fig.width=6, fig.height=10}
+tmm_normalized_counts %>%
+    basejump::meltLog10(., metadata = metadata) %>%
+    ggplot(aes(x = description,
+               y = counts,
+               color = genotype)) +
+    ggtitle("Counts per gene (TMM-normalized)") +
+    geom_boxplot(outlier.shape = NA) +
+    xlab("sample") +
+    ylab(expression(log[10]~counts~per~gene)) +
+    coord_flip()
+```
+
+
+## Count density
+
+Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different.
+
+```{r log10_tmm_density}
+tmm_normalized_counts %>%
+    basejump::meltLog10(., metadata = metadata) %>%
+    ggplot(aes(x = counts,
+               group = description)) +
+    ggtitle("Count density (TMM-normalized)") +
+    geom_density() +
+    xlab(expression(log[10]~counts~per~gene)) +
+    ylab("density")
+```
+
+
+
+# [`DESeq2`][] fit modeling
+
+Several quality metrics are first assessed to explore the fit of the model, before differential expression analysis will be performed. The plots below show the standard deviation of normalized counts (`normalized_counts`) using `log2()`, `rlog()`, and variance stabilizing (`vst()`) transformations by `rank(mean)`. The transformations greatly reduce the standard deviation, with `rlog` generally stabilizing the variance best across the mean.
+
+
+## Variance stabilization
+
+### `log2`
+
+```{r deseq2_qc_log2}
+vsn::meanSdPlot(log2(normalized_counts + 1))
+```
+
+### `rlog`
+
+```{r deseq2_qc_rlog}
+vsn::meanSdPlot(assay(dds_rlog))
+```
+
+### `vst`
+
+```{r deseq2_qc_vst}
+vsn::meanSdPlot(assay(dds_vst))
+```
+
+
+## Dispersion
+
+The following plot shows the dispersion by mean of normalized counts. We expect the dispersion to decrease as the mean of normalized counts increases. This looks good.
+
+```{r dispersion_estimates}
+DESeq2::plotDispEsts(dds)
+```
+
+
+
+# Sample similarity analysis
+
+Before performing similarity analysis, we transform counts to log2, which acts to minimize large differences in sequencing depth and helps normalize all samples to a similar dynamic range. For RNA-seq count data, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log2 transformation will amplify this noise, and instead, low count genes will now dominate the PCA plots. So instead, we use a transformation (`rlog`) that gives similar results for high counts as a log2 transformation but also shrinks the values of low counts towards the genes’ average across samples. We do this with the `rlog` function in the [`DESeq2`][] package [@love2014deseq2], which we will later use for differential gene expression analysis.
+
+
+## Principal component analysis (PCA)
+
+PCA [@jolliffe2002pca] is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is a way to look at how samples are clustering.
+
+In this PCA analysis, we are exploring whether the genotypes and treatment conditions cluster. It looks like we see nice clustering for both of these conditions.
+
+### Colored by `genotype`
+
+```{r pca_condition}
+# `plotPCA()` uses `ntop = 500` by default
+# To plot all gene variation, use `ntop = nrow(.)`
+dds_vst %>%
+    DESeq2::plotPCA(intgroup = "genotype", returnData = FALSE) +
+    ggplot2::ggtitle("PCA, colored by genotype")
+```
+
+### Colored by `treatment`
+
+```{r pca_genotype}
+dds_vst %>%
+    DESeq2::plotPCA(intgroup = "treatment", returnData = FALSE) +
+    ggplot2::ggtitle("PCA, colored by treatment")
+```
+
+
+## Hierarchical clustering
+
+Inter-correlation analysis (ICA) is another way to look at how well samples cluster by plotting the correlation between the expression profiles of the samples.
+
+Like the PCA analysis, we see good clustering overall here.
+
+```{r heatmap_setup}
+heatmap_annotation <- metadata %>%
+    dplyr::select(genotype, treatment) %>%
+    as.data.frame
+save(heatmap_annotation, file = "data/heatmap_annotation.rda")
+heatmap_color <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "Blues"))(100)
+```
+
+```{r heatmap_pearson, fig.width=12, fig.height=12}
+dds_vst %>%
+    assay %>%
+    cor(method = "pearson") %>%
+    pheatmap::pheatmap(annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Pearson correlation")
+```
+
+```{r heatmap_spearman, fig.width=12, fig.height=12}
+dds_vst %>%
+    assay %>%
+    cor(method = "spearman") %>%
+    pheatmap::pheatmap(annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Spearman correlation")
+```
+
+```{r heatmap_pearson_tmm, fig.width=12, fig.height=12}
+tmm_normalized_counts %>%
+    cor(method = "pearson") %>%
+    pheatmap::pheatmap(annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Pearson correlation (TMM-normalized)")
+```
+
+```{r heatmap_spearman_tmm, fig.width=12, fig.height=12}
+tmm_normalized_counts %>%
+    cor(method = "spearman") %>%
+    pheatmap::pheatmap(annotation = heatmap_annotation,
+                       color = heatmap_color,
+                       main = "Spearman correlation (TMM-normalized)")
+```
+
+
+
+# Methods
+
+RNA-seq counts were generated by [`bcbio-nextgen`][] and [`bcbio-rnaseq`][] using [`sailfish`][] [@patro2014sailfish]. Counts were imported into [R][]/[RStudio][] using [`tximport`][] [@soneson2015tximport] and [`DESeq2`] [@love2014deseq2]. Plots were generated by [`ggplot2`][] [@wickham2009ggplot2]. Heatmaps were generated by [`pheatmap`][] [@kolde2015pheatmap].
+
+
+## R session information
+
+`sessionInfo()` output of the workstation that generated this report:
+
+```{r session_info}
+sessionInfo()
+```
+
+
+
+# References

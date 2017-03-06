@@ -2,7 +2,7 @@
 output:
   html_document:
     toc: true
-    toc_depth: 2
+    toc_depth: 4
     theme: united
 title: "Microarray of RIP-chip samples - exclude WT1"
 bibliography: "references.bib"
@@ -99,6 +99,7 @@ library(magrittr)
 library(lattice)
 library(RRHO)
 library(dplyr)
+library(rio)
 ```
 
 ## Functions
@@ -1240,8 +1241,7 @@ treemap(
 
 - are any of the genes from the comparison involved in cell adhesion?
 - working from Gene Ontology term for cellular senescence, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
-- added GO terms for cell matrix adhesion as well
-- here are the top 10 genes associated with cell adhesion, the full list is in the Excel file below
+- added specific GO terms as well
 
 ```{r GO_annots2}
 # pull in probeid to GO term mappings
@@ -1265,14 +1265,424 @@ top.results.Stau2 <- cbind(ranks, top.results.Stau2)
 # merge in cell adhesion specific GO term data
 top.results.Stau2 <- merge(top.results.Stau2, geneGOmappings.celladhesion, by="symbol", all.x=TRUE)
 
-
-kable(top.results.Stau2[!is.na(top.results.Stau2$GO),][1:10,], row.names=F)
-
 write.table(top.results.Stau2[!is.na(top.results.Stau2$GO),], file=file.path(resultsDir, "celladhesion.GO.genes.xls"), sep="\t", row.names=F, col.names=T) 
 ```
 
-[Excel file with Cell Adhesion Genes statistics](celladhesion.GO.genes.xls)
+**[Excel file with Cell Adhesion Genes statistics](../results/celladhesion.GO.genes.xls)**
 
+
+# Kiebler/Kusek Functional analysis
+
+## Kiebler
+
+### Enriched GO terms
+
+- remove any genes with no symbol
+- rank by fold change
+- take top 200 genes
+
+```{r kiebler, dev='png'}
+# data is rat, have to get go bindings for rat
+
+# pull in kiebler data,run gprofiler, revigo and adhesion checks
+kiebler.data <- read.csv(file.path(dataDir, "mmc2.csv")) %>% filter(., Symbol!="---")
+top200.kiebler <- subset(kiebler.data, adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff) %>%  
+  filter(., Symbol!="---") %>% 
+  arrange(. , desc(Fold.change)) %>% 
+  select(., Symbol) %>% 
+  as.data.frame() %>% 
+  unlist(.) %>% 
+  as.vector(.) %>% 
+  .[1:200]
+
+gprofiler_results <- gprofiler(query = top200.kiebler, 
+                               organism = "rnorvegicus",
+                               ordered_query = T, 
+                               exclude_iea = F, 
+                               max_p_value = 0.05, 
+                               max_set_size = 0,
+                               correction_method = "gSCS",
+                               hier_filtering = "none", 
+                               domain_size = "annotated") 
+
+ 
+gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=19905) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+
+export(gprofiler_results, file.path(resultsDir, "GOresults.top200.Kiebler.xlsx"))
+```
+
+**[Excel file with Kiebler GO enrichments](../results/GOresults.top200.Kiebler.xlsx)**
+
+### Simplify GO terms
+
+```{r, revigokiebler}
+bp.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative")
+bp.pval.revigo.data <- rbind(c("GO:0002084","protein depalmitoylation",0.000,1.9914,0.430,0.000,"protein depalmitoylation"),
+                             c("GO:0098734","macromolecule depalmitoylation",0.002,1.6925,0.430,0.656,"protein depalmitoylation"))
+
+bp.pval.stuff <- data.frame(bp.pval.revigo.data)
+names(bp.pval.stuff) <- bp.pval.revigo.names
+
+bp.pval.stuff$abslog10pvalue <- as.numeric( as.character(bp.pval.stuff$abslog10pvalue) )
+bp.pval.stuff$freqInDbPercent <- as.numeric( as.character(bp.pval.stuff$freqInDbPercent) )
+bp.pval.stuff$uniqueness <- as.numeric( as.character(bp.pval.stuff$uniqueness) )
+bp.pval.stuff$dispensability <- as.numeric( as.character(bp.pval.stuff$dispensability) )
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  bp.pval.stuff,
+  index = c("representative","description"),
+  vSize = "abslog10pvalue",
+  type = "categorical",
+  vColor = "representative",
+  title = "REVIGO Molecular Function Gene Ontology treemap - pvalue based",
+  inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+  lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+  bg.labels = "#CCCCCC00",     # define background color of group labels
+  # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+  position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+
+##CCs
+cc.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative")
+cc.pval.revigo.data <- rbind(c("GO:0005623","cell",64.133,1.4547,0.936,0.000,"cell"),
+                             c("GO:0031201","SNARE complex",0.004,3.5768,0.748,0.000,"SNARE complex"),
+                             c("GO:0043226","organelle",16.716,2.6904,0.854,0.000,"organelle"),
+                             c("GO:0043227","membrane-bounded organelle",9.056,4.4828,0.636,0.000,"membrane-bounded organelle"),
+                             c("GO:0043231","intracellular membrane-bounded organelle",8.847,3.9914,0.490,0.617,"membrane-bounded organelle"),
+                             c("GO:0012505","endomembrane system",0.696,3.4449,0.766,0.021,"endomembrane system"),
+                             c("GO:0005737","cytoplasm",38.159,8.8633,0.590,0.083,"cytoplasm"),
+                             c("GO:0044464","cell part",64.133,1.5969,0.735,0.262,"cytoplasm"),
+                             c("GO:0044444","cytoplasmic part",13.606,6.7447,0.623,0.316,"cytoplasm"),
+                             c("GO:0044424","intracellular part",43.664,8.8327,0.601,0.465,"cytoplasm"),
+                             c("GO:0005622","intracellular",46.136,9.4976,0.730,0.183,"cytoplasm"))
+
+cc.pval.stuff <- data.frame(cc.pval.revigo.data)
+names(cc.pval.stuff) <- cc.pval.revigo.names
+
+cc.pval.stuff$abslog10pvalue <- as.numeric( as.character(cc.pval.stuff$abslog10pvalue) )
+cc.pval.stuff$freqInDbPercent <- as.numeric( as.character(cc.pval.stuff$freqInDbPercent) )
+cc.pval.stuff$uniqueness <- as.numeric( as.character(cc.pval.stuff$uniqueness) )
+cc.pval.stuff$dispensability <- as.numeric( as.character(cc.pval.stuff$dispensability) )
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  cc.pval.stuff,
+  index = c("representative","description"),
+  vSize = "abslog10pvalue",
+  type = "categorical",
+  vColor = "representative",
+  title = "REVIGO Molecular Function Gene Ontology treemap - pvalue based",
+  inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+  lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+  bg.labels = "#CCCCCC00",     # define background color of group labels
+  # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+  position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+
+
+##MFs
+mf.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative")
+mf.pval.revigo.data <- rbind(c("GO:0005484","SNAP receptor activity",0.008,2.2269,0.766,0.000,"SNAP receptor activity"),
+                             c("GO:0008047","enzyme activator activity",0.115,3.1158,0.284,0.000,"enzyme activator activity"),
+                             c("GO:0030234","enzyme regulator activity",0.437,1.6091,0.485,0.361,"enzyme activator activity"),
+                             c("GO:0008474","palmitoyl-(protein) hydrolase activity",0.002,1.6925,0.742,0.000,"palmitoyl-(protein) hydrolase activity"),
+                             c("GO:0098599","palmitoyl hydrolase activity",0.002,1.6925,0.742,0.111,"palmitoyl-(protein) hydrolase activity"),
+                             c("GO:0098772","molecular function regulator",8.903,1.4191,0.785,0.000,"molecular function regulator"))
+
+mf.pval.stuff <- data.frame(mf.pval.revigo.data)
+names(mf.pval.stuff) <- mf.pval.revigo.names
+
+mf.pval.stuff$abslog10pvalue <- as.numeric( as.character(mf.pval.stuff$abslog10pvalue) )
+mf.pval.stuff$freqInDbPercent <- as.numeric( as.character(mf.pval.stuff$freqInDbPercent) )
+mf.pval.stuff$uniqueness <- as.numeric( as.character(mf.pval.stuff$uniqueness) )
+mf.pval.stuff$dispensability <- as.numeric( as.character(mf.pval.stuff$dispensability) )
+
+# check the tmPlot command documentation for all possible parameters - there are a lot more
+treemap(
+  mf.pval.stuff,
+  index = c("representative","description"),
+  vSize = "abslog10pvalue",
+  type = "categorical",
+  vColor = "representative",
+  title = "REVIGO Molecular Function Gene Ontology treemap - pvalue based",
+  inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+  lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+  bg.labels = "#CCCCCC00",     # define background color of group labels
+  # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+  position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+)
+```
+
+### Specific GO terms
+
+- are any of the genes from the comparison involved in cell adhesion?
+- working from Gene Ontology term for cellular adhesion, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
+- added supplied GO terms as well
+
+```{r adhesion_kiebler}
+cellmatrixadhesionGOs <- c("GO:0007160","GO:0016340","GO:0007161","GO:0048041","GO:0051895","GO:0051894","GO:0051893","GO:0001953","GO:0001954","GO:0001952","GO:0061302")
+cellmatrixadhesionGOs <- c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155", cellmatrixadhesionGOs)
+
+# get genes associated with GO terms
+library(org.Rn.eg.db)
+keys <- keys(org.Rn.eg.db)
+cols <- c("GO", "SYMBOL")
+geneGOmappings <- AnnotationDbi::select(org.Rn.eg.db, keys, cols) %>% tbl_df()
+geneGOmappings.celladhesion <- filter(geneGOmappings, GO %in% cellmatrixadhesionGOs) %>% 
+  dplyr::select(GO, SYMBOL) %>% 
+  group_by(SYMBOL) %>% 
+  dplyr::summarise(GO=paste(GO, collapse=","))
+
+kiebler.data <- kiebler.data %>% tbl_df() %>% arrange(., desc(abs(Fold.change))) %>% 
+  # get ranks for all genes and add to Kieblers initial data
+  mutate(ranks=seq(1:nrow(.))) %>% 
+  as.data.frame()
+
+names(geneGOmappings.celladhesion)[1] <- "Symbol"
+
+# merge in cell adhesion specific GO term data
+kiebler.data <- left_join(kiebler.data, geneGOmappings.celladhesion, by="Symbol")
+
+export(kiebler.data[!is.na(kiebler.data$GO),], file=file.path(resultsDir, "celladhesion.GO.genes.kiebler.xlsx")) 
+```
+
+**[Excel file with Kiebler Cell Adhesion Genes annotations](../results/celladhesion.GO.genes.kiebler.xlsx)**
+
+## Kusek 
+
+### Enriched GO terms
+
+```{r kusek}
+# Kusek data
+kusek.data <- read.csv(file.path(dataDir, "Kusek_Cell_Stem_Cell_2013.csv"),na.strings = c("", " "), skip=2) %>% 
+  tbl_df() %>% 
+  mutate(., Symbol=Gene.Symbol, Fold.Change=Fold.change..UP.in.Stau2.vs.Input.) %>% 
+  dplyr::select(., -Gene.Symbol, -Fold.change..UP.in.Stau2.vs.Input.) %>% 
+  filter(., Symbol!="NA")  
+
+top200.kusek <- filter(kusek.data, Adjusted.p.value<0.05 & Fold.Change>2^lfc.cutoff) %>% 
+  arrange(. , desc(Fold.Change)) %>% 
+  select(., Symbol) %>% 
+  as.data.frame() %>% 
+  unlist(.) %>% 
+  as.vector(.) %>% 
+  .[1:200]
+
+gprofiler_results <- gprofiler(query = top200.kusek, 
+                               organism = "mmusculus",
+                               ordered_query = T, 
+                               exclude_iea = F, 
+                               max_p_value = 0.05, 
+                               max_set_size = 0,
+                               correction_method = "gSCS",
+                               hier_filtering = "none", 
+                               domain_size = "annotated") 
+
+gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=22029) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+
+export(gprofiler_results, file.path(resultsDir, "GOresults.top200.Kusek.xlsx"))
+```
+
+**[Excel file with Kusek GO enrichments](../results/GOresults.top200.Kusek.xlsx)**
+
+### Simplify GO terms
+
+- no need to simplify as there is only one enriched term
+
+### Specific GO terms
+
+- are any of the genes from the comparison involved in cell adhesion?
+- working from Gene Ontology term for cellular adhesion, I pulled down all genes annotated with this [term](http://amigo.geneontology.org/amigo/term/GO:0007155) (and it's "child" terms)
+- added supplied GO terms as well
+
+```{r adhesion_kusek}
+cellmatrixadhesionGOs <- c("GO:0007160","GO:0016340","GO:0007161","GO:0048041","GO:0051895","GO:0051894","GO:0051893","GO:0001953","GO:0001954","GO:0001952","GO:0061302")
+cellmatrixadhesionGOs <- c(as.vector(GOBPCHILDREN$"GO:0007155"), "GO:0007155", cellmatrixadhesionGOs)
+
+# get genes associated with GO terms
+library(org.Mm.eg.db)
+keys <- keys(org.Mm.eg.db)
+cols <- c("GO", "SYMBOL")
+geneGOmappings <- AnnotationDbi::select(org.Mm.eg.db, keys, cols) %>% tbl_df()
+geneGOmappings.celladhesion <- filter(geneGOmappings, GO %in% cellmatrixadhesionGOs) %>% 
+  dplyr::select(GO, SYMBOL) %>% 
+  group_by(SYMBOL) %>% 
+  dplyr::summarise(GO=paste(GO, collapse=","))
+
+kusek.data <- kusek.data %>% arrange(., desc(abs(Fold.Change))) %>% 
+  # get ranks for all genes and add to Kieblers initial data
+  mutate(ranks=seq(1:nrow(.))) %>% 
+  as.data.frame()
+
+names(geneGOmappings.celladhesion)[1] <- "Symbol"
+
+
+# merge in cell adhesion specific GO term data
+kusek.data <- left_join(kusek.data, geneGOmappings.celladhesion, by="Symbol")
+
+export(kusek.data[!is.na(kusek.data$GO),], file=file.path(resultsDir, "celladhesion.GO.genes.kusek.xlsx")) 
+```
+
+**[Excel file with Kiebler Cell Adhesion Genes annotations](../results/celladhesion.GO.genes.kusek.xlsx)**
+
+##Kiebler/Kusek DEG overlap functional analysis
+
+```{r kieblercompare}
+# setup biomarts for pulling in annoation translations
+ensemblmart.rat <-  useMart("ensembl",dataset="rnorvegicus_gene_ensembl")
+attributes.rat <- listAttributes(ensemblmart.rat)
+filters.rat <- listFilters(ensemblmart.rat)
+ensemblmart.mus <-  useMart("ensembl",dataset="mmusculus_gene_ensembl")
+attributes.mus <- listAttributes(ensemblmart.mus)
+filters.mus <- listFilters(ensemblmart.mus)
+
+#  kiebler data, translate rgd symbols to mouse homolog ensembl ids
+kiebler.data.sub <- kiebler.data %>% tbl_df() %>% filter(., adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff)
+kiebler.rat.symbols <- kiebler.data.sub$Symbol %>% unique(.) %>% na.omit(.)
+kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+
+# Kusek data, get mouse ensembl ids
+kusek.data.sub <- kusek.data %>% tbl_df() %>% filter(., Adjusted.p.value<pvalue.cutoff & Fold.Change>2^lfc.cutoff)
+kusek.mus.symbols <- as.character(unlist(kusek.data.sub$Symbol))
+kusek.mus.ensemblids <- as.vector(unlist(getBM(kusek.mus.symbols, filters="mgi_symbol", attributes="ensembl_gene_id", mart=ensemblmart.mus)))
+
+# find mouse ensembl ids of renal pulldown genes
+renal.data.sub <- filter(all.results[[1]]$stats.eset, logFC>lfc.cutoff & adj.P.Val<pvalue.cutoff)
+renal.mus.ensemblids <- AnnotationDbi::select(mogene10sttranscriptcluster.db, keys = as.character(renal.data.sub$probesetid), columns = "ENSEMBL", keytype = "PROBEID") %>% .$ENSEMBL %>% unique(.) %>% na.omit(.)
+num.renal.mus.ensemblids <- length(renal.mus.ensemblids)
+
+#overlaps
+kusek.renal.overlap <- intersect(renal.mus.ensemblids, kusek.mus.ensemblids)
+kusek.kiebler.overlap <- intersect(kusek.mus.ensemblids, kiebler.mus.ensemblids)
+kiebler.renal.overlap <- intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)
+```
+
+### Kiebler-Renal Overlap Functional analysis
+
+#### Gprofiler
+
+```{r kieblerrenalGO}
+gprofiler_results  <- gprofiler(query = kiebler.renal.overlap, 
+                                organism = "mmusculus",
+                                ordered_query = F, 
+                                exclude_iea = F, 
+                                max_p_value = 0.1, 
+                                max_set_size = 0,
+                                correction_method = "gSCS",
+                                hier_filtering = "none", 
+                                domain_size = "annotated") 
+export(gprofiler_results, file.path(resultsDir, "GOresults.Kiebler.renal.overlap.xlsx"))
+```
+
+**[Excel file with Kiebler-Renal Overlap GO enrichments](../results/GOresults.Kiebler.renal.overlap.xlsx)**
+
+#### Revigo visualization of Gprofiler results
+ - only one enriched category, so didn't run Revigo
+
+### Kusek-Renal Overlap Functional analysis
+
+#### Gprofiler
+
+```{r kusekrenalGO}
+gprofiler_results  <- gprofiler(query = kusek.renal.overlap, 
+                                organism = "mmusculus",
+                                ordered_query = F, 
+                                exclude_iea = F, 
+                                max_p_value = 0.1, 
+                                max_set_size = 0,
+                                correction_method = "gSCS",
+                                hier_filtering = "none", 
+                                domain_size = "annotated") 
+export(gprofiler_results, file.path(resultsDir, "GOresults.Kusek.renal.overlap.xlsx"))
+```
+
+**[Excel file with Kiebler-Renal Overlap GO enrichments](../results/GOresults.Kusek.renal.overlap.xlsx)**
+
+#### Revigo visualization of Gprofiler results
+
+Once again, there are too few enriched categories to make this worthwhile.
+
+For Biological Processes, there is: regulation of ripoptosome assembly involved in necroptotic process
+For Cellular Components, there is: spindle microtubule
+For Molecular Functions, there is ATPase activity
+
+### Kusek-Kiebler Overlap Functional analysis
+
+#### Gprofiler
+
+```{r kieblerkusekGO}
+gprofiler_results  <- gprofiler(query = kusek.kiebler.overlap, 
+                                organism = "mmusculus",
+                                ordered_query = F, 
+                                exclude_iea = F, 
+                                max_p_value = 0.1, 
+                                max_set_size = 0,
+                                correction_method = "gSCS",
+                                hier_filtering = "none", 
+                                domain_size = "annotated") 
+export(gprofiler_results, file.path(resultsDir, "GOresults.Kusek.Kiebler.overlap.xlsx"))
+```
+
+**[Excel file with Kusek-Kiebler Overlap GO enrichments](../results/GOresults.Kusek.Kiebler.overlap.xlsx)**
+
+```{r kusekkieblerrevigo}
+cc.pval.revigo.names <- c("term_ID","description","freqInDbPercent","abslog10pvalue","uniqueness","dispensability","representative");
+cc.pval.revigo.data <- rbind(c("GO:0005739","mitochondrion",3.808,4.3143,0.233,0.000,"mitochondrion"),
+c("GO:0043227","membrane-bounded organelle",9.056,2.4828,0.404,0.526,"mitochondrion"),
+c("GO:0031090","organelle membrane",2.751,2.1904,0.355,0.637,"mitochondrion"),
+c("GO:0044444","cytoplasmic part",13.606,3.4486,0.505,0.316,"mitochondrion"),
+c("GO:0005737","cytoplasm",38.159,4.7496,0.494,0.221,"mitochondrion"),
+c("GO:0044424","intracellular part",43.664,2.0273,0.514,0.465,"mitochondrion"),
+c("GO:0005622","intracellular",46.136,2.0565,0.683,0.079,"intracellular"));
+
+
+cc.pval.stuff <- data.frame(cc.pval.revigo.data);
+names(cc.pval.stuff) <- cc.pval.revigo.names;
+
+cc.pval.stuff$abslog10pvalue <- as.numeric( as.character(cc.pval.stuff$abslog10pvalue) );
+cc.pval.stuff$freqInDbPercent <- as.numeric( as.character(cc.pval.stuff$freqInDbPercent) );
+cc.pval.stuff$uniqueness <- as.numeric( as.character(cc.pval.stuff$uniqueness) );
+cc.pval.stuff$dispensability <- as.numeric( as.character(cc.pval.stuff$dispensability) );
+
+treemap(
+	cc.pval.stuff,
+	index = c("representative","description"),
+	vSize = "abslog10pvalue",
+	type = "categorical",
+	vColor = "representative",
+	title = "REVIGO Cellular Component Gene Ontology treemap - pvalue based",
+	inflate.labels = FALSE,      # set this to TRUE for space-filling group labels - good for posters
+	lowerbound.cex.labels = 0,   # try to draw as many labels as possible (still, some small squares may not get a label)
+	bg.labels = "#CCCCCC00",     # define background color of group labels
+												       # "#CCCCCC00" is fully transparent, "#CCCCCCAA" is semi-transparent grey, NA is opaque
+	position.legend = "none",
+  border.col=c("black","gray35"),
+  palette.HCL.options=list(hue_start=80, hue_perm=TRUE),
+  border.lwds=c(5,2),
+  fontsize.labels=c(36,12),
+  fontcolor.labels=c("black", "gray34"),
+  fontsize.title=14
+  )
+```
 
 ----
 
