@@ -7,6 +7,7 @@ install.packages(c("bookdown",
                    "RColorBrewer",
                    "readxl",
                    "rmarkdown",
+                   "scales",
                    "tidyverse",
                    "tools"))
 
