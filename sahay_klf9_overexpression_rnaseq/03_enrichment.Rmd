@@ -6,9 +6,7 @@ author: "Michael J. Steinbaugh"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      echo = FALSE,
-                      message = FALSE,
-                      warning = FALSE)
+                      include = FALSE)
 ```
 
 [DAVID]: https://david.ncifcrf.gov
@@ -34,6 +32,6 @@ david$cutoffChart %>%
     basejump::printTable(caption = "DAVID functional annotation chart")
 ```
 
-```{r session_info}
+```{r}
 sessionInfo()
 ```
