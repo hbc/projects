@@ -86,7 +86,12 @@ We aligned the counts using the latest transcriptome FASTA from [FlyBase][], [`d
 
 ```{r bcbio, include=FALSE}
 # HPC mount point over `sshfs` connection
-hpc_dir <- "hpc"
+hpc_dir <- file.path("~",
+                     "Orchestra",
+                     "bcbio",
+                     "PIs",
+                     "norbert_perrimon",
+                     "blood_scrnaseq")
 if (!length(dir(hpc_dir))) {
     stop("Project on HPC server not loaded.")
 }
