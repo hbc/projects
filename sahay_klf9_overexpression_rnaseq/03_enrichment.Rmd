@@ -6,7 +6,9 @@ author: "Michael J. Steinbaugh"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      include = FALSE)
+                      echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
 ```
 
 [DAVID]: https://david.ncifcrf.gov

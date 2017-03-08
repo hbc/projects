@@ -7,7 +7,10 @@ bibliography: bibliography.bib
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      include = FALSE)
+                      echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+
 library(basejump)
 library(biomaRt)
 library(CHBUtils)
@@ -16,6 +19,7 @@ library(ggrepel)
 library(pheatmap)
 library(tidyverse)
 library(vsn)
+
 data(counts,
      dds,
      heatmap_annotation,

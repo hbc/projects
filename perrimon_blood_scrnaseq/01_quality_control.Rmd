@@ -72,7 +72,7 @@ We demultiplexed the raw Illumina BCL files provided by the [Harvard Biopolymers
 
 We ran this on [Orchestra][] with the following settings:
 
-```{bash, eval=FALSE, include=TRUE}
+```{bash, echo=TRUE, eval=FALSE}
 module load seq/bcl2fastq/2.17.1.14
 bcl2fastq --use-bases-mask y*,y*,y*,y* --mask-short-adapter-reads 0 --minimum-trimmed-read-length 0
 ```

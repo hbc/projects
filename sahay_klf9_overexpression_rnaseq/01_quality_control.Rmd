@@ -7,7 +7,10 @@ bibliography: bibliography.bib
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      include = FALSE)
+                      echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+
 library(basejump)
 library(DESeq2)
 library(edgeR)
@@ -31,7 +34,7 @@ library(tximport)
 [`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
 [`tximport`]: https://bioconductor.org/packages/release/bioc/html/tximport.html
 
-```{r bcbio}
+```{r bcbio, include=FALSE}
 # HPC mount point over `sshfs` connection
 hpc_dir <- file.path("~",
                      "Orchestra",
