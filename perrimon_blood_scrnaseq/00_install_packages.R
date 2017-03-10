@@ -15,6 +15,7 @@ source("https://bioconductor.org/biocLite.R")
 biocLite(c("BiocStyle",
            "biomaRt",
            "scde",
+           "roryk/bcbioSinglecell",
            "steinbaugh/basejump"))
 
 # [Seurat](http://satijalab.org/seurat/install.html)
