@@ -2,12 +2,17 @@
 title: "Perrimon Lab blood scRNA-Seq quality control"
 date: "`r BiocStyle::doc_date()`"
 author: "Michael J. Steinbaugh"
-bibliography: bibliography.bib
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(cache = TRUE,
+                      cache.lazy = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
 
+options(readr.num_columns = 0)
+
+library(barcode)
 library(biomaRt)
 library(cowplot)
 library(Matrix)
@@ -134,7 +139,6 @@ annotations <- biomaRt::getBM(mart = mart,
                                              "transcript_biotype",
                                              "chromosome_name"))
 # Broad class definitions
-# Terms are sorted alphabetically here
 coding <- c("protein_coding")
 decaying <- c("non_stop_decay",
               "nonsense_mediated_decay")
@@ -191,9 +195,12 @@ rownames(counts) <- file.path(summary_dir, "tagcounts.mtx.rownames") %>%
 colnames(counts) <- file.path(summary_dir, "tagcounts.mtx.colnames") %>%
     readr::read_lines(.)
 save(counts, file = "data/counts.rda")
+```
+
+```{r matrix_check, eval=FALSE, include=FALSE}
 # Check the `colnames` and `rownames`
-#` head(counts@Dimnames[[1]])
-#` head(counts@Dimnames[[2]])
+head(counts@Dimnames[[1]])
+head(counts@Dimnames[[2]])
 ```
 
 ### Sample barcodes
@@ -203,18 +210,55 @@ We require there to be at least 10,000 reads to match a cellular barcode before 
 ```{r sample_barcodes}
 sample_barcodes <- file.path(hpc_dir, "sample_barcodes.log") %>%
     read.table(col.names = c("counts", "reverse_complement"))
-indrop <- file.path("data-raw", "indrop.xlsx") %>%
+metadata <- file.path("data-raw", "metadata.xlsx") %>%
     readxl::read_excel(.) %>%
-    dplyr::left_join(sample_barcodes, by = "reverse_complement")
-indrop_metadata <- indrop[, c("reverse_complement", "sample")]
-save(indrop, indrop_metadata, file = "data/indrop.rda")
+    dplyr::left_join(sample_barcodes, by = "reverse_complement") %>%
+    dplyr::mutate(unique = paste(run, reverse_complement, sep = "-"))
+save(metadata, file = "data/metadata.rda")
 rm(sample_barcodes)
-printTable(indrop, caption = "InDrop sample barcodes with counts")
+printTable(metadata, caption = "Sample metadata")
 ```
 
 
 
 # Quality control metrics
+
+## Barcode plot
+
+These are counts of how many reads are assigned to a given cellular barcode. The purpose of these histograms is that we should see one single large peak that represents cells that were encapsulated. If we see a strong shoulder, or a bimodal distribution of the cells, that can indicate a couple problems. It might be that there is free floating RNA, which happens when cells are dying. It could also be that there are a set of cells that failed for some reason. Finally, it could also be that there are biologically different types of cells, and one type is much smaller than the other. If this is the case we would expect to see less RNA being sequenced from the smaller cells.
+
+Both the `sorted` and `unsorted` groups have an apparent bimodal distribution, which could be indicative of a large number of dying cells or low complexity cells, possibly red blood cells. We're not entirely sure what's behind this effect, and we are working on figuring this out with the Harvard Single Cell Core.
+
+```{r barcode_plot}
+read_barcode_file = function(filename) {
+    return(read_tsv(filename, col_names = c("barcode", "count"), progress = FALSE))
+}
+barcode_plot = function(filename, sample) {
+    bcs = read_barcode_file(filename)
+    bcs_hist = hist(log10(bcs$count), plot = FALSE, n = 50)
+    fLog = bcs_hist$count
+    xLog = bcs_hist$mids
+    y = fLog * (10^xLog)/sum(fLog * (10^xLog))
+    p = qplot(10^xLog, y) +
+        geom_point() +
+        geom_line() +
+        ggtitle(sample) +
+        scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                      labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+        xlab("number of reads assigned to a cell") +
+        ylab("proportion of cells")
+    print(p)
+}
+bcfiles <- list.files(hpc_dir, pattern = "*-barcodes.tsv",
+                      recursive = TRUE,
+                      include.dirs = TRUE,
+                      full.names = TRUE)
+names(bcfiles) <- gsub("-barcodes\\.tsv$", "", basename(bcfiles))
+for (a in 1:length(bcfiles)) {
+    barcode_plot(bcfiles[a], names(bcfiles)[a])
+}
+save(bcfiles, file = "data/bcfiles.rda")
+```
 
 ```{r metrics}
 # `rmarkdown::render()` doesn't appear to handle `dgTMatrix` objects properly.
@@ -232,7 +276,7 @@ metrics <- data.frame(identifier = colnames(counts_matrix),
     dplyr::mutate(log_detected_per_count = log(genes_detected) / log(total_counts),
                   percent_mito = mito_counts / total_counts,
                   sample_barcode = gsub("^.*-([ACGT]+)$", "\\1", sample_barcode)) %>%
-    dplyr::left_join(indrop_metadata, by = c("sample_barcode" = "reverse_complement")) %>%
+    dplyr::left_join(metadata, by = c("sample_barcode" = "reverse_complement")) %>%
     dplyr::select(sample, dplyr::everything()) %>%
     dplyr::arrange(sample, identifier)
 save(metrics, file = "data/metrics.rda")
@@ -240,7 +284,7 @@ write.csv(metrics, "results/metrics.csv")
 rm(counts_matrix)
 ```
 
-We have filtered the `M` samples from quality control analysis.
+We have filtered the `M` samples from subsequent quality control analysis.
 
 ```{r metrics_filter}
 metrics <- dplyr::filter(metrics, sample != "M")
@@ -249,7 +293,7 @@ metrics <- dplyr::filter(metrics, sample != "M")
 
 ## Total number of cells
 
-Significantly more cells were analyzed in the FACS sorted group than the expected amount of 2000. We got a relatively low recovery rate of the unsorted cells.
+More cells were analyzed in the FACS sorted group than the expected amount of 2,000. We obtained a low cell count in the unsorted group.
 
 ```{r total_cells}
 total_cells <- metrics %>%
@@ -272,11 +316,21 @@ total_cells %>%
 
 ## Total RNA read counts
 
-When sequencing more cells, we have overall less counts per cell. The distribution of counts looks reasonable; we are truncating the lower end because we required there to be at least 10,000 reads to match a barcode before aligning. We can see there is a broad spread of counts per cell. Overall the total number of counts per cell seems on the low side, but HSCs are small cells and with smaller cells we tend to capture less RNA to sequence.
-
-The total counts look reasonable, we're capturing about 10,000 counts per cell on average. If we plot the distribution of counts we can see that there seem to be two sets of cells, one with a lower number of total counts and one with a higher number of total counts. We can probably chop the low total count cells off, as those are likely to be failed cells.
+When sequencing more cells, we have overall less counts per cell. The distribution of counts here looks reasonable; we are truncating the lower end because we required there to be at least 10,000 reads to match a barcode before aligning. The count depth for the unsorted group is lower than we'd like to see.
 
 ```{r total_counts}
+metrics %>%
+    ggplot(aes(total_counts,
+               fill = sample)) +
+    facet_wrap(~sample) +
+    geom_histogram() +
+    ggtitle("total RNA read counts") +
+    scale_x_log10() +
+    scale_y_log10() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          legend.position = "none") +
+    xlab("counts per cell")
+
 metrics %>%
     ggplot(aes(sample,
                total_counts,
@@ -288,31 +342,25 @@ metrics %>%
     scale_y_log10() +
     theme(legend.position = "none") +
     ylab("counts per cell")
-
-metrics %>%
-    ggplot(aes(total_counts,
-               fill = sample)) +
-    facet_wrap(~sample) +
-    geom_histogram() +
-    ggtitle("total counts") +
-    scale_x_log10() +
-    scale_y_log10() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1),
-          legend.position = "none") +
-    xlab("counts per cell")
 ```
 
 
 
 ## Genes detected
 
-Here we mean genes with a non-zero count measurement per cell.
-
-By detected, we mean a gene has > 0 counts. We can see that as we sequence less deeply due to sequencing more cells, we detect less genes per sample. Overall the number of genes detected per cell is low, again that might be due to the HSCs being small cells.
-
-We detect around 800 genes per cell across all of the replicates on average, and around 350 per cell if we take the median. There are a set of cells with low counts and low genes detected in all of the samples.
+Here by "detected", we mean genes with a non-zero count measurement per cell. Seeing gene detection in the range of ~2,000-2,500 is normal for [inDrop][] analysis. The low gene detection rate of the unsorted group is likely problematic.
 
 ```{r genes_detected}
+metrics %>%
+    ggplot(aes(genes_detected,
+               fill = sample)) +
+    facet_wrap(~sample) +
+    geom_histogram() +
+    ggtitle("genes detected") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          legend.position = "none") +
+    xlab("genes per cell")
+
 metrics %>%
     ggplot(aes(sample,
                genes_detected,
@@ -323,25 +371,13 @@ metrics %>%
     ggtitle("genes detected") +
     theme(legend.position = "none") +
     ylab("genes per cell")
-
-metrics %>%
-    ggplot(aes(genes_detected,
-               fill = sample)) +
-    facet_wrap(~sample) +
-    geom_histogram() +
-    ggtitle("genes detected") +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1),
-          legend.position = "none") +
-    xlab("genes per cell")
 ```
 
 
 
 ## Total vs. detected
 
-Here we can see a subset of the cells in each sample that have a very low number of genes detected. These can be cells that have failed in sequencing or they could be cell types that express very low amount of mRNA.
-
-We can see two features of these plots. The first is a set of cells with very low counts on the left hand side of these plots. The second is a set of cells with a moderate number of counts but a low number of genes detected. The first set of cells are likely failed cells we can filter out; the second set is likely to be cells that are undergoing a stressor and are churning out mitochondrial transcripts.
+If we graph out the total number of counts per cell vs. the genes detected per cell, we can assess whether there is a large population of low quality cells with low counts and/or gene detection. We're not seeing this in the FACS sorted group, which is good. There's more spread in the unsorted group, but not a huge shoulder of low complexity, which has been seen in some other studies.
 
 ```{r total_vs_detected}
 metrics %>%
@@ -362,9 +398,7 @@ metrics %>%
 
 ## Mitochondrial counts
 
-It looks like there is a significant amount of cell death occuring during the FACS sorting step.
-
-Here we can see that there is a subset of the cells that have a high amount of counts in mitochondrial genes. These are generally indicative of failed cells, and we should exclude them from the analysis.
+We evaluate overall mitochondrial gene expression as a biomarker of cellular stress during sample preparation. We're not seeing very high mitochondrial gene expression (> 20k counts) in most cells, so that's good. The difference looks large between the `sorted` and `unsorted` groups here because the count depth is relatively low in the `unsorted` group. We've seen samples in other studies with higher mitochondrial gene expression.
 
 ```{r mitochondrial_counts}
 metrics %>%
@@ -376,66 +410,41 @@ metrics %>%
     geom_point() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1),
           legend.position = "none") +
-    ylab("counts in coding genes") +
-    xlab("counts in mitochondrial genes")
-```
-
-
-
-## Total vs detected, revisited
-
-If we color the total counts vs genes detected plot, we can see that the cells that have a lower number of genes detected tend to have a higher mitochondrial percentage. We can see from the histogram if we exclude cells with > 20% mitochondrial reads, we’ll remove the shoulder on the percent mitochondrial distributions, so we’ll use that as the cutoff. We can see this doesn't capture all of the cells with this feature though, for example the shoulder on P5_4 cannot be explained by mitochondrial content. If we drop cells with > 20% mitochondrial content we go from `r nrow(metrics)` to `r table(metrics$percent_mito < 0.2)[2]`.
-
-If we color the total counts vs genes detected plot, we can see that the cells that have a lower number of genes detected tend to have a higher mitochondrial percentage. We can see from the histogram if we exclude cells with > 20% mitochondrial reads, we’ll remove the shoulder on the percent mitochondrial distributions, so we’ll use that as the cutoff.
-
-```{r total_vs_detected_revisited}
-metrics %>%
-    ggplot(aes(total_counts,
-               genes_detected,
-               color = percent_mito)) +
-    facet_wrap(~sample) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    scale_x_log10() +
-    scale_y_log10() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab("counts per cell") +
-    ylab("genes per cell")
+    xlab("counts in mitochondrial genes") +
+    xlim(0, 50000) +
+    ylab("counts in coding genes")
 ```
 
 ```{r percent_mito}
 metrics %>%
+    dplyr::mutate(percent_mito = percent_mito * 100) %>%
     ggplot(aes(percent_mito,
                fill = sample)) +
     facet_wrap(~sample) +
     geom_histogram() +
+    ggtitle("% mitochondrial gene abundance") +
     scale_y_sqrt() +
-    theme(legend.position = "none")
-```
-
-```{r mito_filtered}
-metrics %>%
-    subset(percent_mito < 0.2) %>%
-    ggplot(aes(total_counts,
-               genes_detected)) +
-    ggtitle("cells with > 20% mitochondrial reads filtered") +
-    facet_wrap(~sample) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    scale_x_log10() +
-    scale_y_log10() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    xlab("counts") +
-    ylab("genes")
+    theme(legend.position = "none") +
+    xlab("% mitochondrial")
 ```
 
 
 
 ## Novelty
 
-Another way to QC the data is to look for less novelty, that is cells that have less genes detected per count than other cells. We can see the samples where we sequenced each cell less have a higher overall novelty, that is because we have not started saturated the sequencing for any given gene for these samples. Outlier cells in these samples might be cells that we have a less complex RNA species than other cells. Sometimes we can detect contamination with low complexity cell types like RBCs or white blood cells via this metric.
+Another way to QC the data is to look for less novelty, that is cells that have less genes detected per count than other cells. We can see the samples where we sequenced each cell less have a higher overall novelty, that is because we have not started saturated the sequencing for any given gene for these samples. Outlier cells in these samples might be cells that we have a less complex RNA species than other cells. Sometimes we can detect contamination with low complexity cell types like red blood cells via this metric.
 
 ```{r novelty}
+metrics %>%
+    ggplot(aes(log_detected_per_count,
+               fill = sample)) +
+    facet_wrap(~sample) +
+    geom_histogram() +
+    ggtitle("novelty") +
+    scale_y_sqrt() +
+    theme(legend.position = "none") +
+    xlab("log genes detected per count")
+
 metrics %>%
     ggplot(aes(sample,
                log_detected_per_count,
@@ -446,98 +455,55 @@ metrics %>%
               aes(label = round(log_detected_per_count, digits = 2))) +
     theme(legend.position = "none") +
     ylab("log genes detected per count")
-
-metrics %>%
-    ggplot(aes(log_detected_per_count,
-               fill = sample)) +
-    facet_wrap(~sample) +
-    geom_histogram() +
-    ggtitle("novelty") +
-    scale_y_sqrt() +
-    theme(legend.position = "none") +
-    xlab("log genes detected per count")
 ```
 
 
 
 # Summary
 
-These samples look okay, but have a lower amount of genes detected and total counts than I was expecting. Sequencing these samples more might be an option. I think we are ready to go forward-- before clustering we'll filter out high mitochondrial content samples and low novelty samples to get rid of a bunch of the junk that was sequenced.
+We can continue on to clustering analysis with the FACS sorted sample. The unsorted sample has low cell counts and low gene detection. As mentioned above, the FACS sorted sample has a bimodal distribution of the cellular barcodes, which is not desirable. We'll work on figuring out the reason behind this. We don't see a big shoulder of low complexity cells in the FACS group, and we recommend applying only minimal filtering based on mitochondrial content and novelty.
 
 
+## Suggested filtering
 
-# Suggested filtering
+We recommend proceeding with minimal filtering:
 
-3k cells per sample were captured, so we're expecting there to be around 48k cells
-total. If we filter the cells by keeping only cells that:
-
-1. Have a novelty score > 0.8
-2. Have a mitochondrial percentage less than 20%
-3. Have at least 500 genes detected
-
-That leaves us with 52k cells with a median of 2800 genes per sample. This seems like a set of reasonable cutoffs to start. Below we plot the what these samples look like in terms of genes detected and total counts. You can see we dropped the shoulder on most of the samples. We can also see there is a fat tailed distribution of genes detected in the samples. If we further drop samples with a high number of genes detected (> 5000), that leaves us with around 50k cells. I think including that filter makes good sense.
+- `> 500` genes detected per cell (abnormally low)
+- `< 5000` genes detected per cell (abnormally high)
+- `< 20%` mitochondrial transcripts
+- `> 0.8` novelty score (log genes detected per count)
 
 ```{r filtered}
 filtered <- metrics %>%
     dplyr::filter(genes_detected > 500 &
+                      genes_detected < 5000,
                       percent_mito < 0.20 &
-                      log_detected_per_count > 0.8)
+                      log_detected_per_count > 0.8) %>%
+    # FACS sorted sample only!
+    dplyr::filter(sample == "sorted")
 
 filtered %>%
-    ggplot(aes(total_counts,
-               genes_detected)) +
-    facet_wrap(~sample) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    scale_x_log10() +
-    scale_y_log10() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-filtered %>%
-    ggplot(aes(genes_detected,
-               fill = sample)) +
-    facet_wrap(~sample) +
-    geom_histogram() +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1),
-          legend.position = "none")
-```
-
-```{r filtered_high_genes}
-filtered_high_genes <- subset(filtered, genes_detected < 5000)
-
-filtered_high_genes %>%
-    ggplot(aes(total_counts,
-               genes_detected)) +
-    facet_wrap(~sample) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    scale_x_log10() +
-    scale_y_log10() +
-    xlab("counts per cell") +
-    ylab("genes per cell")
-
-filtered_high_genes %>%
     ggplot(aes(genes_detected,
                fill = sample)) +
     facet_wrap(~sample) +
     geom_histogram() +
     theme(axis.text.x = element_text(angle = 90, hjust = 1),
           legend.position = "none") +
-    xlab("genes per cell")
+    xlab("genes")
+
+filtered %>%
+    ggplot(aes(total_counts,
+               genes_detected)) +
+    facet_wrap(~sample) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_x_log10() +
+    scale_y_log10() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab("counts") +
+    ylab("genes")
 ```
-
-
-
-# Methods
-
-- [`bcl2fastq`][]
-- [`bcbio-nextgen`][] scRNA-Seq pipeline
-- [`rapmap`][]
 
 ```{r}
 sessionInfo()
 ```
-
-
-
-# References
