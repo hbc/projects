@@ -1,9 +1,15 @@
 .DS_Store
 .Rhistory
+.Rproj.user
 .snakemake
+*_cache
+*_files
 *.#*
 *.egg-info
 *.pyc
 build
+data
+data-raw
 dist
-.Rproj.user
+metadata
+results

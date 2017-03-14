@@ -7,9 +7,8 @@ bibliography: bibliography.bib
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      echo = FALSE,
-                      message = FALSE,
-                      warning = FALSE)
+                      include = FALSE)
+
 library(basejump)
 library(DESeq2)
 library(edgeR)
@@ -32,9 +31,14 @@ library(tximport)
 [`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
 [`tximport`]: https://bioconductor.org/packages/release/bioc/html/tximport.html
 
-```{r bcbio, include=FALSE}
+```{r bcbio}
 # HPC mount point over `sshfs` connection
-hpc_dir <- "/Users/mike/Orchestra/hbc/PIs/lois_smith/rnaseq_angio_tumor"
+hpc_dir <- file.path("~",
+                     "Orchestra",
+                     "bcbio",
+                     "PIs",
+                     "lois_smith",
+                     "rnaseq_angio_tumor")
 if (!length(dir(hpc_dir))) {
     stop("Project on HPC server not loaded.")
 }

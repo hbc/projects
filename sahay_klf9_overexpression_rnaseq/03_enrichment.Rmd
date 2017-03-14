@@ -34,6 +34,6 @@ david$cutoffChart %>%
     basejump::printTable(caption = "DAVID functional annotation chart")
 ```
 
-```{r session_info}
+```{r}
 sessionInfo()
 ```
