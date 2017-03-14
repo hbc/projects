@@ -1,7 +1,7 @@
 ---
 bibliography: "references.bib"
 csl: "bioinformatics.csl"
-title: "Whangbo - Treatment response RNAseq Analysis"
+title: "Whangbo - Unpaired treatment response RNAseq Analysis"
 output:
   html_document:
     code_folding: hide
@@ -18,7 +18,7 @@ cleanbib()
 options("citation_format" = "pandoc")
 
 clientname="Jennifer Whangbo"
-clientemail="Jennifer.Whangbo@childrens.harvard.edus"
+clientemail="Jennifer.Whangbo@childrens.harvard.edu"
 labPI="Ritz"
 lablocation="Dana Farber"
 analystname="John Hutchinson"
@@ -41,7 +41,7 @@ The sections below provide code to reproduce the included results and plots.
 
 # Methods
 
-Discarded any samples which were not matched pre and post treatment for the same patient. Differential expression was analyzed with DESeq2.
+Discarded any low quality samples, but kept unmatched pre and post treatment for the same patient. Differential expression was analyzed with DESeq2.
 
 ---
 
@@ -176,7 +176,7 @@ metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
 metadata = metadata[, colSums(is.na(metadata)) < nrow(metadata), drop=FALSE]
 metadata$samplecode <- NULL
 
-exclude.samples <- c("nr_pre_tcon_bi","nr_pre_treg_bi","nr_pre_cd8_fh","nr_wk4_nk_fh","nr_wk4_cd8_mld","nr_pre_nk_rl","nr_wk4_tcon_rl","nr_wk4_treg_rl","r_pre_treg_ls","r_wk4_treg_ta")
+exclude.samples <- c("nr_pre_nk_rl", "nr_wk4_tcon_rl")
 metadata <- metadata[!(row.names(metadata) %in% exclude.samples),]
 summarydata <- summarydata[!(row.names(summarydata) %in% exclude.samples),]
 counts <- counts[,!(names(counts) %in% exclude.samples)]
@@ -394,49 +394,12 @@ ggplot(data.frame(component=reorder(names(pc$percentVar), -pc$percentVar),
 
 ## DESeq2 Setup {.tabset}
 
-### Whole dataset
-
-- first try estimating dispersions and sizefactor adjustements using all samples
-- subset to relevant samples later
-
-```{r de-setup}
+```{r }
 library(DEGreport)
 library(vsn)
-
-counts <- counts[rowSums(counts>0)>1,]
-txi.salmon = subset_tximport(txi.salmon, rownames(counts), colnames(counts))
-dds = DESeqDataSetFromTximport(txi.salmon, colData=summarydata, design=~1) # model matrix is not full rank, will refactor later
-
-geoMeans = apply(counts, 1, function(row) if (all(row == 0)) 0 else
-  exp(mean(log(row[row != 0]))))
-dds = estimateSizeFactors(dds, geoMeans=geoMeans)
-dds = estimateDispersions(dds)
 ```
 
-#### Effect of variance stabilization
-
-```{r deseq-diagnostics}
-notAllZero <- (rowSums(counts(dds))>0)
-rld <- rlog(dds)
-vsd <- varianceStabilizingTransformation(dds)
-rlogMat <- assay(rld)
-vstMat <- assay(vsd)
-```
-
-```{r deseq_vstplots, fig.keep="last",fig.height=2.5}
-p1 <- meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))$gg + ggtitle("log") + theme(legend.position="bottom")
-p2 <- meanSdPlot(assay(rld[notAllZero,]))$gg + ggtitle("rlog") + theme(legend.position="bottom")
-p3 <- meanSdPlot(assay(vsd[notAllZero,]))$gg + ggtitle("vst") + theme(legend.position="bottom")
-grid.arrange(p1,p2,p3, ncol=3)
-```
-
-The variance is still really high even after stabiliziation.This may be because some of the cell types are quite different. Going forward, I decided to process the cell types separately.
-
-#### Dispersion estimates
-
-```{r dispersion-estimate}
-plotDispEsts(dds)
-```
+As with the paired analysis, normalized  and calculated dispersions for all celltypes separately.
 
 ### Tcon cells
 
@@ -570,24 +533,24 @@ dds.NK = dds.sub
 ```
 
 
-## Effect of Treatment on Responders {.tabset}
+## Responder versus Non-responder before treatment {.tabset}
 
-```{r respondersetup}
-design = ~patientid + timepoint
+```{r responder_vs_nonrespondersetup_before}
+design = ~status
 ```
 
 ### Tcon
 
-```{r setcelltype.tcon.responder}
+```{r setcelltype.tcon.responder_vs_nonresponder_before}
 celltype="Tcon"
 ```
 
-```{r deseq2-expression-analysis.responder.tcon, results='hide'}
-counts.sub <- counts[rowSums(counts>0)>1,(summarydata$celltype==celltype & summarydata$status=="responder")]
-summarydata.sub <- summarydata[(summarydata$celltype==celltype & summarydata$status=="responder"),]
+```{r deseq2-expression-analysis.responder_vs_nonresponder.tcon_before, results='hide'}
+counts.sub <- counts[rowSums(counts>0)>1,(summarydata$celltype==celltype & summarydata$timepoint=="pretreatment")]
+summarydata.sub <- summarydata[(summarydata$celltype==celltype & summarydata$timepoint=="pretreatment"),]
 txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
 dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
-# model matrix is not full rank, will refactor later
+
 geoMeans.sub = apply(counts.sub, 1, function(row) {
   if (all(row == 0)) 0 
   else 
@@ -609,15 +572,17 @@ dds.sub = DESeq(dds.sub)
 
 #### Volcano plot
 
-```{r DESeq.volc.responder.tcon}
+```{r DESeq.volc.responder_vs_nonresponder.tcon_before}
 stats <- results(dds.sub)[,c("log2FoldChange", "padj")] %>% as.data.frame()
 names(stats) <- c("logFC", "Adjusted.Pvalue")
 volcano_density_plot(stats, lfc.cutoff=lfc.cutoff, pval.cutoff=pvalue.cutoff)
 ```
 
+Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
+
 #### MA-plot
 
-```{r DESeq-MA.responder.tcon, results='asis'}
+```{r DESeq-MA.responder_vs_nonresponder.tcon_before, results='asis'}
 res =  results(dds.sub)
 ymax = max(res$log2FoldChange, na.rm=TRUE)
 ymin = min(res$log2FoldChange, na.rm=TRUE)
@@ -626,56 +591,58 @@ plotMA(res, ylim=c(ymin, ymax))
 
 #### Differentially expressed genes
 
-```{r DESeq-output.responder.tcon, results='hide'}
+```{r DESeq-output.responder_vs_nonresponder.tcon_before, results='hide'}
 out_df = as.data.frame(res)
-# saved image here
+
 out_df$id = rownames(out_df)
 out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
 
 out_df <- annotate_df2(df=out_df, df_ensemblid_header = "id", biomart_ensembl_dataset= 'hsapiens_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'hgnc_symbol', biomart_host="www.ensembl.org" )
 
 norm.counts.celltype <- counts(dds.sub, normalized=TRUE) %>% row2colnames("id") %>% tbl_df()
+
 out_df <-   out_df %>% tbl_df() %>% inner_join(., norm.counts.celltype, by="id") %>% arrange(padj)
 
-tempoutfile <-file.path(tempdir(), paste("treatment.response.responders", celltype, "xlsx", sep="."))
+tempoutfile <-file.path(tempdir(), paste("pretreatment.responder_vs_nonresponders", celltype, "xlsx", sep="."))
 rio::export(out_df, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-shared_file <-  drop_share(file.path(dropboxfiledir, paste("treatment.response.responders", celltype, "xlsx", sep=".")))$url
+shared_file <-  drop_share(file.path(dropboxfiledir, paste("pretreatment.responder_vs_nonresponders", celltype, "xlsx", sep=".")))$url
 ```
 
-```{r DESeq-table.responder.tcon, results='asis'}
+```{r DESeq-table.responder_vs_nonresponder.tcon_before, results='asis'}
 sig_genes = subset(out_df, padj < pvalue.cutoff)
-DT::datatable(sig_genes, caption=paste("Significant genes by adjusted pvalue<", pvalue.cutoff, sep=""), rownames = FALSE)
+DT::datatable(sig_genes, caption=paste("Significant genes by adjusted pvalue<", pvalue.cutoff, sep=""), rownames=FALSE)
 ```
 
 ```{r setupmetadata}
 meta.plotme <- metadata %>% row2colnames("samplecode") %>% tbl_df() 
 ```
 
-```{r DEseq.plotDE.responder.tcon, fig.height=8}
+
+```{r DEseq.plotDE.responder_vs_nonresponder.tcon_before,  fig.height=8}
 if(nrow(sig_genes)>10) {
   plotme <- sig_genes[1:10,] } else {
     plotme <- sig_genes
   }
 
-plotme <- plotme %>% 
+plotme <-   plotme %>%   
     dplyr::select(., -baseMean, -log2FoldChange, -lfcSE, -stat, -padj, -pvalue,-description) %>%
     mutate(., gene = ifelse(hgnc_symbol=="", id, hgnc_symbol)) %>% 
     dplyr::select(., -id, -hgnc_symbol) %>%
     tidyr::gather(., samplecode, value, -gene) %>%
     inner_join(., meta.plotme,by="samplecode" ) %>%
     mutate(., value=as.numeric(value)) 
-ggplot(plotme, aes(x=timepoint, y=value, color=timepoint))+
-  geom_boxplot()+
-  facet_wrap(~gene, ncol=2, scales="free_y")+ 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme( legend.position="none")+
-  labs(
-    title = "Normalized expression levels for selected DE genes",
-    subtitle = "(top 10 genes by adjusted pvalue)",
-    caption= "Genes without symbols were assigned their Ensembl Id"
-  )
+  ggplot(plotme, aes(x=status, y=value, color=status)) +
+    geom_boxplot() +
+    facet_wrap(~gene, ncol=2, scales="free_y") + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    theme( legend.position="none")+
+    labs(
+      title = "Normalized expression levels for selected DE genes",
+      subtitle = "(top 10 genes by adjusted pvalue)",
+      caption= "Genes without symbols were assigned their Ensembl Id"
+    )
 ```
 
 #### Download Results
@@ -684,32 +651,34 @@ ggplot(plotme, aes(x=timepoint, y=value, color=timepoint))+
 
 ### Treg
 
-```{r setcelltype.treg.responder}
+```{r setcelltype.treg.responder_vs_nonresponder_before}
 celltype="Treg"
 ```
 
-```{r deseq2-expression-analysis.responder.treg, ref.label='deseq2-expression-analysis.responder.tcon', results='hide'}
+```{r deseq2-expression-analysis.responder_vs_nonresponder.treg_before, ref.label='deseq2-expression-analysis.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
 #### Volcano plot
 
-```{r DESeq.volc.responder.treg, ref.label='DESeq.volc.responder.tcon'}
+```{r DESeq.volc.responder_vs_nonresponder.treg_before, ref.label="DESeq.volc.responder_vs_nonresponder.tcon_before"}
 ```
+
+Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
 
 #### MA-plot
 
-```{r DESeq-MA.responder.treg, ref.label='DESeq-MA.responder.tcon', results='asis'}
+```{r DESeq-MA.responder_vs_nonresponder.treg_before, ref.label='DESeq-MA.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
 #### Differentially expressed genes
 
-```{r DESeq-output.responder.treg, ref.label='DESeq-output.responder.tcon', results='hide'}
+```{r DESeq-output.responder_vs_nonresponder.treg_before, ref.label='DESeq-output.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
-```{r DESeq-table.responder.treg, ref.label='DESeq-table.responder.tcon', results='asis'}
+```{r DESeq-table.responder_vs_nonresponder.treg_before, ref.label='DESeq-table.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
-```{r DEseq.plotDE.responder.treg, ref.label='DEseq.plotDE.responder.tcon', fig.height=8}
+```{r DEseq.plotDE.responder_vs_nonresponder.treg_before, ref.label='DEseq.plotDE.responder_vs_nonresponder.tcon_before', fig.height=8}
 ```
 
 #### Download Results
@@ -718,32 +687,34 @@ celltype="Treg"
 
 ### CD8
 
-```{r setcelltype.cd8.responder}
+```{r setcelltype.cd8.responder_vs_nonresponder_before}
 celltype="CD8"
 ```
 
-```{r deseq2-expression-analysis.responder.cd8, ref.label='deseq2-expression-analysis.responder.tcon', results='hide'}
+```{r deseq2-expression-analysis.responder_vs_nonresponder.cd8_before, ref.label='deseq2-expression-analysis.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
 #### Volcano plot
 
-```{r DESeq.volc.responder.cd8, ref.label='DEseq.volc.responder.tcon'}
+```{r DESeq.volc.responder_vs_nonresponder.cd8_before, ref.label="DESeq.volc.responder_vs_nonresponder.tcon_before"}
 ```
+
+Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
 
 #### MA-plot
 
-```{r DESeq-MA.responder.cd8, ref.label='DESeq-MA.responder.tcon', results='asis'}
+```{r DESeq-MA.responder_vs_nonresponder.cd8_before, ref.label='DESeq-MA.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
 #### Differentially expressed genes
 
-```{r DESeq-output.responder.cd8, ref.label='DESeq-output.responder.tcon', results='hide'}
+```{r DESeq-output.responder_vs_nonresponder.cd8_before, ref.label='DESeq-output.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
-```{r DESeq-table.responder.cd8, ref.label='DESeq-table.responder.tcon', results='asis'}
+```{r DESeq-table.responder_vs_nonresponder.cd8_before, ref.label='DESeq-table.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
-```{r DEseq.plotDE.responder.cd8, ref.label='DEseq.plotDE.responder.tcon', fig.height=8}
+```{r DEseq.plotDE.responder_vs_nonresponder.cd8_before, ref.label='DEseq.plotDE.responder_vs_nonresponder.tcon_before', fig.height=8}
 ```
 
 #### Download Results
@@ -752,481 +723,40 @@ celltype="CD8"
 
 ### NK
 
-```{r setcelltype.nk.responder}
+```{r setcelltype.nk.responder_vs_nonresponder_before}
 celltype="NK"
 ```
 
-
-```{r deseq2-expression-analysis.responder.nk, ref.label='deseq2-expression-analysis.responder.tcon', results='hide'}
+```{r deseq2-expression-analysis.responder_vs_nonresponder.nk_before, ref.label='deseq2-expression-analysis.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
 #### Volcano plot
 
-```{r DESeq.volc.responder.nk, ref.label='DEseq.volc.responder.tcon'}
-```
-
-#### MA-plot
-
-```{r DESeq-MA.responder.nk, ref.label='DESeq-MA.responder.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.responder.nk, ref.label='DESeq-output.responder.tcon', results='hide'}
-```
-
-```{r DESeq-table.responder.nk, ref.label='DESeq-table.responder.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.responder.nk, ref.label='DEseq.plotDE.responder.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-## Effect of Treatment on Nonresponders {.tabset}
-
-```{r nonrespondersetup}
-design = ~patientid + timepoint
-```
-
-### Tcon
-
-```{r setcelltype.tcon.nonresponder}
-celltype="Tcon"
-```
-
-
-```{r deseq2-expression-analysis.nonresponder.tcon, results='hide'}
-counts.sub <- counts[rowSums(counts>0)>1,(summarydata$celltype==celltype & summarydata$status=="nonresponder")]
-summarydata.sub <- summarydata[(summarydata$celltype==celltype & summarydata$status=="nonresponder"),]
-txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
-dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
-# model matrix is not full rank, will refactor later
-geoMeans.sub = apply(counts.sub, 1, function(row) {
-  if (all(row == 0)) 0 
-  else 
-    exp(mean(log(row[row != 0])))
-})
-dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
-dds.sub = estimateDispersions(dds.sub)
-
-dds.celltype <- get(paste("dds", celltype, sep="."))
-
-# put in dispersions and size factors from full set
-#identical(row.names(counts(dds.celltype)), row.names(counts(dds.sub)))
-
-dispersions(dds.sub) <- dispersions(dds.celltype)
-sizeFactors(dds.sub) <- sizeFactors(dds.celltype)[names(sizeFactors(dds.sub))]
-
-dds.sub = DESeq(dds.sub)
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.nonresponder.tcon}
-stats <- results(dds.sub)[,c("log2FoldChange", "padj")] %>% as.data.frame()
-names(stats) <- c("logFC", "Adjusted.Pvalue")
-volcano_density_plot(stats, lfc.cutoff=lfc.cutoff, pval.cutoff=pvalue.cutoff)
+```{r DESeq.volc.responder_vs_nonresponder.nk_before, ref.label="DESeq.volc.responder_vs_nonresponder.tcon_before"}
 ```
 
 Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
 
 #### MA-plot
 
-```{r DESeq-MA.nonresponder.tcon, results='asis'}
-res =  results(dds.sub)
-ymax = max(res$log2FoldChange, na.rm=TRUE)
-ymin = min(res$log2FoldChange, na.rm=TRUE)
-plotMA(res, ylim=c(ymin, ymax))
+```{r DESeq-MA.responder_vs_nonresponder.nk_before, ref.label='DESeq-MA.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
 #### Differentially expressed genes
 
-```{r DESeq-output.nonresponder.tcon, results='hide'}
-out_df = as.data.frame(res)
-
-out_df$id = rownames(out_df)
-out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
-
-out_df <- annotate_df2(df=out_df, df_ensemblid_header = "id", biomart_ensembl_dataset= 'hsapiens_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'hgnc_symbol', biomart_host="www.ensembl.org" )
-
-norm.counts.celltype <- counts(dds.sub, normalized=TRUE) %>% row2colnames("id") %>% tbl_df()
-
-out_df <-   out_df %>% tbl_df() %>% inner_join(., norm.counts.celltype, by="id") %>% arrange(padj)
-
-tempoutfile <-file.path(tempdir(), paste("treatment.response.nonresponders", celltype, "xlsx", sep="."))
-rio::export(out_df, file=tempoutfile)
-drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-shared_file <-  drop_share(file.path(dropboxfiledir, paste("treatment.response.nonresponders", celltype, "xlsx", sep=".")))$url
+```{r DESeq-output.responder_vs_nonresponder.nk_before, ref.label='DESeq-output.responder_vs_nonresponder.tcon_before', results='hide'}
 ```
 
-```{r DESeq-table.nonresponder.tcon, results='asis'}
-sig_genes = subset(out_df, padj < pvalue.cutoff)
-DT::datatable(sig_genes, caption=paste("Significant genes by adjusted pvalue<", pvalue.cutoff, sep=""), rownames=FALSE)
+```{r DESeq-table.responder_vs_nonresponder.nk_before, ref.label='DESeq-table.responder_vs_nonresponder.tcon_before', results='asis'}
 ```
 
-```{r DEseq.plotDE.nonresponder.tcon,  fig.height=8}
-if(nrow(sig_genes)>10) {
-  plotme <- sig_genes[1:10,] } else {
-    plotme <- sig_genes
-  }
-
-plotme <- plotme %>% 
-    dplyr::select(., -baseMean, -log2FoldChange, -lfcSE, -stat, -padj, -pvalue,-description) %>%
-    mutate(., gene = ifelse(hgnc_symbol=="", id, hgnc_symbol)) %>% 
-    dplyr::select(., -id, -hgnc_symbol) %>%
-    tidyr::gather(., samplecode, value, -gene) %>%
-    inner_join(., meta.plotme,by="samplecode" ) %>%
-    mutate(., value=as.numeric(value)) 
-ggplot(plotme, aes(x=timepoint, y=value, color=timepoint))+
-  geom_boxplot()+
-  facet_wrap(~gene, ncol=2, scales="free_y")+ 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme( legend.position="none")+
-  labs(
-    title = "Normalized expression levels for selected DE genes",
-    subtitle = "(top 10 genes by adjusted pvalue)",
-    caption= "Genes without symbols were assigned their Ensembl Id"
-  )
+```{r DEseq.plotDE.responder_vs_nonresponder.nk_before, ref.label='DEseq.plotDE.responder_vs_nonresponder.tcon_before', fig.height=8}
 ```
 
 #### Download Results
 
 **[Results](`r shared_file`)**
 
-### Treg
-
-```{r setcelltype.treg.nonresponder}
-celltype="Treg"
-```
-
-```{r deseq2-expression-analysis.nonresponder.treg, ref.label='deseq2-expression-analysis.nonresponder.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.nonresponder.treg, ref.label="DESeq.volc.nonresponder.tcon"}
-```
-
-Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
-
-#### MA-plot
-
-```{r DESeq-MA.nonresponder.treg, ref.label='DESeq-MA.nonresponder.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.nonresponder.treg, ref.label='DESeq-output.nonresponder.tcon', results='hide'}
-```
-
-```{r DESeq-table.nonresponder.treg, ref.label='DESeq-table.nonresponder.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.nonresponder.treg, ref.label='DEseq.plotDE.nonresponder.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-### CD8
-
-```{r setcelltype.cd8.nonresponder}
-celltype="CD8"
-```
-
-```{r deseq2-expression-analysis.nonresponder.cd8, ref.label='deseq2-expression-analysis.nonresponder.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.nonresponder.cd8, ref.label="DESeq.volc.nonresponder.tcon"}
-```
-
-Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
-
-#### MA-plot
-
-```{r DESeq-MA.nonresponder.cd8, ref.label='DESeq-MA.nonresponder.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.nonresponder.cd8, ref.label='DESeq-output.nonresponder.tcon', results='hide'}
-```
-
-```{r DESeq-table.nonresponder.cd8, ref.label='DESeq-table.nonresponder.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.nonresponder.cd8, ref.label='DEseq.plotDE.nonresponder.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-### NK
-
-```{r setcelltype.nk.nonresponder}
-celltype="NK"
-```
-
-```{r deseq2-expression-analysis.nonresponder.nk, ref.label='deseq2-expression-analysis.nonresponder.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.nonresponder.nk, ref.label="DESeq.volc.nonresponder.tcon"}
-```
-
-Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
-
-#### MA-plot
-
-```{r DESeq-MA.nonresponder.nk, ref.label='DESeq-MA.nonresponder.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.nonresponder.nk, ref.label='DESeq-output.nonresponder.tcon', results='hide'}
-```
-
-```{r DESeq-table.nonresponder.nk, ref.label='DESeq-table.nonresponder.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.nonresponder.nkx, ref.label='DEseq.plotDE.nonresponder.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-## Difference in Response of Responders and Non-repsonders to Treatment {.tabset}
-
-```{r interactionsetup}
-design = ~status + status:patientid.n + status:timepoint
-```
-
-### Tcon
-
-```{r setcelltype.tcon.int}
-celltype="Tcon"
-```
-
-```{r deseq2-expression-analysis.tcon, results='hide'}
-counts.sub <- counts[rowSums(counts>0)>1,summarydata$celltype==celltype]
-
-summarydata.sub <- summarydata[summarydata$celltype==celltype,]
-txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
-dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=~1)
-# model matrix is not full rank, will refactor later
-geoMeans.sub = apply(counts.sub, 1, function(row) {
-  if (all(row == 0)) 0 
-  else 
-    exp(mean(log(row[row != 0])))
-})
-dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
-dds.sub = estimateDispersions(dds.sub)
-
-# put in dispersions and size factors from full set
-dds.celltype <- get(paste("dds", celltype, sep="."))
-
-# put in dispersions and size factors from full set
-#identical(row.names(counts(dds.celltype)), row.names(counts(dds.sub)))
-
-dispersions(dds.sub) <- dispersions(dds.celltype)
-sizeFactors(dds.sub) <- sizeFactors(dds.celltype)[names(sizeFactors(dds.sub))]
-
-# refactor design for nested pairing within groups
-newcoldata <- colData(dds.sub) %>% tbl_df()
-newcoldata <- group_by(newcoldata, status) %>% mutate(., patientid.n=c(1:5)[factor(patientid)])
-dds.sub@colData$patientid.n <- as.character(unlist(newcoldata$patientid.n))
-
-newmodelmatrix <- model.matrix(design, dds.sub@colData)
-if(any(apply(newmodelmatrix, 2, function(x) all(x==0)))) {
-  removecolumn <- which(apply(newmodelmatrix, 2, function(x) all(x==0)))
-  newmodelmatrix <- newmodelmatrix[,-removecolumn]
-}
-dds.sub = DESeq(dds.sub, full=newmodelmatrix)
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.tcon}
-stats <- results(dds.sub)[,c("log2FoldChange", "padj")] %>% as.data.frame()
-names(stats) <- c("logFC", "Adjusted.Pvalue")
-volcano_density_plot(stats, lfc.cutoff=lfc.cutoff, pval.cutoff=pvalue.cutoff)
-```
-
-Points within the highlighted regions are differentially expressed (i.e. a log2 fold change of at least `r lfc.cutoff` and an adjusted pvalue of less than `r pvalue.cutoff`)
-
-#### MA-plot
-
-```{r DESeq-MA.tcon, results='asis'}
-res =  results(dds.sub, contrast=list("statusnonresponder.timepointweek4","statusresponder.timepointweek4"))
-ymax = max(res$log2FoldChange, na.rm=TRUE)
-ymin = min(res$log2FoldChange, na.rm=TRUE)
-plotMA(res, ylim=c(ymin, ymax))
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.tcon, results='hide'}
-out_df = as.data.frame(res)
-out_df$id = rownames(out_df)
-out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
-
-# add gene annotations
-out_df <- annotate_df2(df=out_df, df_ensemblid_header = "id", biomart_ensembl_dataset= 'hsapiens_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'hgnc_symbol', biomart_host="www.ensembl.org" )
-
-# add normalized counts
-norm.counts.celltype <- counts(dds.sub, normalized=TRUE) %>% row2colnames("id") %>% tbl_df()
-out_df <-   out_df %>% tbl_df() %>% inner_join(., norm.counts.celltype, by="id") %>% arrange(padj)
-
-tempoutfile <-file.path(tempdir(), paste("treatment.response.interaction", celltype, "xlsx", sep="."))
-rio::export(out_df, file=tempoutfile)
-drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-shared_file <-  drop_share(file.path(dropboxfiledir, paste("treatment.response.interaction", celltype, "xlsx", sep=".")))$url
-```
-
-```{r DESeq-table.tcon, results='asis'}
-sig_genes = subset(out_df, padj < pvalue.cutoff)
-DT::datatable(sig_genes, caption=paste("Significant genes by adjusted pvalue<", pvalue.cutoff, sep=""), rownames=FALSE)
-```
-
-```{r DEseq.plotDE.int.tcon, fig.height=8}
-if(nrow(sig_genes)>10) {
-  plotme <- sig_genes[1:10,] } else {
-    plotme <- sig_genes
-  }
-
-plotme <- plotme %>% 
-    dplyr::select(., -baseMean, -log2FoldChange, -lfcSE, -stat, -padj, -pvalue,-description) %>%
-    mutate(., gene = ifelse(hgnc_symbol=="", id, hgnc_symbol)) %>% 
-    dplyr::select(., -id, -hgnc_symbol) %>%
-    tidyr::gather(., samplecode, value, -gene) %>%
-    inner_join(., meta.plotme,by="samplecode" ) %>%
-    mutate(., value=as.numeric(value)) 
-
-ggplot(plotme, aes(x=timepoint, y=value, fill=status, color=status))+
-  geom_boxplot(position="identity", alpha=0.25) +
-  theme_bw() + 
-  stat_summary(fun.y="mean", geom="line", aes(group=factor(status)),linetype=2)+
-  facet_wrap(~gene, scales="free",ncol=2)+
-    labs(title = "Normalized expression levels for selected DE genes",
-    subtitle = "(top 10 genes by adjusted pvalue)",
-    caption= "Genes without symbols were assigned their Ensembl Id")
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-### Treg
-
-```{r setcelltype.treg.int}
-celltype="Treg"
-```
-
-```{r deseq2-expression-analysis.treg, ref.label='deseq2-expression-analysis.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.treg, ref.label="DESeq.volc.tcon"}
-```
-
-#### MA-plots
-
-```{r DESeq-MA.treg, ref.label='DESeq-MA.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.treg, ref.label='DESeq-output.tcon', results='hide'}
-```
-
-```{r DESeq-table.treg, ref.label='DESeq-table.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.int.treg, ref.label='DEseq.plotDE.int.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-### CD8
-
-```{r setcelltype.cd8.int}
-celltype="CD8"
-```
-
-```{r deseq2-expression-analysis.cd8, ref.label='deseq2-expression-analysis.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.cd8, ref.label="DESeq.volc.tcon"}
-```
-
-#### MA-plots
-
-```{r DESeq-MA.cd8, ref.label='DESeq-MA.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.cd8, ref.label='DESeq-output.tcon', results='hide'}
-```
-
-```{r DESeq-table.cd8, ref.label='DESeq-table.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.int.cd8, ref.label='DEseq.plotDE.int.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
-
-### NK
-
-```{r setcelltype.nk.int}
-celltype="NK"
-```
-
-```{r deseq2-expression-nk, ref.label='deseq2-expression-analysis.tcon', results='hide'}
-```
-
-#### Volcano plot
-
-```{r DESeq.volc.nk, ref.label="DESeq.volc.tcon"}
-```
-
-#### MA-plots
-
-```{r DESeq-MA.nk, ref.label='DESeq-MA.tcon', results='asis'}
-```
-
-#### Differentially expressed genes
-
-```{r DESeq-output.nk, ref.label='DESeq-output.tcon', results='hide'}
-```
-
-```{r DESeq-table.nk, ref.label='DESeq-table.tcon', results='asis'}
-```
-
-```{r DEseq.plotDE.int.nk, ref.label='DEseq.plotDE.int.tcon', fig.height=8}
-```
-
-#### Download Results
-
-**[Results](`r shared_file`)**
 
 
 
