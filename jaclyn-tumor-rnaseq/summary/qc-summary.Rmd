@@ -1,20 +1,40 @@
 ---
 output:
   html_document:
-    toc: true
-    toc_float: true
     code_folding: hide
-    highlight: zenburn
-    theme: flatly
+    theme: yeti
+    toc: yes
+    toc_float: true
+    toc_depth: 4
+    number_sections: true
+    fig_height: 6
 ---
 
-```{r setup, echo=FALSE}
+
+```{r setup1, echo=FALSE}
+# Setup report details
+clientname="Jaclyn Sceneay"
+clientemail="JSCENEAY@partners.org"
+lablocation="Sandra McAllister" 
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+```
+
+> RNA-Seq analysis for `r clientname` (`r clientemail`) at `r lablocation`. Contact `r analystname` (`r analystemail`) for additional details. 
+> This document was generated on `r date()`
+ 
+```{r setup2, echo=FALSE}
 knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
                cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
                message=FALSE, prompt=TRUE, comment='', fig.cap='')
 ```
 
 # Overview
+
+> The project has 60 samples from mouse tumors. Samples were from young and old mice and were treated with one of three different treatments (two immunotherapies plus isotype control). Multiple controls are also included.
+
+Here I do some basic QC to see if the data looks good and if whether any samples look like they have issues.
+
 ```{r check-library-functions, echo=FALSE}
 check_install = function(packages) {
    not_installed = setdiff(packages, rownames(installed.packages()))
@@ -28,31 +48,30 @@ check_install = function(packages) {
 
 ```{r load-libraries, echo=FALSE}
 packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap",
-              "DESeq2", "tximport", "DT", "DEGreport", "dplyr")
+              "DESeq2", "tximport", "DT", "DEGreport", "dplyr", "rio", "janitor")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
 ```
 
 ```{r qc-setup}
-project_summary = "/home/jnh7/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/project-summary.csv"
-counts_file = "/home/jnh7/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/combined.counts"
-tx2genes_file = "/home/jnh7/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/tx2gene.csv"
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
-"#0072B2", "#D55E00", "#CC79A7")
-summarydata = read.table(project_summary, header=TRUE, sep=",")
+project_summary = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/project-summary.csv"
+counts_file = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/combined.counts"
+tx2genes_file = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/tx2gene.csv"
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
+summarydata = import(project_summary)
 summarydata = summarydata[,colSums(is.na(summarydata)) < nrow(summarydata)]
 # handle newer bcbio-nextgen runs that use description as the key
 if("description" %in% colnames(summarydata)) {
   rownames(summarydata) = summarydata$description
-  summarydata$Name = rownames(summarydata)
+  summarydata$name = rownames(summarydata)
   summarydata$description = NULL
 } else {
-  rownames(summarydata) = summarydata$Name
-  # summarydata$Name = NULL
+  rownames(summarydata) = summarydata$name
+  # summarydata$name = NULL
 }
 summarydata = summarydata[order(rownames(summarydata)),]
 if (file.exists(tx2genes_file)) {
-  sample_dirs = file.path(dirname(project_summary), "..", rownames(summarydata))
+  sample_dirs = file.path("/Volumes/orch/projects/jaclyn-tumor-rnaseq/data/",  rownames(summarydata))
   salmon_files = file.path(sample_dirs, "salmon", "quant.sf")
   sailfish_files = file.path(sample_dirs, "sailfish", "quant.sf")
   new_sailfish = file.path(sample_dirs, "sailfish", "quant", "quant.sf")
@@ -76,19 +95,25 @@ if (file.exists(tx2genes_file)) {
 } else {
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
 }
+
 counts = counts[, order(colnames(counts)), drop=FALSE]
 colnames(counts) = gsub(".counts", "", colnames(counts))
+save(file="RDAta.counts", counts)
 
 # this is a list of all non user-supplied metadata columns that could appear
-known_columns = c("Name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
+known_columns = c("name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.quality",
     "rRNA_rate", "Fragment.Length.Mean", "Intronic.Rate", "Intergenic.Rate",
     "Mapping.Rate", "Quality.format", "Duplication.Rate.of.Mapped", "Mapped",
     "rRNA", "Sequence.length", "Transcripts.Detected", "Mean.Per.Base.Cov.",
     "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
     "complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads",
     "Average.insert.size", "Mapped.reads.pct", "Total.reads",
-    "avg_coverage_per_region", "Mapped.Reads")
-summarydata[,"Fragment.Length.Mean"] = summarydata$Average.insert.size
+    "avg_coverage_per_region", "Mapped.Reads", "Quality format", "Mapped_reads","Intergenic Rate", "Duplication Rate of Mapped", "Mapped_paired_reads", "Sequence length", "Exonic Rate", "Total_reads", "%GC", "Sequences flagged as poor quality", "Average_insert_size", "Intronic Rate", "5'-3' bias", "Fragment_Length_Mean", "Mapped_reads_pct" )
+summarydata[,"Fragment_Length_Mean"] = summarydata$Average_insert_size
+
+summarydata[,"Mapped_reads_pct"] <- (summarydata$Mapped_reads/summarydata$Total_reads)*100
+
+summarydata <- clean_names(summarydata)
 metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
 metadata = metadata[, colSums(is.na(metadata)) < nrow(metadata), drop=FALSE]
 ```
@@ -107,6 +132,17 @@ set.seed(1454944673)
 ```
 
 ## Sample metadata
+- various experimental and technical factors
+
+```{r metadata-table, echo=FALSE, cache=FALSE}
+sanitize_datatable(metadata, style='bootstrap')
+```
+
+# Quality control metrics
+
+## Sample data metrics
+- some metrics that tell us how well the sequencing worked
+
 ```{r summary-table, echo=FALSE, cache=FALSE}
 sanitize_datatable(summarydata, style='bootstrap')
 ```
@@ -118,7 +154,7 @@ get_heatmap_fn = function(summarydata) {
        return(pheatmap)
     }
     else {
-    # rownames(metadata) = summarydata$Name
+    # rownames(metadata) = summarydata$name
     heatmap_fn = function(data, ...) {
         pheatmap(data, annotation=metadata, clustering_method = "ward.D2",
         clustering_distance_cols = "correlation", ...)
@@ -128,25 +164,18 @@ get_heatmap_fn = function(summarydata) {
 heatmap_fn = get_heatmap_fn(summarydata)
 ```
 
-# Quality control metrics
 
 ```{r qualimap-run}
-qualimap_run = "Mapped" %in% colnames(summarydata)
-do_quality = "Mapped.reads" %in% colnames(summarydata)
+qualimap_run = "mapped" %in% colnames(summarydata)
+do_quality = "mapped_reads" %in% colnames(summarydata)
 ```
 
 ## Mapped reads
-```{r mapped-plot, eval=qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapped)) +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    geom_bar(stat="identity") +
-    ylab("mapped reads") + xlab("")
-```
+
+Just the number of reads (with pairing factored in, i.e. pairs count for one read) that aligned uniquely to the genome.
 
 ```{r mapped-plot-noqualimap, eval=!qualimap_run & do_quality}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads)) +
+ggplot(summarydata, aes(x=name, y=mapped_reads)) +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=90)) +
@@ -154,18 +183,14 @@ ggplot(summarydata, aes(x=Name, y=Mapped.reads)) +
     ylab("mapped reads") + xlab("")
 ```
 
+The number of mapped reads is lower than we'd like to see, but biological replicates may make up for some of the missing data.
+
 ## Genomic mapping rate
-```{r mapping-rate-plot, eval=qualimap_run}
-ggplot(summarydata, aes(x=Name, y=Mapping.Rate)) +
-    geom_bar(stat="identity") +
-    ylab("mapping rate") + xlab("") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90))
-```
+
+What percentage of the total reads sequenced actually align.
 
 ```{r mapping-rate-plot-noqualimap, eval=!qualimap_run & do_quality}
-ggplot(summarydata, aes(x=Name, y=Mapped.reads.pct)) +
+ggplot(summarydata, aes(x=name, y=mapped_reads_pct)) +
     geom_bar(stat="identity") +
     ylab("mapping rate") + xlab("") +
     theme_bw(base_size=10) +
@@ -173,10 +198,15 @@ ggplot(summarydata, aes(x=Name, y=Mapped.reads.pct)) +
           axis.text.x = element_text(angle=90))
 ```
 
+Overall pretty good, will keep an eye on the 5/6 samples with lower rates.
+
 ## Number of genes detected
+
+How many genes can we "detect". i.e. for how many genes do we have a minimum number of reads present?
+
 ```{r genes-detected-plot}
-dd = data.frame(Name=colnames(counts), Genes.Detected = colSums(counts > 0))
-ggplot(dd, aes(x=Name, y=Genes.Detected)) +
+dd = data.frame(name=colnames(counts), genes_detected = colSums(counts > 0))
+ggplot(dd, aes(x=name, y=genes_detected)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -184,21 +214,26 @@ ggplot(dd, aes(x=Name, y=Genes.Detected)) +
     ylab("genes detected") + xlab("")
 ```
 
+Detection rates are good, perfectly in line with what you'd expect for a mouse sequencing run.
+
 ## Gene detection saturation
 ```{r saturation-plot, eval=do_quality}
-col_mapped = ifelse(qualimap_run, "Mapped", "Mapped.reads")
-dd = data.frame(Mapped=summarydata[,col_mapped], Genes.Detected = colSums(counts > 0))
-ggplot(dd, aes(x=Mapped, y=Genes.Detected)) +
-    geom_point() +
+col_mapped = ifelse(qualimap_run, "mapped", "mapped_reads")
+dd = data.frame(mapped=summarydata[,col_mapped], genes_detected = colSums(counts > 0), treatment=summarydata$treatment_short,age=summarydata$age)
+ggplot(dd, aes(x=mapped, y=genes_detected, color=treatment)) +
+    geom_point(size=5) +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=90)) +
     ylab("genes detected") + xlab("reads mapped")
 ```
 
+The various control samples do appear to have typically different numbers of genes detected and mapped.
+The red dot is the one sample I have a fastq data for but no metadata.
+
 ## Exonic mapping rate
-```{r exonic-mapping-plot, eval="Exonic.Rate" %in% colnames(summarydata)}
-ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
+```{r exonic-mapping-plot, eval="exonic_rate" %in% colnames(summarydata)}
+ggplot(summarydata, aes(x=name, y=exonic_rate)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -206,12 +241,14 @@ ggplot(summarydata, aes(x=Name, y=Exonic.Rate)) +
     ylab("exonic mapping rate") + xlab("")
 ```
 
+Exonic mapping rate looks really good.
+
 ## rRNA mapping rate
 ```{r check-rRNA-eval}
-eval_rRNA = "rRNA_rate" %in% colnames(summarydata) & !sum(is.na(summarydata$rRNA_rate)) == nrow(summarydata)
+eval_rRNA = "rrna_rate" %in% colnames(summarydata) & !sum(is.na(summarydata$rrna_rate)) == nrow(summarydata)
 ```
 ```{r rRNA-rate-plot, eval=eval_rRNA & do_quality}
-ggplot(summarydata, aes(x=Name, y=rRNA_rate)) +
+ggplot(summarydata, aes(x=name, y=rrna_rate)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -219,9 +256,11 @@ ggplot(summarydata, aes(x=Name, y=rRNA_rate)) +
     ylab("rRNA rate") + xlab("")
 ```
 
+All of these rRNA rates are really good (i.e. far less than 0.1%), we are generally OK with anything below 5%.
+
 ## Estimated fragment length of paired-end reads
-```{r fragment-length-plot, eval="Fragment.Length.Mean" %in% colnames(summarydata) & do_quality}
-ggplot(summarydata, aes(x=Name, y=Fragment.Length.Mean)) +
+```{r fragment-length-plot, eval="Fragment_Length_Mean" %in% colnames(summarydata) & do_quality}
+ggplot(summarydata, aes(x=name, y=fragment_length_mean)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -230,8 +269,8 @@ ggplot(summarydata, aes(x=Name, y=Fragment.Length.Mean)) +
 ```
 
 ## 5'->3' bias
-```{r 53bias, eval="X5.3.bias" %in% colnames(summarydata) & do_quality}
-ggplot(summarydata, aes(x=Name, y=X5.3.bias)) +
+```{r 53bias}
+ggplot(summarydata, aes(x=name, y=x5_3_bias)) +
     geom_bar(stat="identity") +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -282,21 +321,43 @@ ggplot(melted, aes(x=count, group=sample)) +
           axis.text.x = element_text(angle=90)) + xlab("")
 ```
 
+The count distributions all look consistent, which is good.
+
 ## Correlation heatmap of TMM-normalized counts {.tabset}
 
 ### Correlation (Pearson)
-```{r pearson-heatmap-normalized, eval=ncol(counts) > 1}
-heatmap_fn(cor(normalized_counts, method="pearson"))
+```{r pearson-heatmap-normalized1, eval=ncol(counts) > 1, fig.height=12, fig.width=14}
+pheatmap(cor(normalized_counts, method="pearson"), annotation=metadata[,c("age", "treatment", "cage_num", "rna_sample_num", "mfp_side", "response")])
 ```
 
 ### Correlation (Spearman)
-```{r spearman-heatmap-normalized, eval=ncol(counts) > 1}
-heatmap_fn(cor(normalized_counts, method="spearman"))
+```{r spearman-heatmap-normalized1, eval=ncol(counts) > 1, fig.height=12, fig.width=14}
+pheatmap(cor(normalized_counts, method="spearman"), annotation=metadata[,c("age", "treatment", "cage_num", "rna_sample_num", "mfp_side", "response")])
 ```
+
+## Correlation heatmap of TMM-normalized counts without controls{.tabset}
+
+The controls are definitely different from the rest of the samples. 
+
+I tried seeing what the correlation plots look like without those samples.
+
+### Correlation (Pearson)
+```{r pearson-heatmap-normalized2, eval=ncol(counts) > 1, fig.height=12, fig.width=14}
+normalized_counts.sub <- normalized_counts[,which(metadata$general_class=="exp")]
+metadata.sub <- metadata[which(metadata$general_class=="exp"),]
+pheatmap(cor(normalized_counts.sub, method="pearson"), annotation=metadata.sub[,c("age", "treatment", "cage_num", "rna_sample_num", "mfp_side", "response")])
+```
+
+### Correlation (Spearman)
+```{r spearman-heatmap-normalized2, eval=ncol(counts) > 1, fig.height=12, fig.width=14}
+pheatmap(cor(normalized_counts.sub, method="spearman"), annotation=metadata.sub[,c("age", "treatment", "cage_num", "rna_sample_num", "mfp_side", "response")])
+```
+
+Still not seeing any great deal of clustering, but maybe the PCA will show something.
 
 ## PCA plots {.tabset}
 ```{r pca, eval=ncol(counts) > 1}
-dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~Name)
+dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~name)
 vst = varianceStabilizingTransformation(dds)
 pca_loadings = function(object, ntop=500) {
   rv <- matrixStats::rowVars(assay(object))
@@ -309,10 +370,9 @@ pca_loadings = function(object, ntop=500) {
   return(pca)}
 pc = pca_loadings(vst)
 comps = data.frame(pc$x)
-comps$Name = rownames(comps)
+comps$name = rownames(comps)
 library(dplyr)
-comps = comps %>% left_join(summarydata, by=c("Name"="Name"))
-colorby = "Name"
+comps = comps %>% left_join(summarydata, by=c("name"="name"))
 ```
 
 ```{r pca-plotter}
@@ -328,17 +388,22 @@ pca_plot = function(comps, nc1, nc2, colorby) {
 
 ### PC1 vs. PC2
 ```{r PC1-PC2}
-pca_plot(comps, 1, 2, colorby)
+pca_plot(comps, 1, 2, colorby="age")
+pca_plot(comps, 1,2, colorby="treatment_short")
 ```
+
+There is good clustering by age, but not by treatment.
 
 ### PC3 vs. PC4
 ```{r PC3-PC4}
-pca_plot(comps, 3, 4, colorby)
+pca_plot(comps, 3, 4, colorby="age")
+pca_plot(comps, 3,4, colorby="treatment_short")
 ```
 
 ### PC5 vs. PC6
 ```{r PC5-PC6}
-pca_plot(comps, 5, 6, colorby)
+pca_plot(comps, 5, 6, colorby="age")
+pca_plot(comps, 5,6, colorby="treatment_short")
 ```
 
 ### Variance explained by component
@@ -347,9 +412,4 @@ ggplot(data.frame(component=reorder(names(pc$percentVar), -pc$percentVar),
                   percent_var=pc$percentVar),
        aes(component, percent_var)) + geom_bar(stat='identity') +
   ylab("percent of total variation") + xlab("") + theme_bw()
-```
-
-```{r shiny-app, echo=F}
-# this is to plot data with https://github.com/lpantano/shiny/tree/master/expression
-degObj(assay(vst), metadata, "deg.rda")
 ```
