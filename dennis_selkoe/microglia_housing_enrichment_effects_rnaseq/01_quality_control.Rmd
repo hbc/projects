@@ -54,6 +54,13 @@ vsn::meanSdPlot(assay(vsd))
 vsn::meanSdPlot(assay(rld))
 ```
 
+```{r tpm}
+# Transcripts per million
+tpm <- txi$abundance
+save(tpm, file = "data/tpm.rda")
+write.csv(tpm, file = "results/tpm.csv")
+```
+
 ```{r counts}
 raw_counts <- DESeq2::counts(dds)
 raw_counts_nonzero <- raw_counts %>%
@@ -110,8 +117,7 @@ mappingRate(summary)
 We're seeing detection above 20k genes for all replicates, which is normal for mouse samples.
 
 ```{r genesDetected, fig.width=6, fig.height=9}
-genesDetected(counts = raw_counts,
-              summary = summary)
+genesDetected(raw_counts, summary)
 ```
 
 
@@ -121,7 +127,7 @@ genesDetected(counts = raw_counts,
 Gene detection saturation was nearly reached for the sample input, which means we're able to detect the majority of expressed genes.
 
 ```{r saturation}
-geneDetectionSaturation(summary)
+geneDetectionSaturation(raw_counts, summary)
 ```
 
 
