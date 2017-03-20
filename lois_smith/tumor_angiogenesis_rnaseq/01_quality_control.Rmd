@@ -7,19 +7,19 @@ bibliography: bibliography.bib
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(cache = TRUE,
-                      include = FALSE)
+                      message = FALSE,
+                      warning = FALSE)
 
-library(basejump)
 library(DESeq2)
-library(edgeR)
-library(pheatmap)
-library(RColorBrewer)
-library(readxl)
-library(reshape2)
+library(basejump)
 library(tidyverse)
-library(tximport)
+
+theme_set(theme_minimal())
 ```
 
+
+
+[BPF]: https://genome.med.harvard.edu/
 [R]: https://www.r-project.org
 [RStudio]: https://www.rstudio.com
 
@@ -31,67 +31,20 @@ library(tximport)
 [`sailfish`]: http://www.cs.cmu.edu/~ckingsf/software/sailfish
 [`tximport`]: https://bioconductor.org/packages/release/bioc/html/tximport.html
 
-```{r bcbio}
-# HPC mount point over `sshfs` connection
-hpc_dir <- file.path("~",
-                     "Orchestra",
-                     "bcbio",
-                     "PIs",
-                     "lois_smith",
-                     "rnaseq_angio_tumor")
-if (!length(dir(hpc_dir))) {
-    stop("Project on HPC server not loaded.")
-}
-dir(hpc_dir)
-
-# `bcbio-nextgen`
-bcbio_dir <- file.path(hpc_dir, "illumina_rnaseq", "final")
-dir(bcbio_dir)
-
-# Default naming scheme is `illumina_rnaseq/final/YYYY-MM-DD_illumina_rnaseq`
-summary_dir <- file.path(bcbio_dir) %>%
-    dir(full.names = TRUE) %>%
-    .[grepl("/\\d{4}-\\d{2}-\\d{2}_illumina_rnaseq$", .)]
-dir(summary_dir)
-
-# Create directories if necessary
-if (!file.exists("data")) {
-    dir.create("data")
-}
-if (!file.exists("results")) {
-    dir.create("results")
-}
-```
-
 
 
 # Overview
 
-```{r metadata}
-metadata <- file.path("data-raw/illumina_rnaseq.xlsx") %>%
-    readxl::read_excel(.) %>%
-    as.data.frame %>%
-    basejump::setNamesSnake(.) %>%
-    dplyr::mutate(genotype = factor(genotype),
-                  treatment = factor(treatment),
-                  sampleindex = factor(sampleindex),
-                  laneindex = factor(laneindex)) %>%
-    dplyr::arrange(description)
-rownames(metadata) <- metadata$description
-save(metadata, file = "data/metadata.rda")
-write.csv(metadata, file = "results/metadata.csv")
-basejump::printTable(metadata, caption = "Samples")
-```
-
-```{r summary_data}
-summary_data <- file.path(summary_dir, "project-summary.csv") %>%
-    readr::read_csv(.) %>%
-    basejump::setNamesSnake(.) %>%
-    dplyr::select(noquote(order(names(.)))) %>%
-    dplyr::select(description, dplyr::everything()) %>%
-    dplyr::arrange(description)
-save(summary_data, file = "data/summary_data.rda")
-write.csv(summary_data, file = "results/summary_data.csv")
+```{r bcbio}
+project <-
+    bcbioProject(researcher = basename(dirname(getwd())),
+                 project = basename(getwd()),
+                 workflow = "illumina_rnaseq")
+metadata <-
+    bcbioMetadata(project,
+                  group = "treatment")
+summary <- bcbioSummary(project, metadata)
+printTable(metadata, caption = "Sample metadata")
 ```
 
 ```{r txi, include=FALSE}
