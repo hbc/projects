@@ -12,7 +12,6 @@ knitr::opts_chunk$set(cache = TRUE,
 
 options(readr.num_columns = 0)
 
-library(barcode)
 library(biomaRt)
 library(cowplot)
 library(Matrix)

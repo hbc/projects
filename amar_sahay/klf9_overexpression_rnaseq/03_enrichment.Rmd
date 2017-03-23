@@ -24,7 +24,7 @@ Using only the differentially expressed (DE) genes (`expt_vs_control_de`), we ob
 ```{r david}
 if (!file.exists("data/david.rda")) {
     data(expt_vs_control)
-    david <- basejump::enrichDavid(expt_vs_control_de$ensembl_gene_id)
+    david <- basejump::david(expt_vs_control_de$ensembl_gene_id)
     save(david, file = "data/david.rda")
 } else {
     data(david)
