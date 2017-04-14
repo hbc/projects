@@ -108,7 +108,7 @@ known_columns = c("name", "X.GC", "Exonic.Rate", "Sequences.flagged.as.poor.qual
     "Genes.Detected", "Unique.Starts.Per.Read", "unique_starts_per_read",
     "complexity", "X5.3.bias", "Duplicates.pct", "Duplicates", "Mapped.reads",
     "Average.insert.size", "Mapped.reads.pct", "Total.reads",
-    "avg_coverage_per_region", "Mapped.Reads", "Quality format", "Mapped_reads","Intergenic Rate", "Duplication Rate of Mapped", "Mapped_paired_reads", "Sequence length", "Exonic Rate", "Total_reads", "%GC", "Sequences flagged as poor quality", "Average_insert_size", "Intronic Rate", "5'-3' bias", "Fragment_Length_Mean", "Mapped_reads_pct" )
+    "avg_coverage_per_region", "Mapped.Reads", "Quality format", "Mapped_reads","Intergenic Rate", "Duplication Rate of Mapped", "Mapped_paired_reads", "Sequence length", "Exonic Rate", "Total_reads", "%GC", "Sequences flagged as poor quality", "Average_insert_size", "Intronic Rate", "5'-3' bias", "Fragment_Length_Mean", "Mapped_reads_pct", "rrna_rate","duplication_rate_of_mapped","mapped_reads","mapped_paired_reads","quality_format","intergenic_rate","sequence_length","exonic_rate","total_reads","percentgc","rrna","duplicates","sequences_flagged_as_poor_quality","average_insert_size","intronic_rate","x5_3_bias","fragment_length_mean","mapped_reads_pct")
 summarydata[,"Fragment_Length_Mean"] = summarydata$Average_insert_size
 
 summarydata[,"Mapped_reads_pct"] <- (summarydata$Mapped_reads/summarydata$Total_reads)*100
@@ -355,7 +355,10 @@ pheatmap(cor(normalized_counts.sub, method="spearman"), annotation=metadata.sub[
 
 Still not seeing any great deal of clustering, but maybe the PCA will show something.
 
-## PCA plots {.tabset}
+## PCA plots
+
+### All samples {.tabset}
+
 ```{r pca, eval=ncol(counts) > 1}
 dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~name)
 vst = varianceStabilizingTransformation(dds)
@@ -380,13 +383,13 @@ pca_plot = function(comps, nc1, nc2, colorby) {
    c1str = paste0("PC", nc1)
    c2str = paste0("PC", nc2)
   ggplot(comps, aes_string(c1str, c2str, color=colorby)) +
-    geom_point() + theme_bw() +
+    geom_point(size=2) + theme_bw() +
     xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
     ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
   }
 ```
 
-### PC1 vs. PC2
+#### PC1 vs. PC2
 ```{r PC1-PC2}
 pca_plot(comps, 1, 2, colorby="age")
 pca_plot(comps, 1,2, colorby="treatment_short")
@@ -394,22 +397,156 @@ pca_plot(comps, 1,2, colorby="treatment_short")
 
 There is good clustering by age, but not by treatment.
 
-### PC3 vs. PC4
+#### PC3 vs. PC4
 ```{r PC3-PC4}
 pca_plot(comps, 3, 4, colorby="age")
 pca_plot(comps, 3,4, colorby="treatment_short")
 ```
 
-### PC5 vs. PC6
+#### PC5 vs. PC6
 ```{r PC5-PC6}
 pca_plot(comps, 5, 6, colorby="age")
 pca_plot(comps, 5,6, colorby="treatment_short")
 ```
 
-### Variance explained by component
+#### Variance explained by component
 ```{r component-loadings}
 ggplot(data.frame(component=reorder(names(pc$percentVar), -pc$percentVar),
                   percent_var=pc$percentVar),
        aes(component, percent_var)) + geom_bar(stat='identity') +
   ylab("percent of total variation") + xlab("") + theme_bw()
 ```
+
+### Cell subsets
+
+These are still not illuminating the issue well, will drop controls and split up young and old samples for now to see if that makes things clearer.
+
+#### Young {.tabset}
+
+```{r pca-young}
+metadata.tb <- metadata %>% tbl_df
+metadata.tb.young = metadata.tb %>% filter(age=="Young" & general_class=="exp")
+sampleids.young <- metadata.tb.young$sampleid
+summarydata.young <- summarydata[sampleids.young,]
+vst.young <- vst[,sampleids.young]  
+
+pc.young = pca_loadings(vst.young)
+comps.young = data.frame(pc.young$x)
+comps.young$name = rownames(comps.young)
+
+comps.young = comps.young %>% left_join(summarydata.young, by=c("name"="name"))
+```
+
+##### PC1 vs. PC2
+```{r PC1-PC2.yng}
+nc1 <- 1
+nc2 <- 2
+c1str = paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.young, aes(PC1, PC2, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
+```
+
+There is some clustering for the CTLA4 samples by response, but not so much for the PDL1 samples.
+
+It's a little concerning that most of  the PR CTLA4 samples that segregate have higher amounts of reads.
+
+##### PC3 vs. PC4
+```{r PC3-PC4.yng}
+nc1 <- 3
+nc2 <- 4
+c1str =paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.young, aes(PC3, PC4, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
+
+```
+
+##### PC5 vs. PC6
+```{r PC5-PC6.yng}
+nc1 <- 5
+nc2 <- 6
+c1str = paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.young, aes(PC5, PC6, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
+```
+
+##### Variance explained by component
+```{r component-loadings.yng}
+ggplot(data.frame(component=reorder(names(pc.young$percentVar), -pc.young$percentVar),
+                  percent_var=pc.young$percentVar),
+       aes(component, percent_var)) + geom_bar(stat='identity') +
+  ylab("percent of total variation") + xlab("") + theme_bw()
+```
+
+
+#### Old {.tabset}
+
+```{r pca-old}
+metadata.tb <- metadata %>% tbl_df
+metadata.tb.old = metadata.tb %>% filter(age=="Old" & general_class=="exp")
+sampleids.old <- metadata.tb.old$sampleid
+summarydata.old <- summarydata[sampleids.old,]
+vst.old <- vst[,sampleids.old]  
+
+pc.old = pca_loadings(vst.old)
+comps.old = data.frame(pc.old$x)
+comps.old$name = rownames(comps.old)
+
+comps.old = comps.old %>% left_join(summarydata.old, by=c("name"="name"))
+```
+
+##### PC1 vs. PC2
+```{r PC1-PC2.old}
+nc1 <- 1
+nc2 <- 2
+c1str = paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.old, aes(PC1, PC2, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc.old$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc.old$percentVar[nc2] * 100), "% variance"))
+```
+
+It looks like PC2 is capturing the difference between iso and treatment, not sure what PC1 is capturing.
+
+##### PC3 vs. PC4
+```{r PC3-PC4.old}
+nc1 <- 3
+nc2 <- 4
+c1str =paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.old, aes(PC3, PC4, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
+
+```
+
+##### PC5 vs. PC6
+```{r PC5-PC6.old}
+nc1 <- 5
+nc2 <- 6
+c1str = paste0("PC", nc1)
+c2str = paste0("PC", nc2)
+ggplot(comps.old, aes(PC5, PC6, color=treatment_short, shape=response, size=mapped_reads)) +
+  geom_point() + theme_bw() +
+  xlab(paste0(c1str, ": ", round(pc$percentVar[nc1] * 100), "% variance")) +
+  ylab(paste0(c2str, ": ", round(pc$percentVar[nc2] * 100), "% variance"))
+```
+
+##### Variance explained by component
+```{r component-loadings.old}
+ggplot(data.frame(component=reorder(names(pc.old$percentVar), -pc.old$percentVar),
+                  percent_var=pc.old$percentVar),
+       aes(component, percent_var)) + geom_bar(stat='identity') +
+  ylab("percent of total variation") + xlab("") + theme_bw()
+```
+
