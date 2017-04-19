@@ -584,7 +584,6 @@ if (all(is.na(test))){
   outputme <- TRUE
   sanitize_datatable(do.call(rbind, list(gseaGOBPresult, gseaGOMFresult, gseaGOCCresult)))
 }
-
 ```
 
 ```{r funct.clusterprofiler_gsea_go_output.yng.ctla4, results="hide", dependson=outputme}
@@ -1068,7 +1067,188 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 
 ----
 
-## Young and Old Samples
+## Differences between Young and Old samples without treatment
+
+```{r settreatment.iso}
+design=~age
+condition="age"
+treatment <- "iso"
+```
+
+```{r deseq2-expression-analysis.iso, results='hide'}
+counts.sub <- counts[rowSums(counts>0)>1,(dds$treatment_short==treatment)]
+rlogMat.sub <- rlogMat[row.names(counts.sub),names(counts.sub)]
+summarydata.sub <- summarydata[(summarydata$treatment_short==treatment),]
+summarydata.sub$age <- as.factor(summarydata.sub$age) 
+summarydata.sub$age <- relevel(summarydata.sub$age, ref="Old")
+
+txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
+dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
+
+geoMeans.sub = apply(counts.sub, 1, function(row) {
+  if (all(row == 0)) 0 
+  else 
+    exp(mean(log(row[row != 0])))
+})
+dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
+dds.sub = estimateDispersions(dds.sub)
+
+# put in dispersions and size factors from full set
+dispersions(dds.sub) <- dispersions(dds)
+sizeFactors(dds.sub) <- sizeFactors(dds)[names(sizeFactors(dds.sub))]
+
+dds.sub = DESeq(dds.sub)
+```
+
+### Old versus Young for Isotype treated
+
+```{r setup.iso}
+exp <- "Young"
+ref <- "Old"
+contrast_id=paste(exp, "vs", ref, "of", treatment, "treated_mice",  sep="_")
+```
+
+```{r deseq2results.iso}
+res <- results(dds.sub, contrast=c(condition, exp, ref), addMLE=FALSE)
+res = res[order(res$padj),]
+```
+
+#### Plots {.tabset}
+
+##### MA-plots
+
+An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales. Genes found to be differentiall expressed with an adjusted pvalue of less than `r pvalcutoff` are highlighted in red.
+
+```{r DESeq-maplot.iso, ref.label="DESeq-maplot.yng.ctla4", results='asis'}
+```
+
+##### Volcano-plot
+
+Volcano plots compare the p-value (here an Benhamini-Hochberg adjusted pvalue to account for the number of genes we tested) to the log-fold change. Areas highlighted in green show an adjusted pvlaue less than `r pvalcutoff` and a fold change greater than 2-fold (in either direction). 
+
+Here, postive fold changes are for genes which have higher expression in CTLA4 samples than Isotype treated samples.
+
+```{r DESeq-volcano.iso, ref.label="DESeq-volcano.yng.ctla4"}
+```
+
+##### Pvalues-vs-Mean
+
+This plot helps you tell if there is any relationship between the pvalues found and the mean expression level (there shouldn't be a strong bias)
+
+```{r DEGreport-M.iso, ref.label="DEGreport-M.yng.ctla4"}
+```
+
+##### Pvalues-vs-Variation
+
+This plot helps you tell if there is any relationship between the pvalues found and the variance (there shouldn't be a strong bias)
+
+```{r DEGreport-V.iso, ref.label="DEGreport-V.yng.ctla4"}
+```
+
+#### Differentially expressed genes
+
+##### Table
+
+**`r paste("Lowest adjusted p-value hits for", contrast_id)`**
+
+```{r DESeq-tables.iso, ref.label="DESeq-tables.yng.ctla4", echo=FALSE}
+```
+
+```{r DESeq-output.iso, ref.label="DESeq-output.yng.ctla4", results="hide"}
+```
+
+##### Heatmap
+
+- here I've made a heatmap of the 200 most significant DE genes, with , using the rlog variance stabilized data
+- data is centered and scaled per row, to show the maximum variation per row
+
+```{r DESeq-heatmap.iso}
+if(nrow(sig_genes)<200){
+  len <- nrow(sig_genes)
+} else {
+  len=200
+}
+
+samples <- row.names(subset(summarydata.sub, age==ref|age==exp))
+sig_genes.sub <- sig_genes[1:len,"id"]
+# subset rlog transformed data to the significant genes of interest
+sig_genes.sub.rlogmat <- rlogMat[sig_genes.sub,samples]
+
+annots.sub <- summarydata.sub[samples, c("age", "treatment_short", "response")]
+pheatmap(sig_genes.sub.rlogmat,
+         annotation=annots.sub,
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         main = "Differentially expressed genes",
+         scale = "row",
+         show_rownames = FALSE)
+```
+
+#### Functional analysis
+##### Overrepresentation Analysis
+###### gProfiler & Revigo
+
+Using the significant DE genes (padj < `r pvalcutoff`) identified, a list of statistically enriched gene ontology (GO), human phenotype ontology (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/) [@Reimand2007].
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO](http://revigo.irb.hr/) [@Supek2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links in the [Downloads](#downloads) section.
+
+```{r funct.gprofiler_revigo.iso, ref.label="funct.gprofiler_revigo.yng.ctla4"}
+```
+
+```{r funct.gprofiler_output.iso, ref.label="funct.gprofiler_output.yng.ctla4", results="hide"}
+```
+
+##### Gene set enrichment analysis 
+Gene set enrichment analysis tools use ranked lists of genes (here ranked by log2FoldChanges) without using a threshold. This allows these gene set enrichment tools to use more information to identify enriched biological processes. The hypothesis of these methods is that although large changes in individual genes can have significant effects on pathways (and will be detected via the previous over-representation analysis methods), weaker but coordinated changes in sets of functionally related genes (i.e., pathways) can also have significant effects. Thus, rather than setting an arbitrary threshold to identify 'significant genes', all genes are considered in the analysis. The introduction to the original gene set enrichment analysis paper goes into more detail about some of the advantages of this approach [@Subramanian2005].
+
+```{r funct.clusterprofiler_gsea_setup.iso, ref.label="funct.clusterprofiler_gsea_setup.yng.ctla4"}
+```
+
+###### Gene Ontology GSEA with clusterProfiler
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section (empty values .
+
+```{r  funct.clusterprofiler_gsea_go.iso, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
+```
+
+```{r funct.clusterprofiler_gsea_go_output.iso, results="hide", dependson=outputme}
+```
+
+###### KEGG Pathway GSEA with clusterProfiler
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+
+```{r funct.clusterprofiler_gsea_kegg.iso, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```
+
+```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide", dependson=outputme}
+```
+
+###### Immune msigDB pathways GSEA with clusterProfiler
+
+Downloaded the C7 immunologic signatures from [MSigDB](http://software.broadinstitute.org/gsea/msigdb/index.jsp) 
+
+From the site:
+
+>Immunologic signatures collection (also called ImmuneSigDB) is composed of gene sets that represent cell types, states, and perturbations within the immune system. The signatures were generated by manual curation of published studies in human and mouse immunology. 
+
+>We first captured relevant microarray datasets published in the immunology literature that have raw data deposited to Gene Expression Omnibus (GEO). For each published study, the relevant comparisons were identified (e.g. WT vs. KO; pre- vs. post-treatment etc.) and brief, biologically meaningful descriptions were created. All data was processed and normalized the same way to identify the gene sets, which correspond to the top or bottom genes (FDR < 0.02 or maximum of 200 genes) ranked by mutual information for each assigned comparison. 
+
+>The immunologic signatures collection was generated as part of our collaboration with the Haining Lab at Dana-Farber Cancer Institute and the Human Immunology Project Consortium (HIPC). To cite your use of the collection, and for further information, please refer to Godec J, Tan Y, Liberzon A, Tamayo P, Bhattacharya S, Butte A, Mesirov JP, Haining WN, Compendium of Immune Signatures Identifies Conserved and Species-Specific Biology in Response to Inflammation, 2016, Immunity 44(1), 194-206.
+
+As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
+
+Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+ 
+```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```
+
+
+```{r funct.clusterprofiler_gsea_immune_output.iso, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide", dependson=outputme}
+```
+
+
+## Difference in Response to treatment of Young and Old Samples
 - here I'll figure out the difference of differences, or how the changes after treatment differ in the old and young mice
 
 ```{r setdesign.diff}
@@ -1402,9 +1582,14 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 
 [Stats for PDL1 versus Isotype in Old Mice](`r stats_pdl1_vs_iso_of_Old_mice`)
 
+[Stats for Young versus Old in Isotype treated  Mice](`r stats_Young_vs_Old_of_iso_treated_mice`)
+
 [Stats for CTLA4 versus Isotype differences in how Old and young mice respond](`r stats_CTLA4_old_and_young_difference_of_differences`)
 
 [Stats for PDL1 versus Isotype differences in how Old and young mice respond](`r stats_PDL1_old_and_young_difference_of_differences`)
+
+
+
 
 ---
 
@@ -1417,6 +1602,8 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 [Gprofiler results for CTLA5 versus Isotype in Old Mice](`r gprofiler_results_for_ctla4_vs_iso_of_Old_mice`)
 
 [Gprofiler results for PDL1 versus Isotype in Old Mice](`r gprofiler_results_for_pdl1_vs_iso_of_Old_mice`)
+
+[Gprofiler results for Young versus Old in Isotype treated Mice](`r gprofiler_results_for_Young_vs_Old_of_iso_treated_mice`)
 
 [Gprofiler results for CTLA4 versus Isotype differences in how Old and young mice respond](`r gprofiler_results_for_CTLA4_old_and_young_difference_of_differences`)
 
@@ -1434,13 +1621,16 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 
 [clusterProfiler GSEA GO results for PDL1 versus Isotype in Old Mice](`r clusterprofiler_gsea_GO_results_for_pdl1_vs_iso_of_Old_mice`)
 
+```{r eval=exists("clusterprofiler_gsea_GO_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis", echo=FALSE }
+cat(paste("[clusterprofiler GSEA GO results for Young versus Old in Isotype treated mice](", clusterprofiler_gsea_GO_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
+```
+
 ```{r eval=exists("clusterprofiler_gsea_GO_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE }
 cat(paste("[clusterprofiler GSEA GO results for CTLA4 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_GO_results_for_CTLA4_old_and_young_difference_of_differences, ")", sep=""))
 ```
 
 ```{r eval=exists("clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
-  cat(paste("[clusterprofiler GSEA GO results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
-
+cat(paste("[clusterprofiler GSEA GO results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
 ```
 
 ---
@@ -1463,14 +1653,17 @@ cat(paste("[clusterProfiler GSEA KEGG results for CTLA4 versus Isotype in Old Mi
  cat(paste("[clusterProfiler GSEA KEGG results for PLD1 versus Isotype in Old Mice](", clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Old_mice, ")", sep=""))
 ```
 
+```{r eval=exists("clusterprofiler_gsea_kegg_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis" , echo=FALSE }
+cat(paste("[clusterProfiler GSEA KEGG results for Young versus Old in Isotype treated mice](", clusterprofiler_gsea_kegg_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
+```
+
 ```{r eval=exists("clusterprofiler_gsea_kegg_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
 cat(paste("[clusterprofiler GSEA KEGG results for CTLA4 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_kegg_results_for_CTLA4_old_and_young_difference_of_differences, ")", sep=""))
 ```
 
 ```{r eval=exists("clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences"), results="asis" , echo=FALSE }
-  cat(paste("[clusterprofiler GSEA KEGG results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
+cat(paste("[clusterprofiler GSEA KEGG results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
 ```
-
 
 ---
 
@@ -1490,6 +1683,10 @@ cat(paste("[clusterProfiler GSEA Immune results for CTLA4 versus Isotype in Old 
 
 ```{r eval=exists("clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Old_mice"), results="asis" , echo=FALSE }
 cat(paste("[clusterProfiler GSEA Immune results for PLD1 versus Isotype in Old Mice](", clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Old_mice, ")", sep=""))
+```
+
+```{r eval=exists("clusterprofiler_gsea_immune_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis" , echo=FALSE }
+cat(paste("[clusterProfiler GSEA Immune results for Young versus Old of Isotype treated mice](", clusterprofiler_gsea_immune_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
 ```
 
 ```{r eval=exists("clusterprofiler_gsea_immune_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
