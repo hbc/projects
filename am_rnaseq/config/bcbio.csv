@@ -1,0 +1,9 @@
+samplename,descrption,researcher_sampleid,genotype,replicate,sampleid
+MAi_1_R1,KO_1,D8-6,KO,1,KO_1
+MAi_2_R1,KO_2,D8-27,KO,2,KO_2
+MAi_3_R1,WT_1,D8-28,WT,1,WT_1
+MAi_4_R1,WT_2,D8-29,WT,2,WT_2
+MAi_5_R1,KO_3,D8-30,KO,3,KO_3
+MAi_6_R1,WT_3,D8-31,WT,3,WT_3
+MAi_7_R1,KO_4,D8-32,KO,4,KO_4
+MAi_8_R1,WT_4,D8-33,WT,4,WT_4
