@@ -712,14 +712,6 @@ A list including only the significant GO Biological Process (BP) terms was then 
 
 An Excel file of all significant GO/HP/keg terms and associated genes can be downloaded using the links in the [Downloads](#downloads) section.
 
-__**Domains:**__  
-BP - Gene Ontology Biological Process  
-MF - Gene Ontology Molecular Function   
-CC - Gene Ontology Cellular Component  
-tf - transcription factor motif enrichment  
-cor - [CORUM][] protein complexes   
-hp - [Human Phenotype Ontology][]  
-mi - miRBase microRNA targets
 
 
 ```{r funct.gprofiler_revigo}
@@ -745,8 +737,6 @@ isPValue <- "yes" #Allowed values: "yes"  "no"
 whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
 measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
 
-
-sanitize_datatable(gprofiler_results.simplified)
 
 #Do not change below
 organism.list <- list(
@@ -936,6 +926,17 @@ assign(paste("clusterprofiler_gsea_kegg_results_for_", contrast_id, sep=""), dro
 
 
 ## Overrepresentation GO enrichment
+
+
+
+__**Domains:**__  
+BP - Gene Ontology Biological Process  
+MF - Gene Ontology Molecular Function   
+CC - Gene Ontology Cellular Component  
+tf - transcription factor motif enrichment  
+cor - [CORUM][] protein complexes   
+hp - [`Human Phenotype Ontology`][]  
+mi - miRBase microRNA targets
 
 [Gprofiler overrepresentation results](`r gprofiler_results_for_knockout_vs_wildtype`)
 
