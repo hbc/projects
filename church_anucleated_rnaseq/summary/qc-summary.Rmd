@@ -77,8 +77,11 @@ check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
 ```
 
+```{r dataload, eval=file.exists("RDATA.counts_and_summary")}
+load("RDATA.counts_and_summary")
+```
 
-```{r qc-setup, results='hide'}
+```{r qc-setup, results='hide', eval=!file.exists("RDATA.counts_and_summary")}
 if (file.exists("/Volumes/orch/PIs/george_church/church_anucleated_rnaseq/bcbio/final/2017-04-06_bcbio/")){
   baseDir <- "/Volumes/orch/PIs/george_church/church_anucleated_rnaseq/bcbio/final/2017-04-06_bcbio/"
 } else if (file.exists("/n/data1/cores/bcbio/PIs/george_church/church_anucleated_rnaseq/")) {
