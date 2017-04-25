@@ -84,7 +84,7 @@ if (file.exists("/Volumes/orch/PIs/george_church/church_anucleated_rnaseq/bcbio/
 } else if (file.exists("/n/data1/cores/bcbio/PIs/george_church/church_anucleated_rnaseq/")) {
   baseDir <- "/n/data1/cores/bcbio/PIs/george_church/church_anucleated_rnaseq/bcbio/final/2017-04-06_bcbio/"
 } else {
-  print "no base directory found"
+  print("no base directory found")
 }
 
 project_summary = file.path(baseDir, "project-summary.csv")
@@ -103,7 +103,6 @@ if("description" %in% colnames(summarydata)) {
   # summarydata$Name = NULL
 }
 summarydata = summarydata[order(rownames(summarydata)),]
-colnames(summarydata) = gsub(".", "_", colnames(summarydata), fixed=TRUE)
 summarydata <- clean_names(summarydata)
 
 if (file.exists(tx2genes_file)) {
