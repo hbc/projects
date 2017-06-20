@@ -2,12 +2,11 @@
 output:
   html_document:
     code_folding: hide
-    theme: yeti
+    fig_height: 6
+    number_sections: yes
     toc: yes
-    toc_float: true
     toc_depth: 6
-    number_sections: true
-    fig_height: 6 
+    toc_float: yes
 title: "Marneros - Knockout RNAseq Analysis"
 bibliography: references.bib
 author: "John N Hutchinson"
@@ -66,21 +65,22 @@ check_install = function(packages) {
       stop()
    }
 }
-packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "DT", "DEGreport", "dplyr", "janitor", "rio", "rdrop2", "gridExtra", "gProfileR", "clusterProfiler", 'org.Mm.eg.db',"knitr")
+packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "DT", "DEGreport", "dplyr", "janitor", "rio", "rdrop2", "gridExtra", "gProfileR", "clusterProfiler", 'org.Mm.eg.db',"knitr", "plotly")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
 ```
 
 ```{r qc-setup, results='hide'}
-dropboxfiledir <- "/HBC Team Folder (1)/Consults/alex_marneros/am_rnaseq/files"
+dropboxfiledir <- "/HBC Team Folder(1)/Consults/alex_marneros/am_rnaseq/files"
 pvalcutoff=0.05
 lfccutoff=1
-minGSS=10
+minGSS=1
+maxGSS=1e6
 
 
-project_summary = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-14_bcbio/project-summary.csv"
-counts_file = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-14_bcbio/combined.counts"
-tx2genes_file = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-14_bcbio/tx2gene.csv"
+project_summary = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-22_bcbio/project-summary.csv"
+counts_file = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-22_bcbio/combined.counts"
+tx2genes_file = "/Volumes/orch/PIs/alex_marneros/am_rnaseq/bcbio/final/2017-04-22_bcbio/tx2gene.csv"
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 summarydata = read.table(project_summary, header=TRUE, sep=",")
 summarydata = summarydata[,colSums(is.na(summarydata)) < nrow(summarydata)]
@@ -100,12 +100,13 @@ summarydata <- clean_names(summarydata)
 
 if (file.exists(tx2genes_file)) {
   sf_files = list.files(file.path(dirname(tx2genes_file), "../../"), pattern="quant.sf", recursive=TRUE, full.names=TRUE)
+  sf_files <- sf_files[!grepl("MAi_", sf_files)]
   if(length(sf_files) > 0) {
     sf_files = sf_files[order(sf_files)]
     names(sf_files) = rownames(summarydata)
     tx2gene = read.table(tx2genes_file, sep=",", row.names=NULL, header=FALSE)
     txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
-             reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
+             importer=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
     counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
 } else {
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
@@ -338,8 +339,6 @@ ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
 Trimmed mean of M-values (TMM) normalization is described 
 [here](http://genomebiology.biomedcentral.com/articles/10.1186/gb-2010-11-3-r25) [@Robinson2010]
 
-Robinson, M. D., & Oshlack, A. (2010). A scaling normalization method for differential expression analysis of RNA-seq data. Genome Biology, 11(3). doi:10.1186/gb-2010-11-3-r25
-
 
 Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different. 
 
@@ -368,25 +367,6 @@ ggplot(melted, aes(x=count, group=sample)) +
           axis.text.x = element_text(angle=90)) + xlab("")
 ```
 
-## Knockout Gene Expression
-
-We can use the TMM normalized counts to look at the expression of the knockout gene in the samples.
-
-```{r dds_setup, results="hide"}
-geneid <- "ENSMUSG00000009731"
-summarydata_dt <- tbl_df(summarydata)
-
-normcounts.ko <-  as.data.frame(normalized_counts[geneid,])
-names(normcounts.ko) <- "value"
-normcounts.ko <- row2colnames(normcounts.ko, "sampleid") %>% tbl_df()
-# merge with metagdata to get genotypes
-normcounts.ko_annot <- inner_join(normcounts.ko, summarydata_dt, by = c("sampleid" = "name"))
-# plot
-ggplot(normcounts.ko_annot, aes(x=sampleid,y=value, fill=genotype ))+geom_bar(stat="identity")+theme_bw()
-ggplot(normcounts.ko_annot, aes(x=genotype, y=value, color=genotype))+geom_boxplot()+geom_point(data=normcounts.ko_annot, aes(y=value, x=genotype, fill=genotype), size=3) +theme_bw()
-```
-
-We are not seeing any reduction of  Kcnd1 expression in the knockout samples, though this may be due to the cell specificity of the knockout. 
 
 ## Sample Similarity Analyses (Unsupervised clustering)
 
@@ -400,6 +380,9 @@ heatmap_fn(cor(normalized_counts, method="spearman"))
 ```
 
 ### PCA plots {.tabset}
+
+For a better explanation of Principal Component Analysis (PCA) see [here](http://setosa.io/ev/principal-component-analysis/). Essentially, PCA is a method of projecting the variation contained within multidimensional data onto a 2 dimensional plot. In these plots, if samples cluster, then they are similar. As this is done in an unbiased manner without knowledge of smaple classes, it is good if sample classes cluster together which means that the variation in the data corresponds with the sample classes. If the sample classes do not cluster, then some other source of variation is driving the clustering.
+
 
 For RNA-seq count data, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log<sub>2</sub> transformation will amplify this noise, and show the low count genes will dominate the PCA plots. For high counts, this gives similar results as log<sub>2</sub>, but for low counts, values are shrunken towards the genes' average across samples. These adjustments are accomnplished using the rlog transformation used by the [][DESeq2] [@Love2014] package.
 
@@ -459,6 +442,9 @@ ggplot(data.frame(component=reorder(names(pc$percentVar), -pc$percentVar),
 tpm = txi.salmon$abundance %>%
   as.data.frame() %>%
   tibble::rownames_to_column()
+names(tpm)[1] <- "ensemblid"
+
+tpm <- annotate_df2(df=tpm, df_ensemblid_header = "ensemblid", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
 
 tempoutfile <-file.path(tempdir(), "tpm.csv")
 rio::export(tpm, file=tempoutfile)
@@ -516,7 +502,10 @@ contrast_id = "knockout_vs_wildtype"
 Here I do differential expression analyses of the data, looking for genes with significant changes in expression between the knockout and wildtype mice.
 
 
-Differential gene expression (DGE) analysis of count data from [`salmon`][] [@Patro2015] was performed with the [Bioconductor][] [R][] package [`DESeq2`][] [@Love2014]. Counts were fit to a negative binomial model, and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood.
+Differential gene expression (DGE) analysis of count data from [salmon][] [@Patro2015] was performed with the [Bioconductor][] [R][] package [DESeq2][] [@Love2014]. Counts were fit to a negative binomial model, and dispersion estimates were generated using the mean values from the maximum likelihood estimate of log2 fold changes, optimizing the Cox-Reid adjusted profile likelihood.
+
+
+
 
 ## Setup
 
@@ -539,7 +528,7 @@ dds = estimateSizeFactors(dds, geoMeans=geoMeans)
 dds = DESeq(dds, betaPrior=FALSE)
 
 
-kable(sizeFactors(dds))
+kable(as.data.frame(sizeFactors(dds)))
 ```
 
 ### Effect of variance stabilization
@@ -582,8 +571,10 @@ plotDispEsts(dds)
 Numerator = Knockout  
 Denominator = Wildtype  
 
-Genes with a *postive log2 fold change* are *higher in the knockout*.
-Genes with a *negative log2 fold change* are *lower in the knockout*.
+Genes with a **postive log2 fold change higher in the knockout**.
+
+Genes with a **negative log2 fold change are lower in the knockout**.
+
 
 ```{r deseq2compare}
 res <- results(dds, contrast=c("genotype", "KO", "WT"))
@@ -624,13 +615,25 @@ plotMA(res)
 
 #### Volcano-plots
 
-Volcano plots compare the p-value (here an Benhamini-Hochberg adjusted pvalue to account for the number of genes we tested) to the log2-fold change. Areas highlighted in green show an adjusted pvlaue less than `r pvalcutoff` and a log2 fold change greater than `r lfccutoff` (in either direction). 
+Volcano plots compare the p-value (here an Benhamini-Hochberg adjusted pvalue to account for the number of genes we tested) to the log2-fold change. In the first plot, areas highlighted in green show an adjusted pvlaue less than `r pvalcutoff` and a log2 fold change greater than `r lfccutoff` (in either direction). 
+In the second plot, hovering over the point will show the data and gene name for that point, points in blue have an adjusted pvalue of less than 0.05 (no log2 fold change cutuff is highlighted). 
 
 Here, postive fold changes are for genes which have higher expression in knockout samples than wildtype treated samples.
 
 ```{r DESeq-volcano}
 stats = as.data.frame(res[,c(2,6)])
 volcano_density_plot(stats, title="")
+
+
+stats = as.data.frame(res[,c(2,6)]) %>%  row2colnames("ensemblid")
+stats <- annotate_df2(df=stats, df_ensemblid_header = "ensemblid", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
+stats <- stats %>% tbl_df() %>% mutate(significant=ifelse(padj>pvalcutoff|is.na(padj), "NO", "YES"))
+library(plotly)
+p <- ggplot(stats, aes(x=log2FoldChange, y=-log10(padj), color=significant, text=mgi_symbol))+
+  geom_point(alpha=0.6, size=2)+
+  theme_bw()
+p <- ggplotly(p) 
+p
 ```
 
 #### Pvalues-vs-Mean
@@ -655,7 +658,19 @@ degVar(res$pvalue, rlogMat) +
 
 #### Table
 
-**Lowest adjusted p-value hits for Wildtype versus Knockout contrast**
+Note that in general for NGS count data, there is a large variance associated with the log fold change estimates for genes with low read counts, and these weakly expressed genes would be identified as differentially expressed due solely to this variation. To account for this issue and reduce false positives for lowly expressed genes, DESeq2 shrinks the LFC estimates toward zero when the information for a gene is low, which could include:
+
+- low counts
+ - high dispersion values i.e. high variation in the gene's expression
+ 
+This shrinkage of LFC estimates uses information from all genes to generate more accurate estimates. Specifically, the distribution of LFC estimates for all genes is used (as a prior) to shrink the LFC estimates of genes with little information or high dispersion toward more likely (lower) LFC estimates. 
+
+**Therefore, the log fold change estimates included in these results are likely to be more conservative (and accurate) than those derived from directly calculating from normalized counts (such as those in the TPM matrix)**
+
+False discovery rate was controlled by  (see [@Noble] for a description of the issue and solutions) by the Benjamini Hochberg proedcure [@Benjamini1995], allowing us to derive an FDR adjusted pvalue which has been corrected for the fact we ran multiple statistical tests.
+
+__**Lowest adjusted p-value hits (padj<0.05) for Wildtype versus Knockout contrast**__
+
 
 ```{r DESeq-tables, echo=FALSE}
 out_df = as.data.frame(res)
@@ -680,7 +695,7 @@ assign(paste("stats_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir
 - here I've made a heatmap of up to a maximum of the 200 most significant DE genes, with , using the rlog variance stabilized data
 - data is centered and scaled per row, to show the maximum variation per row
 
-```{r DESeq-heatmap, fig.height=10, fig.width=8}
+```{r DESeq-heatmap, fig.height=18, fig.width=8}
 if(nrow(sig_genes)<200){
   len <- nrow(sig_genes)
 } else {
@@ -690,15 +705,25 @@ if(nrow(sig_genes)<200){
 sig_genes.sub <- sig_genes[1:len,"id"]
 # subset rlog transformed data to the significant genes of interest
 sig_genes.sub.rlogmat <- rlogMat[sig_genes.sub,]
+sig_genes.sub.rlogmat <- sig_genes.sub.rlogmat %>% row2colnames("ensemblid")
+
+sig_genes.sub.rlogmat <- annotate_df2(df=sig_genes.sub.rlogmat, df_ensemblid_header = "ensemblid", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
+
 
 annots.sub <- summarydata[, c("genotype", "replicate", "researcher_sampleid")]
-pheatmap(sig_genes.sub.rlogmat,
+heatmap_data <- as.matrix(sig_genes.sub.rlogmat[, row.names(summarydata)])
+class(heatmap_data) <- "numeric"
+pheatmap(heatmap_data,
          annotation=annots.sub,
          clustering_distance_cols = "correlation",
          clustering_method = "ward.D2",
          main = "Differentially expressed genes",
          scale = "row",
-         show_rownames = FALSE)
+         show_rownames = TRUE, 
+         labels_row = sig_genes.sub.rlogmat$mgi_symbol, 
+         fontsize_row = 8)
+
+
 ```
 
 
@@ -714,7 +739,7 @@ An Excel file of all significant GO/HP/keg terms and associated genes can be dow
 
 
 
-```{r funct.gprofiler_revigo}
+```{r funct.gprofiler_revigo, results='asis'}
 gene_list <- sig_genes$mgi_symbol
 
 #gprofileR
@@ -729,6 +754,7 @@ pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
 gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "domain", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
 names(gprofiler_results.simplified) <- c("term.id", "term.name",  "domain", "p.value","term.size", "query.size", "overlap.size", "assoc.gene.ids")
 
+
 # Revigo BP
 ## Parameters to change
 cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
@@ -736,11 +762,12 @@ organism <- "Mus musculus" #Allowed values: See organism.list below
 isPValue <- "yes" #Allowed values: "yes"  "no"
 whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
 measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+domain <- "BP"
 
 
 #Do not change below
 organism.list <- list(
-	"whole UniProt"=0, 
+"whole UniProt"=0, 
 	"Homo sapiens"=9606,
 	"Mus musculus"=10090,
 	"Rattus norvegicus"=10116,
@@ -768,11 +795,30 @@ organism.list <- list(
 	)
 organism.db <- as.character(organism.list[organism])
 
-mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, sep=" ")
+cat("**Biological Processes Domain**")
 
+domain="BP"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
 mytempfile <- tempfile()
 system2(command='perl', args=mycommand, stdout=mytempfile)
 source(mytempfile)
+
+cat("**Molecular Functions Domain**")
+
+domain="MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component Domain**")
+
+domain="CC"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
 ```
 
 ```{r funct.gprofiler_output, results="hide"}
@@ -781,6 +827,8 @@ rio::export(gprofiler_results.simplified, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
 assign(paste("gprofiler_results_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("gprofiler_results_for", contrast_id, "xlsx", sep=".")))$url)
 ```
+
+
 
 #### Gene set enrichment analysis 
 Gene set enrichment analysis tools use ranked lists of genes (here ranked by log2FoldChanges) without using a threshold. This allows these gene set enrichment tools to use more information to identify enriched biological processes. The hypothesis of these methods is that although large changes in individual genes can have significant effects on pathways (and will be detected via the previous over-representation analysis methods), weaker but coordinated changes in sets of functionally related genes (i.e., pathways) can also have significant effects. Thus, rather than setting an arbitrary threshold to identify 'significant genes', all genes are considered in the analysis. The introduction to the original gene set enrichment analysis paper goes into more detail about some of the advantages of this approach [@Subramanian2005].
@@ -812,9 +860,9 @@ Analysis was performed to identify any GO annotation (BP, MF or CC) (with at lea
 egoBP <- gseGO(geneList     = foldchanges,
               OrgDb        = org.Mm.eg.db,
               ont          = "BP",
-              nPerm        = 10000,
+              nPerm        = 1000,
               minGSSize    = minGSS,
-              maxGSSize    = 500,
+              maxGSSize    = maxGSS,
               pvalueCutoff = pvalcutoff,
               verbose      = FALSE, 
               by='fgsea')
@@ -827,9 +875,9 @@ gseaGOBPresult$category <- "BP"
 egoMF <- gseGO(geneList     = foldchanges,
               OrgDb        = org.Mm.eg.db,
               ont          = "MF",
-              nPerm        = 10000,
+              nPerm        = 1000,
               minGSSize    = minGSS,
-              maxGSSize    = 500,
+              maxGSSize    = maxGSS,
               pvalueCutoff = pvalcutoff,
               verbose      = FALSE, 
               by='fgsea')
@@ -842,9 +890,9 @@ gseaGOMFresult$category <- "MF"
 egoCC <- gseGO(geneList     = foldchanges,
               OrgDb        = org.Mm.eg.db,
               ont          = "CC",
-              nPerm        = 10000,
+              nPerm        = 1000,
               minGSSize    = minGSS,
-              maxGSSize    = 500,
+              maxGSSize    = maxGSS,
               pvalueCutoff = pvalcutoff,
               verbose      = FALSE, 
               by='fgsea')
@@ -882,11 +930,12 @@ Analysis was performed to identify any KEGG pathways (with at least `r minGSS` g
 ```{r funct.clusterprofiler_gsea_kegg, results="asis"}
 kk2 <- gseKEGG(geneList     = foldchanges,
                organism     = 'mmu',
-               nPerm        = 10000,
+               nPerm        = 1000,
                minGSSize    = minGSS,
+               maxGSSize    = maxGSS,
                pvalueCutoff = pvalcutoff,
                verbose      = FALSE, 
-              by='fgsea')
+               by='fgsea')
 kkgsea_results <- kk2@result
 
 
@@ -906,6 +955,226 @@ drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
 assign(paste("clusterprofiler_gsea_kegg_results_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_kegg_results_for", contrast_id, "xlsx", sep=".")))$url)
 ```
 
+
+
+### Subset to Annotated Genes
+
+Many of the differentially expressed "genes" are only predicted genes. Here we present the volcano plot, heatmap and GO enrichment results with only the annotated genes from that set.
+
+```{r nopredicted}
+annotated_sig_data <- import("annotatedstats_for.knockout_vs_wildtype.xlsx")
+annotated_sig_genes <- annotated_sig_data %>% tbl_df() %>% filter(id!="id") %>% as.data.frame %>% .$id
+```
+
+#### Volcano plots with significant annotated genes
+
+```{r annotavolcano}
+stats = as.data.frame(res[annotated_sig_genes,c(2,6)])
+volcano_density_plot(stats, title="")
+
+
+stats = as.data.frame(res[annotated_sig_genes,c(2,6)]) %>%  row2colnames("ensemblid")
+stats <- annotate_df2(df=stats, df_ensemblid_header = "ensemblid", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
+stats <- stats %>% tbl_df() %>% mutate(significant=ifelse(padj>pvalcutoff|is.na(padj), "NO", "YES"))
+library(plotly)
+p <- ggplot(stats, aes(x=log2FoldChange, y=-log10(padj),  text=mgi_symbol))+
+  geom_point(alpha=0.6, size=2, color="blue")+
+  theme_bw()
+p <- ggplotly(p) 
+p
+```
+
+#### Heatmap with significant annotated genes
+
+```{r heatmapannotated, fig.height=18, fig.width=8}
+sig_genes.sub <- annotated_sig_genes
+# subset rlog transformed data to the significant genes of interest
+sig_genes.sub.rlogmat <- rlogMat[sig_genes.sub,]
+sig_genes.sub.rlogmat <- sig_genes.sub.rlogmat %>% row2colnames("ensemblid")
+
+sig_genes.sub.rlogmat <- annotate_df2(df=sig_genes.sub.rlogmat, df_ensemblid_header = "ensemblid", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
+
+
+annots.sub <- summarydata[, c("genotype", "replicate", "researcher_sampleid")]
+heatmap_data <- as.matrix(sig_genes.sub.rlogmat[, row.names(summarydata)])
+class(heatmap_data) <- "numeric"
+pheatmap(heatmap_data,
+         annotation=annots.sub,
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         main = "Differentially expressed genes",
+         scale = "row",
+         show_rownames = TRUE, 
+         labels_row = sig_genes.sub.rlogmat$mgi_symbol, 
+         fontsize_row = 8)
+```
+
+#### GO enrichment with only annotated genes
+
+```{r GOannotated}
+gene_list <- annotated_sig_data$mgi_symbol
+
+#gprofileR
+gprofiler_results <- gprofiler(query = gene_list, 
+                               organism = "mmusculus", 
+                               ordered_query = F, 
+                               exclude_iea = F,
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               hier_filtering = "none", 
+                               domain_size = "annotated", 
+                               custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "domain", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name",  "domain", "p.value","term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+
+# Revigo BP
+## Parameters to change
+cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
+organism <- "Mus musculus" #Allowed values: See organism.list below
+isPValue <- "yes" #Allowed values: "yes"  "no"
+whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
+measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+domain <- "BP"
+
+
+#Do not change below
+organism.list <- list(
+"whole UniProt"=0, 
+	"Homo sapiens"=9606,
+	"Mus musculus"=10090,
+	"Rattus norvegicus"=10116,
+	"Bos taurus"=9913,
+	"Gallus gallus"=9031,
+	"Danio rerio"=7955,
+	"Takifugu rubripes"=31033,
+	"Xenopus laevis"=8355,
+	"Drosophila melanogaster"=7227,
+	"Caenorhabditis elegans"=6239,
+	"Arabidopsis thaliana"=3702,
+	"Oryza sativa"=39947,
+	"Zea mays"=4577,
+	"Saccharomyces cerevisiae"=4932,
+	"Schizosaccharomyces pombe"=4896,
+	"Dictyostelium discoideum"=44689,
+	"Plasmodium falciparum"=5833,
+	"Chlamydomonas reinhardtii"=3055,
+	"Escherichia coli"=83333,
+	"Bacillus subtilis"=1423,
+	"Pseudomonas aeruginosa"=287,
+	"Mycobacterium tuberculosis"=1773,
+	"Mycoplasma genitalium"=2097,
+	"Synechocystis sp."=1148
+	)
+organism.db <- as.character(organism.list[organism])
+
+cat("**Biological Processes Domain**")
+
+domain="BP"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Functions Domain**")
+
+domain="MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component Domain**")
+
+domain="CC"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain,sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+```
+
+```{r funct.gprofiler_output_annotated, results="hide"}
+tempoutfile <-file.path(tempdir(), paste("gprofiler_results_using_only_annotated_genes_for", contrast_id, "xlsx", sep="."))
+rio::export(gprofiler_results.simplified, file=tempoutfile)
+drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
+assign(paste("gprofiler_results_using_only_annotated_genes_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("gprofiler_results_using_only_annotated_genes_for", contrast_id, "xlsx", sep=".")))$url)
+```
+
+
+# Knockout gene expression at the gene and  transcript level
+
+We can use the DESeq2 normalized counts to look at the expression of the knockout gene.
+
+```{r knockouttranscriptanalysis}
+# import data at the transcript level
+txi_salmon_transcript = tximport(sf_files, 
+                      type="salmon", 
+                      tx2gene=tx2gene,
+                      importer=readr::read_tsv, 
+                      countsFromAbundance="lengthScaledTPM",
+                      txOut=TRUE)
+counts_transcripts = round(data.frame(txi_salmon_transcript$counts, check.names=FALSE))
+counts_transcripts = counts_transcripts[, order(colnames(counts_transcripts)), drop=FALSE]
+
+
+# remove empty transcript rows and put into DESeq2 object
+counts_transcripts <- counts_transcripts[rowSums(counts_transcripts>0)>1,]
+txi_salmon_transcipt = subset_tximport(txi_salmon_transcript, rownames(counts_transcripts), colnames(counts_transcripts))
+dds_transcript = DESeqDataSetFromTximport(txi_salmon_transcript, colData=summarydata, design=design)
+
+# use size factors from gene level analysis
+sizeFactors(dds_transcript) <- sizeFactors(dds)
+
+dds_transcript = DESeq(dds_transcript, betaPrior=FALSE)
+```
+
+## Gene level
+
+```{r knockoutexpressiongene}
+geneid <- "ENSMUSG00000036225"
+summarydata_dt <- tbl_df(summarydata)
+
+normcounts_gene <-  as.data.frame(counts(dds, normalized=TRUE))[geneid,] %>% t %>% as.data.frame()
+names(normcounts_gene) <- "value"
+normcounts_gene <- row2colnames(normcounts_gene, "sampleid") %>% tbl_df()
+
+# merge with metagdata to get genotypes
+normcounts_gene_annot <- inner_join(normcounts_gene, summarydata_dt, by = c("sampleid" = "name"))
+# plot
+ggplot(normcounts_gene_annot, aes(x=sampleid,y=value, fill=genotype ))+geom_bar(stat="identity")+theme_bw()
+ggplot(normcounts_gene_annot, aes(x=genotype, y=value, color=genotype))+geom_boxplot()+geom_point(data=normcounts_gene_annot, aes(y=value, x=genotype, fill=genotype), size=3) +theme_bw()
+```
+
+## Transcript level
+
+All of the analyses so far have been at the gene level, but we can also look at expression at the transcript level. This may help use figure out what is going on with the knockout gene.
+
+
+```{r knockoutexpressiontranscript}
+ensembl = useMart("ENSEMBL_MART_ENSEMBL", dataset = "mmusculus_gene_ensembl", host = "useast.ensembl.org")
+transcript_ids <- getBM(values="ENSMUSG00000036225", 
+      attributes = "ensembl_transcript_id", 
+      filters = "ensembl_gene_id",
+      mart=ensembl)
+summarydata_dt <- tbl_df(summarydata)
+
+normcounts_transcript <-  as.data.frame(counts(dds_transcript, normalized=TRUE))[as.character(unlist(transcript_ids)),] %>% t %>% as.data.frame() %>% row2colnames(., "sampleid") %>% melt()
+names(normcounts_transcript) <- c("sampleid", "transcriptid", "value")
+
+# merge with metagdata to get genotypes
+normcounts_transcript_annot <- inner_join(normcounts_transcript, summarydata_dt, by = c("sampleid" = "name"))
+# plot
+ggplot(normcounts_transcript_annot, aes(x=sampleid,y=value, fill=genotype ))+geom_bar(stat="identity")+theme_bw()+facet_grid(~transcriptid)
+ggplot(normcounts_transcript_annot, aes(x=genotype, y=value, color=genotype))+geom_boxplot()+geom_point(data=normcounts_transcript_annot, aes(y=value, x=genotype, fill=genotype), size=3) +theme_bw()+facet_grid(~transcriptid)
+```
+
+We are seeing a reduction (though not total) of  Kctd1 expression in the knockout samples, but only for one transcript (ENSMUST00000025992). Lack of total loss is probably due to the cell specificity of the knockout.
 
 ---
 
@@ -927,8 +1196,6 @@ assign(paste("clusterprofiler_gsea_kegg_results_for_", contrast_id, sep=""), dro
 
 ## Overrepresentation GO enrichment
 
-
-
 __**Domains:**__  
 BP - Gene Ontology Biological Process  
 MF - Gene Ontology Molecular Function   
@@ -941,6 +1208,9 @@ mi - miRBase microRNA targets
 [Gprofiler overrepresentation results](`r gprofiler_results_for_knockout_vs_wildtype`)
 
 
+## Overrepresentation GO enrichment using only annotated genes
+
+[Gprofiler overrepresentation results using only annotated genes](`r gprofiler_results_using_only_annotated_genes_for_knockout_vs_wildtype`)
 
 
 ---

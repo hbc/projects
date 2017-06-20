@@ -130,7 +130,6 @@ library(janitor)
 
 library(biomaRt)
 
-# use older version of biomart to allow homology changes
 mousemart <- useDataset("mmusculus_gene_ensembl", useMart("ENSEMBL_MART_ENSEMBL"))
 mouseattributes = listAttributes(mousemart)
 mousefilters = listFilters(mousemart)

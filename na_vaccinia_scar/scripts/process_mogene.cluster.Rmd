@@ -134,6 +134,46 @@ heatmap_fn = function(data, metadata ,...) {
   pheatmap(data, annotation=metadata, clustering_method = "ward.D2",
            clustering_distance_cols = "correlation", ...)
 }
+
+PCA_grid1 <- function(affyeset=NULL){
+  eset.pca <- affyeset
+  pd.pca <- pData(eset.pca)
+  pd.pca$id <- row.names(pd.pca)
+  eset.pca <- exprs(eset.pca)
+  PCA <- prcomp(t(eset.pca))
+  PCA.sub <- as.data.frame(PCA$x[, 1:4])
+  PCA.sub$id <- row.names(PCA.sub)
+  plotme <- base::merge(PCA.sub, pd.pca, by="id")
+  
+  p1 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=arraydate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("Array date")
+  p2 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=batch))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ ggtitle("Array batch")
+  p3 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=facsdate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("FACS date")
+  p4 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=RNA_prep_date))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("RNA prep date")
+  p5 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=location))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("location")
+  p6 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=celltype))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
+  p7 <-  ggplot(plotme, aes(x=PC1, y=PC2, shape=celltype, color=treatment))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
+  
+  grid.arrange(p1,p2,p3,p4,p5,p6,p7,ncol=2)
+}  
+
+PCA_grid2 <- function(affyeset=NULL){
+  eset.pca <- affyeset
+  pd.pca <- pData(eset.pca)
+  pd.pca$id <- row.names(pd.pca)
+  eset.pca <- exprs(eset.pca)
+  PCA <- prcomp(t(eset.pca))
+  PCA.sub <- as.data.frame(PCA$x[, 1:4])
+  PCA.sub$id <- row.names(PCA.sub)
+  plotme <- base::merge(PCA.sub, pd.pca, by="id")
+  
+  p1 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=arraydate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("Array date")
+  p2 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=batch))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ ggtitle("Array batch")
+  p3 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=facsdate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("FACS date")
+  p4 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=RNA_prep_date))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("RNA prep date")
+  p7 <-  ggplot(plotme, aes(x=PC1, y=PC2, shape=celltype, color=treatment))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
+  
+  grid.arrange(p1,p2,p3,p4,p7,ncol=2)
+} 
 ```
 
 ---
@@ -203,7 +243,6 @@ outlierids <- pData(affyraw)$array_code[c(5,21,32,33,57,62)]
 affyraw <- affyraw[,which(!pData(affyraw)$array_code %in% outlierids)]
 ```
 
-
 ## Background Correct and Normalize
 
 - using RMA `r citep("10.1093/biostatistics/4.2.249")`
@@ -255,51 +294,23 @@ pd <- pData(affynorm.core) %>% tbl_df %>% dplyr::select(treatment, batch, arrayd
 - for all covariates that are present in more than one sample
 
 ```{r, varsource_all}
-batch.factors <- c()
+batch.factors <- c("celltype", "location", "celltype_location", "facsdate", "treatment", "batch", "arraydate")
 
-if(all(table(pd$celltype)>1)  & length(unique(pd$celltype))>1){
-  batch.factors <- c(batch.factors, "celltype")
-}
-if(all(table(pd$location)>1)  & length(unique(pd$location))>1){
-  batch.factors <- c(batch.factors, "location")
-}
-if(all(table(pd$celltype_location)>1) & length(unique(pd$celltype_location))>1){
-  batch.factors <- c(batch.factors, "celltype_location")
-}
-if(all(table(pd$treatment)>1)& length(unique(pd$treatment))>1){
-  batch.factors <- c(batch.factors, "treatment")
-}
-if(all(table(pd$batch)>1)& length(unique(pd$batch))>1){
-  batch.factors <- c(batch.factors, "batch")
-}
-if(all(table(pd$arraydate)>1)& length(unique(pd$arraydate))>1){
-  batch.factors <- c(batch.factors, "arraydate")
-}
-
-if(all(table(pd$facsdate)>1)& length(unique(pd$facsdate))>1){
-  batch.factors <- c(batch.factors, "facsdate")
-}
-if(all(table(pd$RNA_prep_date)>1)& length(unique(pd$RNA_prep_date))>1){
-  batch.factors <- c(batch.factors, "RNA_prep_date")
-}
-# allow it to work with just one batching factor
-if (length(batch.factors)==1){batch.factors=c(batch.factors, batch.factors)}
-
-if (!is.null(batch.factors)){
-  pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
-  plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
-    magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
-  ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+ggtitle("Sources of variability")
-}
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
 
-The biggest source of variability in the data is the location source of the samples. Batch, celltype and treatment are also sources of variation. FACS date and RNA_prep_date also contribute to the variance in the data.
+The biggest source of variability in the data is the location source of the samples. Batch, celltype and treatment are also sources of variation. Batch is a larger source of variation than either celltype or treatment. FACS date and RNA_prep_date also contribute to the variance in the data.
 
 ### Pearsons correlation
 
 ```{r, corheatmap_pearsons_all, fig.height=12}
 heatmap_fn(data=cor(exprs(affynorm.sub), method="pearson"), metadata=pd)
 ```
+
+The location appears to be the major source of clustering on the left, it's not immediately clear what is going on with the smaller cluster on the right. Interpreting the plot is complicated as there aren't enough colors in the default heatmap annotation package for all the variables.
 
 ### Spearmans correlation
 
@@ -309,33 +320,12 @@ heatmap_fn(data=cor(exprs(affynorm.sub), method="spearman"), metadata=pd)
 
 ### PCA 
 
-```{r , pca_prep_all}
-eset <- affynorm.sub
-pd <- pData(eset)
-pd$id <- row.names(pd)
-eset.core <- exprs(eset)
-PCA.core <- prcomp(t(eset.core))
-PCA.core.sub <- as.data.frame(PCA.core$x[, 1:4])
-PCA.core.sub$id <- row.names(PCA.core.sub)
-plotme <- base::merge(PCA.core.sub, pd, by="id")
+```{r , pca_all,fig.height=12, fig.width=10}
+PCA_grid1(affynorm.sub)
+
 ```
 
-#### PC1 vs. PC2
-
-```{r pca_1_2_all,  fig.height=12, fig.width=10}
-p1 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=arraydate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("Array date")
-p2 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=batch))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ ggtitle("Array batch")
-p3 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=facsdate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("FACS date")
-p4 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=RNA_prep_date))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("RNA prep date")
-p5 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=location))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("location")
-p6 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=celltype))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
-p7 <-  ggplot(plotme, aes(x=PC1, y=PC2, shape=celltype, color=treatment))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("treatment")
-
-grid.arrange(p1,p2,p3,p4,p5,p6,p7,ncol=2)
-```
-
-
-Looking at all of the samples at once, it's clear there are some factors that cluster that samples best, but the picture is not entirely clear. To try to simplify matters, I ran the analyses for each cell type and location combination separately.
+Looking at all of the samples at once, it's clear there are some factors that cluster that samples best (such as location captured by PC1 and the array batch/date partly captured by PC2), but the picture is not entirely clear for other variables. To try to simplify matters, I ran the analyses for each cell type and location combination separately.
 
 ## CD8_plus-cDC {.tabset}
 
@@ -343,13 +333,23 @@ Looking at all of the samples at once, it's clear there are some factors that cl
 
 ```{r batchsetup_CD8_plus-cDC}
 affynorm.sub <- affynorm.core[,which(pData(affynorm.core)$celltype_location==celltype)]
+pData(affynorm.sub) <- droplevels(pData(affynorm.sub))
 pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arraydate,facsdate, RNA_prep_date, celltype, location, celltype_location) %>% as.data.frame()
 ```
 
+
 ### Sources of variability
 
-```{r, varsource_CD8_plus-cDC, ref.label="varsource_all"}
+```{r, varsource_CD8_plus-cDC}
+batch.factors <- c( "treatment", "batch"  )
+
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", subtitle="(couldn't assess anything other than batch variable)", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
+
+Unfortunately, due to the sparseness of some covariate varibles representation in the samples, we are unable to look at most of them. We can still see that batch is a bigger source of variation.
 
 ### Pearsons correlation
 
@@ -363,15 +363,11 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ### PCA 
 
-```{r , pca_prep_CD8_plus-cDC, ref.label="pca_prep_all"}
+```{r , pca_CD8_plus-cD, fig.height=12, fig.width=10}
+PCA_grid2(affynorm.sub)
 ```
 
-#### PC1 vs. PC2
-
-```{r pca_1_2_CD8_plus-cDC, ref.label="pca_1_2_all", fig.height=12, fig.width=10}
-```
-
-
+The PCA analysis shows that the difference in array batch is a major source of variation separating the samples. You can also see some clustering by the FACS and RNA prep dates.
 
 ## CD103_plus-migDC {.tabset}
 
@@ -379,18 +375,29 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ```{r batchsetup_CD103_plus-migDC}
 affynorm.sub <- affynorm.core[,which(pData(affynorm.core)$celltype_location==celltype)]
+pData(affynorm.sub) <- droplevels(pData(affynorm.sub))
 pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arraydate,facsdate, RNA_prep_date, celltype, location, celltype_location) %>% as.data.frame()
 ```
 
 ### Sources of variability
 
-```{r, varsource_CD103_plus-migDC, ref.label="varsource_all"}
+```{r, varsource_CD103_plus-migDC}
+batch.factors <- c("treatment", "batch", "arraydate",  "RNA_prep_date")
+
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", subtitle="(couldn't assess facsdate)", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
+
+The array date appears to have more effect on the variation than the treatment itself. 
 
 ### Pearsons correlation
 
 ```{r, corheatmap_pearsons_CD103_plus-migDC, fig.height=8, ref.label="corheatmap_pearsons_all"}
 ```
+
+Two of the samples are clearly outliers, but it is not clear what is driving the issue.
 
 ### Spearmans correlation
 
@@ -399,13 +406,11 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ### PCA
 
-```{r , pca_prep_CD103_plus-migDC, ref.label="pca_prep_all"}
+```{r , pca_CD103_plus-migDC, fig.height=12, fig.width=10}
+PCA_grid2(affynorm.sub)
 ```
 
-#### PC1 vs. PC2
-
-```{r pca_1_2_CD103_plus-migDC, ref.label="pca_1_2_all", fig.height=12, fig.width=10}
-```
+There is clearly some effect of the array date and batch on the clustering of the samples, with PC1 capturing them both. the two most extreme outliers both had their RNA prepped on the same date. 
 
 ## CD11B_minus-migDC {.tabset}
 
@@ -413,13 +418,22 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ```{r batchsetup_CD11B_minus-migDC}
 affynorm.sub <- affynorm.core[,which(pData(affynorm.core)$celltype_location==celltype)]
+pData(affynorm.sub) <- droplevels(pData(affynorm.sub))
 pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arraydate,facsdate, RNA_prep_date, celltype, location, celltype_location) %>% as.data.frame()
 ```
 
 ### Sources of variability
 
-```{r, varsource_CD11B_minus-migDC, ref.label="varsource_all"}
+```{r, varsource_CD11B_minus-migDC}
+batch.factors <- c("treatment", "batch", "arraydate", "RNA_prep_date")
+
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", subtitle="(couldn't assess FACS date variable)", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
+
+Treatment is at least as big a source of variation as batch/array date, however it appears to be interacting strongly with the RNA prep date to generate variation.
 
 ### Pearsons correlation
 
@@ -433,13 +447,11 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ### PCA 
 
-```{r , pca_prep_CD11B_minus-migDC, ref.label="pca_prep_all"}
+```{r , pca_CD11B_minus-migDC, fig.height=12, fig.width=10}
+PCA_grid2(affynorm.sub)
 ```
 
-#### PC1 vs. PC2
-
-```{r pca_1_2_CD11B_minus-migDC, ref.label="pca_1_2_all", fig.height=12, fig.width=10}
-```
+Slight effect of batch, but can also see some weak clustering for FACS date and RNA prep date.
 
 ## CD11B_plus-migDC {.tabset}
 
@@ -447,13 +459,22 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ```{r batchsetup_CD11B_plus-migDC}
 affynorm.sub <- affynorm.core[,which(pData(affynorm.core)$celltype_location==celltype)]
+pData(affynorm.sub) <- droplevels(pData(affynorm.sub))
 pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arraydate,facsdate, RNA_prep_date, celltype, location, celltype_location) %>% as.data.frame()
 ```
 
 ### Sources of variability
 
-```{r, varsource_CD11B_plus-migDC, ref.label="varsource_all"}
+```{r, varsource_CD11B_plus-migDC}
+batch.factors <- c("treatment", "batch", "arraydate", "RNA_prep_date")
+
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", subtitle="(couldn't assess FACS date variable)", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
+
+Batch and array date are a bigger source of variation than the treatment itself.
 
 ### Pearsons correlation
 
@@ -467,14 +488,11 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ### PCA
 
-```{r , pca_prep_CD11B_plus-migDC, ref.label="pca_prep_all"}
+```{r , pca_CD11B_plus-migDC, fig.height=12, fig.width=10}
+PCA_grid2(affynorm.sub)
 ```
 
-#### PC1 vs. PC2
-
-```{r pca_1_2_CD11B_plus-migDC, ref.label="pca_1_2_all", fig.height=12, fig.width=10}
-```
-
+Can see the clustering by batch and array date, some clustering for RNA prep date and FACS date as well.
 
 ## CD11B_plus-cDC {.tabset}
 
@@ -482,13 +500,22 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ```{r batchsetup_CD11B_plus-cDC}
 affynorm.sub <- affynorm.core[,which(pData(affynorm.core)$celltype_location==celltype)]
+pData(affynorm.sub) <- droplevels(pData(affynorm.sub))
 pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arraydate,facsdate, RNA_prep_date, celltype, location, celltype_location) %>% as.data.frame()
 ```
 
 ### Sources of variability
 
-```{r, varsource_CD11B_plus-cDC, ref.label="varsource_all"}
+```{r, varsource_CD11B_plus-cDC}
+batch.factors <- c("batch", "batch")
+
+pvcaObj <- pvcaBatchAssess(affynorm.sub, batch.factors, pct_threshold)
+plotme <- cbind(as.character(unlist(pvcaObj$label)), as.numeric(as.character(unlist(pvcaObj$dat)))) %>% tbl_df() %>% 
+  magrittr::set_colnames(c("label", "value")) %>% mutate(value=as.numeric(value))
+ggplot(plotme, aes(x=label, y=value, fill=label))+geom_bar(stat="identity") +theme_bw()+theme(axis.text.x = element_text(angle = 65, hjust = 1))+ theme(legend.position="none")+labs(title="Sources of variability", subtitle="(couldn't assess treatment, FACS date, array date or RNA prep date variables)", caption = "resid = unexplained variability", y="% of variability explained", x="Source of variability")
 ```
+
+Unfortunately, due to the sparseness of some covariate varibles representation in the samples, we are unable to look at most of them.
 
 ### Pearsons correlation
 
@@ -502,12 +529,8 @@ pd <- pData(affynorm.sub) %>% tbl_df %>% dplyr::select(treatment, batch, arrayda
 
 ### PCA
 
-```{r , pca_prep_CD11B_plus-cDC, ref.label="pca_prep_all"}
-```
-
-#### PC1 vs. PC2
-
-```{r pca_1_2_CD11B_plus-cDC, ref.label="pca_1_2_all", fig.height=12, fig.width=10}
+```{r , pca_CD11B_plus-cDC, fig.height=12, fig.width=10}
+PCA_grid2(affynorm.sub)
 ```
 
 Overall, these reasults indicate that the largest effect is from cell location, with batch/arraydate as the second largest. The other batch variables like the FACS date and RNA prep date are also likely to affect the differntial gene expression analysis. Unfortunately, because they are are not fully balanced with respect to the sample classes of interest, we can't adjust for them. We can however, adjust for the array batch, using the full dataset. As the RNA prep and FACS dates are somewhat confounded with the array batches, adjusting for array batch may help with them as well. 
@@ -516,98 +539,112 @@ Overall, these reasults indicate that the largest effect is from cell location, 
 
 ## ComBat
 
-`r citep("doi.org/10.1093/biostatistics/kxj037")`
+Using ComBat, a method that employs a parametric empirical Bayes framework to adjust the microarray intensity  data for known batch effects (here, I tried adjusting for different variables (as they are all confounded I could only do one) and picked the one that resulted in the best clustering of the data (the FACS date) after adjustment). `r citep("doi.org/10.1093/biostatistics/kxj037")`
 
 ```{r combat}
 # Create model with conditions of interest as factor variable
 modcombat <- model.matrix(~treatment+celltype+location, data=pData(affynorm.core))
-batch <- pData(affynorm.core)$batch
+batch <- pData(affynorm.core)$facsdate
 # Modify expression matrix
 eset.core <- exprs(affynorm.core)
 combat_edata <- ComBat(dat=eset.core,
                        batch=batch,
                        mod=modcombat,
                        par.prior=TRUE, 
-                       prior.plots=TRUE)
+                       prior.plots=FALSE)
 affynorm.batch <- affynorm.core
 exprs(affynorm.batch) <- combat_edata
 ```
 
-## PCA Assessment {.tabset}
-
-```{r PCAassess_fn}
-PCA_grid <- function(affyeset=NULL){
-  eset.pca <- affyeset
-  pd.pca <- pData(eset.pca)
-  pd.pca$id <- row.names(pd.pca)
-  eset.pca <- exprs(eset.pca)
-  PCA <- prcomp(t(eset.pca))
-  PCA.sub <- as.data.frame(PCA$x[, 1:4])
-  PCA.sub$id <- row.names(PCA.sub)
-  plotme <- base::merge(PCA.sub, pd.pca, by="id")
-  
-  p1 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=arraydate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("Array date")
-  p2 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=batch))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ ggtitle("Array batch")
-  p3 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=facsdate))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("FACS date")
-  p4 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=RNA_prep_date))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("RNA prep date")
-  p5 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=location))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("location")
-  p6 <- ggplot(plotme, aes(x=PC1, y=PC2, shape=treatment, color=celltype))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
-  p7 <-  ggplot(plotme, aes(x=PC1, y=PC2, shape=celltype, color=treatment))+geom_point(size=3)+scale_shape_manual(values = c(15,16,17,18))+ggtitle("celltype")
-  
-  grid.arrange(p1,p2,p3,p4,p5,p6,p7,ncol=2)
-}  
-```
+## PCA Assessment of Batch Correction {.tabset}
 
 ### All Cells
 
-```{r PCApostbatch_all,fig.height=12, fig.width=10}
-PCA_grid(affynorm.batch)
+We still see strong clustering by location, but now we no clustering by array batch, and cells appear to cluster  by treatment, a huge improvement over the uncorrected data.
+
+```{r PCApostbatch_all,fig.height=16, fig.width=10}
+PCA_grid1(affynorm.batch)
 ```
 
-### 
+PC1 is capturing the cell location, PC2 is capturing treatment, at least to some degree.
 
 ### CD8_plus-cDC
 
 ```{r PCApostbatch_CD8_plus-cDC,fig.height=12, fig.width=10}
 celltype <- "CD8_plus-cDC"
 affynorm.batch.sub <- affynorm.batch[,which(pData(affynorm.batch)$celltype_location==celltype)]
-PCA_grid(affynorm.batch.sub)
+PCA_grid2(affynorm.batch.sub)
 ```
 
+We now have weak clustering by cell type.
 
 ### CD103_plus-migDC
 
 ```{r PCApostbatch_CD103_plus-migDC,fig.height=12, fig.width=10}
 celltype <- "CD103_plus-migDC"
 affynorm.batch.sub <- affynorm.batch[,which(pData(affynorm.batch)$celltype_location==celltype)]
-PCA_grid(affynorm.batch.sub)
+PCA_grid2(affynorm.batch.sub)
 ```
+
+Clear clustering by cell type.
 
 ### CD11B_minus-migDC
 
 ```{r PCApostbatch_CD11B_minus-migDC,fig.height=12, fig.width=10}
 celltype <- "CD11B_minus-migDC"
 affynorm.batch.sub <- affynorm.batch[,which(pData(affynorm.batch)$celltype_location==celltype)]
-PCA_grid(affynorm.batch.sub)
+PCA_grid2(affynorm.batch.sub)
 ```
+
+Clear clustering by cell type.
 
 ### CD11B_plus-migDC
 
 ```{r PCApostbatch_CD11B_plus-migDC,fig.height=12, fig.width=10}
 celltype <- "CD11B_plus-migDC"
 affynorm.batch.sub <- affynorm.batch[,which(pData(affynorm.batch)$celltype_location==celltype)]
-PCA_grid(affynorm.batch.sub)
+PCA_grid2(affynorm.batch.sub)
 ```
+
+Clear clustering by cell type. The co-clustering of Scar_alone and VACV_ID is interesting.
 
 ### CD11B_plus-cDC
 
 ```{r PCApostbatch_CD11B_plus-cDC,fig.height=12, fig.width=10}
 celltype <- "CD11B_plus-cDC"
 affynorm.batch.sub <- affynorm.batch[,which(pData(affynorm.batch)$celltype_location==celltype)]
-PCA_grid(affynorm.batch.sub)
+PCA_grid2(affynorm.batch.sub)
 ```
 
-There is less clustering by array batch, but we still aren't seeing cells cluster strongly by treatment.
+Weak clustering by cell type.
+
+---
+
+# Downloads
+
+```{r downloads, results="hide"}
+library(rdrop2)
+dropboxfiledir <- "/Public/Consults/na_vaccinia_scar/downloads"
+
+metadataurl <-   drop_share(file.path(dropboxfiledir, "metadata.xlsx"))$url
+
+CELfilesurl <-   drop_share(file.path(dropboxfiledir, "CEL_files.zip"))$url
+
+tempoutfile <-file.path(tempdir(), "norm_intensities.xlsx")
+rio::export(exprs(affynorm.core), file=tempoutfile, rowNames=TRUE)
+drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
+normfileurl <-  drop_share(file.path(dropboxfiledir, filename="norm_intensities.xlsx"))$url
+
+tempoutfile <-file.path(tempdir(), "batch_corrected_intensities.xlsx")
+rio::export(exprs(affynorm.batch), file=tempoutfile, rowNames=TRUE)
+drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
+batchcorrfileurl <-  drop_share(file.path(dropboxfiledir, filename="batch_corrected_intensities.xlsx"))$url
+```
+
+## [Metadata file](`r metadataurl`)
+## [CEL files archive](`r CELfilesurl`)
+## [Normalized intensities](`r normfileurl`)
+## [Batch corrected intensities](`r batchcorrfileurl`)
 
 
 

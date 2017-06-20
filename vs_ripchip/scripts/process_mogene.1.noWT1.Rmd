@@ -644,7 +644,7 @@ background <- all.results[[1]]$stats.eset %>% tbl_df() %>% dplyr::select(., symb
  
  
 gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=22029) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
- 
+renal_go <- gprofiler_results 
 write.csv(gprofiler_results, file.path(resultsDir, "GOresults.top200.csv"))
 ``` 
 
@@ -1282,7 +1282,6 @@ write.table(top.results.Stau2[!is.na(top.results.Stau2$GO),], file=file.path(res
 - take top 200 genes
 
 ```{r kiebler, dev='png'}
-# data is rat, have to get go bindings for rat
 
 # pull in kiebler data,run gprofiler, revigo and adhesion checks
 kiebler.data <- read.csv(file.path(dataDir, "mmc2.csv")) %>% filter(., Symbol!="---")
@@ -1307,7 +1306,7 @@ gprofiler_results <- gprofiler(query = top200.kiebler,
 
  
 gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=19905) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
-
+kiebler_go <- gprofiler_results
 export(gprofiler_results, file.path(resultsDir, "GOresults.top200.Kiebler.xlsx"))
 ```
 
@@ -1498,7 +1497,6 @@ gprofiler_results <- gprofiler(query = top200.kusek,
                                domain_size = "annotated") 
 
 gprofiler_results <- tbl_df(gprofiler_results ) %>% mutate(., domain_size=22029) %>% mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
-
 export(gprofiler_results, file.path(resultsDir, "GOresults.top200.Kusek.xlsx"))
 ```
 
@@ -1544,7 +1542,9 @@ export(kusek.data[!is.na(kusek.data$GO),], file=file.path(resultsDir, "celladhes
 
 **[Excel file with Kiebler Cell Adhesion Genes annotations](../results/celladhesion.GO.genes.kusek.xlsx)**
 
-##Kiebler/Kusek DEG overlap functional analysis
+## Kiebler/Kusek DEG overlap functional analysis
+
+### Functional enrichments of DEG overlaps
 
 ```{r kieblercompare}
 # setup biomarts for pulling in annoation translations
@@ -1559,6 +1559,7 @@ filters.mus <- listFilters(ensemblmart.mus)
 kiebler.data.sub <- kiebler.data %>% tbl_df() %>% filter(., adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff)
 kiebler.rat.symbols <- kiebler.data.sub$Symbol %>% unique(.) %>% na.omit(.)
 kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+
 
 # Kusek data, get mouse ensembl ids
 kusek.data.sub <- kusek.data %>% tbl_df() %>% filter(., Adjusted.p.value<pvalue.cutoff & Fold.Change>2^lfc.cutoff)
@@ -1576,9 +1577,9 @@ kusek.kiebler.overlap <- intersect(kusek.mus.ensemblids, kiebler.mus.ensemblids)
 kiebler.renal.overlap <- intersect(kiebler.mus.ensemblids, renal.mus.ensemblids)
 ```
 
-### Kiebler-Renal Overlap Functional analysis
+#### Kiebler-Renal Overlap Functional analysis
 
-#### Gprofiler
+##### Gprofiler
 
 ```{r kieblerrenalGO}
 gprofiler_results  <- gprofiler(query = kiebler.renal.overlap, 
@@ -1595,12 +1596,12 @@ export(gprofiler_results, file.path(resultsDir, "GOresults.Kiebler.renal.overlap
 
 **[Excel file with Kiebler-Renal Overlap GO enrichments](../results/GOresults.Kiebler.renal.overlap.xlsx)**
 
-#### Revigo visualization of Gprofiler results
+##### Revigo visualization of Gprofiler results
  - only one enriched category, so didn't run Revigo
 
-### Kusek-Renal Overlap Functional analysis
+#### Kusek-Renal Overlap Functional analysis
 
-#### Gprofiler
+##### Gprofiler
 
 ```{r kusekrenalGO}
 gprofiler_results  <- gprofiler(query = kusek.renal.overlap, 
@@ -1617,7 +1618,7 @@ export(gprofiler_results, file.path(resultsDir, "GOresults.Kusek.renal.overlap.x
 
 **[Excel file with Kiebler-Renal Overlap GO enrichments](../results/GOresults.Kusek.renal.overlap.xlsx)**
 
-#### Revigo visualization of Gprofiler results
+##### Revigo visualization of Gprofiler results
 
 Once again, there are too few enriched categories to make this worthwhile.
 
@@ -1625,9 +1626,9 @@ For Biological Processes, there is: regulation of ripoptosome assembly involved 
 For Cellular Components, there is: spindle microtubule
 For Molecular Functions, there is ATPase activity
 
-### Kusek-Kiebler Overlap Functional analysis
+#### Kusek-Kiebler Overlap Functional analysis
 
-#### Gprofiler
+##### Gprofiler
 
 ```{r kieblerkusekGO}
 gprofiler_results  <- gprofiler(query = kusek.kiebler.overlap, 
@@ -1682,6 +1683,244 @@ treemap(
   fontcolor.labels=c("black", "gray34"),
   fontsize.title=14
   )
+```
+
+
+### Overlap of Functional enrichments themselves
+- 
+
+```{r GOoverlaps}
+# Kusek data
+top.kusek <- filter(kusek.data, Adjusted.p.value<pvalue.cutoff & Fold.Change>2^lfc.cutoff) %>% 
+  arrange(. , desc(Fold.Change)) %>% 
+  select(., Symbol) %>% 
+  as.data.frame() %>% 
+  unlist(.) %>% 
+  as.vector(.)
+
+gprofiler_results.unfiltered <- gprofiler(query = top.kusek, 
+                               organism = "mmusculus",
+                               ordered_query = T, 
+                               exclude_iea = F, 
+                               max_p_value = 0.05, 
+                               max_set_size = 0,
+                               correction_method = "gSCS",
+                               hier_filtering = "none", 
+                               domain_size = "annotated") 
+gprofiler_results.unfiltered <- tbl_df(gprofiler_results.unfiltered ) %>% 
+  mutate(., domain_size=22029) %>% 
+  mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+kusek_go.unfiltered <- gprofiler_results.unfiltered
+
+top.kiebler <- subset(kiebler.data, adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff) %>%  
+  filter(., Symbol!="---") %>% 
+  arrange(. , desc(Fold.change)) %>% 
+  select(., Symbol) %>% 
+  as.data.frame() %>% 
+  unlist(.) %>% 
+  as.vector(.) 
+
+gprofiler_results.unfiltered <- gprofiler(query = top.kiebler, 
+                               organism = "rnorvegicus",
+                               ordered_query = T, 
+                               exclude_iea = F, 
+                               max_p_value = 0.05, 
+                               max_set_size = 0,
+                               correction_method = "gSCS",
+                               hier_filtering = "none", 
+                               domain_size = "annotated") 
+gprofiler_results.unfiltered <- tbl_df(gprofiler_results.unfiltered ) %>% 
+  mutate(., domain_size=19905) %>% 
+  mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+kiebler_go.unfiltered <- gprofiler_results.unfiltered
+
+gprofiler_results.unfiltered  <- gprofiler(query = top.Stau2, 
+                                           organism = "mmusculus",
+                                           ordered_query = T, 
+                                           exclude_iea = F, 
+                                           max_p_value = 0.05, 
+                                           max_set_size = 0,
+                                           correction_method = "gSCS",
+                                           hier_filtering = "none", 
+                                           domain_size = "annotated") 
+gprofiler_results.unfiltered <- tbl_df(gprofiler_results.unfiltered ) %>% 
+  mutate(., domain_size=22029) %>% 
+  mutate(., enrichment=(overlap.size/query.size)/(term.size/domain_size))
+renal_go.unfiltered <- gprofiler_results.unfiltered
+
+### From GO terms
+kusek_go.sub <- filter(kusek_go.unfiltered, domain=="CC" | domain=="MF" | domain=="BP") %>% dplyr::select(., term.id, term.name, domain,p.value, enrichment, intersection) %>%  mutate(., set="Kusek")
+kiebler_go.sub <- filter(kiebler_go.unfiltered, domain=="CC" | domain=="MF" | domain=="BP") %>% dplyr::select(., term.id, term.name, domain,p.value, enrichment, intersection) %>% mutate(., set="Kiebler")
+renal_go.sub <- filter(renal_go.unfiltered, domain=="CC" | domain=="MF" | domain=="BP") %>% dplyr::select(., term.id, term.name,domain, p.value, enrichment, intersection)%>% mutate(., set="Renal")
+all_go.sub <- rbind(kusek_go.sub, kiebler_go.sub, renal_go.sub)  %>% mutate(log10pvalue=-log10(p.value)) %>% arrange(domain)
+bp_go.sub <- all_go.sub %>% filter(domain=="BP") %>% filter (p.value<0.01) %>% filter(enrichment>2.5)
+mf_go.sub <- all_go.sub %>% filter(domain=="MF") %>% filter(p.value<0.01) %>%  filter(enrichment>2.5)
+cc_go.sub <- all_go.sub %>% filter(domain=="CC") %>% filter(p.value<0.01) %>%  filter(enrichment>2.5)
+
+library(GOSemSim)
+# calculaute all pairwise GO semantic similarities and use to for distance matrix for dendrogram
+all_gos <- dplyr::select(all_go.sub, term.id, domain) %>% arrange(term.id) %>% distinct() %>% arrange(domain) %>% dplyr::select( term.id) %>% as.data.frame %>% unlist %>% as.vector
+bp_gos <-  dplyr::select(bp_go.sub, term.id, domain) %>%  filter(domain=="BP") %>% arrange(term.id) %>% distinct() %>% arrange(domain) %>% dplyr::select( term.id) %>% as.data.frame %>% unlist %>% as.vector
+mf_gos <- dplyr::select(mf_go.sub, term.id, domain) %>%  filter(domain=="MF")%>% arrange(term.id) %>% distinct() %>% arrange(domain) %>% dplyr::select( term.id) %>% as.data.frame %>% unlist %>% as.vector
+cc_gos <- dplyr::select(cc_go.sub, term.id, domain) %>%  filter(domain=="CC")%>% arrange(term.id) %>% distinct() %>% arrange(domain) %>% dplyr::select( term.id) %>% as.data.frame %>% unlist %>% as.vector
+# all pairwise comparisons
+bp.comparisons <- expand.grid(term1=bp_gos, term2=bp_gos)
+mf.comparisons <- expand.grid(term1=mf_gos, term2=mf_gos)
+cc.comparisons <- expand.grid(term1=cc_gos, term2=cc_gos)
+# calculate pairwise semantic similarities adn put into matrix
+method <- "Wang"
+bp.sem.matrix <- ddply(bp.comparisons,1, function(x) goSim(x[1], x[2], organism="mouse", ont="BP", measure=method))
+mf.sem.matrix <- ddply(mf.comparisons,1, function(x) goSim(x[1], x[2], organism="mouse", ont="MF", measure=method))
+cc.sem.matrix <- ddply(cc.comparisons,1, function(x) goSim(x[1], x[2], organism="mouse", ont="CC", measure=method))
+
+# label matrices
+bp.sem.matrix <- col2rownames(bp.sem.matrix, "term1")
+mf.sem.matrix <- col2rownames(mf.sem.matrix, "term1")
+cc.sem.matrix <- col2rownames(cc.sem.matrix, "term1")
+names(bp.sem.matrix) <- row.names(bp.sem.matrix)
+names(mf.sem.matrix) <- row.names(mf.sem.matrix)
+names(cc.sem.matrix) <- row.names(cc.sem.matrix)
+
+# cleanup missing values
+bp.sem.matrix[is.na(bp.sem.matrix)]<- 0
+mf.sem.matrix[is.na(mf.sem.matrix)]<- 0
+cc.sem.matrix[is.na(cc.sem.matrix)]<- 0
+
+# invert scale so dendrogram is also inverted
+bp.sem.matrix <- 1-bp.sem.matrix
+mf.sem.matrix <- 1-mf.sem.matrix
+cc.sem.matrix <- 1-cc.sem.matrix
+
+# get clustering based on semantic similariites
+bp.hc <- hclust(as.dist(as.matrix(bp.sem.matrix)))
+mf.hc <- hclust(as.dist(as.matrix(mf.sem.matrix)))
+cc.hc <- hclust(as.dist(as.matrix(cc.sem.matrix)))
+
+# get ordering of terms from clustering adn make new dataframe for plot
+bp.GO.term.ids.ordered <- names(bp.sem.matrix)[bp.hc$order]
+bp.GO.term.names.ordered <-bp_go.sub$term.name[match(bp.GO.term.ids.ordered, bp_go.sub$term.id)]
+bp_go.sub <- bp_go.sub %>% as.data.frame()
+bp_go.sub$term.id <- factor(bp_go.sub$term.id, levels=bp.GO.term.ids.ordered)
+bp_go.sub$term.name <- factor(bp_go.sub$term.name, levels=bp.GO.term.names.ordered)
+
+mf.GO.term.ids.ordered <- names(mf.sem.matrix)[mf.hc$order]
+mf.GO.term.names.ordered <-mf_go.sub$term.name[match(mf.GO.term.ids.ordered, mf_go.sub$term.id)]
+mf_go.sub <- mf_go.sub %>% as.data.frame()
+mf_go.sub$term.id <- factor(mf_go.sub$term.id, levels=mf.GO.term.ids.ordered)
+mf_go.sub$term.name <- factor(mf_go.sub$term.name, levels=mf.GO.term.names.ordered)
+
+cc.GO.term.ids.ordered <- names(cc.sem.matrix)[cc.hc$order]
+cc.GO.term.names.ordered <-cc_go.sub$term.name[match(cc.GO.term.ids.ordered, cc_go.sub$term.id)]
+cc_go.sub <- cc_go.sub %>% as.data.frame()
+cc_go.sub$term.id <- factor(cc_go.sub$term.id, levels=cc.GO.term.ids.ordered)
+cc_go.sub$term.name <- factor(cc_go.sub$term.name, levels=cc.GO.term.names.ordered)
+
+require(dendextend)
+colors <- brewer.pal(n = 10, name="Paired")
+heightcutoff=0.5
+
+dend.bp.hc <- bp.hc %>% 
+  as.dendrogram %>%
+  color_branches(., h=heightcutoff, col=colors) %>% 
+  set("branches_lwd", 1) %>%
+  set("labels_cex", 0.6) %>% 
+  set("labels_colors", h=heightcutoff, value=colors) %>% 
+  set("leaves_pch", 19) %>% 
+  set("leaves_cex", 0.5) 
+ggd1 <- as.ggdend(dend.bp.hc)
+bp.d <- ggplot(ggd1, horiz = TRUE)
+
+dend.mf.hc <- mf.hc %>% 
+  as.dendrogram %>%
+  color_branches(., h=heightcutoff, col=colors) %>% 
+  set("branches_lwd", 1) %>%
+  set("labels_cex", 0.6) %>% 
+  set("labels_colors", h=heightcutoff, value=colors) %>% 
+  set("leaves_pch", 19) %>% 
+  set("leaves_cex", 0.5) 
+ggd1 <- as.ggdend(dend.mf.hc)
+mf.d <- ggplot(ggd1, horiz = TRUE)
+
+dend.cc.hc <- cc.hc %>% 
+  as.dendrogram %>%
+  color_branches(., h=heightcutoff, col=colors) %>% 
+  set("branches_lwd", 1) %>%
+  set("labels_cex", 0.6) %>% 
+  set("labels_colors", h=heightcutoff, value=colors) %>% 
+  set("leaves_pch", 19) %>% 
+  set("leaves_cex", 0.5) 
+ggd1 <- as.ggdend(dend.cc.hc)
+cc.d <- ggplot(ggd1, horiz = TRUE)
+
+bp.dp <- ggplot(bp_go.sub,aes(x=set, y=term.name, size=enrichment, color=log10pvalue))+  
+  geom_point() + 
+  scale_color_gradient(low="blue", high="red") +
+   theme_bw()+
+    theme(legend.position="left")+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line( size=.1, color="black" ))+
+  ggtitle("Significant Enrichments of Biological Process GO Terms")+ 
+  scale_y_discrete(position = "right") + theme(legend.position="right")
+
+mf.dp <- ggplot(mf_go.sub,aes(x=set, y=term.name, size=enrichment, color=log10pvalue))+  
+  geom_point() + 
+  scale_color_gradient(low="blue", high="red") +
+   theme_bw()+
+    theme(legend.position="left")+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line( size=.1, color="black" ))+
+  ggtitle("Significant Enrichments of Molecular Function GO Terms")+ 
+  scale_y_discrete(position = "right") + theme(legend.position="right")
+
+cc.dp <- ggplot(cc_go.sub,aes(x=set, y=term.name, size=enrichment, color=log10pvalue))+  
+  geom_point() + 
+  scale_color_gradient(low="blue", high="red") +
+   theme_bw()+
+    theme(legend.position="left")+
+  theme(panel.grid.major.x = element_blank(), panel.grid.major.y = element_line( size=.1, color="black" ))+
+  ggtitle("Significant Enrichments of Cellular Component GO Terms")+ 
+  scale_y_discrete(position = "right") + theme(legend.position="right")
+ 
+library(gridExtra)
+
+grid.arrange(bp.d,bp.dp,ncol=2)
+grid.arrange(mf.d, mf.dp,ncol=2)
+grid.arrange(cc.d, cc.dp,ncol=2)
+
+### Table with results
+kusek_go.sub <- kusek_go.unfiltered %>% filter(domain=="BP"|domain=="MF"|domain=="CC") %>% dplyr::select(term.id, term.name, domain, p.value, enrichment, intersection)
+renal_go.sub <- renal_go.unfiltered %>% filter(domain=="BP"|domain=="MF"|domain=="CC") %>%  dplyr::select(term.id, term.name, domain, p.value, enrichment, intersection)
+kiebler_go.sub <- kiebler_go.unfiltered %>% filter(domain=="BP"|domain=="MF"|domain=="CC") %>%  dplyr::select(term.id, term.name, domain, p.value, enrichment, intersection)
+
+renal.kiebler.go.stats <- merge(renal_go.sub, kiebler_go.sub, by=c("term.id", "term.name","domain"), all=TRUE, suffixes=c(".Renal", ".Kiebler"))
+renal.kiebler.kusek.go.stats <- merge(renal.kiebler.go.stats, kusek_go.sub, by=c("term.id", "term.name", "domain"), all=TRUE, suffixes=c("", ".Kuskek"))
+names(renal.kiebler.kusek.go.stats) <- sub("^p.value$", "p.value.Kusek", names(renal.kiebler.kusek.go.stats))
+names(renal.kiebler.kusek.go.stats) <- sub("^enrichment$", "enrichment.Kusek", names(renal.kiebler.kusek.go.stats))
+names(renal.kiebler.kusek.go.stats) <- sub("^intersection$", "intersection.Kusek", names(renal.kiebler.kusek.go.stats))
+export(renal.kiebler.kusek.go.stats, file.path(resultsDir, "renal.kiebler.kusek.go.stats.xlsx"))
+```
+
+
+```{r intensity_distributions}
+library(janitor)
+input_intensities <- clean_names(all.results[[1]]$stats.eset) %>% tbl_df %>% dplyr::select(symbol, contains("input"), -contains("mrna"))
+
+#  kiebler data, translate rgd symbols to mouse symbols
+kiebler.data.sub <- kiebler.data %>% tbl_df() %>% filter(., adj.P.Val<pvalue.cutoff & Fold.change>2^lfc.cutoff)
+kiebler.rat.symbols <- kiebler.data.sub$Symbol %>% unique(.) %>% na.omit(.)
+kiebler.mus.ensemblids <- as.vector(unlist(getBM(kiebler.rat.symbols, filters="rgd_symbol", attributes="mmusculus_homolog_ensembl_gene", mart=ensemblmart.rat)))
+kiebler.mus.symbols <- as.vector(unlist(getBM(kiebler.mus.ensemblids, filters="ensembl_gene_id", attributes="mgi_symbol", mart=ensemblmart.mus)))
+top.kiebler <- kiebler.mus.symbols
+
+top.Stau2.diff <-setdiff(setdiff(top.Stau2, kiebler.mus.symbols), kusek.mus.symbols)
+
+input_intensities <- mutate(input_intensities, renal=ifelse(symbol %in% top.Stau2.diff,"1", "0"), kusek=ifelse(symbol %in% top.kusek, "1", "0"),kiebler=ifelse(symbol %in% top.kiebler, "1", "0"), all=ifelse(symbol %in% symbol, "1", "0")) %>% mutate(mean=rowMeans(dplyr::select(.,contains("input")))) %>% dplyr::select(., -contains("input"))
+
+library(tidyr)
+input_intensities <- tidyr::gather(temp, set, include, renal, kiebler, kusek, all, -symbol, -mean) %>% filter(., include==1) %>% dplyr::select(-include)
+
+ggplot(input_intensities, aes(color=set, x=mean))+geom_density()+xlab("Mean intensity in input samples")
+
+
+  
 ```
 
 ----

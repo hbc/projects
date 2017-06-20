@@ -72,7 +72,7 @@ check_install = function(packages) {
       stop()
    }
 }
-packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "DT", "DEGreport", "dplyr", "janitor", "rio", "rdrop2")
+packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "DT", "DEGreport", "dplyr", "janitor", "rio", "rdrop2", "biomaRt")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
 ```
@@ -115,13 +115,12 @@ if (file.exists(tx2genes_file)) {
     names(sf_files) = rownames(summarydata)
     tx2gene = read.table(tx2genes_file, sep=",", row.names=NULL, header=FALSE)
     txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
-             reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
+             importer=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
     counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
 } else {
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
 }}
 counts = counts[, order(colnames(counts)), drop=FALSE]
-
 
 # this is a list of all non user-supplied metadata columns that could appear
 known_columns = c("rrna_rate", "duplication_rate_of_mapped", "mapped_reads", "mapped_paired_reads", "quality_format", "intergenic_rate", "sequence_length", "exonic_rate", "total_reads", "percentgc", "rrna", "duplicates", "name", "sequences_flagged_as_poor_quality", "average_insert_size", "intronic_rate", "x5_3_bias", "fragment_length_mean","x_gc", "mapped_reads_pct")
@@ -132,35 +131,38 @@ metadata = metadata[, colSums(is.na(metadata)) < nrow(metadata), drop=FALSE]
 metadata <- metadata[, c( "treatment", "lane", "replicate")] 
 ```
 
-# Merge lanes
+# Data manipulations
+
+## Merge lanes
 
 ```{r mergelanes}
-counts.t <- t(counts)
+sampleids <- unique(summarydata$sampleid)
+counts.summed <- matrix(nrow=nrow(counts), ncol=length(sampleids))
 
-counts.t <- cbind(counts.t, summarydata)
+for (n in 1:length(sampleids)){
+  sampleid <- sampleids[n]
+  indices <- grep(sampleid, names(counts))
+  counts.summed[,n] <-  rowSums(counts[,indices])
+}
 
+counts.summed <- as.data.frame(counts.summed)
+names(counts.summed) <- sampleids
+row.names(counts.summed) <- row.names(counts)
 
-counts.t <- counts.t %>% dplyr::select(contains("ENSG"), sampleid)
+metadata <- summarydata %>% tbl_df() %>% dplyr::select(sampleid, treatment, replicate) %>% distinct(sampleid, treatment, replicate) %>% as.data.frame() %>% col2rownames(.,"sampleid", removecol = FALSE )
 
-counts.t <- counts.t %>% group_by(sampleid)
-
-temp <- summarize_each(counts.t, funs(sum))
-
-
-
-counts.summed <- counts.t %>% tbl_df() %>% group_by(sampleid) %>% summarize_each(funs(sum))
-
-
+rm(summarydata)
+counts <- counts.summed
+#identical(row.names(metadata), names(counts))
 ```
 
-# Drop failed samples
+## Drop failed samples
 
 Sample nucleated_3 appears to have failed, as shown in the previous report [here][https://www.dropbox.com/s/pn6yz4lbtrf0iik/20170421-qc_summary.zip?dl=0], so will be dropped.
 
-
 ```{r dropfailures}
-
-
+metadata <- metadata[!grepl("nucleated_3", row.names(metadata)),]
+counts <- counts[,!grepl("nucleated_3", names(counts))]
 ```
 
 
@@ -177,9 +179,10 @@ sanitize_datatable = function(df, ...) {
 set.seed(1454944673)
 ```
 
-## Sample metadata
+## Updated sample metadata
+
 ```{r summary-table, echo=FALSE, cache=FALSE}
-sanitize_datatable(summarydata, style='bootstrap')
+sanitize_datatable(metadata, style='bootstrap')
 ```
 
 ```{r heatmap-function}
@@ -199,120 +202,31 @@ get_heatmap_fn = function(summarydata) {
 heatmap_fn = get_heatmap_fn(summarydata)
 ```
 
+## Remove ribosomal and mitochondrial genes
 
-# Quality control metrics
+```{r rRNA removal}
+ensemblmart = useMart(biomart = "ENSEMBL_MART_ENSEMBL", dataset = "hsapiens_gene_ensembl", host = "useast.ensembl.org")
 
-```{r qualimap-run}
-qualimap_run = "exonic_rate" %in% colnames(summarydata)
-do_quality = "total_reads" %in% colnames(summarydata)
+conversions = getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype", "chromosome_name"), mart =ensemblmart)
+
+# id rRNA genes by biotype coding
+rrna_biotypes = c("rRNA", "Mt_rRNA", "misc_RNA", "snRNA", "snoRNA", "tRNA", "Mt_tRNA")
+rrna_genes <- unique(subset(conversions, gene_biotype %in% rrna_biotypes)$ensembl_gene_id)
+
+#id mitochondrial proteing coding genes by chromosome
+mt_genes <- unique(subset(conversions, conversions$chromosome_name=="MT" & conversions$gene_biotype=="protein_coding")$ensembl_gene_id)
+
+# Analysis without mt and rRNA genes
+counts <- counts[!rownames(counts) %in% rrna_genes & !rownames(counts) %in% mt_genes, ]
 ```
 
-## Mapped reads
-
-The number of mapped reads are low (we'd prefer to see >20 million reads mapped), nucleated_3 is below an acceptable range.
-
-```{r mapped-plot, eval=do_quality}
-ggplot(summarydata, aes(x=name, y=mapped_reads, fill=treatment)) +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    geom_bar(stat="identity") +
-    ylab("mapped reads") + xlab("")
-```
-
-## Genomic mapping rate
-
-The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts. For the majority of samples, we are seeing a lower mapping rate than we'd like (i.e. >90%). Once again, nucleated_3 is outside of the acceptable range. 
-
-```{r mapping-rate-plot, eval=do_quality}
-mapping_string = "mapped_reads_pct"
-ggplot(summarydata, aes_string(x="name", y=mapping_string, fill="treatment")) +
-    geom_bar(stat="identity") +
-    ylab("mapping rate") + xlab("") +ylim(c(0,100))+
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90))
-```
-
-## Number of genes detected
-
-The number of genes detected for each sample is a bit low  for most samples, with over nucliei_3 showing levels that are lower than recommended. As gene detection can strongly affect sample variance, we will keep an eye on this factor to see if the samples cluster by it. 
-
-```{r genes-detected-plot}
-dd = data.frame(Name=colnames(counts), genes_detected = colSums(counts > 0), treatment=summarydata$treatment)
-ggplot(dd, aes(x=Name, y=genes_detected, fill=treatment)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("genes detected") + xlab("")
-```
-
-## Gene detection saturation
-
-Gene detection saturation was nearly reached for the majority of the samples, which means that most of the samples were able to detect the majority of expressed genes. This is good to see. There is no clear linear trend here of genes detected increasing with the number of reads mapped ine the samples, which may indicate gene detection saturation. The low gene detection with nuclei_3 appears to suggest that more reads are picking up non-genic nucleic acids, potentially DNA?
-
-```{r saturation-plot, eval=do_quality}
-col_mapped =  "mapped_reads"
-dd = data.frame(mapped=summarydata[,col_mapped], genes_detected = colSums(counts > 0), treatment=summarydata$treatment, replicate=as.character(summarydata$replicate))
-ggplot(dd, aes(x=mapped, y=genes_detected, color=treatment, shape=replicate)) +
-    geom_point(size=5) +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("genes detected") + xlab("reads mapped")
-```
-
-## Exonic mapping rate
-
-The exonic mapping rates are good for the non-nuclear samples (excepting nucleated_3, which looks like a failure), with over 60% of total reads mapping to exons. The lower exonic mapping rates in the nuclei may be due to a higher percentage of non-processed transcripts in those samples.
-
-```{r exonic-mapping-plot, eval="exonic_rate" %in% colnames(summarydata)}
-ggplot(summarydata, aes(x=name, y=exonic_rate, fill=treatment)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("exonic mapping rate") + xlab("")
-```
-
-## rRNA mapping rate
-
-Antyhing above 10% of reads being rRNA is unacceptable. The particularly high levels in nuclei_3 probably explain why we are picking up fewer genes in that sample.
-
-```{r check-rRNA-eval}
-eval_rRNA = "rrna_rate" %in% colnames(summarydata) & !sum(is.na(summarydata$rrna_rate)) == nrow(summarydata)
-```
-```{r rRNA-rate-plot, eval=eval_rRNA & do_quality}
-ggplot(summarydata, aes(x=name, y=rrna_rate, fill=treatment)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("rRNA rate") + xlab("")
-```
-
-These values are fine. Anything below 5% is reasonable, the KO_2 sample is relatively higher but in absolute terms, sill quite low.
-
-## 5'->3' bias
-
-There is some bias, but it is fairly consistent among samples (excepting, once again, nucleated_3).
-
-```{r 53bias, eval="x5_3_bias" %in% colnames(summarydata) & do_quality}
-ggplot(summarydata, aes(x=name, y=x5_3_bias, fill=treatment)) +
-    geom_bar(stat="identity") +
-    theme_bw(base_size=10) +
-    theme(panel.grid.major = element_line(size = .5, color = "grey"),
-          axis.text.x = element_text(angle=90)) +
-    ylab("5'->3' bias") + xlab("")
-```
+# Quality assessments
 
 ## Boxplot of log10 counts per gene
 
-Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different. The count spreads have a few outliers for every sample, liely reflecting the presence of rRNA in the samples.
+Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different.
 
 ```{r boxplot-raw}
-
 melted = melt(counts)
 colnames(melted) = c("sample", "count")
 melted$sample = factor(melted$sample)
@@ -331,9 +245,7 @@ Trimmed mean of M-values (TMM) normalization is described
 
 Robinson, M. D., & Oshlack, A. (2010). A scaling normalization method for differential expression analysis of RNA-seq data. Genome Biology, 11(3). doi:10.1186/gb-2010-11-3-r25
 
-
 Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different. With the exception of nucleated_3 and nuclei_3, the samples look good, with similar log<sub>10</sub> DESeq2-normalized counts per gene densities:
-
 
 ```{r boxplot-normalized}
 y = DGEList(counts=counts)
@@ -352,12 +264,11 @@ ggplot(melted, aes(x=sample, y=count)) + geom_boxplot() +
 
 ## Density of normalized counts
 
-Nucleated_3, nuclei_3 and maybe nuclei_1 look like outliers here.
+nuclei_3 is still looking like an outlier here, but maybe normalization with the ERCC controls will help
 
 ```{r density-normalized}
-
-melted.annot <- merge(melted, summarydata, by.x="sample", by.y="name")
-ggplot(melted.annot, aes(x=count, group=sample, color=sampleid)) +
+melted.annot <- merge(melted, metadata, by.x="sample", by.y="sampleid")
+ggplot(melted.annot, aes(x=count, group=sample, color=sample)) +
     geom_density() +
     theme_bw(base_size=10) +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
@@ -368,21 +279,21 @@ ggplot(melted.annot, aes(x=count, group=sample, color=sampleid)) +
 
 ## Correlation heatmap of TMM-normalized counts {.tabset}
 
-
 ### Correlation (Spearman)
 
-Perhaps unsurprisingly, nucleated_3 is a complete outlier.
+Correlations are still not ideal
 
 ```{r spearman-heatmap-normalized, eval=ncol(counts) > 1}
-heatmap_fn(cor(normalized_counts, method="spearman"))
+metadata$replicate <- as.character(metadata$replicate)
+metadata$sampleid <-NULL 
+heatmap_fn(cor(normalized_counts, method="spearman") )
 ```
 
 ## PCA plots {.tabset}
 
-Sample nucleated_3 is a complete outlier again. 
-
 ```{r pca, eval=ncol(counts) > 1}
-dds = DESeqDataSetFromMatrix(countData=counts, colData=summarydata, design=~name)
+metadata <- row2colnames(metadata, "sampleid")
+dds = DESeqDataSetFromMatrix(countData=counts, colData=metadata, design=~treatment)
 vst = varianceStabilizingTransformation(dds)
 pca_loadings = function(object, ntop=500) {
   rv <- matrixStats::rowVars(assay(object))
@@ -397,7 +308,7 @@ pc = pca_loadings(vst)
 comps = data.frame(pc$x)
 comps$name = rownames(comps)
 library(dplyr)
-comps = comps %>% left_join(summarydata, by=c("name"="name"))
+comps = comps %>% left_join(metadata, by=c("name"="sampleid"))
 colorby = "name"
 ```
 
@@ -418,6 +329,9 @@ pca_plot = function(comps, nc1, nc2, colorby, shapeby) {
 ```
 
 ### PC1 vs. PC2
+
+The samples are still not clustering like we would like.
+
 ```{r PC1-PC2}
 comps$replicate <- as.character(comps$replicate)
 pca_plot(comps, 1, 2, colorby="treatment", shapeby="replicate")
@@ -425,12 +339,12 @@ pca_plot(comps, 1, 2, colorby="treatment", shapeby="replicate")
 
 ### PC3 vs. PC4
 ```{r PC3-PC4}
-pca_plot(comps, 3, 4, colorby, shapeby="replicate")
+pca_plot(comps, 3, 4, colorby="treatment", shapeby="replicate")
 ```
 
 ### PC5 vs. PC6
 ```{r PC5-PC6}
-pca_plot(comps, 5, 6, colorby, shapeby="replicate")
+pca_plot(comps, 5, 6, colorby="treatment", shapeby="replicate")
 ```
 
 ### Variance explained by component

@@ -64,7 +64,7 @@ check_install = function(packages) {
 }
 ```
 
-```{r load-libraries, echo=FALSE, cache=FALSE}
+```{r load-libraries, cache=FALSE}
 packages = c("ggplot2", "reshape", "gplots", "edgeR", "CHBUtils", "pheatmap","DESeq2", "tximport", "DT", "DEGreport", "dplyr", "rio", "janitor", "rdrop2", "knitr", "gridExtra", "clusterProfiler", "gProfileR", "readr", "DEGreport", "vsn", "clusterProfiler", "gage", "pathview", "gageData", "org.Mm.eg.db")
 check_install(packages)
 installed = lapply(packages, library, character.only = TRUE)
@@ -80,6 +80,7 @@ tx2genes_file = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnas
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 minGSS <- 10
 pvalcutoff=0.05
+upperpvalcutoff=0.05
 
 summarydata = import(project_summary) %>% clean_names()
 summarydata = summarydata[,colSums(is.na(summarydata)) < nrow(summarydata)]
@@ -102,7 +103,7 @@ if (file.exists(tx2genes_file)) {
     names(sf_files) = rownames(summarydata)
     tx2gene = read.table(tx2genes_file, sep=",", row.names=NULL, header=FALSE)
     txi.salmon = tximport(sf_files, type="salmon", tx2gene=tx2gene,
-             reader=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
+             importer=readr::read_tsv, countsFromAbundance="lengthScaledTPM")
     counts = round(data.frame(txi.salmon$counts, check.names=FALSE))
 } else {
   counts = read.table(counts_file, header=TRUE, row.names="id", check.names=FALSE)
@@ -377,7 +378,7 @@ degVar(res$pvalue, rlogMat.sub) +
 
 **`r paste("Lowest adjusted p-value hits for", contrast_id)`**
 
-```{r DESeq-tables.yng.ctla4, echo=FALSE}
+```{r DESeq-tables.yng.ctla4, echo=TRUE}
 out_df = as.data.frame(res)
 out_df$id = rownames(out_df)
 out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
@@ -506,6 +507,15 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 DEG_background <- data.frame(res)
 
 mart <- useDataset("mmusculus_gene_ensembl",useMart('ENSEMBL_MART_ENSEMBL',host =  'useast.ensembl.org'))
+#function to convert entrezids in clusterprofiler output to gene symbols
+conversions = getBM(attributes = c("ensembl_gene_id", "mgi_symbol", "entrezgene"), mart=mart)
+entrezs_to_symbols <- function(entrezs) {
+  x <- unlist(strsplit(entrezs,"/"))
+  symbols <- conversions[match(x, conversions$entrezgene), "mgi_symbol"]
+  symbols <- sort(symbols)
+  symbols <- paste(symbols, collapse="/")
+  return(symbols)
+}
 
 entrez <- getBM(filters= "ensembl_gene_id",attributes= c("ensembl_gene_id", "entrezgene"),values= row.names(DEG_background), mart= mart)
 DEG_background$ensembl_gene_id <- row.names(DEG_background)
@@ -523,7 +533,7 @@ foldchanges <- sort(foldchanges, T)
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section (empty values .
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
 ```{r funct.clusterprofiler_gsea_go.yng.ctla4, results="asis"}
 egoBP <- gseGO(geneList     = foldchanges,
@@ -532,7 +542,7 @@ egoBP <- gseGO(geneList     = foldchanges,
               nPerm        = 1000,
               minGSSize    = minGSS,
               maxGSSize    = 500,
-              pvalueCutoff = 0.05,
+              pvalueCutoff = 1,
               verbose      = FALSE, 
               by='fgsea')
 gseaGOBPresult <- egoBP@result
@@ -547,7 +557,7 @@ egoMF <- gseGO(geneList     = foldchanges,
               nPerm        = 1000,
               minGSSize    = minGSS,
               maxGSSize    = 500,
-              pvalueCutoff = 0.05,
+              pvalueCutoff = 1,
               verbose      = FALSE, 
               by='fgsea')
 gseaGOMFresult <- egoMF@result
@@ -562,7 +572,7 @@ egoCC <- gseGO(geneList     = foldchanges,
               nPerm        = 1000,
               minGSSize    = minGSS,
               maxGSSize    = 500,
-              pvalueCutoff = 0.05,
+              pvalueCutoff = 1,
               verbose      = FALSE, 
               by='fgsea')
 gseaGOCCresult <- egoCC@result
@@ -573,20 +583,26 @@ gseaGOCCresult$category <- "CC"
 
 gseaGOresults=do.call(rbind, list(gseaGOBPresult,gseaGOMFresult,gseaGOCCresult ))
 
+gseaGOresults <- gseaGOresults %>% 
+  tbl_df() %>%   
+  rowwise() %>% 
+  mutate(core_enrichment_symbols=entrezs_to_symbols(core_enrichment)) %>% 
+  arrange(p.adjust) %>% 
+  as.data.frame()
 
 ## test to see if you actually return any results
-test <- gseaGOresults
+test <- subset(gseaGOresults, p.adjust<upperpvalcutoff)
 test$category <- NULL
-if (all(is.na(test))){
-  outputme <- FALSE
-  cat("**There were no significant results**")
+if (nrow(test)==0){
+  cat("**There were no significant results**\nHere are the top 50, by adjusted p-value")
+  sanitize_datatable(gseaGOresults[1:50,])
 } else {
-  outputme <- TRUE
-  sanitize_datatable(do.call(rbind, list(gseaGOBPresult, gseaGOMFresult, gseaGOCCresult)))
+  cat("**There were significant results**")
+  sanitize_datatable(subset(gseaGOresults, p.adjust<upperpvalcutoff))
 }
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.yng.ctla4, results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_go_output.yng.ctla4, results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_GO_results_for", contrast_id, "xlsx", sep="."))
 rio::export(gseaGOresults, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
@@ -594,31 +610,35 @@ assign(paste("clusterprofiler_gsea_GO_results_for_", contrast_id, sep=""), drop_
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_kegg.yng.ctla4}
+```{r funct.clusterprofiler_gsea_kegg.yng.ctla4, results="asis"}
 kk2 <- gseKEGG(geneList     = foldchanges,
                organism     = 'mmu',
                nPerm        = 1000,
                minGSSize    = minGSS,
-               pvalueCutoff = pvalcutoff,
+               pvalueCutoff = 1,
                verbose      = FALSE, 
               by='fgsea')
 kkgsea_results <- kk2@result
 
+kkgsea_results <- kkgsea_results %>% 
+  tbl_df() %>%   
+  rowwise() %>% 
+  mutate(core_enrichment_symbols=entrezs_to_symbols(core_enrichment)) %>% 
+  as.data.frame()
 
-if (nrow(kkgsea_results)==0){
-    cat("**There were no significant results**")
-    outputme <- FALSE
-
+test <- subset(kkgsea_results, p.adjust<upperpvalcutoff)
+if (nrow(test)==0){
+  cat("**There were no significant results**\nHere are the top 50, by adjusted p-value")
+  sanitize_datatable(kkgsea_results[1:50,])
 } else {
-sanitize_datatable(kkgsea_results)
-    outputme <- TRUE
-
+  cat("**There were significant results**")
+  sanitize_datatable(subset(kkgsea_results, p.adjust<upperpvalcutoff))
 }
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.yng.ctla4, results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_kegg_output.yng.ctla4, results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_kegg_results_for", contrast_id, "xlsx", sep="."))
 rio::export(kkgsea_results, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
@@ -639,9 +659,9 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.yng.ctla4}
+```{r funct.clusterprofiler_gsea_immune.yng.ctla4, results="asis"}
 # pulled down 
 c7 <- read.gmt("c7.all.v6.0.entrez.gmt") %>% 
   tbl_df() %>% 
@@ -670,22 +690,29 @@ c7_mouse <- dplyr::left_join(c7, homologene.human) %>%
 egmt <- GSEA(foldchanges, 
               TERM2GENE=c7_mouse, 
               verbose=FALSE,
-              pvalueCutoff = pvalcutoff, 
+              pvalueCutoff = 1, 
               nPerm=1000, 
               by='fgsea')
 
-if (nrow(as.data.frame(egmt))==0){
-    cat("**There were no significant results**")
-    outputme <- FALSE
-} else {
-sanitize_datatable(as.data.frame(egmt))
-    outputme <- TRUE
+egmt <- egmt %>% 
+  tbl_df() %>%   
+  rowwise() %>% 
+  mutate(core_enrichment_symbols=entrezs_to_symbols(core_enrichment)) %>% 
+  arrange(p.adjust) %>% 
+  as.data.frame()
 
+test <- subset(egmt, p.adjust<upperpvalcutoff)
+if (nrow(test)==0){
+  cat("**There were no significant results**\nHere are the top 50, by adjusted p-value")
+  sanitize_datatable(egmt[1:50,])   
+} else {
+  cat("**There were significant results**")
+  sanitize_datatable(subset(as.data.frame(egmt), p.adjust<upperpvalcutoff))
 }
 ```
 
 
-```{r funct.clusterprofiler_gsea_immune_output.yng.ctla4, results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_immune_output.yng.ctla4, results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_immune_results_for", contrast_id, "xlsx", sep="."))
 rio::export(as.data.frame(egmt), file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
@@ -732,7 +759,7 @@ contrast_id=paste(exp, "vs", ref, "of", age, "mice",  sep="_")
 
 **`r paste("Lowest adjusted p-value hits for", contrast_id)`**
 
-```{r DESeq-tables.yng.pdl1, ref.label="DESeq-tables.yng.ctla4", echo=FALSE}
+```{r DESeq-tables.yng.pdl1, ref.label="DESeq-tables.yng.ctla4"}
 ```
 
 ```{r DESeq-output.yng.pdl1, ref.label="DESeq-output.yng.ctla4", results="hide"}
@@ -770,21 +797,21 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_go.yng.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_go.yng.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.yng.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_go_output.yng.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_kegg.yng.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_kegg.yng.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.yng.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_kegg_output.yng.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -801,12 +828,12 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.yng.pdl1, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_immune.yng.pdl1, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_immune_output.yng.pdl1, ref.labe="funct.clusterprofiler_gsea_immune_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_immune_output.yng.pdl1, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
 ```
 
 
@@ -903,23 +930,21 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_go.old.ctla4, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4"}
-
+```{r funct.clusterprofiler_gsea_go.old.ctla4, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.old.ctla4, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", dependson=outputme, results="hide"}
-
+```{r funct.clusterprofiler_gsea_go_output.old.ctla4, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_kegg.old.ctla4, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_kegg.old.ctla4, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.old.ctla4, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_kegg_output.old.ctla4, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -936,13 +961,12 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.old.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
-
+```{r funct.clusterprofiler_gsea_immune.old.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_immune_output.old.ctla4, ref.labe="funct.clusterprofiler_gsea_immune_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_immune_output.old.ctla4, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
 ```
 
 
@@ -999,7 +1023,6 @@ contrast_id=paste(exp, "vs", ref, "of", age, "mice",  sep="_")
 - data is centered and scaled per row, to show the maximum variation per row
 
 ```{r DESeq-heatmap.old.pdl1, ref.label="DESeq-heatmap.yng.ctla"}
-
 ```
 
 #### Functional analysis
@@ -1025,21 +1048,21 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_go.old.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_go.old.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.old.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_go_output.old.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_kegg.old.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_kegg.old.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.old.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_kegg_output.old.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -1056,12 +1079,12 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.old.pdl1, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_immune.old.pdl1, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_immune_output.old.pdl1, ref.labe="funct.clusterprofiler_gsea_immune_output.yng.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_immune_output.old.pdl1, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
 ```
 
 
@@ -1151,7 +1174,7 @@ This plot helps you tell if there is any relationship between the pvalues found 
 
 **`r paste("Lowest adjusted p-value hits for", contrast_id)`**
 
-```{r DESeq-tables.iso, ref.label="DESeq-tables.yng.ctla4", echo=FALSE}
+```{r DESeq-tables.iso, ref.label="DESeq-tables.yng.ctla4"}
 ```
 
 ```{r DESeq-output.iso, ref.label="DESeq-output.yng.ctla4", results="hide"}
@@ -1207,21 +1230,21 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section (empty values .
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
 ```{r  funct.clusterprofiler_gsea_go.iso, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.iso, results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_go_output.iso, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r funct.clusterprofiler_gsea_kegg.iso, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_kegg.iso, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -1238,13 +1261,13 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_immune.iso, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
 
-```{r funct.clusterprofiler_gsea_immune_output.iso, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide", dependson=outputme}
+```{r funct.clusterprofiler_gsea_immune_output.iso, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
 ```
 
 
@@ -1331,13 +1354,12 @@ degVar(res$pvalue, rlogMat.sub) +
 
 **`r paste("Lowest adjusted p-value hits for", contrast_name)`**
 
-```{r DESeq-tables.diff.ctla4, echo=FALSE}
+```{r DESeq-tables.diff.ctla4}
 out_df = as.data.frame(res)
 out_df$id = rownames(out_df)
 out_df = out_df[, c("id", colnames(out_df)[colnames(out_df) != "id"])]
 
 out_df <- annotate_df2(df=out_df, df_ensemblid_header = "id", biomart_ensembl_dataset= 'mmusculus_gene_ensembl',biomart_ensemblid_filter = "ensembl_gene_id", biomart_genesymbol_attribute = 'mgi_symbol', biomart_host="useast.ensembl.org" )
-
 
 sig_genes = subset(out_df, padj < pvalcutoff)
 sanitize_datatable(sig_genes, style='bootstrap')
@@ -1367,7 +1389,7 @@ A list including only the significant GO Biological Process (BP) terms was then 
 
 The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links in the [Downloads](#downloads) section.
 
-```{r funct.gprofiler_revigo.diff.ctla4, ref.label="funct.gprofiler_revigo.yng.ctla4"}
+```{r funct.gprofiler_revigo.diff.ctla4, ref.label="funct.gprofiler_revigo.yng.ctla4", results="asis"}
 ```
 
 ```{r funct.gprofiler_output.diff.ctla4,  results="hide"}
@@ -1386,29 +1408,29 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
 ```{r  funct.clusterprofiler_gsea_go.diff.ctla4, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.diff.ctla4, dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_go_output.diff.ctla4, results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_GO_results_for", contrast_name, "xlsx", sep="."))
 rio::export(gseaGOresults, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-assign(paste("clusterprofiler_gsea_GO_results_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_GO_results_for", contrast_name, "xlsx", sep=".")))$url)
+assign(paste("clusterprofiler_gsea_GO_results_for_", contrast_name, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_GO_results_for", contrast_name, "xlsx", sep=".")))$url)
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r  funct.clusterprofiler_gsea_kegg.diff.ctla4, ref.label="funct.clusterprofiler_gsea_kegg.diff.ctla4"}
+```{r  funct.clusterprofiler_gsea_kegg.diff.ctla4, ref.label="funct.clusterprofiler_gsea_kegg.diff.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.diff.ctla4, dependson=outputme,  results="hide"}
+```{r funct.clusterprofiler_gsea_kegg_output.diff.ctla4,  results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_kegg_results_for", contrast_name, "xlsx", sep="."))
 rio::export(kkgsea_results, file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-assign(paste("clusterprofiler_gsea_kegg_results_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_kegg_results_for", contrast_name, "xlsx", sep=".")))$url)
+assign(paste("clusterprofiler_gsea_kegg_results_for_", contrast_name, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_kegg_results_for", contrast_name, "xlsx", sep=".")))$url)
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -1425,17 +1447,17 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.diff.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_immune.diff.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
 
-```{r funct.clusterprofiler_gsea_immune_output.diff.ctla4, dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_immune_output.diff.ctla4, results="hide"}
 tempoutfile <-file.path(tempdir(), paste("clusterprofiler_gsea_immune_results_for", contrast_name, "xlsx", sep="."))
 rio::export(as.data.frame(egmt), file=tempoutfile)
 drop_upload(file=tempoutfile, dest=dropboxfiledir, overwrite=TRUE)
-assign(paste("clusterprofiler_gsea_immune_results_for_", contrast_id, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_immune_results_for", contrast_name, "xlsx", sep=".")))$url)
+assign(paste("clusterprofiler_gsea_immune_results_for_", contrast_name, sep=""), drop_share(file.path(dropboxfiledir, paste("clusterprofiler_gsea_immune_results_for", contrast_name, "xlsx", sep=".")))$url)
 ```
 
 ### PLD1 versus Isotype
@@ -1478,7 +1500,7 @@ contrast_name="PDL1_old_and_young_difference_of_differences"
 
 **`r paste("Lowest adjusted p-value hits for", contrast_name)`**
 
-```{r DESeq-tables.diff.pdl1, ref.label="DESeq-tables.diff.ctla4", echo=FALSE}
+```{r DESeq-tables.diff.pdl1, ref.label="DESeq-tables.diff.ctla4"}
 ```
 
 
@@ -1516,21 +1538,21 @@ Gene set enrichment analysis tools use ranked lists of genes (here ranked by log
 ```
 
 ###### Gene Ontology GSEA with clusterProfiler
-Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly enriched categories of each type (BP, MF or CC) (padj. < `r pvalcutoff`) are shown below and the entire list is also available as a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
 
-```{r  funct.clusterprofiler_gsea_go.diff.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4"}
+```{r  funct.clusterprofiler_gsea_go.diff.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_go_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.diff.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_go_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.diff.ctla4", results="hide"}
 ```
 
 ###### KEGG Pathway GSEA with clusterProfiler
-Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). The significantly dysregulated pathways (padj. < `r pvalcutoff`) are shown below and can be downloaded from a link in the [Downloads](@downloads) section.
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
 
-```{r  funct.clusterprofiler_gsea_kegg.diff.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4"}
+```{r  funct.clusterprofiler_gsea_kegg.diff.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
 ```
 
-```{r funct.clusterprofiler_gsea_kegg_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.diff.ctla4", dependson=outputme, results="hide"}
+```{r funct.clusterprofiler_gsea_kegg_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.diff.ctla4", results="hide"}
 ```
 
 ###### Immune msigDB pathways GSEA with clusterProfiler
@@ -1547,14 +1569,13 @@ From the site:
 
 As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
 
-Results from the analysis are show below and can be downloaded from the [Downloads](#downloads) section.
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
  
-```{r funct.clusterprofiler_gsea_immune.diff.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4"}
+```{r funct.clusterprofiler_gsea_immune.diff.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
 ```
 
 
-```{r funct.clusterprofiler_gsea_immune_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_immune_output.diff.ctla4", dependson=outputme, results="hide"}
-
+```{r funct.clusterprofiler_gsea_immune_output.diff.pdl1, ref.label="funct.clusterprofiler_gsea_immune_output.diff.ctla4", results="hide"}
 ```
 
 ---
@@ -1589,8 +1610,6 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 [Stats for PDL1 versus Isotype differences in how Old and young mice respond](`r stats_PDL1_old_and_young_difference_of_differences`)
 
 
-
-
 ---
 
 ## Overrepresentation GO enrichment
@@ -1621,81 +1640,47 @@ Results from the analysis are show below and can be downloaded from the [Downloa
 
 [clusterProfiler GSEA GO results for PDL1 versus Isotype in Old Mice](`r clusterprofiler_gsea_GO_results_for_pdl1_vs_iso_of_Old_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_GO_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis", echo=FALSE }
-cat(paste("[clusterprofiler GSEA GO results for Young versus Old in Isotype treated mice](", clusterprofiler_gsea_GO_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
-```
+[clusterprofiler GSEA GO results for Young versus Old in Isotype treated mice](`r clusterprofiler_gsea_GO_results_for_Young_vs_Old_of_iso_treated_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_GO_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE }
-cat(paste("[clusterprofiler GSEA GO results for CTLA4 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_GO_results_for_CTLA4_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA GO results for CTLA4 versus Isotype differences in how Old and young mice respond](`r  clusterprofiler_gsea_GO_results_for_CTLA4_old_and_young_difference_of_differences`)
 
-```{r eval=exists("clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
-cat(paste("[clusterprofiler GSEA GO results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA GO results for PDL1 versus Isotype differences in how Old and young mice respond](`r  clusterprofiler_gsea_GO_results_for_PDL1_old_and_young_difference_of_differences`)
 
 ---
 
 ## GSEA KEGG pathways
 
-```{r, eval=exists("clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Young_mice"), results="asis", echo=FALSE  }
-cat(paste("[clusterProfiler GSEA KEGG results for CTLA4 versus Isotype in Young Mice](", clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Young_mice, ")", sep=""))
-```
+[clusterProfiler GSEA KEGG results for CTLA4 versus Isotype in Young Mice](`r clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Young_mice`)
 
-```{r, eval=exists("clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Young_mice"), results="asis", echo=FALSE  }
-cat(paste("[clusterProfiler GSEA KEGG results for PDL1 versus Isotype in Young Mice](", clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Young_mice, ")", sep=""))
-```
+[clusterProfiler GSEA KEGG results for PDL1 versus Isotype in Young Mice](`r  clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Young_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Old_mice"), results="asis", echo=FALSE  }
-cat(paste("[clusterProfiler GSEA KEGG results for CTLA4 versus Isotype in Old Mice](", clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Old_mice, ")", sep=""))
-```
+[clusterProfiler GSEA KEGG results for CTLA4 versus Isotype in Old Mice](`r  clusterprofiler_gsea_kegg_results_for_ctla4_vs_iso_of_Old_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Old_mice"), results="asis" , echo=FALSE }
- cat(paste("[clusterProfiler GSEA KEGG results for PLD1 versus Isotype in Old Mice](", clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Old_mice, ")", sep=""))
-```
+[clusterProfiler GSEA KEGG results for PLD1 versus Isotype in Old Mice](`r  clusterprofiler_gsea_kegg_results_for_pdl1_vs_iso_of_Old_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_kegg_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis" , echo=FALSE }
-cat(paste("[clusterProfiler GSEA KEGG results for Young versus Old in Isotype treated mice](", clusterprofiler_gsea_kegg_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
-```
+[clusterProfiler GSEA KEGG results for Young versus Old in Isotype treated mice](`r  clusterprofiler_gsea_kegg_results_for_Young_vs_Old_of_iso_treated_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_kegg_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
-cat(paste("[clusterprofiler GSEA KEGG results for CTLA4 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_kegg_results_for_CTLA4_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA KEGG results for CTLA4 versus Isotype differences in how Old and young mice respond](`r  clusterprofiler_gsea_kegg_results_for_CTLA4_old_and_young_difference_of_differences`)
 
-```{r eval=exists("clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences"), results="asis" , echo=FALSE }
-cat(paste("[clusterprofiler GSEA KEGG results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA KEGG results for PDL1 versus Isotype differences in how Old and young mice respond](`r  clusterprofiler_gsea_kegg_results_for_PDL1_old_and_young_difference_of_differences`)
 
 ---
 
 ## GSEA Immune mSigDB 
 
-```{r, eval=exists("clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Young_mice"), results="asis" , echo=FALSE }
-cat(paste("[clusterProfiler GSEA Immune results for CTLA4 versus Isotype in Young Mice](", clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Young_mice, ")", sep=""))
-```
+[clusterProfiler GSEA Immune results for CTLA4 versus Isotype in Young Mice](`r clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Young_mice`)
 
-```{r, eval=exists("clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Young_mice"), results="asis" , echo=FALSE }
-cat(paste("[clusterProfiler GSEA Immune results for PDL1 versus Isotype in Young Mice](", clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Young_mice, ")", sep=""))
-```
+[clusterProfiler GSEA Immune results for PDL1 versus Isotype in Young Mice](`r clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Young_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Old_mice"), results="asis", echo=FALSE  }
-cat(paste("[clusterProfiler GSEA Immune results for CTLA4 versus Isotype in Old Mice](", clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Old_mice, ")", sep=""))
-```
+[clusterProfiler GSEA Immune results for CTLA4 versus Isotype in Old Mice](`r clusterprofiler_gsea_immune_results_for_ctla4_vs_iso_of_Old_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Old_mice"), results="asis" , echo=FALSE }
-cat(paste("[clusterProfiler GSEA Immune results for PLD1 versus Isotype in Old Mice](", clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Old_mice, ")", sep=""))
-```
+[clusterProfiler GSEA Immune results for PLD1 versus Isotype in Old Mice](`r clusterprofiler_gsea_immune_results_for_pdl1_vs_iso_of_Old_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_immune_results_for_Young_vs_Old_of_iso_treated_mice"), results="asis" , echo=FALSE }
-cat(paste("[clusterProfiler GSEA Immune results for Young versus Old of Isotype treated mice](", clusterprofiler_gsea_immune_results_for_Young_vs_Old_of_iso_treated_mice, ")", sep=""))
-```
+[clusterProfiler GSEA Immune results for Young versus Old of Isotype treated mice](`r clusterprofiler_gsea_immune_results_for_Young_vs_Old_of_iso_treated_mice`)
 
-```{r eval=exists("clusterprofiler_gsea_immune_results_for_CTLA4_old_and_young_difference_of_differences"), results="asis", echo=FALSE  }
-cat(paste("[clusterprofiler GSEA Immune results for CTLA4 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_immune_results_for_CTLA4_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA Immune results for CTLA4 versus Isotype differences in how Old and young mice respond](`r clusterprofiler_gsea_immune_results_for_CTLA4_old_and_young_difference_of_differences`)
 
-```{r eval=exists("clusterprofiler_gsea_immune_results_for_PDL1_old_and_young_difference_of_differences"), results="asis", echo=FALSE }
-cat(paste("[clusterprofiler GSEA Immune results for PDL1 versus Isotype differences in how Old and young mice respond](", clusterprofiler_gsea_immune_results_for_PDL1_old_and_young_difference_of_differences, ")", sep=""))
-```
+[clusterprofiler GSEA Immune results for PDL1 versus Isotype differences in how Old and young mice respond](`r clusterprofiler_gsea_immune_results_for_PDL1_old_and_young_difference_of_differences`)
 
 
 ---
