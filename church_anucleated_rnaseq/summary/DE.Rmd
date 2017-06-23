@@ -99,8 +99,8 @@ usebetaprior=TRUE
 uselfcshrink=FALSE
 numgenesplotted=6
 
-if (file.exists("/Volumes/orch/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/")){
-  baseDir <- "/Volumes/orch/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/"
+if (file.exists("/Users/jnhutchinson/Orchestra/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/")){
+  baseDir <- "/Users/jnhutchinson/Orchestra/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/"
 } else if (file.exists("/n/data1/cores/bcbio/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/")) {
   baseDir <- "/n/data1/cores/bcbio/PIs/george_church/church_anucleated_rnaseq/bcbio2_merged/final/2017-05-23_bcbio2_merged/"
 } else {
