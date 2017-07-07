@@ -74,9 +74,10 @@ drop_auth()
 ```{r qc-setup, results='hide'}
 dropboxfiledir <- "/HBC Team Folder (1)/Consults/sandra_mcallister/jaclyn-tumor-rnaseq/files"
 
-project_summary = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/project-summary.csv"
-counts_file = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/combined.counts"
-tx2genes_file = "/Volumes/orch/group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/tx2gene.csv"
+baseDir <- "~/Orchestra"
+project_summary = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/project-summary.csv")
+counts_file = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/combined.counts")
+tx2genes_file = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/tx2gene.csv")
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442","#0072B2", "#D55E00", "#CC79A7")
 minGSS <- 10
 pvalcutoff=0.05
@@ -120,6 +121,7 @@ known_columns = c("rrna_rate", "duplication_rate_of_mapped", "mapped_reads", "ma
 summarydata[,"fragment_length_mean"] = summarydata$average_insert_size
 metadata = summarydata[, !colnames(summarydata) %in% known_columns, drop=FALSE]
 metadata = metadata[, colSums(is.na(metadata)) < nrow(metadata), drop=FALSE]
+#save.image("RDATAloaded")
 ```
 
 ## Drop samples
@@ -543,7 +545,7 @@ egoBP <- gseGO(geneList     = foldchanges,
               minGSSize    = minGSS,
               maxGSSize    = 500,
               pvalueCutoff = 1,
-              verbose      = FALSE, 
+              verbose      = TRUE, 
               by='fgsea')
 gseaGOBPresult <- egoBP@result
 if (nrow(gseaGOBPresult)==0){
@@ -1090,7 +1092,9 @@ Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis
 
 ----
 
-## Differences between Young and Old samples without treatment
+## Differences between Young and Old samples
+
+### Old versus Young for Isotype treated
 
 ```{r settreatment.iso}
 design=~age
@@ -1122,8 +1126,6 @@ sizeFactors(dds.sub) <- sizeFactors(dds)[names(sizeFactors(dds.sub))]
 
 dds.sub = DESeq(dds.sub)
 ```
-
-### Old versus Young for Isotype treated
 
 ```{r setup.iso}
 exp <- "Young"
@@ -1271,13 +1273,370 @@ Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis
 ```
 
 
+### CTLA4 treated
+
+```{r settreatment.ctla4}
+design=~age
+condition="age"
+treatment <- "ctla4"
+```
+
+```{r deseq2-expression-analysis.ctla4, results='hide'}
+counts.sub <- counts[rowSums(counts>0)>1,(dds$treatment_short==treatment)]
+rlogMat.sub <- rlogMat[row.names(counts.sub),names(counts.sub)]
+summarydata.sub <- summarydata[(summarydata$treatment_short==treatment),]
+summarydata.sub$age <- as.factor(summarydata.sub$age) 
+summarydata.sub$age <- relevel(summarydata.sub$age, ref="Old")
+
+txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
+dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
+
+geoMeans.sub = apply(counts.sub, 1, function(row) {
+  if (all(row == 0)) 0 
+  else 
+    exp(mean(log(row[row != 0])))
+})
+dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
+dds.sub = estimateDispersions(dds.sub)
+
+# put in dispersions and size factors from full set
+dispersions(dds.sub) <- dispersions(dds)
+sizeFactors(dds.sub) <- sizeFactors(dds)[names(sizeFactors(dds.sub))]
+
+dds.sub = DESeq(dds.sub)
+```
+
+```{r setup.ctla4}
+exp <- "Young"
+ref <- "Old"
+contrast_id=paste(exp, "vs", ref, "of", treatment, "treated_mice",  sep="_")
+```
+
+```{r deseq2results.ctla4}
+res <- results(dds.sub, contrast=c(condition, exp, ref), addMLE=FALSE)
+res = res[order(res$padj),]
+```
+
+#### Plots {.tabset}
+
+##### MA-plots
+
+An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales. Genes found to be differentiall expressed with an adjusted pvalue of less than `r pvalcutoff` are highlighted in red.
+
+```{r DESeq-maplot.ctla4, ref.label="DESeq-maplot.yng.ctla4", results='asis'}
+```
+
+##### Volcano-plot
+
+Volcano plots compare the p-value (here an Benhamini-Hochberg adjusted pvalue to account for the number of genes we tested) to the log-fold change. Areas highlighted in green show an adjusted pvlaue less than `r pvalcutoff` and a fold change greater than 2-fold (in either direction). 
+
+Here, postive fold changes are for genes which have higher expression in CTLA4 samples than CTLA4 treated samples.
+
+```{r DESeq-volcano.ctla4, ref.label="DESeq-volcano.yng.ctla4"}
+```
+
+##### Pvalues-vs-Mean
+
+This plot helps you tell if there is any relationship between the pvalues found and the mean expression level (there shouldn't be a strong bias)
+
+```{r DEGreport-M.ctla4, ref.label="DEGreport-M.yng.ctla4"}
+```
+
+##### Pvalues-vs-Variation
+
+This plot helps you tell if there is any relationship between the pvalues found and the variance (there shouldn't be a strong bias)
+
+```{r DEGreport-V.ctla4, ref.label="DEGreport-V.yng.ctla4"}
+```
+
+#### Differentially expressed genes
+
+##### Table
+
+**`r paste("Lowest adjusted p-value hits for", contrast_id)`**
+
+```{r DESeq-tables.ctla4, ref.label="DESeq-tables.yng.ctla4"}
+```
+
+```{r DESeq-output.ctla4, ref.label="DESeq-output.yng.ctla4", results="hide"}
+```
+
+##### Heatmap
+
+- here I've made a heatmap of the 200 most significant DE genes, with , using the rlog variance stabilized data
+- data is centered and scaled per row, to show the maximum variation per row
+
+```{r DESeq-heatmap.ctla4}
+if(nrow(sig_genes)<200){
+  len <- nrow(sig_genes)
+} else {
+  len=200
+}
+
+samples <- row.names(subset(summarydata.sub, age==ref|age==exp))
+sig_genes.sub <- sig_genes[1:len,"id"]
+# subset rlog transformed data to the significant genes of interest
+sig_genes.sub.rlogmat <- rlogMat[sig_genes.sub,samples]
+
+annots.sub <- summarydata.sub[samples, c("age", "treatment_short", "response")]
+pheatmap(sig_genes.sub.rlogmat,
+         annotation=annots.sub,
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         main = "Differentially expressed genes",
+         scale = "row",
+         show_rownames = FALSE)
+```
+
+#### Functional analysis
+##### Overrepresentation Analysis
+###### gProfiler & Revigo
+
+Using the significant DE genes (padj < `r pvalcutoff`) identified, a list of statistically enriched gene ontology (GO), human phenotype ontology (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/) [@Reimand2007].
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO](http://revigo.irb.hr/) [@Supek2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links in the [Downloads](#downloads) section.
+
+```{r funct.gprofiler_revigo.ctla4, ref.label="funct.gprofiler_revigo.yng.ctla4"}
+```
+
+```{r funct.gprofiler_output.ctla4, ref.label="funct.gprofiler_output.yng.ctla4", results="hide"}
+```
+
+##### Gene set enrichment analysis 
+Gene set enrichment analysis tools use ranked lists of genes (here ranked by log2FoldChanges) without using a threshold. This allows these gene set enrichment tools to use more information to identify enriched biological processes. The hypothesis of these methods is that although large changes in individual genes can have significant effects on pathways (and will be detected via the previous over-representation analysis methods), weaker but coordinated changes in sets of functionally related genes (i.e., pathways) can also have significant effects. Thus, rather than setting an arbitrary threshold to identify 'significant genes', all genes are considered in the analysis. The introduction to the original gene set enrichment analysis paper goes into more detail about some of the advantages of this approach [@Subramanian2005].
+
+```{r funct.clusterprofiler_gsea_setup.ctla4, ref.label="funct.clusterprofiler_gsea_setup.yng.ctla4"}
+```
+
+###### Gene Ontology GSEA with clusterProfiler
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
+
+```{r  funct.clusterprofiler_gsea_go.ctla4, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
+```
+
+```{r funct.clusterprofiler_gsea_go_output.ctla4, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
+```
+
+###### KEGG Pathway GSEA with clusterProfiler
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
+
+```{r funct.clusterprofiler_gsea_kegg.ctla4, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
+```
+
+```{r funct.clusterprofiler_gsea_immune.ctla4, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
+```
+
+###### Immune msigDB pathways GSEA with clusterProfiler
+
+Downloaded the C7 immunologic signatures from [MSigDB](http://software.broadinstitute.org/gsea/msigdb/index.jsp) 
+
+From the site:
+
+>Immunologic signatures collection (also called ImmuneSigDB) is composed of gene sets that represent cell types, states, and perturbations within the immune system. The signatures were generated by manual curation of published studies in human and mouse immunology. 
+
+>We first captured relevant microarray datasets published in the immunology literature that have raw data deposited to Gene Expression Omnibus (GEO). For each published study, the relevant comparisons were identified (e.g. WT vs. KO; pre- vs. post-treatment etc.) and brief, biologically meaningful descriptions were created. All data was processed and normalized the same way to identify the gene sets, which correspond to the top or bottom genes (FDR < 0.02 or maximum of 200 genes) ranked by mutual information for each assigned comparison. 
+
+>The immunologic signatures collection was generated as part of our collaboration with the Haining Lab at Dana-Farber Cancer Institute and the Human Immunology Project Consortium (HIPC). To cite your use of the collection, and for further information, please refer to Godec J, Tan Y, Liberzon A, Tamayo P, Bhattacharya S, Butte A, Mesirov JP, Haining WN, Compendium of Immune Signatures Identifies Conserved and Species-Specific Biology in Response to Inflammation, 2016, Immunity 44(1), 194-206.
+
+As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
+
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
+ 
+```{r funct.clusterprofiler_gsea_immune.ctla4, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
+```
+
+
+```{r funct.clusterprofiler_gsea_immune_output.ctla4, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
+```
+
+
+### PDL1 treated
+
+
+```{r settreatment.pdl1}
+design=~age
+condition="age"
+treatment <- "iso"
+```
+
+```{r deseq2-expression-analysis.pdl1, results='hide'}
+counts.sub <- counts[rowSums(counts>0)>1,(dds$treatment_short==treatment)]
+rlogMat.sub <- rlogMat[row.names(counts.sub),names(counts.sub)]
+summarydata.sub <- summarydata[(summarydata$treatment_short==treatment),]
+summarydata.sub$age <- as.factor(summarydata.sub$age) 
+summarydata.sub$age <- relevel(summarydata.sub$age, ref="Old")
+
+txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
+dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
+
+geoMeans.sub = apply(counts.sub, 1, function(row) {
+  if (all(row == 0)) 0 
+  else 
+    exp(mean(log(row[row != 0])))
+})
+dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
+dds.sub = estimateDispersions(dds.sub)
+
+# put in dispersions and size factors from full set
+dispersions(dds.sub) <- dispersions(dds)
+sizeFactors(dds.sub) <- sizeFactors(dds)[names(sizeFactors(dds.sub))]
+
+dds.sub = DESeq(dds.sub)
+```
+
+```{r setup.pdl1}
+exp <- "Young"
+ref <- "Old"
+contrast_id=paste(exp, "vs", ref, "of", treatment, "treated_mice",  sep="_")
+```
+
+```{r deseq2results.pdl1}
+res <- results(dds.sub, contrast=c(condition, exp, ref), addMLE=FALSE)
+res = res[order(res$padj),]
+```
+
+#### Plots {.tabset}
+
+##### MA-plots
+
+An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales. Genes found to be differentiall expressed with an adjusted pvalue of less than `r pvalcutoff` are highlighted in red.
+
+```{r DESeq-maplot.pdl1, ref.label="DESeq-maplot.yng.ctla4", results='asis'}
+```
+
+##### Volcano-plot
+
+Volcano plots compare the p-value (here an Benhamini-Hochberg adjusted pvalue to account for the number of genes we tested) to the log-fold change. Areas highlighted in green show an adjusted pvlaue less than `r pvalcutoff` and a fold change greater than 2-fold (in either direction). 
+
+Here, postive fold changes are for genes which have higher expression in CTLA4 samples than PDL1 treated samples.
+
+```{r DESeq-volcano.pdl1, ref.label="DESeq-volcano.yng.ctla4"}
+```
+
+##### Pvalues-vs-Mean
+
+This plot helps you tell if there is any relationship between the pvalues found and the mean expression level (there shouldn't be a strong bias)
+
+```{r DEGreport-M.pdl1, ref.label="DEGreport-M.yng.ctla4"}
+```
+
+##### Pvalues-vs-Variation
+
+This plot helps you tell if there is any relationship between the pvalues found and the variance (there shouldn't be a strong bias)
+
+```{r DEGreport-V.pdl1, ref.label="DEGreport-V.yng.ctla4"}
+```
+
+#### Differentially expressed genes
+
+##### Table
+
+**`r paste("Lowest adjusted p-value hits for", contrast_id)`**
+
+```{r DESeq-tables.pdl1, ref.label="DESeq-tables.yng.ctla4"}
+```
+
+```{r DESeq-output.pdl1, ref.label="DESeq-output.yng.ctla4", results="hide"}
+```
+
+##### Heatmap
+
+- here I've made a heatmap of the 200 most significant DE genes, with , using the rlog variance stabilized data
+- data is centered and scaled per row, to show the maximum variation per row
+
+```{r DESeq-heatmap.pdl1}
+if(nrow(sig_genes)<200){
+  len <- nrow(sig_genes)
+} else {
+  len=200
+}
+
+samples <- row.names(subset(summarydata.sub, age==ref|age==exp))
+sig_genes.sub <- sig_genes[1:len,"id"]
+# subset rlog transformed data to the significant genes of interest
+sig_genes.sub.rlogmat <- rlogMat[sig_genes.sub,samples]
+
+annots.sub <- summarydata.sub[samples, c("age", "treatment_short", "response")]
+pheatmap(sig_genes.sub.rlogmat,
+         annotation=annots.sub,
+         clustering_distance_cols = "correlation",
+         clustering_method = "ward.D2",
+         main = "Differentially expressed genes",
+         scale = "row",
+         show_rownames = FALSE)
+```
+
+#### Functional analysis
+##### Overrepresentation Analysis
+###### gProfiler & Revigo
+
+Using the significant DE genes (padj < `r pvalcutoff`) identified, a list of statistically enriched gene ontology (GO), human phenotype ontology (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/) [@Reimand2007].
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO](http://revigo.irb.hr/) [@Supek2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links in the [Downloads](#downloads) section.
+
+```{r funct.gprofiler_revigo.pdl1, ref.label="funct.gprofiler_revigo.yng.ctla4"}
+```
+
+```{r funct.gprofiler_output.pdl1, ref.label="funct.gprofiler_output.yng.ctla4", results="hide"}
+```
+
+##### Gene set enrichment analysis 
+Gene set enrichment analysis tools use ranked lists of genes (here ranked by log2FoldChanges) without using a threshold. This allows these gene set enrichment tools to use more information to identify enriched biological processes. The hypothesis of these methods is that although large changes in individual genes can have significant effects on pathways (and will be detected via the previous over-representation analysis methods), weaker but coordinated changes in sets of functionally related genes (i.e., pathways) can also have significant effects. Thus, rather than setting an arbitrary threshold to identify 'significant genes', all genes are considered in the analysis. The introduction to the original gene set enrichment analysis paper goes into more detail about some of the advantages of this approach [@Subramanian2005].
+
+```{r funct.clusterprofiler_gsea_setup.pdl1, ref.label="funct.clusterprofiler_gsea_setup.yng.ctla4"}
+```
+
+###### Gene Ontology GSEA with clusterProfiler
+Analysis was performed to identify any GO annotation (BP, MF or CC) (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Categories with an adjusted pvalue below `r upperpvalcutoff` (BP, MF or CC) or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results are available as a link in the [Downloads](@downloads) section.
+
+```{r  funct.clusterprofiler_gsea_go.pdl1, ref.label="funct.clusterprofiler_gsea_go.yng.ctla4", results="asis"}
+```
+
+```{r funct.clusterprofiler_gsea_go_output.pdl1, ref.label="funct.clusterprofiler_gsea_go_output.yng.ctla4", results="hide"}
+```
+
+###### KEGG Pathway GSEA with clusterProfiler
+Analysis was performed to identify any KEGG pathways (with at least `r minGSS` genes in them) that were significantly dysregulated (genes in pathway could be up- or down-regulated simultaneously). Pathways with adjusted pvalues less than `r upperpvalcutoff` or, if there were no significant categories, the top 50 categories by adjusted pvalue, are shown below and all results can be downloaded from a link in the [Downloads](@downloads) section.
+
+```{r funct.clusterprofiler_gsea_kegg.pdl1, ref.label="funct.clusterprofiler_gsea_kegg.yng.ctla4", results="asis"}
+```
+
+```{r funct.clusterprofiler_gsea_immune.pdl1, ref.label="funct.clusterprofiler_gsea_kegg_output.yng.ctla4", results="hide"}
+```
+
+###### Immune msigDB pathways GSEA with clusterProfiler
+
+Downloaded the C7 immunologic signatures from [MSigDB](http://software.broadinstitute.org/gsea/msigdb/index.jsp) 
+
+From the site:
+
+>Immunologic signatures collection (also called ImmuneSigDB) is composed of gene sets that represent cell types, states, and perturbations within the immune system. The signatures were generated by manual curation of published studies in human and mouse immunology. 
+
+>We first captured relevant microarray datasets published in the immunology literature that have raw data deposited to Gene Expression Omnibus (GEO). For each published study, the relevant comparisons were identified (e.g. WT vs. KO; pre- vs. post-treatment etc.) and brief, biologically meaningful descriptions were created. All data was processed and normalized the same way to identify the gene sets, which correspond to the top or bottom genes (FDR < 0.02 or maximum of 200 genes) ranked by mutual information for each assigned comparison. 
+
+>The immunologic signatures collection was generated as part of our collaboration with the Haining Lab at Dana-Farber Cancer Institute and the Human Immunology Project Consortium (HIPC). To cite your use of the collection, and for further information, please refer to Godec J, Tan Y, Liberzon A, Tamayo P, Bhattacharya S, Butte A, Mesirov JP, Haining WN, Compendium of Immune Signatures Identifies Conserved and Species-Specific Biology in Response to Inflammation, 2016, Immunity 44(1), 194-206.
+
+As the msigDB genes are human NCBI Entrez Ids, I converted them to mouse Entrez Ids using the  [NCBI homologene database - build 68](ftp://ftp.ncbi.nih.gov/pub/HomoloGene/build68/) before running GSEA.
+
+Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis, or, if there are no significant results, the top 50 as determined by adjusted pvalue, are show below and all results can be downloaded from the [Downloads](#downloads) section.
+ 
+```{r funct.clusterprofiler_gsea_immune.pdl1, ref.label="funct.clusterprofiler_gsea_immune.yng.ctla4", results="asis"}
+```
+
+
+```{r funct.clusterprofiler_gsea_immune_output.pdl1, ref.label="funct.clusterprofiler_gsea_immune_output.yng.ctla4", results="hide"}
+```
+
 ## Difference in Response to treatment of Young and Old Samples
 - here I'll figure out the difference of differences, or how the changes after treatment differ in the old and young mice
 
 ```{r setdesign.diff}
 design=~treatment_short+age+treatment_short:age
 ```
-
 
 ```{r deseq2-expression-analysis.diff, results='hide'}
 counts.sub <- counts[rowSums(counts>0)>1,]
