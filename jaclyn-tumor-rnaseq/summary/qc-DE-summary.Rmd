@@ -74,7 +74,7 @@ drop_auth()
 ```{r qc-setup, results='hide'}
 dropboxfiledir <- "/HBC Team Folder (1)/Consults/sandra_mcallister/jaclyn-tumor-rnaseq/files"
 
-baseDir <- "~/Orchestra"
+baseDir <- "/Volumes/orch"
 project_summary = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/project-summary.csv")
 counts_file = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/combined.counts")
 tx2genes_file = file.path(baseDir, "group_dir/PIs/sandra_mcallister/jaclyn-tumor-rnaseq/bcbio/final/2017-03-02_bcbio/tx2gene.csv")
@@ -1094,7 +1094,7 @@ Results with adjusted pvalues of less than `r upperpvalcutoff` from the analysis
 
 ## Differences between Young and Old samples
 
-### Old versus Young for Isotype treated
+### Isotype
 
 ```{r settreatment.iso}
 design=~age
