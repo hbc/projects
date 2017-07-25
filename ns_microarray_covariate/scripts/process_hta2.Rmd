@@ -55,10 +55,11 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-baseDir <- getwd()
-dataDir <- file.path(baseDir, "data")
-metaDir <- file.path(baseDir, "meta")
+baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+dataDir <- file.path(baseDir, "data", "renamed_CELfiles")
+metaDir <- file.path(baseDir, "metadata")
 resultsDir <- file.path(baseDir, "results")
+setwd(baseDir)
 
 cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
 covarsfilename="covars.desc" # tab delimited file describing samples
@@ -90,6 +91,40 @@ library(pvca)
 library(dplyr) # data format utility 
 library(hta20sttranscriptcluster.db) #new package for annotation
 library(sva) # Surrogate Variable Analysis (includes ComBat)
+
+library(pd.hta.2.0)# array layout annotation
+library(hta20stprobeset.db)
+
+
+library(rio)
+library(tidyr)
+library(janitor)
+library(plyr)
+```
+
+
+## Munging the metadata
+
+```{r metadatamunge}
+# did some editing of column headings, dropping redundant columns etc. in Excel first
+setwd(metaDir)
+metadata <- import("metadata_for_array_samples_JH.xlsx")
+metadata <- clean_names(metadata)
+# stole code for this next step from here: https://stackoverflow.com/questions/25925556/gather-multiple-sets-of-columns
+metadata <- reshape(metadata, idvar=c("patient_id", "surgery_date", "sex", "study_group"), varying=5:ncol(metadata), direction="long", sep="_") %>% 
+  tbl_df %>% 
+  mutate(., patient_id=as.character(patient_id))
+
+filenames <- list.files(file.path(dataDir), pattern="*.CEL")
+filenames_split <- ldply(strsplit(filenames, "_")) %>% 
+  tbl_df() %>% mutate(filenames, V3=sub(pattern = ".CEL", replacement = "", x = V3))
+filenames <- cbind(filenames, filenames_split)
+names(filenames) <- c("filename", "patient_id","time", "filename_field3")
+
+metadata <- inner_join(filenames, metadata, by=c("patient_id"="patient_id", "time"="time")) %>%  
+  mutate(sampleid=paste(time, patient_id, sep="_"))
+
+write.table(file="covars.desc", metadata, sep="\t", quote=FALSE)
 ```
 
 ## Functions
@@ -152,6 +187,18 @@ plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
           axis.title.y=element_blank()) +
     ggtitle(title)
 }
+
+
+QCarray <- function(eset, intgroup=NULL, outdir=NULL, logtransform=TRUE, title=NULL){
+  prepdata <- prepdata(expressionset = eset, intgroup=intgroup, do.logtransform = logtransform)
+  he <- aqm.heatmap(prepdata)
+  bo <- aqm.boxplot(prepdata)
+  de <- aqm.density(prepdata)
+  ma <- aqm.maplot(prepdata)
+  qm <- list("Boxplot"= bo, "Density"=de, "Heatmap"=he, "MAplot"=ma)
+  aqm.writereport(modules=qm, reporttitle = title, outdir=outdir, arrayTable = pData(affyRaw))
+}
+
 ```
 
 ---
@@ -167,10 +214,11 @@ plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
 ```{r dataload, results='hide'}
 covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) 
 # Load CEL files
-celFiles <- file.path(dataDir, row.names(covars))
+celFiles <- file.path(dataDir, covars$filename)
 affyRaw <- read.celfiles(celFiles)
 pData(affyRaw) <- covars
-sampleNames(affyRaw) <- pData(affyRaw)$sampleID
+sampleNames(affyRaw) <- pData(affyRaw)$sampleid
+#validObject(affyRaw)
 ```
 
 ## Sample metadata
@@ -191,8 +239,20 @@ kable(pData(affyRaw))
 - summarize probesets on the gene ('core') level
 
 ```{r normalize, results='hide'}
-affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
+affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
 ```
+
+
+### Quality Control
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm.gene"), title="Normalized Data QC")
+```
+
+[Normalized Data QC Report](../results/report_norm.exon/index.html)
+
+Arrays 14 (3008, 1 month), 20 (3010, 1 month) and 32 (3021, 1 month) are all slight outliers from the other arrays but don't appear to have radically failed, mainly having differently shaped distributions of intensities. We should keep an eye on them in subsequent analyses to see if we should drop them.
 
 ### Unsupervised Clustering of RMA Normalized Data
 
@@ -200,38 +260,79 @@ affyNorm.core <- rma(affyRaw, target="core", background=TRUE, normalize=TRUE)
 The goal of these analyses are to naively evaluate the variability within the raw data and determine whether this variability can predict the different treatment groups. 
 
 ```{r cluster, out.width='75%'}
-plot_dendro(affyNorm.core, title="", labels.colname="sampleID", colors.colname="treatment")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="time")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="array")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="study_group")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="sex")
 ```
+
+There does not appear to be any single factor that clusters the samples by this method.
 
 #### Principal Component Analysis (PCA)
 
 This second approach is a dimension reduction and visualization technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. 
 
 ```{r PCAsd, out.width='75%'}
-pca <- prcomp(t(exprs(affyNorm.core)))
-df <- data.frame(cbind(pca$x, pData(affyNorm.core)))
+pca <- prcomp(t(exprs(affyNorm)))
+df <- data.frame(cbind(pca$x, pData(affyNorm)))
   
 ggplot(df) +
-  geom_point(aes(x=PC1, y=PC2, color=treatment), size=6) +
-  geom_text(aes(x=PC1, y=PC2, label=blooddonor, vjust=-0.5), size=5) +
+  geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
     theme_bw() +
     theme(panel.grid.major = element_line(size = .5, color = "grey"),
           axis.text.x = element_text(angle=45, hjust=1, vjust=1),
           axis.title = element_text(size = rel(1.5)),
         axis.text = element_text(size = rel(1.25))) +
-    ylab("PC2") + xlab("PC1") +
-  ggtitle('PCA for Batch 1 samples')
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=array), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=sex), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
 ```
+
+While there does appear to be some clustering based on the timepoint, the highest source of variation (PC1) appears to originate from the 2 outlier samples' (3008 and 3010 1 month, as identified in the QC analysis) differences. For now, I'm going to drop all 3 outlier samples (3008, 3010 and 3021 1 month).
+
+
+### Drop Outliers
+
+```{r drop_outliers}
+
+
 
 ## Annotate
 
 So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
 
 ```{r features, results='hide'}
-featureData(affyNorm.core) <- getNetAffx(affyNorm.core, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+featureData(affyNorm) <- getNetAffx(affyNorm, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
 # get gene symbols and entrezIDs for all probesets
-fData(affyNorm.core)$symbol <- as.character(unlist(mget(featureNames(affyNorm.core), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
-fData(affyNorm.core)$entrezID <- as.character(unlist(mget(featureNames(affyNorm.core), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm)$symbol <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
 
 ```
 
@@ -246,8 +347,8 @@ To perform limma, we construct a design matrix which provides a representation o
 
 ```{r}
 # Make design matrix
-pData(affyNorm.core)$blooddonor <- factor(pData(affyNorm.core)$blooddonor)
-design <- model.matrix(~ 0 + treatment + blooddonor  ,  data=pData(affyNorm.core))
+pData(affyNorm)$blooddonor <- factor(pData(affyNorm)$blooddonor)
+design <- model.matrix(~ 0 + treatment + blooddonor  ,  data=pData(affyNorm))
 kable(design)
 ```
 
@@ -264,7 +365,7 @@ These matrices are used to fit a linear model to the data. The linear model is a
 contrast <- makeContrasts(treatment=treatment125D3-treatmentDMSO, levels=colnames(design))
 
 # Fit model
-fit.core <- lmFit(affyNorm.core, design) 
+fit.core <- lmFit(affyNorm, design) 
 
 # Compute cofficients for constrasts
 fit2core <- contrasts.fit(fit.core, contrast) 
@@ -276,7 +377,7 @@ fit2core <- eBayes(fit2core)
 ## Probe-level Results: No filtering
 
 ```{r, fig.align='center'}
-results <- topTable(fit2.core, coef=1, number=nrow(exprs(affyNorm.core)))
+results <- topTable(fit2.core, coef=1, number=nrow(exprs(affyNorm)))
 df <- cbind(results[,c('P.Value', 'logFC')])
 ggplot(df) +
   geom_histogram(aes(x=P.Value)) +
@@ -319,14 +420,14 @@ ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
 ## Filter Probesets
 Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
 
-Starting  with `r nrow(fData(affyNorm.core))` probes,  remaining we can filter:
+Starting  with `r nrow(fData(affyNorm))` probes,  remaining we can filter:
 
 ### By Annotation
 - remove the probes without annotated genes
 
 ```{r filter1}
-affyNorm.filt <- affyNorm.core[which(!is.na(fData(affyNorm.core)$symbol) & fData(affyNorm.core)$category=="main"),]
-affyNorm.filt.b2 <- affyNorm.core.b2[which(!is.na(fData(affyNorm.core.b2)$symbol) & fData(affyNorm.core.b2)$category=="main"),]
+affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)$symbol) & fData(affyNorm)$category=="main"),]
+affyNorm.filt.b2 <- affyNorm.b2[which(!is.na(fData(affyNorm.b2)$symbol) & fData(affyNorm.b2)$category=="main"),]
 ```
 
 `r nrow(fData(affyNorm.filt))` probes remaining
