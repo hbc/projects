@@ -1,0 +1,33 @@
+#TOC {
+	  position: fixed;
+	    left: 0;
+	      top: 0;
+	        width: 200px;
+		  height: 100%;
+		    overflow:auto;
+	    }
+body {
+		      max-width: 1200px;
+		        margin: auto;
+			  margin-left:320px;
+			    line-height: 20px;
+		    }
+		    th {
+			      background-color: #dcdcdc;
+			        color: #000000;
+				  height:25px;
+				    font-size:12pt;
+			    }
+			    table tr:nth-child(odd) td{
+				      background-color: white;
+			      }
+			      table tr:nth-child(even) td{
+				        background-color: #eeeeee;
+				}
+				table, {
+					border: 1px solid black;
+				}
+				table {
+					    border-collapse: collapse;
+					        border-spacing: 0;
+					}
