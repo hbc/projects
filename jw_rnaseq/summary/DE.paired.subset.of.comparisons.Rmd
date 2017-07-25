@@ -492,17 +492,46 @@ ggplot(plotme, aes(x=timepoint, y=value, color=timepoint))+
 celltype="Treg"
 ```
 
-```{r deseq2-expression-analysis.treatmentresponse.treg, ref.label="deseq2-expression-analysis.tcon", results='hide'}
+```{r deseq2-expression-analysis.treatmentresponse.treg, results='hide'}
+counts.sub <- counts[rowSums(counts>0)>1,(summarydata$celltype==celltype)]
+summarydata.sub <- summarydata[(summarydata$celltype==celltype),]
+txi.salmon.sub = subset_tximport(txi.salmon, rownames(counts.sub), colnames(counts.sub))
+dds.sub = DESeqDataSetFromTximport(txi.salmon.sub, colData=summarydata.sub, design=design)
+# model matrix is not full rank, will refactor later
+geoMeans.sub = apply(counts.sub, 1, function(row) {
+  if (all(row == 0)) 0 
+  else 
+    exp(mean(log(row[row != 0])))
+})
+dds.sub = estimateSizeFactors(dds.sub, geoMeans=geoMeans.sub)
+dds.sub = estimateDispersions(dds.sub)
+
+dds.celltype <- get(paste("dds", celltype, sep="."))
+
+# put in dispersions and size factors from full set
+#identical(row.names(counts(dds.celltype)), row.names(counts(dds.sub)))
+
+dispersions(dds.sub) <- dispersions(dds.celltype)
+sizeFactors(dds.sub) <- sizeFactors(dds.celltype)[names(sizeFactors(dds.sub))]
+
+dds.sub = DESeq(dds.sub, betaPrior = TRUE)
 ```
 
 #### Volcano plot
 
-```{r DESeq.volc.treatmentresponse.treg, ref.label="DESeq.volc.tcon"}
+```{r DESeq.volc.treatmentresponse.treg}
+stats <- results(dds.sub)[,c("log2FoldChange", "padj")] %>% as.data.frame()
+names(stats) <- c("logFC", "Adjusted.Pvalue")
+volcano_density_plot(stats, lfc.cutoff=lfc.cutoff, pval.cutoff=pvalue.cutoff)
 ```
 
 #### MA-plot
 
-```{r DESeq-MA.treatmentresponse.treg, ref.label="DESeq-MA.treatmentresponse.tcon", results='asis'}
+```{r DESeq-MA.treatmentresponse.treg, results='asis'}
+res =  results(dds.sub)
+ymax = max(res$log2FoldChange, na.rm=TRUE)
+ymin = min(res$log2FoldChange, na.rm=TRUE)
+plotMA(res, ylim=c(ymin, ymax))
 ```
 
 #### Differentially expressed genes
@@ -603,9 +632,9 @@ meta.plotme <- metadata %>% row2colnames("samplecode") %>% tbl_df()
 
 ---
 
-# Investigating weird tcon disappearance of differences
+# Investigating Tcon disappearance of differences
 
-```{r diffofdiffsdiffs, eval=TRUE}
+```{r diffofdiffsdiffs, eval=TRUE, fig.height=4, fig.width=4}
 responder <- import(file.path("~/Dropbox (HBC)/", dropboxfiledir, "treatment.response.responders.Tcon.xlsx")) %>% tbl_df() %>% filter(!is.na(padj))
 nonresponder <- import(file.path("~/Dropbox (HBC)/", dropboxfiledir, "treatment.response.nonresponders.Tcon.xlsx"))%>% tbl_df() %>% filter(!is.na(padj))
 diffs <- import(file.path("~/Dropbox (HBC)/", dropboxfiledir,"treatment.response.interaction.Tcon.xlsx"))%>% tbl_df() %>% filter(!is.na(padj))
@@ -624,19 +653,11 @@ ggplot(dat, aes(log2FoldChange_responder, log2FoldChange_nonresponder, color=sig
 ggplot(dat, aes(log2FoldChange_responder, log2FoldChange_nonresponder, color=sig_diffs))+geom_hline(yintercept = 0)+geom_vline(xintercept = 0)+geom_point(alpha=0.7)+coord_fixed(ratio=1)+theme_bw()
 ```
 
----
 
-# Additional Downloads {#downloads}
-
-## Gene counts
-
-[Raw counts](`r rawcounts_shared_file`) - use this to repeat this analysis
-
-[TPM matrix](`r tpm_shared_file`) - use this for looking at the expression of individual genes (i.e. plots of expression levels of individual genes)
-
-[rlog stabilized data](`r rlog_shared_file`) - use this for analyses that rely on variance (ie. PCA, heatmaps)
+From these plots it would appear that the differences in the gene expression for the responders and non-responders are generally in the same direction but that the responder's didn't have enough power to be counted as significant.
 
 ---
+
 
 # References
 

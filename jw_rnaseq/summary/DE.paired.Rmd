@@ -450,6 +450,8 @@ p1 <- meanSdPlot(log2(counts(dds,normalized=TRUE)[notAllZero,] + 1))$gg + ggtitl
 p2 <- meanSdPlot(assay(rld[notAllZero,]))$gg + ggtitle("rlog") + theme(legend.position="bottom")
 p3 <- meanSdPlot(assay(vsd[notAllZero,]))$gg + ggtitle("vst") + theme(legend.position="bottom")
 grid.arrange(p1,p2,p3, ncol=3)
+
+#save.image("RDATA_rlog")
 ```
 
 The variance is still really high even after stabiliziation.This may be because some of the cell types are quite different. Going forward, I decided to process the cell types separately.
@@ -589,6 +591,7 @@ celltype="NK"
 ```{r nkdds}
 colnames(dds.sub)
 dds.NK = dds.sub
+# save.image("RDATA")
 ```
 
 
