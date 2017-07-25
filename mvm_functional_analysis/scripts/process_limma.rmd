@@ -2,7 +2,7 @@
 output:
   html_document:
     toc: true
-    toc_depth: 2
+    toc_depth: 3
     theme: united
 title: "Functional analysis of sheep microarray data"
 bibliography: "references.bib"
@@ -225,18 +225,18 @@ Running the top 200 differentially expressed genes (from the subsetted data) thr
 
 #### Negative fold change
 
-```{r gprofiler, results='hide'}
-allresults.sub <- arrange(allresults.sub, logFC)
-gprofiler(query=allresults.sub$geneid[1:200],
+```{r gprofilerneg, results='hide'}
+allresults.sub.neg <- arrange(allresults.sub, logFC)
+gprofiler(query=allresults.sub.neg$geneid[1:200],
                      organism="oaries",
                      ordered_query=TRUE,
                      significant=TRUE,
                      correction_method="gSCS",
                      hier_filtering="none",
                      custom_bg=allresults.sub$geneid, 
-                     png_fn=file.path(resultsDir, "gprofiler.png")
+                     png_fn=file.path(resultsDir, "gprofiler.neg.png")
 )
-goresults <- gprofiler(query=allresults.sub$geneid[1:200],
+goresults.neg <- gprofiler(query=allresults.sub.neg$geneid[1:200],
                      organism="oaries",
                      ordered_query=TRUE,
                      significant=TRUE,
@@ -245,23 +245,26 @@ goresults <- gprofiler(query=allresults.sub$geneid[1:200],
                      custom_bg=allresults.sub$geneid
 )
 ```
+
+
+**No enriched categories from genes with negative changes in expression!**
 
 
 #### Positive fold change
 
 
-```{r gprofiler, results='hide'}
-allresults.sub <- arrange(allresults.sub, desc(logFC))
-gprofiler(query=allresults.sub$geneid[1:200],
+```{r gprofilerpos, results='hide'}
+allresults.sub.pos <- arrange(allresults.sub, desc(logFC))
+gprofiler(query=allresults.sub.pos$geneid[1:200],
                      organism="oaries",
                      ordered_query=TRUE,
                      significant=TRUE,
                      correction_method="gSCS",
                      hier_filtering="none",
                      custom_bg=allresults.sub$geneid, 
-                     png_fn=file.path(resultsDir, "gprofiler.png")
+                     png_fn=file.path(resultsDir, "gprofiler.pos.png")
 )
-goresults <- gprofiler(query=allresults.sub$geneid[1:200],
+goresults.pos <- gprofiler(query=allresults.sub.pos$geneid[1:200],
                      organism="oaries",
                      ordered_query=TRUE,
                      significant=TRUE,
@@ -271,6 +274,9 @@ goresults <- gprofiler(query=allresults.sub$geneid[1:200],
 )
 ```
 
+`r kable(goresults.pos)`
+
+![](../results/gprofiler.pos.png)
 
 ----
 
