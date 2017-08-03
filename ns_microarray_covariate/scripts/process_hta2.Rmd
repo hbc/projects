@@ -98,7 +98,6 @@ library(janitor)
 library(plyr)
 ```
 
-
 ## Munging the metadata
 
 ```{r metadatamunge}
@@ -194,14 +193,12 @@ QCarray <- function(eset, intgroup=NULL, outdir=NULL, logtransform=TRUE, title=N
   qm <- list("Boxplot"= bo, "Density"=de, "Heatmap"=he, "MAplot"=ma)
   aqm.writereport(modules=qm, reporttitle = title, outdir=outdir, arrayTable = pData(affyRaw))
 }
-
 ```
 
 ---
 
 # Import Data and Metadata
 
-## Data
 - load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
   - this file contains the names and descriptions of CEL files contained in the data directory 
 
@@ -228,7 +225,7 @@ kable(pData(affyRaw))
 
 # PreProcessing 
 
-## RMA Normalized Data
+## Normalize Data
 
 - background correct and normalize each dataset with RMA [@Bolstad2003]
 
@@ -238,7 +235,6 @@ kable(pData(affyRaw))
 affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
 ```
 
-
 ### Quality Control
 - using arrayQualityMetrics library
 
@@ -246,7 +242,7 @@ affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
 QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm.gene"), title="Normalized Data QC")
 ```
 
-[Normalized Data QC Report](../results/report_norm.exon/index.html)
+[Normalized Data QC Report](../results/report_norm.gene/index.html)
 
 Arrays 14 (3008, 1 month), 20 (3010, 1 month) and 32 (3021, 1 month) are all slight outliers from the other arrays but don't appear to have radically failed, mainly having differently shaped distributions of intensities. We should keep an eye on them in subsequent analyses to see if we should drop them.
 
@@ -268,7 +264,7 @@ There does not appear to be any single factor that clusters the samples by this 
 
 This second approach is a dimension reduction and visualization technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. 
 
-```{r PCAsd, out.width='75%'}
+```{r PCA_nonfilt, out.width='75%'}
 pca <- prcomp(t(exprs(affyNorm)))
 df <- data.frame(cbind(pca$x, pData(affyNorm)))
   
@@ -314,11 +310,83 @@ ggplot(df) +
 While there does appear to be some clustering based on the timepoint, the highest source of variation (PC1) appears to originate from the 2 outlier samples' (3008 and 3010 1 month, as identified in the QC analysis) differences. For now, I'm going to drop all 3 outlier samples (3008, 3010 and 3021 1 month).
 
 
-### Drop Outliers
+## Remove Outliers
+- remove from raw data, renormalize and re-QC
 
 ```{r drop_outliers}
+outlier_indices <- grep("1month_3021|1month_3010|1month_3008", sampleNames(affyRaw))
+affyRaw <- affyRaw[,-outlier_indices]
+```
+
+### Sample metadata
+
+```{r covars, results='asis', echo=FALSE}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+### Renormalize
+
+```{r normalize_filt}
+affyNorm <- affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
+```
+
+### Repeat Quality Control
+
+```{r qc_filt, eval=FALSE}
+QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm_nooutliers.gene"), title="Normalized Data QC")
+```
+
+Everything looks good now for QC measures.
+
+[Normalized Data QC Report after dropping outliers](../results/report_norm_nooutliers.gene/index.html)
+
+### Principal Component Analysis
+
+```{r PCAfilt, out.width='75%'}
+pca <- prcomp(t(exprs(affyNorm)))
+df <- data.frame(cbind(pca$x, pData(affyNorm)))
+  
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=array), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
 
 
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=sex), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+```
+
+This is a big improvement, with the timepoint clearly separating the groups.
 
 ## Annotate
 
@@ -332,98 +400,16 @@ fData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta
 
 ```
 
-## Statistical analyses
-A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
-
-### Design matrix 
-To perform limma, we construct a design matrix which provides a representation of the different sample groups which have been analysed. _Remember that blooddonor is a not a continous variable even though they are numeric characters!_
-
-* make a matrix with arrays as rows, sample groups as columns
-* a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
-
-```{r}
-# Make design matrix
-pData(affyNorm)$blooddonor <- factor(pData(affyNorm)$blooddonor)
-design <- model.matrix(~ 0 + treatment + blooddonor  ,  data=pData(affyNorm))
-kable(design)
-```
-
-### Linear model
-
-These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
-
-- first fit the linear model based on the design matrix for each gene based on the given series of arrays
-- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
-- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
-
-```{r limma,warning=FALSE, message=FALSE}
-# Setup constrasts
-contrast <- makeContrasts(treatment=treatment125D3-treatmentDMSO, levels=colnames(design))
-
-# Fit model
-fit.core <- lmFit(affyNorm, design) 
-
-# Compute cofficients for constrasts
-fit2core <- contrasts.fit(fit.core, contrast) 
-
-# Bayes shrinkage
-fit2core <- eBayes(fit2core) 
-```
-
-## Probe-level Results: No filtering
-
-```{r, fig.align='center'}
-results <- topTable(fit2.core, coef=1, number=nrow(exprs(affyNorm)))
-df <- cbind(results[,c('P.Value', 'logFC')])
-ggplot(df) +
-  geom_histogram(aes(x=P.Value)) +
-  theme_bw() +
-  xlab('p-value') 
-```
-
-#### Volcano plot
-
-This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an FDR < 0.05.** The fold changes are higher than those seen with the full dataset.
-
-```{r, fig.align='center'}
-
-df <- cbind(results[,c('adj.P.Val','P.Value', 'logFC')])
-df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
-ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
-  scale_color_manual(values = c("grey", "purple")) +
-  geom_point(alpha=0.75, pch=16, size=2) +
-  theme(legend.position = "none",
-        plot.title = element_text(size = rel(1.5)),
-        axis.title = element_text(size = rel(1.5)),
-        axis.text = element_text(size = rel(1.25))) +
-  xlab("log2 fold change") + ylab("-log10 p-value")
-```
-
-#### Volcano plot
-
-```{r}
-df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
-ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
-  scale_color_manual(values = c("grey", "purple")) +
-  geom_point(alpha=0.75, pch=16, size=2) +
-  theme(legend.position = "none",
-        plot.title = element_text(size = rel(1.5)),
-        axis.title = element_text(size = rel(1.5)),
-        axis.text = element_text(size = rel(1.25))) +
-  xlab("log2 fold change") + ylab("-log10 p-value")
-```
-
 ## Filter Probesets
 Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
 
-Starting  with `r nrow(fData(affyNorm))` probes,  remaining we can filter:
+Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
 
 ### By Annotation
 - remove the probes without annotated genes
 
 ```{r filter1}
 affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)$symbol) & fData(affyNorm)$category=="main"),]
-affyNorm.filt.b2 <- affyNorm.b2[which(!is.na(fData(affyNorm.b2)$symbol) & fData(affyNorm.b2)$category=="main"),]
 ```
 
 `r nrow(fData(affyNorm.filt))` probes remaining
@@ -433,8 +419,7 @@ affyNorm.filt.b2 <- affyNorm.b2[which(!is.na(fData(affyNorm.b2)$symbol) & fData(
 
 ```{r filter3, cache=TRUE}
 eset.core <- exprs(affyNorm.filt)
-affyNorm.filt <- affyNorm.filt[!(apply(eset.core, 1, 
-                                             function(x) all(x<quantile(exprs(affyNorm.filt), 0.1)))),]
+affyNorm.filt <- affyNorm.filt[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.filt), 0.1)))),]
 ```
 
 `r nrow(fData(affyNorm.filt))` probes remaining
@@ -451,22 +436,98 @@ affyNorm.filt <- affyNorm.filt[rowmads>mad.cutoff,]
 
 `r nrow(fData(affyNorm.filt))` probes remaining
 
-### Linear model: Post-filtering
-We will apply the same model fits to the reduced data matrix, after having applied several filters.
+# Analysis
 
-```{r}
-fit.core <- lmFit(affyNorm.filt, design) 
-fit2core <- contrasts.fit(fit.core, contrast) 
-fit2core <- eBayes(fit2core) 
+## Correlate Principal Components with Covariates
+
+```{r pcacorrelate}
+library(DEGreport)
+
+metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
+
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
+
 ```
 
-### Volcano plots post-filtering
+
+
+
+
+## Statistical analyses
+A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+### Design matrix 
+To perform limma, we construct a design matrix which provides a representation of the different sample groups which have been analysed. 
+
+* make a matrix with arrays as rows, sample groups as columns
+* a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
 
 ```{r}
-resultsfilt <- topTable(fit2core, coef=1, number=nrow(exprs(affyNorm.filt)))
+# Make design matrix
+design <- model.matrix(~0+ time  ,  data=pData(affyNorm))
+kable(design)
+```
 
-df <- cbind(resultsfilt[,c('adj.P.Val','P.Value', 'logFC')])
-df <- cbind(df, threshold=as.logical(df$adj.P.Val < 0.05)) 
+### Linear model
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r limma,warning=FALSE, message=FALSE}
+# Setup constrasts
+contrast <- makeContrasts(one=time1month-timebaseline, six=time6month-timebaseline, levels=colnames(design))
+
+# Fit model
+fit.core <- lmFit(affyNorm, design) 
+
+# Compute cofficients for constrasts
+fit2.core <- contrasts.fit(fit.core, contrast) 
+
+# Bayes shrinkage
+fit2.core <- eBayes(fit2core) 
+```
+
+## Probe-level Results
+
+### Pvalue distributions {.tabset}
+
+#### Baseline versus one month
+
+```{r pvaldistone, fig.align='center'}
+results_one <- topTable(fit2.core, coef="one", number=nrow(exprs(affyNorm)))
+df <- cbind(results_one[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+```
+
+#### Baseline versus six months
+
+```{r pvaldistsix, fig.align='center'}
+results_six <- topTable(fit2.core, coef="six", number=nrow(exprs(affyNorm)))
+df <- cbind(results_six[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+```
+
+### Volcano plots {.tabset}
+
+This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an FDR < 0.05.** 
+
+#### Baseline versus one month
+
+```{r volcano_one, fig.align='center'}
+df <- cbind(results_one[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
 ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
   scale_color_manual(values = c("grey", "purple")) +
   geom_point(alpha=0.75, pch=16, size=2) +
@@ -476,6 +537,27 @@ ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
         axis.text = element_text(size = rel(1.25))) +
   xlab("log2 fold change") + ylab("-log10 p-value")
 ```
+
+#### Baseline versus six months
+
+```{r volcano_six, fig.align='center'}
+df <- cbind(results_six[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+
+
+
+
+
 
 The **results table can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
 
