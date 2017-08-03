@@ -11,16 +11,12 @@ bibliography: references.bib
 
 ---
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
-library(knitcitations)
-cleanbib()
-options("citation_format" = "pandoc")
-
-clientname=""
-clientemail=""
+clientname="Margaret Stefater"
+clientemail="margaret.stefater@childrens.harvard.edu"
 labPI="Nicolas Stylopolous"
-lablocation=""
-analystname=""
-analystemail=""
+lablocation="Boston Children's Hospital"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
 
 
 library(knitr)
@@ -44,7 +40,7 @@ The sections below provide code to reproduce the included results and plots.
 
 ## Batch Analyses
 
-All Affymetrix HTA 2.0 arrays were processed using the 'oligo' BioConductor package `r citep("10.1093/bioinformatics/btq431")`, quality-controlled with arrayQualityMetrics `r citep("10.1093/bioinformatics/btn647")` and normalized with RMA `r citep("10.1093/biostatistics/4.2.249")`. Differentially expressed genes were identified using limma `r citep("http://link.springer.com/chapter/10.1007%2F0-387-29362-0_23")`.
+All Affymetrix HTA 2.0 arrays were processed using the 'oligo' BioConductor package [@Carvalho2010], quality-controlled with arrayQualityMetrics [@Kauffmann2009] and normalized with RMA [@Irizarry2003]. Differentially expressed genes were identified using limma [@Smyth2005].
 
 ---
 
@@ -234,7 +230,7 @@ kable(pData(affyRaw))
 
 ## RMA Normalized Data
 
-- background correct and normalize each dataset with RMA `r citep("10.1093/bioinformatics/19.2.185")`
+- background correct and normalize each dataset with RMA [@Bolstad2003]
 
 - summarize probesets on the gene ('core') level
 
