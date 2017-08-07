@@ -659,12 +659,9 @@ Here we will try to determine if there are additional covariates affecting the r
 This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than `r pvalue.cutoff` are displayed. Non significant correlations are displayed in grey.
 
 ```{r pcacorrelate}
-library(DEGreport)
-
 metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
 
 degCovariates(exprs(affyNorm.filt), metadata, fdr=pvalue.cutoff)
-
 ```
 
 
