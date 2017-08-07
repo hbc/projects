@@ -86,7 +86,6 @@ library(corrgram)
 library(pvca)
 library(dplyr) # data format utility 
 library(hta20sttranscriptcluster.db) #new package for annotation
-library(sva) # Surrogate Variable Analysis (includes ComBat)
 
 library(pd.hta.2.0)# array layout annotation
 library(hta20stprobeset.db)
@@ -96,6 +95,9 @@ library(rio)
 library(tidyr)
 library(janitor)
 library(plyr)
+library(DT)
+library(DEGreport)
+
 ```
 
 ## Munging the metadata
@@ -216,7 +218,7 @@ sampleNames(affyRaw) <- pData(affyRaw)$sampleid
 
 ## Sample metadata
 
-```{r covars, results='asis', echo=FALSE}
+```{r covarsdisplay, results='asis', echo=FALSE}
 # Sample information table
 kable(pData(affyRaw))
 ```
@@ -438,23 +440,11 @@ affyNorm.filt <- affyNorm.filt[rowmads>mad.cutoff,]
 
 # Analysis
 
-## Correlate Principal Components with Covariates
-
-```{r pcacorrelate}
-library(DEGreport)
-
-metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
-
-degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
-degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
-
-```
-
-
-
-
 
 ## Statistical analyses
+
+We'll start with a basic analysis of the effect of gastric bypass, looking at both time points separately.
+
 A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
 
 ### Design matrix 
@@ -488,7 +478,7 @@ fit.core <- lmFit(affyNorm, design)
 fit2.core <- contrasts.fit(fit.core, contrast) 
 
 # Bayes shrinkage
-fit2.core <- eBayes(fit2core) 
+fit2.core <- eBayes(fit2.core) 
 ```
 
 ## Probe-level Results
@@ -505,6 +495,11 @@ ggplot(df) +
   theme_bw() +
   xlab('-log10(p-value)') +
   geom_vline(xintercept=-log10(pvalue.cutoff))
+
+intensities <- exprs(affyNorm.filt) %>% as.data.frame()
+intensities$probesetid <- row.names(intensities)
+intensities_one <- intensities %>% dplyr::select(contains("1month"), contains("baseline"), probesetid)
+results_one <- results_one %>% inner_join(., intensities_one)
 ```
 
 #### Baseline versus six months
@@ -517,11 +512,15 @@ ggplot(df) +
   theme_bw() +
   xlab('-log10(p-value)') +
   geom_vline(xintercept=-log10(pvalue.cutoff))
+
+
+intensities_six <- intensities %>% dplyr::select(contains("6month"), contains("baseline"), probesetid)
+results_six <- results_six %>% inner_join(., intensities_six)
 ```
 
 ### Volcano plots {.tabset}
 
-This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an FDR < 0.05.** 
+This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an adjusted pvalue (aka FDR) < 0.05.** 
 
 #### Baseline versus one month
 
@@ -553,27 +552,60 @@ ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
   xlab("log2 fold change") + ylab("-log10 p-value")
 ```
 
+### Heatmaps {.tabset}
 
+Heatmaps showing the top 100 differentially expressed genes (by B value)
 
+- quick way to look at how the differentially expressed genes look between the individual samples
+- only plotted up to the top 100 genes as determined by B-value (log odds of differential expression)
+- colours represent the log transformed normalized intensities, centered Mand scaled for each row
+- IDs are the gene symbol for the differentially expressed gene **note that because these results are at probe level and there can be mutliple probes per gene, a gene may show up multiple times**
 
+#### Baseline versus one month
+```{r heatmaps1, fig.height=8}
+data.plot <- results_one %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("baseline"), contains("1month")) %>%
+  as.data.frame()
 
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("baseline"), contains("1month"))
+samples <- names(data.plot)
 
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
 
-The **results table can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
-
-```{r write-table, echo=FALSE, eval=FALSE}
-
-stats <- topTable(fit2core, coef=1, sort.by="P",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
-                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
-stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
-eset <- exprs(affyNorm.filt)
-eset  <-  eset[match(row.names(stats), row.names(eset)),]
-stats.eset <- cbind(stats, eset)
-
-write.table(stats.eset, file="results_new/allGenes_Batch1_stats_exprs_Analysis2.xls", sep="\t", quote=F, col.names=NA)
+pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus one month", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
 ```
 
-* [results](results_new/allGenes_Batch1_stats_exprs_Analysis2.xls)
+#### Baseline versus six months
+
+```{r heatmaps6, fig.height=8}
+data.plot <- results_six %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("baseline"), contains("6month")) %>%
+  as.data.frame()
+
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("baseline"), contains("6month"))
+samples <- names(data.plot)
+
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
+
+pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus six months", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
+```
+
+### Results Tables {.tabset}
+The **results tables can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
 
 **The summary table above contains the following information:**
 
@@ -584,56 +616,57 @@ write.table(stats.eset, file="results_new/allGenes_Batch1_stats_exprs_Analysis2.
 - the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
 - the last 4 columns contain the log-transformed normalized expression levels for these genes in each sample
 
+#### Baseline versus one month
 
-## Aggregate probesets
-For any gene that has multiple probe mappings, aggregate expression data by taking a mean across all probes.
+```{r write-table_one}
+stats <- topTable(fit2.core, coef="one", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt)
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
 
-```{r aggregate, echo=TRUE}
-df <- data.frame(exprs(affyNorm.filt))
-symbol <- fData(affyNorm.filt)$symbol
-df <- cbind(df, symbol)
+datatable(stats.eset)
 
-# Average by Gene Symbol
-genemeans <- aggregate(. ~ symbol, data=df, mean)
-row.names(genemeans) <- genemeans$symbol
-genemeans <- as.matrix(genemeans[,-1])
-colnames(genemeans) <- colnames(exprs(affyNorm.filt))
-
-# Create new expression set object 
-affyNorm.gene <- ExpressionSet(genemeans)
-pData(affyNorm.gene) <- pData(affyNorm.filt)                                                             
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month.xlsx"))
 ```
 
-`r nrow(exprs(affyNorm.gene))` unique genes for differential expression analysis.
+**[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
 
-### Linear model: Gene-level analysis
-We will apply the same model fits to the gene-level data matrix, after having aggregated probes for a single gene mapping (by taking an average).
+#### Baseline versus six months
 
-```{r, echo=TRUE}
 
-# Fit model for BATCH 1
-fit.core <- lmFit(affyNorm.gene, design) 
-fit2core <- contrasts.fit(fit.core, contrast) 
-fit2core <- eBayes(fit2core) 
+```{r write-table_six}
+stats <- topTable(fit2.core, coef="six", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt)
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
 
-# Fit model for BATCH 2
-fit.core <- lmFit(affyNorm.gene.b2, design.b2) 
-fit2b2.core <- contrasts.fit(fit.core, contrast.b2)# Bayes shrinkage
-fit2b2.core <- eBayes(fit2b2.core) 
+datatable(stats.eset)
+
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month.xlsx"))
 ```
 
-### Results
+**[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
 
-For the gene-level analysis we expect to find fewer significant findings as the probes were collapsed down. 
 
-```{r}
-# Get results
-resultsgene <- topTable(fit2core, coef=1, number=nrow(exprs(affyNorm.gene)))
+## Correlate Principal Components with Covariates
+
+Here we will try to determine if there are additional covariates affecting the response to gastric bypass.
+
+This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than `r pvalue.cutoff` are displayed. Non significant correlations are displayed in grey.
+
+```{r pcacorrelate}
+library(DEGreport)
+
+metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
+
+degCovariates(exprs(affyNorm.filt), metadata, fdr=pvalue.cutoff)
+
 ```
 
-The **results table for this gene-level analysis can be downloaded using the links below**. 
-
-* [results](./results_new/uniqueGenes_Batch1_stats_exprs_Analysis2.xls)
 
 ---
 
