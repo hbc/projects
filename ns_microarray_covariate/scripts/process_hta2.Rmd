@@ -4,7 +4,9 @@ output:
   html_document:
     theme: united
     toc: yes
-    toc_depth: 5
+    toc_depth: 4
+    toc_float: true
+    code_folding: hide
   pdf_document:
     toc: yes
 bibliography: references.bib
@@ -18,9 +20,8 @@ lablocation="Boston Children's Hospital"
 analystname="John Hutchinson"
 analystemail="jhutchin@hsph.harvard.edu"
 
-
 library(knitr)
-opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=FALSE,cache=FALSE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=TRUE,cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
 options(width=200)
 ```
 
@@ -70,7 +71,7 @@ lfc.cutoff=1
 
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
 
-```{r libraries_variables, echo=TRUE}
+```{r libraries_variables}
 library(knitr) # for simple tables
 library(oligo) # array utilities
 library(arrayQualityMetrics) # array quality control reports
@@ -79,11 +80,7 @@ library(CHBUtils) # some homegrown functions
 library(reshape2) # data format utility
 library(ggplot2) # pretty graphs
 library(ggdendro) # for pretty dendrograms
-library(RColorBrewer) # more colors
-library(gridExtra) # for arranging multiple plots
 library(pheatmap) # pretty heatmaps
-library(corrgram)
-library(pvca)
 library(dplyr) # data format utility 
 library(hta20sttranscriptcluster.db) #new package for annotation
 
@@ -97,10 +94,14 @@ library(janitor)
 library(plyr)
 library(DT)
 library(DEGreport)
+library(treemap)
+library(gProfileR)
 
 ```
 
 ## Munging the metadata
+
+- reorganize the metadata into a usable form
 
 ```{r metadatamunge}
 # did some editing of column headings, dropping redundant columns etc. in Excel first
@@ -126,7 +127,9 @@ write.table(file="covars.desc", metadata, sep="\t", quote=FALSE)
 
 ## Functions
 
-```{r functions, echo=FALSE}
+- miscellaneous functions used in this analysis
+
+```{r functions}
 # for plotting amount of variation explained by principal components
 PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
   eset.core <- exprs(eset)
@@ -143,10 +146,6 @@ PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
     geom_line(data=sdevdf, aes(x=X2, y=cum))
 }
 
-# used for formatting labels on ggplots
-fmt <- function(){ 
-  function(x) format(x,nsmall = 1,scientific = FALSE)
-}
 
 plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
   require(ggdendro)
@@ -218,7 +217,7 @@ sampleNames(affyRaw) <- pData(affyRaw)$sampleid
 
 ## Sample metadata
 
-```{r covarsdisplay, results='asis', echo=FALSE}
+```{r covarsdisplay, results='asis'}
 # Sample information table
 kable(pData(affyRaw))
 ```
@@ -269,7 +268,20 @@ This second approach is a dimension reduction and visualization technique that i
 ```{r PCA_nonfilt, out.width='75%'}
 pca <- prcomp(t(exprs(affyNorm)))
 df <- data.frame(cbind(pca$x, pData(affyNorm)))
-  
+
+# SD of components
+myPca.core <- pca
+sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+sdevdf$cum <- cumsum(sdevdf$prop)
+ggplot(sdevdf, aes(x=X2, y=prop)) + 
+  geom_point(size=4, color="red") + 
+  scale_x_continuous('Component') + 
+  scale_y_continuous('Standard Deviation')+
+  geom_line(data=sdevdf, aes(x=X2, y=cum))+
+  ggtitle("Principal component contributions to variation")
+
+
 ggplot(df) +
   geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
   geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
@@ -309,8 +321,9 @@ ggplot(df) +
     ylab("PC2") + xlab("PC1") 
 ```
 
-While there does appear to be some clustering based on the timepoint, the highest source of variation (PC1) appears to originate from the 2 outlier samples' (3008 and 3010 1 month, as identified in the QC analysis) differences. For now, I'm going to drop all 3 outlier samples (3008, 3010 and 3021 1 month).
+There are a large number of principal components that contribute to the variaiton, with none contributing more than 10% of the variation.
 
+While there does appear to be some clustering based on the timepoint, the highest source of variation (PC1) appears to originate from the 2 outlier samples' (3008 and 3010 1 month, as identified in the QC analysis) differences. For now, I'm going to drop all 3 outlier samples (3008, 3010 and 3021 1 month).
 
 ## Remove Outliers
 - remove from raw data, renormalize and re-QC
@@ -322,14 +335,16 @@ affyRaw <- affyRaw[,-outlier_indices]
 
 ### Sample metadata
 
-```{r covars, results='asis', echo=FALSE}
+```{r covars, results='asis'}
 # Sample information table
 kable(pData(affyRaw))
 ```
 
 ### Renormalize
 
-```{r normalize_filt}
+- without the outlier samples
+
+```{r normalize_filt, results='hide'}
 affyNorm <- affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
 ```
 
@@ -348,7 +363,20 @@ Everything looks good now for QC measures.
 ```{r PCAfilt, out.width='75%'}
 pca <- prcomp(t(exprs(affyNorm)))
 df <- data.frame(cbind(pca$x, pData(affyNorm)))
-  
+
+# SD of components
+myPca.core <- pca
+sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+sdevdf$cum <- cumsum(sdevdf$prop)
+ggplot(sdevdf, aes(x=X2, y=prop)) + 
+  geom_point(size=4, color="red") + 
+  scale_x_continuous('Component') + 
+  scale_y_continuous('Standard Deviation')+
+  geom_line(data=sdevdf, aes(x=X2, y=cum))+
+  ggtitle("Principal component contributions to variation")
+
+
 ggplot(df) +
   geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
   geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
@@ -419,7 +447,7 @@ affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)$symbol) & fData(affyNorm)
 ### By Low Expression Level
 - remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
 
-```{r filter3, cache=TRUE}
+```{r filter3}
 eset.core <- exprs(affyNorm.filt)
 affyNorm.filt <- affyNorm.filt[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.filt), 0.1)))),]
 ```
@@ -562,6 +590,7 @@ Heatmaps showing the top 100 differentially expressed genes (by B value)
 - IDs are the gene symbol for the differentially expressed gene **note that because these results are at probe level and there can be mutliple probes per gene, a gene may show up multiple times**
 
 #### Baseline versus one month
+
 ```{r heatmaps1, fig.height=8}
 data.plot <- results_one %>% 
   filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
@@ -635,7 +664,6 @@ export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month
 
 #### Baseline versus six months
 
-
 ```{r write-table_six}
 stats <- topTable(fit2.core, coef="six", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
                  genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
@@ -651,19 +679,227 @@ export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month
 
 **[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
 
+## Functional Enrichment
+
+### gProfiler & Revigo {.tabset}
+
+Using the DE genes identified for each of the comparisons above (i.e. adjused pvalue < `r pvalue.cutoff` and the absolute value of the logFC > `r lfc.cutoff`), a list of statistically enriched gene ontology (GO) terms for biological process (BP), human phenotype ontology (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/) [@gprofiler].
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO](http://revigo.irb.hr/) [@revigo], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links above the Revigo plots.
+
+#### Baseline versus one month
+
+```{r gprofiler}
+library(gProfileR)
+sig_genes <-  results_one %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_one %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_one_month.xlsx"))
+```
+
+**[results](../results/gprofiler_results_baseline_vs_one_month.xlsx)**
+
+```{r revigo_one, results='asis'}
+setwd(file.path(baseDir, "scripts"))
+
+# Revigo BP
+## Parameters to change
+cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
+organism <- "Homo sapiens" #Allowed values: See organism.list below
+isPValue <- "yes" #Allowed values: "yes"  "no"
+whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
+measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+
+#Do not change below
+organism.list <- list(
+	"whole UniProt"=0, 
+	"Homo sapiens"=9606,
+	"Mus musculus"=10090,
+	"Rattus norvegicus"=10116,
+	"Bos taurus"=9913,
+	"Gallus gallus"=9031,
+	"Danio rerio"=7955,
+	"Takifugu rubripes"=31033,
+	"Xenopus laevis"=8355,
+	"Drosophila melanogaster"=7227,
+	"Caenorhabditis elegans"=6239,
+	"Arabidopsis thaliana"=3702,
+	"Oryza sativa"=39947,
+	"Zea mays"=4577,
+	"Saccharomyces cerevisiae"=4932,
+	"Schizosaccharomyces pombe"=4896,
+	"Dictyostelium discoideum"=44689,
+	"Plasmodium falciparum"=5833,
+	"Chlamydomonas reinhardtii"=3055,
+	"Escherichia coli"=83333,
+	"Bacillus subtilis"=1423,
+	"Pseudomonas aeruginosa"=287,
+	"Mycobacterium tuberculosis"=1773,
+	"Mycoplasma genitalium"=2097,
+	"Synechocystis sp."=1148
+	)
+organism.db <- as.character(organism.list[organism])
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+
+#### Baseline versus six months
+
+```{r gprofiler_six}
+sig_genes <-  results_six %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_six %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_six_months.xlsx"))
+```
+
+**[results](../results/gprofiler_results_baseline_vs_six_months.xlsx)**
+
+```{r revigo_six, results='asis'}
+setwd(file.path(baseDir, "scripts"))
+
+# Revigo BP
+## Parameters to change
+cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
+organism <- "Homo sapiens" #Allowed values: See organism.list below
+isPValue <- "yes" #Allowed values: "yes"  "no"
+whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
+measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+
+#Do not change below
+organism.list <- list(
+	"whole UniProt"=0, 
+	"Homo sapiens"=9606,
+	"Mus musculus"=10090,
+	"Rattus norvegicus"=10116,
+	"Bos taurus"=9913,
+	"Gallus gallus"=9031,
+	"Danio rerio"=7955,
+	"Takifugu rubripes"=31033,
+	"Xenopus laevis"=8355,
+	"Drosophila melanogaster"=7227,
+	"Caenorhabditis elegans"=6239,
+	"Arabidopsis thaliana"=3702,
+	"Oryza sativa"=39947,
+	"Zea mays"=4577,
+	"Saccharomyces cerevisiae"=4932,
+	"Schizosaccharomyces pombe"=4896,
+	"Dictyostelium discoideum"=44689,
+	"Plasmodium falciparum"=5833,
+	"Chlamydomonas reinhardtii"=3055,
+	"Escherichia coli"=83333,
+	"Bacillus subtilis"=1423,
+	"Pseudomonas aeruginosa"=287,
+	"Mycobacterium tuberculosis"=1773,
+	"Mycoplasma genitalium"=2097,
+	"Synechocystis sp."=1148
+	)
+organism.db <- as.character(organism.list[organism])
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+--- 
 
 ## Correlate Principal Components with Covariates
 
 Here we will try to determine if there are additional covariates affecting the response to gastric bypass.
 
-This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than `r pvalue.cutoff` are displayed. Non significant correlations are displayed in grey.
+This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than 0.01, 0.05 and 0.1 are displayed in separate plots. Non significant correlations are displayed in grey.
 
-```{r pcacorrelate}
+```{r pcacorrelate, results='asis'}
 metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
 
-degCovariates(exprs(affyNorm.filt), metadata, fdr=pvalue.cutoff)
-```
+cat("**FDR<0.01**")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.01)
 
+cat("**FDR<0.05**")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
+
+cat("**FDR<0.1**")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
+
+```
 
 ---
 
@@ -679,7 +915,5 @@ sessionInfo()
 
 # References
 
-```{r writebib, results='hide', echo=FALSE, message=FALSE}
-write.bibtex(file="references.bib")
-```
+
 
