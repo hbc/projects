@@ -96,6 +96,7 @@ library(DT)
 library(DEGreport)
 library(treemap)
 library(gProfileR)
+library(WGCNA)
 
 ```
 
@@ -245,7 +246,7 @@ QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm.gen
 
 [Normalized Data QC Report](../results/report_norm.gene/index.html)
 
-Arrays 14 (3008, 1 month), 20 (3010, 1 month) and 32 (3021, 1 month) are all slight outliers from the other arrays but don't appear to have radically failed, mainly having differently shaped distributions of intensities. We should keep an eye on them in subsequent analyses to see if we should drop them.
+Arrays 14 (3008, 1 month), 20 (3010, 1 month) and 32 (3021, 1 month) are all  outliers from the other arrays but don't appear to have radically failed, mainly having differently shaped distributions of intensities. We should keep an eye on them in subsequent analyses to see if we should drop them.
 
 ### Unsupervised Clustering of RMA Normalized Data
 
@@ -323,7 +324,7 @@ ggplot(df) +
 
 There are a large number of principal components that contribute to the variaiton, with none contributing more than 10% of the variation.
 
-While there does appear to be some clustering based on the timepoint, the highest source of variation (PC1) appears to originate from the 2 outlier samples' (3008 and 3010 1 month, as identified in the QC analysis) differences. For now, I'm going to drop all 3 outlier samples (3008, 3010 and 3021 1 month).
+While there does appear to be some clustering based on the timepoint, the highest sources of variation (PC1 and PC2) appear to originate from the 3 outlier samples' (3008, 3010 and 3021 1 month, as identified in the QC analysis) differences. Here, I drop all 3 outliers as they have technical differences (overall intensities and MA plots for 3008 adn 3010, changed intensity density plot for 3021) from the other samples.
 
 ## Remove Outliers
 - remove from raw data, renormalize and re-QC
@@ -414,13 +415,24 @@ ggplot(df) +
           axis.title = element_text(size = rel(1.5)),
         axis.text = element_text(size = rel(1.25))) +
     ylab("PC2") + xlab("PC1") 
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
 ```
 
 This is a big improvement, with the timepoint clearly separating the groups.
 
 ## Annotate
 
-So far we have only been working with the probesets,without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular.
+So far we have only been working with the probesets, without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular. WE get probeids and transcript information from NetAffx using the NetAffx BioConductor package and the gene symbols and entrezIDs from the BioConductor annotation packages.
 
 ```{r features, results='hide'}
 featureData(affyNorm) <- getNetAffx(affyNorm, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
@@ -437,41 +449,40 @@ Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
 
 ### By Annotation
 - remove the probes without annotated genes
+*(changed code to make sure to capture the genes without gene symbols)*
+- remove non ccoding genes
+ 
 
 ```{r filter1}
-affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)$symbol) & fData(affyNorm)$category=="main"),]
+affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)[,"symbol"]) & fData(affyNorm)$category=="main" & fData(affyNorm)$locustype=="Coding"),]
 ```
 
 `r nrow(fData(affyNorm.filt))` probes remaining
 
-### By Low Expression Level
-- remove probes with low expression levels (bottom `r lowintensity.percentile*100`% of all expression levels) in all samples
 
-```{r filter3}
-eset.core <- exprs(affyNorm.filt)
-affyNorm.filt <- affyNorm.filt[!(apply(eset.core, 1, function(x) all(x<quantile(exprs(affyNorm.filt), 0.1)))),]
+## Collapse probesets
+
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function [@Miller2011] in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+
+```{r collapseprobes}
+eset <- exprs(affyNorm.filt)
+
+eset.annot <- cbind(exprs(affyNorm.filt), fData(affyNorm.filt)) %>%  tbl_df() %>% dplyr::select(., contains("baseline"), contains("1month"), contains("6month"), symbol, transcriptclusterid)
+eset <- dplyr::select(eset.annot,  contains("baseline"), contains("1month"), contains("6month")) %>% as.data.frame()
+row.names(eset) <- eset.annot$transcriptclusterid
+collapsed.data <- collapseRows(eset,rowID=eset.annot$transcriptclusterid, rowGroup=eset.annot$symbol , method="MaxMean")
+
+affyNorm.filt <- affyNorm.filt[which(collapsed.data$selectedRow),]
 ```
 
-`r nrow(fData(affyNorm.filt))` probes remaining
-
-### By Low Variability
-- remove probes with lower variation among all samples (without regard for group status) (dropped the bottom `r mad.quantile.cutoff*100`%) 
-
-```{r filter4}
-eset.core <- exprs(affyNorm.filt)
-rowmads <- apply(eset.core, 1, mad)
-mad.cutoff <- as.numeric(quantile(rowmads, mad.quantile.cutoff))
-affyNorm.filt <- affyNorm.filt[rowmads>mad.cutoff,]
-```
-
-`r nrow(fData(affyNorm.filt))` probes remaining
+`r nrow(fData(affyNorm.filt))` genes
 
 # Analysis
 
-
 ## Statistical analyses
 
-We'll start with a basic analysis of the effect of gastric bypass, looking at both time points separately.
+We'll start with a basic analysis of the effect of gastric bypass, looking at both time points separately. As samples are paired, we will do a paired analysis. We will also do a paired analysis of one month versus six months.
 
 A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
 
@@ -483,7 +494,8 @@ To perform limma, we construct a design matrix which provides a representation o
 
 ```{r}
 # Make design matrix
-design <- model.matrix(~0+ time  ,  data=pData(affyNorm))
+pData(affyNorm.filt)$time <- relevel(pData(affyNorm.filt)$time, ref=("baseline"))
+design <- model.matrix(~patient_id + time  ,  data=pData(affyNorm.filt))
 kable(design)
 ```
 
@@ -497,10 +509,10 @@ These matrices are used to fit a linear model to the data. The linear model is a
 
 ```{r limma,warning=FALSE, message=FALSE}
 # Setup constrasts
-contrast <- makeContrasts(one=time1month-timebaseline, six=time6month-timebaseline, levels=colnames(design))
+contrast <- makeContrasts(one=time1month, six=time6month, levels=colnames(design))
 
 # Fit model
-fit.core <- lmFit(affyNorm, design) 
+fit.core <- lmFit(affyNorm.filt, design) 
 
 # Compute cofficients for constrasts
 fit2.core <- contrasts.fit(fit.core, contrast) 
@@ -523,7 +535,6 @@ ggplot(df) +
   theme_bw() +
   xlab('-log10(p-value)') +
   geom_vline(xintercept=-log10(pvalue.cutoff))
-
 intensities <- exprs(affyNorm.filt) %>% as.data.frame()
 intensities$probesetid <- row.names(intensities)
 intensities_one <- intensities %>% dplyr::select(contains("1month"), contains("baseline"), probesetid)
@@ -540,8 +551,6 @@ ggplot(df) +
   theme_bw() +
   xlab('-log10(p-value)') +
   geom_vline(xintercept=-log10(pvalue.cutoff))
-
-
 intensities_six <- intensities %>% dplyr::select(contains("6month"), contains("baseline"), probesetid)
 results_six <- results_six %>% inner_join(., intensities_six)
 ```
@@ -582,12 +591,12 @@ ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
 
 ### Heatmaps {.tabset}
 
-Heatmaps showing the top 100 differentially expressed genes (by B value)
+Heatmaps showing the top 100 differentially expressed genes (as determined by having an adjusted pvalue<`r pvalue.cutoff` and abs(logFC)>`r lfc.cutoff`) and sorted by by the log odds of differential expression (B)
 
-- quick way to look at how the differentially expressed genes look between the individual samples
-- only plotted up to the top 100 genes as determined by B-value (log odds of differential expression)
-- colours represent the log transformed normalized intensities, centered Mand scaled for each row
-- IDs are the gene symbol for the differentially expressed gene **note that because these results are at probe level and there can be mutliple probes per gene, a gene may show up multiple times**
+- quick way to look at how the differentially expressed genes vary between the individual samples
+- only plotted up to the top 100 genes as determined by B-value (log odds of differential expression), though all genes are differntially expressed (ie. having an adjusted pvalue<`r pvalue.cutoff` and abs(logFC)>`r lfc.cutoff`)), if less than 100 genes were DE, I just plotted those genes
+- colours represent the log transformed normalized intensities, centered and scaled for each row
+- IDs are the gene symbol for the differentially expressed gene 
 
 #### Baseline versus one month
 
@@ -649,13 +658,13 @@ The **results tables can be downloaded using the links below**. *Note that for a
 
 ```{r write-table_one}
 stats <- topTable(fit2.core, coef="one", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
-                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "seqname", "strand", "start" ,"stop", "probesetid")])
 stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
-eset <- exprs(affyNorm.filt)
+eset <- exprs(affyNorm.filt) %>% as.data.frame() %>% dplyr::select(contains("baseline"), contains("1month"))
 eset  <-  eset[match(row.names(stats), row.names(eset)),]
 stats.eset <- cbind(stats, eset)
 
-datatable(stats.eset)
+datatable(stats.eset )
 
 export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month.xlsx"))
 ```
@@ -668,7 +677,7 @@ export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month
 stats <- topTable(fit2.core, coef="six", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
                  genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
 stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
-eset <- exprs(affyNorm.filt)
+eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("baseline"), contains("6month"))
 eset  <-  eset[match(row.names(stats), row.names(eset)),]
 stats.eset <- cbind(stats, eset)
 
@@ -678,6 +687,20 @@ export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month
 ```
 
 **[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
+
+
+
+## Overlap between 1 month and 6 months
+
+```{r overlap}
+results_one.sub <- results_one %>% dplyr::select(symbol,logFC, adj.P.Val)
+results_six.sub <- results_six %>% dplyr::select(symbol,logFC, adj.P.Val)
+
+
+results_one.sub <- melt(results_one.sub)
+results_six.sub <- melt(results_six.sub)
+```
+
 
 ## Functional Enrichment
 
