@@ -52,9 +52,7 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-#baseDir <- file.path("Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
-baseDir <- file.path("~/Orchestra/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
-
+baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
 dataDir <- file.path(baseDir, "data", "renamed_CELfiles")
 metaDir <- file.path(baseDir, "metadata")
 resultsDir <- file.path(baseDir, "results")
@@ -73,7 +71,7 @@ lfc.cutoff=1
 
 [Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
 
-```{r libraries_variables}
+```{r libraries_variables, results='hide'}
 library(knitr) # for simple tables
 library(oligo) # array utilities
 library(arrayQualityMetrics) # array quality control reports
@@ -84,10 +82,11 @@ library(ggplot2) # pretty graphs
 library(ggdendro) # for pretty dendrograms
 library(pheatmap) # pretty heatmaps
 library(dplyr) # data format utility 
-library(hta20transcriptcluster.db) #new package for annotation
+library(hta20sttranscriptcluster.db) #new package for annotation
 
 library(pd.hta.2.0)# array layout annotation
-library(hta20probeset.db)
+library(hta20stprobeset.db)
+
 
 library(rio)
 library(tidyr)
@@ -98,6 +97,7 @@ library(DEGreport)
 library(treemap)
 library(gProfileR)
 library(WGCNA)
+
 ```
 
 ## Munging the metadata
@@ -210,7 +210,7 @@ QCarray <- function(eset, intgroup=NULL, outdir=NULL, logtransform=TRUE, title=N
 covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) 
 # Load CEL files
 celFiles <- file.path(dataDir, covars$filename)
-affyRaw <- oligo::read.celfiles(celFiles)
+affyRaw <- read.celfiles(celFiles)
 pData(affyRaw) <- covars
 sampleNames(affyRaw) <- pData(affyRaw)$sampleid
 #validObject(affyRaw)
@@ -439,7 +439,6 @@ featureData(affyNorm) <- getNetAffx(affyNorm, "transcript") # this will load the
 # get gene symbols and entrezIDs for all probesets
 fData(affyNorm)$symbol <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
 fData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
-
 ```
 
 ## Filter Probesets
@@ -457,7 +456,7 @@ Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
 affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)[,"symbol"]) & fData(affyNorm)$category=="main" & fData(affyNorm)$locustype=="Coding"),]
 ```
 
-`r nrow(fData(affyNorm.filt))` probes remaining
+`r nrow(fData(affyNorm.filt))` probes remaining.
 
 
 ## Collapse probesets
@@ -476,7 +475,7 @@ collapsed.data <- collapseRows(eset,rowID=eset.annot$transcriptclusterid, rowGro
 affyNorm.filt <- affyNorm.filt[which(collapsed.data$selectedRow),]
 ```
 
-`r nrow(fData(affyNorm.filt))` genes
+`r nrow(fData(affyNorm.filt))` genes remaining.
 
 # Analysis
 
@@ -509,7 +508,7 @@ These matrices are used to fit a linear model to the data. The linear model is a
 
 ```{r limma,warning=FALSE, message=FALSE}
 # Setup constrasts
-contrast <- makeContrasts(one=time1month, six=time6month, levels=colnames(design))
+contrast <- makeContrasts(one=time1month, six=time6month, onesix=time6month-time1month, levels=colnames(design))
 
 # Fit model
 fit.core <- lmFit(affyNorm.filt, design) 
@@ -521,9 +520,14 @@ fit2.core <- contrasts.fit(fit.core, contrast)
 fit2.core <- eBayes(fit2.core) 
 ```
 
-## Probe-level Results
+## Gene-level Results
 
 ### Pvalue distributions {.tabset}
+
+```{r grabintensities}
+intensities <- exprs(affyNorm.filt) %>% as.data.frame()
+intensities$probesetid <- row.names(intensities)
+```
 
 #### Baseline versus one month
 
@@ -535,8 +539,6 @@ ggplot(df) +
   theme_bw() +
   xlab('-log10(p-value)') +
   geom_vline(xintercept=-log10(pvalue.cutoff))
-intensities <- exprs(affyNorm.filt) %>% as.data.frame()
-intensities$probesetid <- row.names(intensities)
 intensities_one <- intensities %>% dplyr::select(contains("1month"), contains("baseline"), probesetid)
 results_one <- results_one %>% inner_join(., intensities_one)
 ```
@@ -554,6 +556,21 @@ ggplot(df) +
 intensities_six <- intensities %>% dplyr::select(contains("6month"), contains("baseline"), probesetid)
 results_six <- results_six %>% inner_join(., intensities_six)
 ```
+
+#### One month versus six months
+
+```{r pvaldistonesix, fig.align='center'}
+results_onesix <- topTable(fit2.core, coef="onesix", number=nrow(exprs(affyNorm)))
+df <- cbind(results_onesix[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+intensities_onesix <- intensities %>% dplyr::select(contains("1month"), contains("6month"),  probesetid)
+results_onesix <- results_onesix %>% inner_join(., intensities_onesix)
+```
+
 
 ### Volcano plots {.tabset}
 
@@ -578,6 +595,21 @@ ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
 
 ```{r volcano_six, fig.align='center'}
 df <- cbind(results_six[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+#### One month versus six months
+
+```{r volcano_onesix, fig.align='center'}
+df <- cbind(results_onesix[,c('adj.P.Val','P.Value', 'logFC')])
 df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
 ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
   scale_color_manual(values = c("grey", "purple")) +
@@ -642,6 +674,29 @@ annots <- annots[samples,, drop=FALSE]
 pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus six months", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
 ```
 
+#### One month versus six months
+
+```{r heatmaps16, fig.height=8}
+data.plot <- results_onesix %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("1month"), contains("6month")) %>%
+  as.data.frame()
+
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("1month"), contains("6month"))
+samples <- names(data.plot)
+
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
+
+pheatmap(data.plot, cluster_cols = TRUE, main="One month versus six months", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
+```
+
+
 ### Results Tables {.tabset}
 The **results tables can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
 
@@ -689,6 +744,23 @@ export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month
 **[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
 
 
+#### One month versus six months
+
+```{r write-table_onesix}
+stats <- topTable(fit2.core, coef="onesix", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("1month"), contains("6month"))
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+datatable(stats.eset)
+
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_one_month_vs_six_month.xlsx"))
+```
+
+**[results](../results/stats_exprs_one_month_vs_six_month.xlsx)**
+
 
 ## Overlap between 1 month and 6 months
 
@@ -712,37 +784,7 @@ A list including only the significant GO Biological Process (BP) terms was then 
 
 The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links above the Revigo plots.
 
-#### Baseline versus one month
-
-```{r gprofiler}
-library(gProfileR)
-sig_genes <-  results_one %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
-background_genes <- results_one %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
-
-gprofiler_results <- gprofiler(query = sig_genes, 
-                               organism = "hsapiens",
-                               ordered_query = FALSE,
-                               exclude_iea = FALSE, 
-                               max_set_size = 0, 
-                               correction_method = "fdr", 
-                               domain_size = "annotated", 
-                               custom_bg = background_genes)
-
-allterms <- gprofiler_results$term.id
-GOs <- allterms[grep("GO:", allterms)]
-pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
-
-gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
-names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
-
-export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_one_month.xlsx"))
-```
-
-**[results](../results/gprofiler_results_baseline_vs_one_month.xlsx)**
-
-```{r revigo_one, results='asis'}
-setwd(file.path(baseDir, "scripts"))
-
+```{r revigosetup}
 # Revigo BP
 ## Parameters to change
 cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
@@ -780,6 +822,38 @@ organism.list <- list(
 	"Synechocystis sp."=1148
 	)
 organism.db <- as.character(organism.list[organism])
+```
+
+#### Baseline versus one month
+
+```{r gprofiler}
+library(gProfileR)
+sig_genes <-  results_one %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_one %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_one_month.xlsx"))
+```
+
+**[results](../results/gprofiler_results_baseline_vs_one_month.xlsx)**
+
+```{r revigo_one, results='asis'}
+setwd(file.path(baseDir, "scripts"))
 
 allterms <- gprofiler_results$term.id
 GOs <- allterms[grep("GO:", allterms)]
@@ -838,43 +912,61 @@ export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_resu
 ```{r revigo_six, results='asis'}
 setwd(file.path(baseDir, "scripts"))
 
-# Revigo BP
-## Parameters to change
-cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
-organism <- "Homo sapiens" #Allowed values: See organism.list below
-isPValue <- "yes" #Allowed values: "yes"  "no"
-whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
-measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
 
-#Do not change below
-organism.list <- list(
-	"whole UniProt"=0, 
-	"Homo sapiens"=9606,
-	"Mus musculus"=10090,
-	"Rattus norvegicus"=10116,
-	"Bos taurus"=9913,
-	"Gallus gallus"=9031,
-	"Danio rerio"=7955,
-	"Takifugu rubripes"=31033,
-	"Xenopus laevis"=8355,
-	"Drosophila melanogaster"=7227,
-	"Caenorhabditis elegans"=6239,
-	"Arabidopsis thaliana"=3702,
-	"Oryza sativa"=39947,
-	"Zea mays"=4577,
-	"Saccharomyces cerevisiae"=4932,
-	"Schizosaccharomyces pombe"=4896,
-	"Dictyostelium discoideum"=44689,
-	"Plasmodium falciparum"=5833,
-	"Chlamydomonas reinhardtii"=3055,
-	"Escherichia coli"=83333,
-	"Bacillus subtilis"=1423,
-	"Pseudomonas aeruginosa"=287,
-	"Mycobacterium tuberculosis"=1773,
-	"Mycoplasma genitalium"=2097,
-	"Synechocystis sp."=1148
-	)
-organism.db <- as.character(organism.list[organism])
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+#### One month versus six months
+
+```{r gprofiler_onesix}
+sig_genes <-  results_onesix %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_six %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_one_month_vs_six_months.xlsx"))
+```
+
+**[results](../results/gprofiler_results_one_month_vs_six_months.xlsx)**
+
+```{r revigo_onesix, results='asis'}
+setwd(file.path(baseDir, "scripts"))
 
 allterms <- gprofiler_results$term.id
 GOs <- allterms[grep("GO:", allterms)]
@@ -904,24 +996,48 @@ source(mytempfile)
 
 --- 
 
-## Correlate Principal Components with Covariates
+## Correlate Principal Components with Covariates {.tabset}
 
 Here we will try to determine if there are additional covariates affecting the response to gastric bypass.
 
 This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than 0.01, 0.05 and 0.1 are displayed in separate plots. Non significant correlations are displayed in grey.
 
 ```{r pcacorrelate, results='asis'}
-metadata <- pData(affyNorm.filt) %>% tbl_df() %>% dplyr::select(-filename, -sampleid, -patient_id, -filename_field3)
+metadata <- pData(affyNorm.filt) %>% 
+  tbl_df() %>% 
+  dplyr::select(-filename, -sampleid, -filename_field3) %>% 
+  group_by(patient_id) %>% 
+  #dplyr::mutate(delta_bw=round(bw-first(bw), digits=1)) %>% 
+  #dplyr::mutate(delta_bmi=bmi-first(bmi)) %>% 
+  #dplyr::mutate(delta_a1c=a1c-first(a1c)) %>% 
+  #dplyr::mutate(delta_fbg=fbg-first(fbg)) %>% 
+  #dplyr::mutate(test=a1c) %>% 
+  ungroup() %>% 
+  dplyr::select(contains("time"), a1c)
 
-cat("**FDR<0.01**")
+
+metadata <- pData(affyNorm.filt) %>% 
+  tbl_df() %>% 
+  dplyr::select(-filename, -sampleid, -filename_field3) %>% 
+  row2colnames("rownames") %>% 
+  group_by(patient_id) %>% 
+  dplyr::mutate(delta_bw=round(bw-first(bw), digits=1)) %>% 
+  dplyr::mutate(delta_bmi=bmi-first(bmi)) %>% 
+  dplyr::mutate(delta_a1c=a1c-first(a1c)) %>% 
+  dplyr::mutate(delta_fbg=fbg-first(fbg)) %>% 
+  ungroup() %>% 
+  as.data.frame() %>% 
+  col2rownames("rownames", TRUE)
+
+
+cat("###FDR<0.01")
 degCovariates(exprs(affyNorm.filt), metadata, fdr=0.01)
 
-cat("**FDR<0.05**")
+cat("###FDR<0.05")
 degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
 
-cat("**FDR<0.1**")
+cat("###FDR<0.1")
 degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
-
 ```
 
 ---
