@@ -52,7 +52,9 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+#baseDir <- file.path("Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+baseDir <- file.path("~/Orchestra/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+
 dataDir <- file.path(baseDir, "data", "renamed_CELfiles")
 metaDir <- file.path(baseDir, "metadata")
 resultsDir <- file.path(baseDir, "results")
@@ -82,11 +84,10 @@ library(ggplot2) # pretty graphs
 library(ggdendro) # for pretty dendrograms
 library(pheatmap) # pretty heatmaps
 library(dplyr) # data format utility 
-library(hta20sttranscriptcluster.db) #new package for annotation
+library(hta20transcriptcluster.db) #new package for annotation
 
 library(pd.hta.2.0)# array layout annotation
-library(hta20stprobeset.db)
-
+library(hta20probeset.db)
 
 library(rio)
 library(tidyr)
@@ -97,7 +98,6 @@ library(DEGreport)
 library(treemap)
 library(gProfileR)
 library(WGCNA)
-
 ```
 
 ## Munging the metadata
@@ -210,7 +210,7 @@ QCarray <- function(eset, intgroup=NULL, outdir=NULL, logtransform=TRUE, title=N
 covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) 
 # Load CEL files
 celFiles <- file.path(dataDir, covars$filename)
-affyRaw <- read.celfiles(celFiles)
+affyRaw <- oligo::read.celfiles(celFiles)
 pData(affyRaw) <- covars
 sampleNames(affyRaw) <- pData(affyRaw)$sampleid
 #validObject(affyRaw)
