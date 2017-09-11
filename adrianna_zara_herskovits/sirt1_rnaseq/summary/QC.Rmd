@@ -205,8 +205,8 @@ p4 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="class")
 p5 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups=c("class", "sibset"))
 p6 <- plotPCA(bcb, interestingGroups=c("age", "generalGeno"))
 
-grid.arrange(p1,p2, p3, p4, p5, p6, nrow=3)
-
+grid.arrange(p1,p2, p3, p4, p5,  nrow=3)
+p6
 ```
 
 The samples are clustering well by age, and somewhat by genotype. There may be some small amount of clustering by sibset. SCKO_yng_3 appears to be a outlier.
@@ -253,7 +253,8 @@ p4 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups="class")
 p5 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups=c("class", "sibset"))
 p6 <- plotPCA(bcb_sub, interestingGroups=c("age", "generalGeno"))
 
-grid.arrange(p1,p2, p3, p4, p5, p6, nrow=3)
+grid.arrange(p1,p2, p3, p4, p5, nrow=3)
+p6
 ```
 
 ```{r plot_pca_covariates2}
