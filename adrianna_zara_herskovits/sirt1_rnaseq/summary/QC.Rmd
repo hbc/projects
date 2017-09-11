@@ -281,6 +281,7 @@ This looks much better. The dendrogram splits nicely between old and young sampl
 Looking at the knockout and transgene gene can be a good way to check for sample swaps.
 
 ```{r geneofinterest}
+gene <- "ENSMUSG00000020063"
 plotGene(bcb, gene=gene, format="ensgene")
 ```
 
