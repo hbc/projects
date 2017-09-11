@@ -262,7 +262,7 @@ metadata(bcb_sub)$interestingGroups <- c("generalGeno", "age", "class","sibset")
 plotPCACovariates(bcb_sub)
 ```
 
-Age now has the strongest correlation, with just the 1st principal component, with the general genotype (KO, WT, TG) having a high correlation to the second principal component. 
+Age now has the strongest correlation, with just the 1st principal component, with the general genotype (KO, WT, TG) having a high correlation to the second principal component. Some of this may clear up after splitting the dataset by age.
 
 ## Hierarchical clustering
 
@@ -293,4 +293,9 @@ The three transgenics (TG_old_2, TG_old_3 and TG_yng_3) with expression levels c
 
 ```{r object}
 print(bcb)
+
+bcb_old <- bcb_sub[, which(colData(bcb_sub)$age=="old"), skipNorm=TRUE]
+bcb_yng <- bcb_sub[, which(colData(bcb_sub)$age=="young"), skipNorm=TRUE]
+
+saveData(bcb_old, bcb_yng, dir = dataDir)
 ```
