@@ -75,6 +75,7 @@ The number of mapped reads should correspond to the number of total reads.
 plotMappedReads(bcb)
 ```
 
+The total number of reads is lower than we'd like, but the number of replicates should make up for it.
 
 ## Mapping rate
 
@@ -84,6 +85,7 @@ The genomic mapping rate represents the percentage of reads mapping to the refer
 plotMappingRate(bcb)
 ```
 
+The mapping rate is great.
 
 ## Number of genes detected
 
@@ -91,6 +93,7 @@ plotMappingRate(bcb)
 plotGenesDetected(bcb)
 ```
 
+Gene detection rate is generally good. SCKO_yng_3 is on the low side.
 
 ## Gene detection saturation
 
@@ -100,6 +103,7 @@ We should observe a linear trend in the number of genes detected with the number
 plotGeneSaturation(bcb)
 ```
 
+It doesn't appear that we are saturating for gene detection. the sample on the bottom is likely SKO_yng_3, which certainly has lower gene detection rates thn you'd expect for the number of reads mapped, indicating potential issues with this sample.
 
 ## Exonic mapping rate
 
@@ -109,6 +113,7 @@ Ideally, at least 60% of total reads should map to exons.
 plotExonicMappingRate(bcb)
 ```
 
+All the samples have great exonic mapping rates.
 
 ## Intronic mapping rate
 
@@ -118,6 +123,7 @@ The majority of reads should map to exons and not introns.
 plotIntronicMappingRate(bcb)
 ```
 
+All the samples have good intronic mapping rates.
 
 ## rRNA mapping rate
 
@@ -126,6 +132,8 @@ Samples should have a ribosomal RNA (rRNA) contamination rate below 10%.
 ```{r plot_rrna_mapping_rate}
 plotRRNAMappingRate(bcb)
 ```
+
+All the samples have good rRNA mapping rates.
 
 
 ## 5'->3' bias
@@ -188,14 +196,17 @@ Before performing similarity analysis, we transform counts to log2, which acts t
 PCA [@Jolliffe:2002wx] is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is a way to look at how samples are clustering.
 
 ```{r plot_pca, fig.height=12, fig.width=10}
-bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="age")
-bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="generalGeno")
-bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="sibset")
-bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="class")
-bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups=c("class", "sibset"))
+library(gridExtra)
 
+p1 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="age")
+p2 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="generalGeno")
+p3 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="sibset")
+p4 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="class")
+p5 <- bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups=c("class", "sibset"))
+p6 <- plotPCA(bcb, interestingGroups=c("age", "generalGeno"))
 
-plotPCA(bcb, interestingGroups=c("age", "generalGeno"))
+grid.arrange(p1,p2, p3, p4, p5, p6, nrow=3)
+
 ```
 
 The samples are clustering well by age, and somewhat by genotype. There may be some small amount of clustering by sibset. SCKO_yng_3 appears to be a outlier.
@@ -211,17 +222,57 @@ Here we are showing the correlational analysis of the rlog transformed count dat
 plotPCACovariates(bcb)
 ```
 
-Age appears to have the strongest correlation, with both principal components. The correlations between exonic rate, intergenic rate and G
+Age appears to have the strongest correlation, with both principal components. The correlations between exonic rate, intergenic rate and GC content are puzzling, as all samples are well within expected ranges.
 
 ## Hierarchical clustering
 
 Inter-correlation analysis (ICA) is another way to look at how well samples cluster by plotting the correlation between the expression profiles of the samples.
 
 ```{r plot_correlation_heatmap, fig.height=8, fig.width=10}
+metadata(bcb)$interestingGroups <- c("generalGeno")
 plotCorrelationHeatmap(bcb)
 ```
 
+Interestingly, the SCKO_yng_3 sample looks like an old KO sample. Possibly a sample swap? For now, in the interests of time, I'll just exclude it going forward.
 
+
+## After removing outlier
+
+```{r removeoutlier}
+indices <- which(!metadata(bcb)$metrics$sampleID=="SCKO_yng_3")
+bcb_sub <- bcb[, indices, skipNorm=TRUE]
+```
+
+### Principal component analysis (PCA)
+
+```{r plot_pca2, fig.height=12, fig.width=10}
+p1 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups="age")
+p2 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups="generalGeno")
+p3 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups="sibset")
+p4 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups="class")
+p5 <- bcbioRNASeq::plotPCA(bcb_sub, label=FALSE,interestingGroups=c("class", "sibset"))
+p6 <- plotPCA(bcb_sub, interestingGroups=c("age", "generalGeno"))
+
+grid.arrange(p1,p2, p3, p4, p5, p6, nrow=3)
+```
+
+```{r plot_pca_covariates2}
+metadata(bcb_sub)$interestingGroups <- c("generalGeno", "age", "class","sibset")
+plotPCACovariates(bcb_sub)
+```
+
+Age now has the strongest correlation, with just the 1st principal component, with the general genotype (KO, WT, TG) having a high correlation to the second principal component. 
+
+## Hierarchical clustering
+
+Inter-correlation analysis (ICA) is another way to look at how well samples cluster by plotting the correlation between the expression profiles of the samples.
+
+```{r plot_correlation_heatmap2, fig.height=8, fig.width=10}
+metadata(bcb_sub)$interestingGroups <- c("generalGeno")
+plotCorrelationHeatmap(bcb_sub)
+```
+
+This looks much better. The dendrogram splits nicely between old and young samples and you can see some structure for genotype as well. 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
