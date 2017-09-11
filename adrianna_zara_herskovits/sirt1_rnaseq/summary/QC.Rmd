@@ -275,6 +275,17 @@ plotCorrelationHeatmap(bcb_sub)
 
 This looks much better. The dendrogram splits nicely between old and young samples and you can see some structure for genotype as well. 
 
+
+# Sirt1 status
+
+Looking at the knockout and transgene gene can be a good way to check for sample swaps.
+
+```{r geneofinterest}
+plotGene(bcb, gene=gene, format="ensgene")
+```
+
+The three transgenics (TG_old_2, TG_old_3 and TG_yng_3) with expression levels close to WT are of concern.
+
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
 
