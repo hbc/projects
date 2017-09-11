@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
     uploadDir: "/Users/jnhutchinson/Orchestra/PIs/adrianna_zara_herskovits/sirt1_rnaseq/bcbio/final"
-    interestingGroups: !r c("generalGeno")
+    interestingGroups: !r c("generalGeno", "age", "class", "sibset")
     outputDir: "."
 ---
 
@@ -188,8 +188,17 @@ Before performing similarity analysis, we transform counts to log2, which acts t
 PCA [@Jolliffe:2002wx] is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is a way to look at how samples are clustering.
 
 ```{r plot_pca, fig.height=12, fig.width=10}
-plotPCA(bcb)
+bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="age")
+bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="generalGeno")
+bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="sibset")
+bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups="class")
+bcbioRNASeq::plotPCA(bcb, label=FALSE,interestingGroups=c("class", "sibset"))
+
+
+plotPCA(bcb, interestingGroups=c("age", "generalGeno"))
 ```
+
+The samples are clustering well by age, and somewhat by genotype. There may be some small amount of clustering by sibset. SCKO_yng_3 appears to be a outlier.
 
 
 ## Covariates correlation with PCs
@@ -202,6 +211,7 @@ Here we are showing the correlational analysis of the rlog transformed count dat
 plotPCACovariates(bcb)
 ```
 
+Age appears to have the strongest correlation, with both principal components. The correlations between exonic rate, intergenic rate and G
 
 ## Hierarchical clustering
 
