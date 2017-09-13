@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
     bcb: "data/bcb_sub.rda"
-    design: !r formula(~generalGeno+age)
+    design: !r formula(~class+age)
     contrast: !r c("age", "young", "old")
     alpha: 0.1
     lfc: 0.5849625
@@ -116,7 +116,7 @@ plotMA(res)
 A volcano plot compares significance (BH-adjusted *P* value) against fold change (log2) [@Cui:2003kh; @Li:2014fv]. Teh green box covers genes differentially expressed (DE) with a BH adjusted *P* value cutoff of less than `r alpha` and an absolute log2 fold-change (LFC) ratio  of at least `r lfc`. The top 10 genes as assessed by absolute log2 fold change are labelled.
 
 ```{r plot_volcano}
-plotVolcano(res, lfc = lfc, alpha = alpha, ntop=10)
+plotVolcano(res, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
 
