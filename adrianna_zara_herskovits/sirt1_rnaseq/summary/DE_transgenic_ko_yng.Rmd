@@ -60,6 +60,8 @@ lfc <- params$lfc
 outputDir <- params$outputDir
 countsDir <- file.path(outputDir, "results", "counts")
 deDir <- file.path(outputDir, "results", "differential_expression",  "KOvsTG", "young")
+
+source("functions.R")
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
@@ -183,74 +185,124 @@ res_TGKO <- resShrunken
 
 We performed the analysis using a BH adjusted *P* value cutoff of `r alpha` and a log fold-change (LFC) ratio cutoff of `r lfc`.
 
-# Plots
+## Plots
 
-## Mean average (MA) {.tabset}
+### Mean average (MA) {.tabset}
 
 An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales [@Yang:2002ty]. Points in red are significantly differentially expressed.
 
-### WT versus KO
+#### WT versus KO
 
 ```{r plot_maWTKO}
 plotMA(res_WTKO)
 ```
 
-### TG versus WT
+#### TG versus WT
 
 ```{r plot_maTGWT}
 plotMA(res_TGWT)
 ```
 
-### TG versus KO 
+#### TG versus KO 
 
 ```{r plot_maTGKO}
 plotMA(res_TGKO)
 ```
 
-## Volcano {.tabset}
+### Volcano {.tabset}
 
 A volcano plot compares significance (BH-adjusted *P* value) against fold change (log2) [@Cui:2003kh; @Li:2014fv]. Teh green box covers genes differentially expressed (DE) with a BH adjusted *P* value cutoff of less than `r alpha` and an absolute log2 fold-change (LFC) ratio  of at least `r lfc`. The top 10 genes as assessed by absolute log2 fold change are labelled.
 
-### WT versus KO
+#### WT versus KO
 
 ```{r plot_volcanoWTKO}
 plotVolcano(res_WTKO, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
-### TG versus WT
+#### TG versus WT
 
 ```{r plot_volcanoTGWT}
 plotVolcano(res_TGWT, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
-### TG versus KO 
+#### TG versus KO 
 
 ```{r plot_volcanoTGKO}
 plotVolcano(res_TGKO, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
-## Heatmap{.tabset}
+### Heatmap{.tabset}
 
 This plot shows only differentially expressed genes on a per-sample basis. We have scaled the data by row and used the `ward.D2` method for clustering [@WardJr:1963eu].
 
-### WT versus KO
+#### WT versus KO
 
 ```{r plot_deg_heatmapWTKO}
 plotDEGHeatmap(res_WTKO, counts = rld)
 ```
 
-### TG versus WT
+#### TG versus WT
 
 ```{r plot_deg_heatmapTGWT}
 plotDEGHeatmap(res_TGWT, counts = rld)
 ```
 
-### TG versus KO 
+#### TG versus KO 
 
 ```{r plot_deg_heatmapTGKO}
 plotDEGHeatmap(res_TGKO, counts = rld)
 ```
 
+
+
+## Top tables of differentially expressed genes {.tabset}
+
+Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
+
+### WT versus KO
+
+```{r top_tablesWTKO, results="asis"}
+topTables(resTblWTKO)
+```
+
+### TG versus WT
+
+```{r top_tablesTGWT, results="asis"}
+topTables(resTblTGWT)
+```
+
+### TG versus KO 
+
+```{r top_tablesTGKO, results="asis"}
+topTables(resTblTGKO)
+```
+
+
+## Functional analyses {.tabset}
+
+Using the significant DE genes (padj < `r alpha`) identified, a list of statistically enriched gene ontology (GO), [`Human Phenotype Ontology`][] (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR][] [@Reimand:2007].
+
+The full list of enriched categories can be downloaded below.
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO][] [@Supek:2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+### WT versus KO
+
+```{r gprofiler_revigoWTKO, results='asis'}
+run_gprofiler_revigo(my_results=resWTKO)
+```
+
+### TG versus WT
+
+```{r gprofiler_revigoTGWT, results='asis'}
+run_gprofiler_revigo(my_results=resTGWT)
+```
+
+### TG versus KO 
+
+```{r gprofiler_revigoTGKO, results='asis'}
+run_gprofiler_revigo(my_results=resTGKO)
+```
 
 # File downloads 
 
@@ -292,27 +344,36 @@ DEG tables are sorted by BH-adjusted P value, and contain the following columns:
 - `description`: [Ensembl][] description.
 - `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
 
-# Top tables {.tabset}
+##Functional Enrichments
 
-Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
+All files can be found in this [folder](./results/differential_expression/age_effects/general/). 
 
-## WT versus KO
+gprofiler_results_\*.csv
 
-```{r top_tablesWTKO, results="asis"}
-topTables(resTblWTKO)
-```
+Tables are sorted by pvalue and contain the followoing columns:
 
-## TG versus WT
+- `term.id`: Functional term id (domain dependenet)
+- `term.name`: Functional term name
+- `domain`: Functional database  
+    - `BP` - Gene Ontology Biological Process
+    - `MF` - Gene Ontology Molecular Function   
+    - `CC` - Gene Ontology Cellular Component  
+    - `tf` - transcription factor motif enrichment  
+    - `cor` - [CORUM][] protein complexes   
+    - `hp` - [`Human Phenotype Ontology`][]  
+    - `mi` - miRBase microRNA targets
+- `p.value` - multiple test adjusted pvalue
+- `term.size` - number of genes in the functional term
+- `query.size` - number of differentially expressed genes examined
+- `overlap.size` - number of differentially expressed genes in the functional term
+- `assoc.gene.ids` - gene ids of differentially expressed genes in the functional term
 
-```{r top_tablesTGWT, results="asis"}
-topTables(resTblTGWT)
-```
+[Corum]: http://mips.helmholtz-muenchen.de/corum/
+[REViGO]: http://revigo.irb.hr/
+[gprofileR]: http://biit.cs.ut.ee/gprofiler/
+[`Human Phenotype Ontology`]: https://human-phenotype-ontology.github.io/
 
-## TG versus KO 
 
-```{r top_tablesTGKO, results="asis"}
-topTables(resTblTGKO)
-```
 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
