@@ -50,13 +50,13 @@ lfc <- params$lfc
 # Directory paths
 outputDir <- params$outputDir
 countsDir <- file.path(outputDir, "results", "counts")
-deDir <- file.path(outputDir, "results", "differential_expression")
+deDir <- file.path(outputDir, "results", "differential_expression", "KOvsTG", "old")
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-
+To get a better idea of what's going on, here I looked at all the pairwise comparisons, Wildtype versus Transgenic, Knockout versus Wildtype and Knockout versus Transgenic. All the comparisons are adjusted for the sibling relationships between the samples (KO and FF_WT, TG and WT). 
 
 ```{r dds, results="hide"}
 dds <- DESeqDataSetFromTximport(
@@ -66,8 +66,6 @@ dds <- DESeqDataSetFromTximport(
     DESeq
 rld <- rlog(dds)
 ```
-
-
 
 # Alpha level (FDR) cutoffs {.tabset}
 
@@ -262,7 +260,7 @@ resTblTGWT <- resultsTables(res_TGWT, lfc = lfc, dir = deDir)
 resTblTGKO <- resultsTables(res_TGKO, lfc = lfc, dir = deDir)
 ```
 
-All files can be found in this [folder](.results/differential_expression). 
+All files can be found in this [folder](.results/differential_expression/KOvsTG/old). 
 
 \*all.csv.gz - statistics and annotations for all genes       
 \*deg.csv.gz - statistics and annotations for differentially expressed genes

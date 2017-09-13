@@ -33,8 +33,6 @@ if (!file.exists(file.path(dataDir, "bcb.rda"))) {
 } else {
     load(file.path(dataDir, "bcb.rda"))
 }
-
-
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
@@ -292,10 +290,10 @@ The three transgenics (TG_old_2, TG_old_3 and TG_yng_3) with expression levels c
 
 
 ```{r object}
-print(bcb)
+print(bcb_sub)
 
 bcb_old <- bcb_sub[, which(colData(bcb_sub)$age=="old"), skipNorm=TRUE]
 bcb_yng <- bcb_sub[, which(colData(bcb_sub)$age=="young"), skipNorm=TRUE]
 
-saveData(bcb_old, bcb_yng, dir = dataDir)
+saveData(bcb_old, bcb_yng, bcb_sub, dir = dataDir)
 ```
