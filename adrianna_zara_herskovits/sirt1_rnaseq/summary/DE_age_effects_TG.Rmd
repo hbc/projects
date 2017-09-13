@@ -141,6 +141,26 @@ This plot shows only differentially expressed genes on a per-sample basis. We ha
 plotDEGHeatmap(res, counts = rld)
 ```
 
+# Top tables {.tabset}
+
+Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
+
+```{r top_tables, results="asis"}
+topTables(resTbl)
+```
+
+## Functional analysis
+
+Using the significant DE genes (padj < `r alpha`) identified, a list of statistically enriched gene ontology (GO), [`Human Phenotype Ontology`][] (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR][] [@Reimand:2007].
+
+The full list of enriched categories can be downloaded below.
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO][] [@Supek:2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+```{r gprofiler_revigo, results='asis'}
+run_gprofiler_revigo(my_results=res)
+```
+
 # File downloads 
 
 The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
@@ -177,13 +197,35 @@ DEG tables are sorted by BH-adjusted P value, and contain the following columns:
 - `description`: [Ensembl][] description.
 - `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
 
-# Top tables {.tabset}
+##Functional Enrichments
 
-Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
+All files can be found in this [folder](./results/differential_expression/age_effects/transgenic/). 
 
-```{r top_tables, results="asis"}
-topTables(resTbl)
-```
+gprofiler_results_group_tg_young_vs_tg_old.csv
+
+Tables are sorted by pvalue and contain the followoing columns:
+
+- `term.id`: Functional term id (domain dependent)
+- `term.name`: Functional term name
+- `domain`: Functional database  
+    - `BP` - Gene Ontology Biological Process
+    - `MF` - Gene Ontology Molecular Function   
+    - `CC` - Gene Ontology Cellular Component  
+    - `tf` - transcription factor motif enrichment  
+    - `cor` - [CORUM][] protein complexes   
+    - `hp` - [`Human Phenotype Ontology`][]  
+    - `mi` - miRBase microRNA targets
+- `p.value` - multiple test adjusted pvalue
+- `term.size` - number of genes in the functional term
+- `query.size` - number of differentially expressed genes examined
+- `overlap.size` - number of differentially expressed genes in the functional term
+- `assoc.gene.ids` - gene ids of differentially expressed genes in the functional term
+
+[Corum]: http://mips.helmholtz-muenchen.de/corum/
+[REViGO]: http://revigo.irb.hr/
+[gprofileR]: http://biit.cs.ut.ee/gprofiler/
+[`Human Phenotype Ontology`]: https://human-phenotype-ontology.github.io/
+
 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
