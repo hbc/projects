@@ -3,6 +3,15 @@ title: "Transgenic vs Knockout Differential Expression - Old samples"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    theme: united
+    hightlight: tango
 params:
     bcb: "data/bcb_old.rda"
     design: !r formula(~sibset+generalGeno)
@@ -260,7 +269,7 @@ resTblTGWT <- resultsTables(res_TGWT, lfc = lfc, dir = deDir)
 resTblTGKO <- resultsTables(res_TGKO, lfc = lfc, dir = deDir)
 ```
 
-All files can be found in this [folder](.results/differential_expression/KOvsTG/old). 
+All files can be found in this [folder](./results/differential_expression/KOvsTG/old). 
 
 \*all.csv.gz - statistics and annotations for all genes       
 \*deg.csv.gz - statistics and annotations for differentially expressed genes

@@ -3,6 +3,15 @@ title: "Quality Control"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    number_sections: true
+    theme: united
+    hightlight: tango
 params:
     uploadDir: "/Users/jnhutchinson/Orchestra/PIs/adrianna_zara_herskovits/sirt1_rnaseq/bcbio/final"
     interestingGroups: !r c("generalGeno", "age", "class", "sibset")
