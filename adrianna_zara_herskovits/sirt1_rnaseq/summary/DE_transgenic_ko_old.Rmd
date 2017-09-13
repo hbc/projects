@@ -202,19 +202,19 @@ A volcano plot compares significance (BH-adjusted *P* value) against fold change
 ### WT versus KO
 
 ```{r plot_volcanoWTKO}
-plotVolcano(res_WTKO, lfc = lfc, alpha = alpha, ntop=10)
+plotVolcano(res_WTKO, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
 ### TG versus WT
 
 ```{r plot_volcanoTGWT}
-plotVolcano(res_TGWT, lfc = lfc, alpha = alpha, ntop=10)
+plotVolcano(res_TGWT, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
 ### TG versus KO 
 
 ```{r plot_volcanoTGKO}
-plotVolcano(res_TGKO, lfc = lfc, alpha = alpha, ntop=10)
+plotVolcano(res_TGKO, lfc = lfc, alpha = alpha, ntop=10, histograms=FALSE)
 ```
 
 ## Heatmap{.tabset}
