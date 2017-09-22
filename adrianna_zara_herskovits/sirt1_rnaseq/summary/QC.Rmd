@@ -13,7 +13,7 @@ output:
     theme: united
     hightlight: tango
 params:
-    uploadDir: "/Users/jnhutchinson/Orchestra/PIs/adrianna_zara_herskovits/sirt1_rnaseq/bcbio/final"
+    uploadDir: "/Volumes/orch/PIs/adrianna_zara_herskovits/sirt1_rnaseq/bcbio/final"
     interestingGroups: !r c("generalGeno", "age", "class", "sibset")
     outputDir: "."
 ---
@@ -287,12 +287,70 @@ This looks much better. The dendrogram splits nicely between old and young sampl
 
 Looking at the knockout and transgene gene can be a good way to check for sample swaps.
 
+## Gene level
+
 ```{r geneofinterest}
-gene <- "ENSMUSG00000020063"
-plotGene(bcb, gene=gene, format="ensgene")
+gene_of_interest <- "ENSMUSG00000020063"
+plotGene(bcb_sub, gene=gene_of_interest, format="ensgene")
 ```
 
 The three transgenics (TG_old_2, TG_old_3 and TG_yng_3) with expression levels close to WT are of concern.
+
+
+## Exon level (for knockouts)
+
+```{r exonofinterest}
+# load in dexseq data and munge
+dexseqData <- read.table(file.path(params$uploadDir, "2017-09-08_bcbio", "combined.dexseq"), header = TRUE, sep = "\t")
+id <- dexseqData$id
+dexseqData <- dexseqData %>% tibble::column_to_rownames(var = "id")
+dexseqData = dexseqData[, order(colnames(dexseqData)), drop = FALSE]
+
+indices <- which(!names(dexseqData)=="SCKO_yng_3")
+dexseqData <- dexseqData[,indices]
+
+
+# get size factors for normalization
+library(DESeq2)
+dds <- DESeqDataSetFromTximport(
+    txi = txi(bcb_sub),
+    colData = colData(bcb_sub),
+    design = formula(~1)) %>% 
+  DESeq
+
+
+#identical(names(sizeFactors(dds)), names(dexseqData))
+
+normCounts_dexseqData <- mapply("/", dexseqData, sizeFactors(dds)) %>% as.data.frame()
+normCounts_dexseqData$id <- id
+
+dexseq_sirt1 <- normCounts_dexseqData[grepl(gene_of_interest, normCounts_dexseqData$id), ] %>% 
+  tidyr::separate(id, c("gene", "exon")) %>% 
+  dplyr::select(-gene)
+dexseq_sirt1$exon <- as.numeric(dexseq_sirt1$exon)
+
+dexseq_sirt1_tidy <- dexseq_sirt1 %>% tidyr::gather(exon)
+
+colnames(dexseq_sirt1_tidy) <- c("exon", "sampleID", "counts")
+
+
+library(dplyr)
+dexseq_sirt1_tidy <- dexseq_sirt1_tidy %>% inner_join(as.data.frame(colData(bcb)), by = "sampleID")
+
+p <- ggplot(data = dexseq_sirt1_tidy, mapping = aes(x = exon, y = counts, color = class, 
+     group = class)) + geom_smooth() + ylab("Normalized Counts")
+p
+
+
+p <- ggplot(data = dexseq_sirt1_tidy, mapping = aes(x = exon, y = counts, color = class,group = class)) + 
+  geom_smooth() + 
+  geom_point(size = 1, alpha = 0.7, position = position_jitterdodge(dodge.width = 0.3)) + 
+  xlim(c(2, 6)) + 
+  ylab("Normalized Counts")
+p
+```
+
+We're not really seeing loss of Exon 4 in the knockout samples, though the transgenics have generally stronger levels of expression across the gene. 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
