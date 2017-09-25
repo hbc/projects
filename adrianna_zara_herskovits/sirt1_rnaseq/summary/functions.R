@@ -30,7 +30,7 @@ run_gprofiler_revigo <- function(my_results,
   sig_genes <-     my_results %>% tbl_df() %>% 
     rownames_to_column(var="ensemblId") %>% 
     arrange(padj) %>% 
-    select(ensemblId) %>% 
+    dplyr::select(ensemblId) %>% 
     slice(., 1:num_sig) %>% 
     unlist() %>% 
     as.vector()
