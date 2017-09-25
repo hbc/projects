@@ -1,5 +1,5 @@
 ---
-title: "Are the old transgenics more like young mice?"
+title: "Are the young knockouts more like old wildtype mice?"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
@@ -16,11 +16,12 @@ output:
 params:
     bcb: "data/bcb_sub.rda"
     design: !r formula(~newgroup)
-    contrast: !r contrast=c("newgroup", "put_young", "put_old")
+    contrast: !r contrast=c("newgroup", "put_old", "put_young")
     alpha: 0.1
     lfc: 0.5849625
     outputDir: "."
 ---
+
 
 ```{r setup, message=FALSE}
 library(DESeq2)
@@ -60,7 +61,7 @@ lfc <- params$lfc
 # Directory paths
 outputDir <- params$outputDir
 countsDir <- file.path(outputDir, "results", "counts")
-deDir <- file.path(outputDir, "results", "differential_expression", "age_effects", "transgenic")
+deDir <- file.path(outputDir, "results", "differential_expression", "age_effects", "knockout")
 
 source("functions.R")
 ```
@@ -68,22 +69,14 @@ source("functions.R")
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-Here I grouped the old trangenic mice with the young wildtype mice (TB sibs) and compared them to the old wildtype mice (TG sibs) to see if there are any differences (controlling for the smaller contribution of TG_old to the putative  "young" group) to see if I could find any differences. If the old transgenics are different from the old wildtype mice in the same way as the young wildtype mice for any genes, those genes should show up.
+Here I grouped the young knockout mice with the old wildtype mice (KO sibs) and compared them to the young wildtype mice (KO sibs) to see if there are any differences. If the young knockouts are different from the young wildtype mice in the same way as the old wildtype mice for any genes, those genes should show up. That is to say, this analysis will find genes where the young knockout mice most resemble the old wildtype mice. To maintain balance between the two groups in the new putatitve old group (WT old and KO young samples), I dropped the FF_WT_old_2 sample.
 
 ```{r dds, results="hide"}
-colData(bcb)$group <- factor(paste0(colData(bcb)$generalGeno, "-", colData(bcb)$age))
-
-colData(bcb)$newgroup <- ifelse(colData(bcb)$group=="TG-old", "put_young", ifelse(colData(bcb)$group=="WT-young", "put_young", ifelse(colData(bcb)$group=="WT-old", "put_old", NA)))
-
-bcb_sub <- bcb[,which(!is.na(colData(bcb)$newgroup)), skipNorm=TRUE]
-
 colData(bcb)$group <- factor(paste0(colData(bcb)$class, "-", colData(bcb)$age))
-colData(bcb)$newgroup <- ifelse(colData(bcb)$group=="TG-old", "put_young", 
-                                ifelse(colData(bcb)$group=="WT-young", "put_young",
-                                              ifelse(colData(bcb)$group=="WT-old", "put_old", 
-                                                            NA)))
 
-bcb_sub <- bcb[,which(!is.na(colData(bcb)$newgroup)), skipNorm=TRUE]
+colData(bcb)$newgroup <- ifelse(colData(bcb)$group=="SCKO-young", "put_old", ifelse(colData(bcb)$group=="FF_WT-young", "put_young", ifelse(colData(bcb)$group=="FF_WT-old", "put_old", NA)))
+
+bcb_sub <- bcb[,which(!is.na(colData(bcb)$newgroup) & !colData(bcb)$sampleid=="FF_WT_old_2"), skipNorm=TRUE]
 
 
 dds <- DESeqDataSetFromTximport(
