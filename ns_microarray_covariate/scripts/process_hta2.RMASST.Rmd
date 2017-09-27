@@ -1,0 +1,1018 @@
+---
+title: ""
+output:
+  html_document:
+    theme: united
+    toc: yes
+    toc_depth: 4
+    toc_float: true
+    code_folding: hide
+  pdf_document:
+    toc: yes
+bibliography: references.bib
+
+---
+
+```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
+clientname="Margaret Stefater"
+clientemail="margaret.stefater@childrens.harvard.edu"
+labPI="Nicolas Stylopolous"
+lablocation="Boston Children's Hospital"
+analystname="John Hutchinson"
+analystemail="jhutchin@hsph.harvard.edu"
+
+library(knitr)
+
+opts_chunk$set(warning=FALSE, error=FALSE, message=FALSE, echo=TRUE,cache=TRUE, tidy.opts=list(keep.blank.line=FALSE, width.cutoff=120), dev="svg")
+options(width=200)
+```
+
+---
+
+Array analysis for `r clientname` (`r clientemail`), `r labPI` group at `r lablocation`.  
+
+Contact `r analystname` (`r analystemail`) for additional details.
+
+The most recent update of this html document occurred: `r date()`
+
+The sections below provide code to reproduce the included results and plots. 
+
+---
+
+# Methods Summary  
+
+Initially, all Affymetrix HTA 2.0 arrays were processed using the 'oligo' BioConductor package [@Carvalho2010] and quality-controlled with arrayQualityMetrics [@Kauffmann2009]. After exclusion of clear outliers, the remaining Affymetrix HTA 2.0 arrays were processed using the TAC4.0 software from Affymetrix/Thermo Fisher using their RMA-SST algorithm and imported back into this workflow. Differentially expressed genes were identified using limma [@Smyth2005].
+
+---
+
+# Setup
+
+## Variables
+Working directories, files and other variables necessary to the analysis.
+
+```{r variables}
+## Setup Data and Results directory variables
+baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+dataDir <- file.path(baseDir, "data", "RMASST_CHP")
+metaDir <- file.path(baseDir, "metadata")
+resultsDir <- file.path(baseDir, "results")
+setwd(baseDir)
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7") # colorblind friendly palette
+covarsfilename="covars.desc" # tab delimited file describing samples
+lowintensity.percentile=0.1
+mad.quantile.cutoff=0.1
+pvalue.cutoff=0.05
+highlight.color="green"
+lfc.cutoff=1
+```
+
+## Libraries
+
+[Bioconductor](http://www.bioconductor.org) and [R](http://cran.r-project.org/) libraries used to process and visualize the data.
+
+```{r libraries_variables, results='hide'}
+library(knitr) # for simple tables
+library(limma) # array statistical analyses
+library(CHBUtils) # some homegrown functions
+library(reshape2) # data format utility
+library(ggplot2) # pretty graphs
+library(ggdendro) # for pretty dendrograms
+library(pheatmap) # pretty heatmaps
+library(dplyr) # data format utility 
+library(hta20sttranscriptcluster.db) #new package for annotation
+library(affxparser)
+
+library(pd.hta.2.0)# array layout annotation
+library(hta20stprobeset.db)
+
+library(rio)
+library(tidyr)
+library(janitor)
+library(plyr)
+library(DT)
+library(DEGreport)
+library(treemap)
+library(gProfileR)
+library(WGCNA)
+```
+
+## Functions
+
+- miscellaneous functions used in this analysis
+
+```{r functions}
+# for plotting amount of variation explained by principal components
+PCAplot.sd.eset <- function(eset=NULL,  title=NULL){
+  eset.core <- exprs(eset)
+  myPca.core <- prcomp(t(eset.core))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf$cum <- cumsum(sdevdf$prop)
+  ggplot(sdevdf, aes(x=X2, y=prop)) + 
+    geom_point(size=4, color="red") + 
+    scale_x_continuous('Component') + 
+    scale_y_continuous('Standard Deviation') +
+    ggtitle(title) +
+    geom_line(data=sdevdf, aes(x=X2, y=cum))
+}
+
+
+plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
+  require(ggdendro)
+  meta.x <- pData(x)
+  # force the metadata into character format so you don't end up with gradient/continuous color schemes for numerical variables in the final plot  
+  meta.x <- as.matrix(meta.x) 
+  ## do the actual statistics and put into dendrogram 
+  myDist <- dist(t(exprs(x)))
+  myTree <-hclust(myDist)
+  dhc <- as.dendrogram(myTree)
+  ddata <- dendro_data(dhc, type="rectangle")
+  # the labels of the dendrogram are pulled from the Expression set exprs column names, it's nice to rename them to something more intelligible if you haven't already, as well as match them up to the metadata for label coloring
+  ## check to see if the column names of the expression set match anything in the metadata, or match the rownames
+  if (identical(colnames(exprs(x)), row.names(meta.x))) {
+    meta.x <- row2colnames(meta.x, "rownames")
+    matchcol <- "rownames"
+  } else if (any(apply(meta.x, 2, function(column) identical(as.character(unlist(column)), colnames(exprs(x)))))) {
+    matchcol <- names(which(apply(meta.x, 2, function(column) identical(as.character(unlist(column)), colnames(exprs(x))))))
+  } else {
+    print("ExpressionSet sampleNames and pData row.names or pData column must match")
+    stop()
+  }
+  ## merge the metadata with the dendrogram labels using the commmon column/rownames you just identified above
+  ddata$labels <- merge(ddata$labels, meta.x, by.x="label", by.y=matchcol)
+  # plot it like you mean it
+  ggplot(segment(ddata)) +
+    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+    theme_dendro() +
+    geom_text(data=label(ddata), aes_string(x='x', y='y', label=labels.colname, color=colors.colname, hjust=-0.1), size=4)+
+    scale_color_brewer(type = "seq", palette = "Set1")+
+    coord_flip() + scale_y_reverse(expand=c(0.2, 50)) +
+    theme(axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank()) +
+    ggtitle(title)
+}
+```
+
+---
+
+# Import Data and Metadata
+
+- load in phenotypes and array names from metadata file (covars.desc) in "metadata" directory
+  - this file contains the names and descriptions of CEL files contained in the data directory 
+
+### Create new expression set objects to normalize
+
+```{r dataload, results='hide'}
+covars <- read.table(file.path(metaDir, covarsfilename),header=TRUE, sep="\t", row.names=1) 
+# Load CEL files
+celFiles <- file.path(dataDir, covars$filename)
+affyRaw <- read.celfiles(celFiles)
+pData(affyRaw) <- covars
+sampleNames(affyRaw) <- pData(affyRaw)$sampleid
+#validObject(affyRaw)
+```
+
+## Sample metadata
+
+```{r covarsdisplay, results='asis'}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+---
+
+# PreProcessing 
+
+## Normalize Data
+
+- background correct and normalize each dataset with RMA [@Bolstad2003]
+
+- summarize probesets on the gene ('core') level
+
+```{r normalize, results='hide'}
+affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
+```
+
+### Quality Control
+- using arrayQualityMetrics library
+
+```{r normQC, eval=FALSE}
+QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm.gene"), title="Normalized Data QC")
+```
+
+[Normalized Data QC Report](../results/report_norm.gene/index.html)
+
+Arrays 14 (3008, 1 month), 20 (3010, 1 month) and 32 (3021, 1 month) are all  outliers from the other arrays but don't appear to have radically failed, mainly having differently shaped distributions of intensities. We should keep an eye on them in subsequent analyses to see if we should drop them.
+
+### Unsupervised Clustering of RMA Normalized Data
+
+#### Hierarchical Clustering
+The goal of these analyses are to naively evaluate the variability within the raw data and determine whether this variability can predict the different treatment groups. 
+
+```{r cluster, out.width='75%'}
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="time")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="array")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="study_group")
+plot_dendro(affyNorm, title="", labels.colname="sampleid", colors.colname="sex")
+```
+
+There does not appear to be any single factor that clusters the samples by this method.
+
+#### Principal Component Analysis (PCA)
+
+This second approach is a dimension reduction and visualization technique that is used to project the multivariate (i.e.multiple genes) data vector of each array into a lower-dimensional plot, such that the spatial arrangement of the points in the plot reflects the overall data (dis)similarity between the arrays. 
+
+```{r PCA_nonfilt, out.width='75%'}
+pca <- prcomp(t(exprs(affyNorm)))
+df <- data.frame(cbind(pca$x, pData(affyNorm)))
+
+# SD of components
+myPca.core <- pca
+sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+sdevdf$cum <- cumsum(sdevdf$prop)
+ggplot(sdevdf, aes(x=X2, y=prop)) + 
+  geom_point(size=4, color="red") + 
+  scale_x_continuous('Component') + 
+  scale_y_continuous('Standard Deviation')+
+  geom_line(data=sdevdf, aes(x=X2, y=cum))+
+  ggtitle("Principal component contributions to variation")
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=array), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=sex), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+```
+
+There are a large number of principal components that contribute to the variation, with none contributing more than 10% of the variation.
+
+While there does appear to be some clustering based on the timepoint, the highest sources of variation (PC1 and PC2) appear to originate from the 3 outlier samples' (3008, 3010 and 3021 1 month, as identified in the QC analysis) differences. Here, I drop all 3 outliers as they have technical differences (overall intensities and MA plots for 3008 adn 3010, changed intensity density plot for 3021) from the other samples.
+
+## Remove Outliers
+- remove from raw data, renormalize and re-QC
+
+```{r drop_outliers}
+outlier_indices <- grep("1month_3021|1month_3010|1month_3008", sampleNames(affyRaw))
+affyRaw <- affyRaw[,-outlier_indices]
+```
+
+### Sample metadata
+
+```{r covars, results='asis'}
+# Sample information table
+kable(pData(affyRaw))
+```
+
+### Renormalize
+
+- without the outlier samples
+
+```{r normalize_filt, results='hide'}
+affyNorm <- affyNorm <- oligo::rma(affyRaw, background=TRUE, normalize=TRUE)
+```
+
+### Repeat Quality Control
+
+```{r qc_filt, eval=FALSE}
+QCarray(affyNorm, intgroup="time", outdir=file.path(resultsDir, "report_norm_nooutliers.gene"), title="Normalized Data QC")
+```
+
+Everything looks good now for QC measures.
+
+[Normalized Data QC Report after dropping outliers](../results/report_norm_nooutliers.gene/index.html)
+
+### Principal Component Analysis
+
+```{r PCAfilt, out.width='75%'}
+pca <- prcomp(t(exprs(affyNorm)))
+df <- data.frame(cbind(pca$x, pData(affyNorm)))
+
+# SD of components
+myPca.core <- pca
+sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+sdevdf$cum <- cumsum(sdevdf$prop)
+ggplot(sdevdf, aes(x=X2, y=prop)) + 
+  geom_point(size=4, color="red") + 
+  scale_x_continuous('Component') + 
+  scale_y_continuous('Standard Deviation')+
+  geom_line(data=sdevdf, aes(x=X2, y=cum))+
+  ggtitle("Principal component contributions to variation")
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=time), size=6) +
+  geom_text(aes(x=PC1, y=PC2, label=patient_id, vjust=-0.5), size=3) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=array), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=sex), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+
+ggplot(df) +
+  geom_point(aes(x=PC1, y=PC2, color=study_group), size=6) +
+    theme_bw() +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+          axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+    ylab("PC2") + xlab("PC1") 
+
+```
+
+This is a big improvement, with the timepoint clearly separating the groups.
+
+## Annotate
+
+So far we have only been working with the probesets, without reference to the genes they assay. Here we load in metadata about the probesets on the array (feature data), the gene symbols in particular. WE get probeids and transcript information from NetAffx using the NetAffx BioConductor package and the gene symbols and entrezIDs from the BioConductor annotation packages.
+
+```{r features, results='hide'}
+featureData(affyNorm) <- getNetAffx(affyNorm, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
+# get gene symbols and entrezIDs for all probesets
+fData(affyNorm)$symbol <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+fData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+```
+
+## Filter Probesets
+Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
+
+Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
+
+### By Annotation
+- remove the probes without annotated genes
+*(changed code to make sure to capture the genes without gene symbols)*
+- remove non ccoding genes
+ 
+
+```{r filter1}
+affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)[,"symbol"]) & fData(affyNorm)$category=="main" & fData(affyNorm)$locustype=="Coding"),]
+```
+
+`r nrow(fData(affyNorm.filt))` probes remaining.
+
+
+## Collapse probesets
+
+- the array has multiple probes per gene, here I'll collapse this information to have on data point per gene using methods from the collapseRows function [@Miller2011] in the WGCNA package.
+ - here I selected the probeset for each gene with with the maximum mean value for all samples
+
+```{r collapseprobes}
+eset <- exprs(affyNorm.filt)
+
+eset.annot <- cbind(exprs(affyNorm.filt), fData(affyNorm.filt)) %>%  tbl_df() %>% dplyr::select(., contains("baseline"), contains("1month"), contains("6month"), symbol, transcriptclusterid)
+eset <- dplyr::select(eset.annot,  contains("baseline"), contains("1month"), contains("6month")) %>% as.data.frame()
+row.names(eset) <- eset.annot$transcriptclusterid
+collapsed.data <- collapseRows(eset,rowID=eset.annot$transcriptclusterid, rowGroup=eset.annot$symbol , method="MaxMean")
+
+affyNorm.filt <- affyNorm.filt[which(collapsed.data$selectedRow),]
+```
+
+`r nrow(fData(affyNorm.filt))` genes remaining.
+
+# Analysis
+
+## Statistical analyses
+
+We'll start with a basic analysis of the effect of gastric bypass, looking at both time points separately. As samples are paired, we will do a paired analysis. We will also do a paired analysis of one month versus six months.
+
+A linear model for microarray data analysis ([Limma][http://www.bioconductor.org/packages/release/bioc/html/limma.html]) was performed on the samples to identify differentially expressed genes for the comparison of the two treatment groups. Limma fits a linear model to the expression data for all samples for each gene and is designed to handle complex experiments involving comparisons between many RNA targets simultaneously.
+
+### Design matrix 
+To perform limma, we construct a design matrix which provides a representation of the different sample groups which have been analysed. 
+
+* make a matrix with arrays as rows, sample groups as columns
+* a one or a zero indicate respectively, that a sample either belongs or does not belong to the sample group
+
+```{r}
+# Make design matrix
+pData(affyNorm.filt)$time <- relevel(pData(affyNorm.filt)$time, ref=("baseline"))
+design <- model.matrix(~patient_id + time  ,  data=pData(affyNorm.filt))
+kable(design)
+```
+
+### Linear model
+
+These matrices are used to fit a linear model to the data. The linear model is applied and pairwise comparisons are performed to identify differentially expressed genes. The comparisons are defined based on the contrasts, which select genes that show a significant expression change between the treated samples.
+
+- first fit the linear model based on the design matrix for each gene based on the given series of arrays
+- using the contrast matrix, compute estimated coefficients and standard errors for contrasts
+- compute moderated t-statistics and log-odds of differential expression by empirical Bayes shrinkage of the standard errors towards a common value
+
+```{r limma,warning=FALSE, message=FALSE}
+# Setup constrasts
+contrast <- makeContrasts(one=time1month, six=time6month, onesix=time6month-time1month, levels=colnames(design))
+
+# Fit model
+fit.core <- lmFit(affyNorm.filt, design) 
+
+# Compute cofficients for constrasts
+fit2.core <- contrasts.fit(fit.core, contrast) 
+
+# Bayes shrinkage
+fit2.core <- eBayes(fit2.core) 
+```
+
+## Gene-level Results
+
+### Pvalue distributions {.tabset}
+
+```{r grabintensities}
+intensities <- exprs(affyNorm.filt) %>% as.data.frame()
+intensities$probesetid <- row.names(intensities)
+```
+
+#### Baseline versus one month
+
+```{r pvaldistone, fig.align='center'}
+results_one <- topTable(fit2.core, coef="one", number=nrow(exprs(affyNorm)))
+df <- cbind(results_one[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+intensities_one <- intensities %>% dplyr::select(contains("1month"), contains("baseline"), probesetid)
+results_one <- results_one %>% inner_join(., intensities_one)
+```
+
+#### Baseline versus six months
+
+```{r pvaldistsix, fig.align='center'}
+results_six <- topTable(fit2.core, coef="six", number=nrow(exprs(affyNorm)))
+df <- cbind(results_six[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+intensities_six <- intensities %>% dplyr::select(contains("6month"), contains("baseline"), probesetid)
+results_six <- results_six %>% inner_join(., intensities_six)
+```
+
+#### One month versus six months
+
+```{r pvaldistonesix, fig.align='center'}
+results_onesix <- topTable(fit2.core, coef="onesix", number=nrow(exprs(affyNorm)))
+df <- cbind(results_onesix[,c('P.Value', 'logFC')])
+ggplot(df) +
+  geom_histogram(aes(x=-log10(P.Value))) +
+  theme_bw() +
+  xlab('-log10(p-value)') +
+  geom_vline(xintercept=-log10(pvalue.cutoff))
+intensities_onesix <- intensities %>% dplyr::select(contains("1month"), contains("6month"),  probesetid)
+results_onesix <- results_onesix %>% inner_join(., intensities_onesix)
+```
+
+
+### Volcano plots {.tabset}
+
+This is a type of scatter-plot that is used to quickly identify changes in large datasets composed of replicate data. It plots significance versus fold-change on the y- and x-axes, respectively. The **points in purple are genes that have an adjusted pvalue (aka FDR) < 0.05.** 
+
+#### Baseline versus one month
+
+```{r volcano_one, fig.align='center'}
+df <- cbind(results_one[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+#### Baseline versus six months
+
+```{r volcano_six, fig.align='center'}
+df <- cbind(results_six[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+#### One month versus six months
+
+```{r volcano_onesix, fig.align='center'}
+df <- cbind(results_onesix[,c('adj.P.Val','P.Value', 'logFC')])
+df <- cbind(df, threshold=as.logical(df$adj.P.Val < pvalue.cutoff)) 
+ggplot(data=df, aes(x=logFC, y=-log10(P.Value), colour=threshold)) +
+  scale_color_manual(values = c("grey", "purple")) +
+  geom_point(alpha=0.75, pch=16, size=2) +
+  theme(legend.position = "none",
+        plot.title = element_text(size = rel(1.5)),
+        axis.title = element_text(size = rel(1.5)),
+        axis.text = element_text(size = rel(1.25))) +
+  xlab("log2 fold change") + ylab("-log10 p-value")
+```
+
+### Heatmaps {.tabset}
+
+Heatmaps showing the top 100 differentially expressed genes (as determined by having an adjusted pvalue<`r pvalue.cutoff` and abs(logFC)>`r lfc.cutoff`) and sorted by by the log odds of differential expression (B)
+
+- quick way to look at how the differentially expressed genes vary between the individual samples
+- only plotted up to the top 100 genes as determined by B-value (log odds of differential expression), though all genes are differntially expressed (ie. having an adjusted pvalue<`r pvalue.cutoff` and abs(logFC)>`r lfc.cutoff`)), if less than 100 genes were DE, I just plotted those genes
+- colours represent the log transformed normalized intensities, centered and scaled for each row
+- IDs are the gene symbol for the differentially expressed gene 
+
+#### Baseline versus one month
+
+```{r heatmaps1, fig.height=8}
+data.plot <- results_one %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("baseline"), contains("1month")) %>%
+  as.data.frame()
+
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("baseline"), contains("1month"))
+samples <- names(data.plot)
+
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
+
+pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus one month", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
+```
+
+#### Baseline versus six months
+
+```{r heatmaps6, fig.height=8}
+data.plot <- results_six %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("baseline"), contains("6month")) %>%
+  as.data.frame()
+
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("baseline"), contains("6month"))
+samples <- names(data.plot)
+
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
+
+pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus six months", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
+```
+
+#### One month versus six months
+
+```{r heatmaps16, fig.height=8}
+data.plot <- results_onesix %>% 
+  filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
+  arrange(., desc(B)) %>% 
+    dplyr::select(., symbol,probesetid,contains("1month"), contains("6month")) %>%
+  as.data.frame()
+
+if(nrow(data.plot)>100){
+  data.plot <- data.plot[1:100,]
+}
+rowlabels <- data.plot$symbol
+data.plot <- data.plot %>% dplyr::select(contains("1month"), contains("6month"))
+samples <- names(data.plot)
+
+annots <- metadata[, c("sampleid", "time")] %>% col2rownames("sampleid") %>% as.data.frame
+annots <- annots[samples,, drop=FALSE] 
+
+pheatmap(data.plot, cluster_cols = TRUE, main="One month versus six months", scale="row", labels_row =rowlabels , annotation=annots, color=colorRampPalette(c("blue","white","red"))(256))
+```
+
+
+### Results Tables {.tabset}
+The **results tables can be downloaded using the links below**. *Note that for all these files, values are not summarized for genes assayed by multiple probes (i.e. by taking the median value), so you may see multiple instances of the same gene in the results*
+
+**The summary table above contains the following information:**
+
+- logFC is the log2-fold change
+- the AveExpr is the average expression value accross all arrays
+- the moderated t-statistic (t) is the logFC to its standard error, the P.Value is the associated p-value
+- the adj.P.Value is the p-value adjusted for multiple testing (by FDR) 
+- the B-value (B) is the log-odds that a gene is differentially expressed (the-higher-the-better)
+- the last 4 columns contain the log-transformed normalized expression levels for these genes in each sample
+
+#### Baseline versus one month
+
+```{r write-table_one}
+stats <- topTable(fit2.core, coef="one", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "seqname", "strand", "start" ,"stop", "probesetid")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt) %>% as.data.frame() %>% dplyr::select(contains("baseline"), contains("1month"))
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+datatable(stats.eset )
+
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month.xlsx"))
+```
+
+**[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
+
+#### Baseline versus six months
+
+```{r write-table_six}
+stats <- topTable(fit2.core, coef="six", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("baseline"), contains("6month"))
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+datatable(stats.eset)
+
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month.xlsx"))
+```
+
+**[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
+
+
+#### One month versus six months
+
+```{r write-table_onesix}
+stats <- topTable(fit2.core, coef="onesix", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
+eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("1month"), contains("6month"))
+eset  <-  eset[match(row.names(stats), row.names(eset)),]
+stats.eset <- cbind(stats, eset)
+
+datatable(stats.eset)
+
+export(stats.eset, file=file.path(resultsDir, "stats_exprs_one_month_vs_six_month.xlsx"))
+```
+
+**[results](../results/stats_exprs_one_month_vs_six_month.xlsx)**
+
+
+## Overlap between 1 month and 6 months
+
+```{r overlap}
+results_one.sub <- results_one %>% dplyr::select(symbol,logFC, adj.P.Val)
+results_six.sub <- results_six %>% dplyr::select(symbol,logFC, adj.P.Val)
+
+
+results_one.sub <- melt(results_one.sub)
+results_six.sub <- melt(results_six.sub)
+```
+
+
+## Functional Enrichment
+
+### gProfiler & Revigo {.tabset}
+
+Using the DE genes identified for each of the comparisons above (i.e. adjused pvalue < `r pvalue.cutoff` and the absolute value of the logFC > `r lfc.cutoff`), a list of statistically enriched gene ontology (GO) terms for biological process (BP), human phenotype ontology (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR](http://biit.cs.ut.ee/gprofiler/) [@gprofiler].
+
+A list including only the significant GO Biological Process (BP) terms was then used as input to [REViGO](http://revigo.irb.hr/) [@revigo], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+The list of all significant GO/HP/keg terms and associated genes can be downloaded using the links above the Revigo plots.
+
+```{r revigosetup}
+# Revigo BP
+## Parameters to change
+cutoff <- "0.7" #Allowed values: "0.90" "0.70" "0.50" "0.40" 
+organism <- "Homo sapiens" #Allowed values: See organism.list below
+isPValue <- "yes" #Allowed values: "yes"  "no"
+whatIsBetter <- "higher" #Allowed values: "higher" "lower" "absolute" "abs_log"
+measure <- "SIMREL" #Allowed values: "RESNIK" "LIN" "SIMREL" "JIANG"
+
+#Do not change below
+organism.list <- list(
+	"whole UniProt"=0, 
+	"Homo sapiens"=9606,
+	"Mus musculus"=10090,
+	"Rattus norvegicus"=10116,
+	"Bos taurus"=9913,
+	"Gallus gallus"=9031,
+	"Danio rerio"=7955,
+	"Takifugu rubripes"=31033,
+	"Xenopus laevis"=8355,
+	"Drosophila melanogaster"=7227,
+	"Caenorhabditis elegans"=6239,
+	"Arabidopsis thaliana"=3702,
+	"Oryza sativa"=39947,
+	"Zea mays"=4577,
+	"Saccharomyces cerevisiae"=4932,
+	"Schizosaccharomyces pombe"=4896,
+	"Dictyostelium discoideum"=44689,
+	"Plasmodium falciparum"=5833,
+	"Chlamydomonas reinhardtii"=3055,
+	"Escherichia coli"=83333,
+	"Bacillus subtilis"=1423,
+	"Pseudomonas aeruginosa"=287,
+	"Mycobacterium tuberculosis"=1773,
+	"Mycoplasma genitalium"=2097,
+	"Synechocystis sp."=1148
+	)
+organism.db <- as.character(organism.list[organism])
+```
+
+#### Baseline versus one month
+
+```{r gprofiler}
+library(gProfileR)
+sig_genes <-  results_one %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_one %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_one_month.xlsx"))
+```
+
+**[results](../results/gprofiler_results_baseline_vs_one_month.xlsx)**
+
+```{r revigo_one, results='asis'}
+setwd(file.path(baseDir, "scripts"))
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+
+#### Baseline versus six months
+
+```{r gprofiler_six}
+sig_genes <-  results_six %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_six %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_baseline_vs_six_months.xlsx"))
+```
+
+**[results](../results/gprofiler_results_baseline_vs_six_months.xlsx)**
+
+```{r revigo_six, results='asis'}
+setwd(file.path(baseDir, "scripts"))
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+#### One month versus six months
+
+```{r gprofiler_onesix}
+sig_genes <-  results_onesix %>% filter(adj.P.Val<pvalue.cutoff & abs(logFC)>lfc.cutoff) %>% dplyr::arrange(B) %>%  dplyr::select(symbol) %>% unlist() %>% as.vector()
+background_genes <- results_six %>% dplyr::select(symbol) %>% unlist() %>% as.vector()
+
+gprofiler_results <- gprofiler(query = sig_genes, 
+                               organism = "hsapiens",
+                               ordered_query = FALSE,
+                               exclude_iea = FALSE, 
+                               max_set_size = 0, 
+                               correction_method = "fdr", 
+                               domain_size = "annotated", 
+                               custom_bg = background_genes)
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+
+export(gprofiler_results.simplified, file =file.path(resultsDir, "gprofiler_results_one_month_vs_six_months.xlsx"))
+```
+
+**[results](../results/gprofiler_results_one_month_vs_six_months.xlsx)**
+
+```{r revigo_onesix, results='asis'}
+setwd(file.path(baseDir, "scripts"))
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+cat("**Biological Process**")
+domain <- "BP" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain, '-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Molecular Function**")
+domain <- "MF" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-domain', domain,'-measure', measure, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+
+cat("**Cellular Component**")
+domain <- "CC" #Allowed values: "BP" "CC" "MF"
+mycommand=paste('revigo.pl -goterms', paste(GOs,collapse=","), '-gopvals', paste(pvals,collapse=","), '-cutoff', cutoff,  '-organism', organism.db, '-ispvalue', isPValue, '-whatisbetter', whatIsBetter, '-measure', measure, '-domain', domain, sep=" ")
+mytempfile <- tempfile()
+system2(command='perl', args=mycommand, stdout=mytempfile)
+source(mytempfile)
+```
+
+--- 
+
+## Correlate Principal Components with Covariates {.tabset}
+
+Here we will try to determine if there are additional covariates affecting the response to gastric bypass.
+
+This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than 0.01, 0.05 and 0.1 are displayed in separate plots. Non significant correlations are displayed in grey.
+
+```{r pcacorrelate, results='asis'}
+metadata <- pData(affyNorm.filt) %>% 
+  tbl_df() %>% 
+  dplyr::select(-filename, -sampleid, -filename_field3) %>% 
+  group_by(patient_id) %>% 
+  #dplyr::mutate(delta_bw=round(bw-first(bw), digits=1)) %>% 
+  #dplyr::mutate(delta_bmi=bmi-first(bmi)) %>% 
+  #dplyr::mutate(delta_a1c=a1c-first(a1c)) %>% 
+  #dplyr::mutate(delta_fbg=fbg-first(fbg)) %>% 
+  #dplyr::mutate(test=a1c) %>% 
+  ungroup() %>% 
+  dplyr::select(contains("time"), a1c)
+
+
+metadata <- pData(affyNorm.filt) %>% 
+  tbl_df() %>% 
+  dplyr::select(-filename, -sampleid, -filename_field3) %>% 
+  row2colnames("rownames") %>% 
+  group_by(patient_id) %>% 
+  dplyr::mutate(delta_bw=round(bw-first(bw), digits=1)) %>% 
+  dplyr::mutate(delta_bmi=bmi-first(bmi)) %>% 
+  dplyr::mutate(delta_a1c=a1c-first(a1c)) %>% 
+  dplyr::mutate(delta_fbg=fbg-first(fbg)) %>% 
+  ungroup() %>% 
+  as.data.frame() %>% 
+  col2rownames("rownames", TRUE)
+
+
+cat("###FDR<0.01")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.01)
+
+cat("###FDR<0.05")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
+
+cat("###FDR<0.1")
+degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
+```
+
+---
+
+# R Session Info
+
+(useful if replicating these results)
+
+```{r sessioninfo}
+sessionInfo()
+```
+
+---
+
+# References
+
+
+
