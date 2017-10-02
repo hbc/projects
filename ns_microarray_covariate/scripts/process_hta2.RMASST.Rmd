@@ -593,7 +593,7 @@ stats.eset <- cbind(stats, eset)
 
 datatable(stats.eset )
 
-export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_one_month.xlsx"))
+export(stats.eset, file=file.path(resultsDir,"stats_exprs_baseline_vs_one_month.xlsx"))
 ```
 
 **[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
@@ -610,10 +610,10 @@ stats.eset <- cbind(stats, eset)
 
 datatable(stats.eset)
 
-export(stats.eset, file=file.path(resultsDir, "stats_exprs_baseline_vs_six_month.xlsx"))
+export(stats.eset, file=file.path(resultsDir,"stats_exprs_baseline_vs_six_month.xlsx"))
 ```
 
-**[results](../results/stats_exprs_baseline_vs_one_month.xlsx)**
+**[results](../results/stats_exprs_baseline_vs_six_month.xlsx)**
 
 
 #### One month versus six months
