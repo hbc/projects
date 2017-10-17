@@ -8,7 +8,7 @@ params:
     outputDir: "."
 ---
 
-```{r setup, message=FALSE}
+```{r setup, message=FALSE, results='hide', warning=FALSE}
 library(bcbioRNASeq)
 
 # Shared RMarkdown settings
@@ -182,6 +182,8 @@ plotPCA(bcb)
 ```
 
 
+There is a decent separation between the RU samples and the RL/RM samples along PC1, with PC2 seemingly capturing some of the LPS treatment.
+
 ## Covariates correlation with PCs
 
 When multiple factors may influence the results of a given experiment, it is useful to assess which of them is responsible for the most variance as determined by PCA. We adapted the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor.
@@ -192,6 +194,7 @@ Here we are showing the correlational analysis of the rlog transformed count dat
 plotPCACovariates(bcb)
 ```
 
+There dont' appear to be any strong correlations with the various covariates, though any effects may be muted by the paired design and the apparent similarity of RL and RM samples.
 
 ## Hierarchical clustering
 
@@ -201,6 +204,7 @@ Inter-correlation analysis (ICA) is another way to look at how well samples clus
 plotCorrelationHeatmap(bcb)
 ```
 
+There does seem to be some structure in the data, but at this time, it's hard to pull it out.
 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
