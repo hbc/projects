@@ -153,6 +153,18 @@ plot_dendro <- function(x, title="", labels.colname=NULL, colors.colname=NULL) {
           axis.title.y=element_blank()) +
     ggtitle(title)
 }
+
+
+pca_loadings = function(object, ntop=700) {
+  rv <- matrixStats::rowVars(as.matrix(object))
+  select <- order(rv, decreasing = TRUE)[seq_len(min(ntop,
+      length(rv)))]
+  pca <- prcomp(t(as.matrix(object)[select, ]))
+  percentVar <- pca$sdev^2/sum(pca$sdev^2)
+  names(percentVar) = colnames(pca$x)
+  pca$percentVar = percentVar
+  return(pca)}
+
 ```
 
 ---
@@ -307,14 +319,14 @@ So far we have only been working with the probesets, without reference to the ge
 ```{r features, results='hide'}
 featureData(affyNorm) <- getNetAffx(affyNorm, "transcript") # this will load the Affymetrix annotation, including the probeID, into the fData
 # get gene symbols and entrezIDs for all probesets
-fData(affyNorm)$symbol <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
-fData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
+featureData(affyNorm)$symbol <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterSYMBOL, ifnotfound=NA))) # curated annotations from Bioconductor 
+featureData(affyNorm)$entrezID <- as.character(unlist(mget(featureNames(affyNorm), hta20sttranscriptclusterENTREZID, ifnotfound=NA))) # curated annotations from Bioconductor 
 ```
 
 ## Filter Probesets
 Reducing the number of genes assayed reduces the multiple test correction and may allow us to identify more differentially expressed genes.
 
-Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
+Starting  with `r nrow(Biobase::featureData(affyNorm))` probes, remaining we can filter:
 
 ### By Annotation
 - remove the probes without annotated genes
@@ -323,10 +335,10 @@ Starting  with `r nrow(fData(affyNorm))` probes, remaining we can filter:
  
 
 ```{r filter1}
-affyNorm.filt <- affyNorm[which(!is.na(fData(affyNorm)[,"symbol"]) & fData(affyNorm)$category=="main" & fData(affyNorm)$locustype=="Coding"),]
+affyNorm.filt <- affyNorm[which(!is.na(featureData(affyNorm)[,"symbol"]) & featureData(affyNorm)$category=="main" & featureData(affyNorm)$locustype=="Coding"),]
 ```
 
-`r nrow(fData(affyNorm.filt))` probes remaining.
+`r nrow(Biobase::featureData(affyNorm.filt))` probes remaining.
 
 
 ## Collapse probesets
@@ -345,7 +357,7 @@ collapsed.data <- collapseRows(eset,rowID=eset.annot$transcriptclusterid, rowGro
 affyNorm.filt <- affyNorm.filt[which(collapsed.data$selectedRow),]
 ```
 
-`r nrow(fData(affyNorm.filt))` genes remaining.
+`r nrow(Biobase::featureData(affyNorm.filt))` genes remaining.
 
 # Analysis
 
@@ -503,7 +515,7 @@ Heatmaps showing the top 100 differentially expressed genes (as determined by ha
 
 #### Baseline versus one month
 
-```{r heatmaps1, fig.height=8}
+```{r heatmaps1, fig.height=14}
 data.plot <- results_one %>% 
   filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
   arrange(., desc(B)) %>% 
@@ -525,7 +537,7 @@ pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus one month", scale
 
 #### Baseline versus six months
 
-```{r heatmaps6, fig.height=8}
+```{r heatmaps6, fig.height=14}
 data.plot <- results_six %>% 
   filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
   arrange(., desc(B)) %>% 
@@ -547,7 +559,7 @@ pheatmap(data.plot, cluster_cols = TRUE, main="Baseline versus six months", scal
 
 #### One month versus six months
 
-```{r heatmaps16, fig.height=8}
+```{r heatmaps16, fig.height=6.5}
 data.plot <- results_onesix %>% 
   filter(., abs(logFC)>lfc.cutoff & adj.P.Val<pvalue.cutoff) %>%
   arrange(., desc(B)) %>% 
@@ -602,7 +614,7 @@ export(stats.eset, file=file.path(resultsDir,"stats_exprs_baseline_vs_one_month.
 
 ```{r write-table_six}
 stats <- topTable(fit2.core, coef="six", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
-                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "seqname", "strand", "start" ,"stop", "probesetid")])
 stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
 eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("baseline"), contains("6month"))
 eset  <-  eset[match(row.names(stats), row.names(eset)),]
@@ -620,7 +632,7 @@ export(stats.eset, file=file.path(resultsDir,"stats_exprs_baseline_vs_six_month.
 
 ```{r write-table_onesix}
 stats <- topTable(fit2.core, coef="onesix", sort.by="B",adjust.method="BH",number=nrow(exprs(affyNorm.filt)), 
-                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "mrnaassignment")])
+                 genelist=fData(affyNorm.filt)[,c("symbol", "entrezID", "seqname", "strand", "start" ,"stop", "probesetid")])
 stats$Passes.FDR.threshold  <-  as.factor(stats$adj.P.Val<pvalue.cutoff)
 eset <- exprs(affyNorm.filt)%>% as.data.frame() %>% dplyr::select(contains("1month"), contains("6month"))
 eset  <-  eset[match(row.names(stats), row.names(eset)),]
@@ -867,11 +879,13 @@ source(mytempfile)
 
 --- 
 
-## Correlate Principal Components with Covariates {.tabset}
+## Correlate Principal Components with Covariates
 
 Here we will try to determine if there are additional covariates affecting the response to gastric bypass.
 
 This method adapts the method described by Daily et al. where they integrated a method to correlate covariates with principal components values to determine the importance of each factor [@Daily2017]. Correlations with and FDR (false discovery rate) of less than 0.01, 0.05 and 0.1 are displayed in separate plots. Non significant correlations are displayed in grey.
+
+### Plots {.tabset}
 
 ```{r pcacorrelate, results='asis'}
 metadata <- pData(affyNorm.filt) %>% 
@@ -888,18 +902,69 @@ metadata <- pData(affyNorm.filt) %>%
   col2rownames("rownames", TRUE)
 
 
-cat("###FDR<0.01")
-degCovariates(exprs(affyNorm.filt), metadata, fdr=0.01)
+cat("####FDR<0.01")
+degCovar <- degCovariates(exprs(affyNorm.filt), metadata, fdr=0.01)
 
-cat("###FDR<0.05")
-degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
+cat("####FDR<0.05")
+degCovar <- degCovariates(exprs(affyNorm.filt), metadata, fdr=0.05)
 
-cat("###FDR<0.1")
-degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
+cat("####FDR<0.1")
+degCovar <- degCovariates(exprs(affyNorm.filt), metadata, fdr=0.1)
+
+kable(degCovar$corMatrix)
 ```
 
-
 We're seeing strong correlations of PC1 with changes in body weight, bmi and a1c, with weaker associations to absolute body weight and bmi (and a weaker association to bodyweight). PC3 appears to be capturing patient gender. 
+
+### Table
+
+```{r pcacorrelatetable}
+
+kable(degCovar$corMatrix)
+```
+
+## Principal component gene loadings {.tabset}
+These are the top 50 genes that most affect each of the first 5 principal components.
+
+```{r loadings, results='asis'}
+pca.filt <- prcomp(t(exprs(affyNorm.filt)))
+
+
+
+
+gene_annots <-  fData(affyNorm.filt)[,c("symbol", "entrezID", "seqname", "strand", "start" ,"stop", "probesetid")]
+loadings <- pca.filt$rotation
+
+pc=1
+cat(paste("### PC", pc, sep=""))
+select <- order(abs(loadings[,pc]), decreasing = TRUE)[seq_len(50)]
+pc.genes <- gene_annots[row.names(loadings)[select],]
+kable(pc.genes)
+
+pc=2
+cat(paste("### PC", pc, sep=""))
+select <- order(abs(loadings[,pc]), decreasing = TRUE)[seq_len(50)]
+pc.genes <- gene_annots[row.names(loadings)[select],]
+kable(pc.genes)
+
+pc=3
+cat(paste("### PC", pc, sep=""))
+select <- order(abs(loadings[,pc]), decreasing = TRUE)[seq_len(50)]
+pc.genes <- gene_annots[row.names(loadings)[select],]
+kable(pc.genes)
+
+pc=4
+cat(paste("### PC", pc, sep=""))
+select <- order(abs(loadings[,pc]), decreasing = TRUE)[seq_len(50)]
+pc.genes <- gene_annots[row.names(loadings)[select],]
+kable(pc.genes)
+
+pc=5
+cat(paste("### PC", pc, sep=""))
+select <- order(abs(loadings[,pc]), decreasing = TRUE)[seq_len(50)]
+pc.genes <- gene_annots[row.names(loadings)[select],]
+kable(pc.genes)
+```
 
 ---
 
