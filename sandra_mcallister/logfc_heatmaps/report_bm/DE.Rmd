@@ -1,0 +1,304 @@
+---
+title: "Differential Expression - Pairwise comparisons against control"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+bibliography: bibliography.bib
+params:
+    bcbFile: "data/bcb_combined_sub.rda"
+    design: !r formula(~treatment)
+    contrast: !r c("treatment", "CTL", "BOTH")
+    alpha: 0.01
+    lfc: 0
+    outputDir: "."
+---
+
+```{r setup, message=FALSE}
+library(DESeq2)
+library(bcbioRNASeq)
+
+# Shared RMarkdown settings
+prepareRNASeqTemplate()
+if (file.exists("setup.R")) {
+    source("setup.R")
+}
+
+# Load bcbioRNASeq object
+bcbName <- load(params$bcbFile)
+bcb <- get(bcbName, inherits = FALSE)
+
+# Design formula
+# help("design", "DESeq2")
+design <- params$design
+
+# Contrast
+# help("results", "DESeq2")
+#   1. Design matrix parameter.
+#   2. Numerator for LFC (expt).
+#   3. Denominator for LFC (control).
+contrast <- params$contrast
+
+# Significance cutoffs
+alpha <- params$alpha
+lfc <- params$lfc
+
+# Directory paths
+outputDir <- params$outputDir
+countsDir <- file.path(outputDir, "results", "counts")
+deDir <- file.path(outputDir, "results", "differential_expression")
+```
+
+```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
+```
+
+
+
+```{r dds, results="hide"}
+dds <- DESeqDataSetFromTximport(
+    txi = txi(bcb),
+    colData = colData(bcb),
+    design = design) %>%
+    DESeq
+rld <- rlog(dds)
+```
+
+
+
+# Alpha level (FDR) cutoffs {.tabset}
+
+Let's take a look at the number of genes we get with different false discovery rate (FDR) cutoffs. These tests subset *P* values that have been multiple test corrected using the Benjamini Hochberg (BH) method [@Benjamini:1995ws].
+
+## GCSF versus CTL
+
+```{r alpha_summary_gcsf, results="asis"}
+alphaSummary(dds, contrast=c("treatment", "GCSF", "CTL"))
+```
+
+## ZA versus CTL
+
+```{r alpha_summary_za, results="asis"}
+alphaSummary(dds, contrast=c("treatment", "GCSF", "ZA"))
+```
+
+## BOTH versus CTL
+
+```{r alpha_summary_both, results="asis"}
+alphaSummary(dds, contrast=c("treatment", "GCSF", "BOTH"))
+```
+
+
+# Results
+
+```{r res_gcsf}
+contrast=c("treatment", "GCSF", "CTL")
+resUnshrunken <- results(
+    dds,
+    contrast = contrast,
+    alpha = alpha)
+
+# DESeqResults with shrunken log2 fold changes (LFC)
+# help("lfcShrink", "DESeq2")
+# Only `coef` or `contrast` can be specified, not both
+# Use the correct `coef` number to modify from `resultsNames(dds)`
+resShrunken <- lfcShrink(
+    dds = dds,
+    # coef = 2,
+    contrast = contrast,
+    res = resUnshrunken)
+
+# Use shrunken LFC values by default
+res_gcsf <- resShrunken
+```
+
+```{r res_za}
+contrast=c("treatment", "ZA", "CTL")
+resUnshrunken <- results(
+    dds,
+    contrast = contrast,
+    alpha = alpha)
+
+# DESeqResults with shrunken log2 fold changes (LFC)
+# help("lfcShrink", "DESeq2")
+# Only `coef` or `contrast` can be specified, not both
+# Use the correct `coef` number to modify from `resultsNames(dds)`
+resShrunken <- lfcShrink(
+    dds = dds,
+    # coef = 2,
+    contrast = contrast,
+    res = resUnshrunken)
+
+# Use shrunken LFC values by default
+res_za <- resShrunken
+```
+
+```{r res_both}
+contrast=c("treatment", "BOTH", "CTL")
+resUnshrunken <- results(
+    dds,
+    contrast = contrast,
+    alpha = alpha)
+
+# DESeqResults with shrunken log2 fold changes (LFC)
+# help("lfcShrink", "DESeq2")
+# Only `coef` or `contrast` can be specified, not both
+# Use the correct `coef` number to modify from `resultsNames(dds)`
+resShrunken <- lfcShrink(
+    dds = dds,
+    # coef = 2,
+    contrast = contrast,
+    res = resUnshrunken)
+
+# Use shrunken LFC values by default
+res_both <- resShrunken
+```
+
+We performed the analysis using a BH adjusted *P* value cutoff of `r alpha` and a log fold-change (LFC) ratio cutoff of `r lfc`.
+
+## Plots 
+
+### Mean average (MA) {.tabset}
+
+An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average) scales [@Yang:2002ty].
+
+#### GCSF versus CTL
+
+```{r plot_ma_gcsf}
+plotMA(res_gcsf)
+```
+
+#### ZA versus CTL
+
+```{r plot_ma_za}
+plotMA(res_za)
+```
+
+#### BOTH versus CTL
+
+```{r plot_ma_both}
+plotMA(res_both)
+```
+
+
+### Volcano {.tabset}
+
+A volcano plot compares significance (BH-adjusted *P* value) against fold change (log2) [@Cui:2003kh; @Li:2014fv]. Genes in the green box have an adjusted *P* value less than `r alpha` and are likely to be the top candidate genes of interest. The top 20 genes by fold change are text labelled.
+
+#### GCSF versus CTL
+
+```{r plot_volcano_gcsf}
+plotVolcano(res_gcsf, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
+```
+
+#### ZA versus CTL
+
+```{r plot_volcano_za}
+plotVolcano(res_za, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
+```
+
+#### BOTH versus CTL
+
+```{r plot_volcano_both}
+plotVolcano(res_both, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
+```
+
+
+### Heatmap {.tabset}
+
+This plot shows only differentially expressed genes on a per-sample basis. We have scaled the data by row and used the `ward.D2` method for clustering [@WardJr:1963eu]. 
+
+One take away from these results is that the individual treatment samples cluster well within a treatment for any of the differentially expressed gene sets. Further, on a larger level, with the exception of genes that are differentially expressed between ZA and CTL samples, the samples cluster so that BOTH samples cluster with GCSF and ZA samples cluster with CTL for the differentially expressed genes.
+
+#### GCSF versus CTL
+
+```{r plot_deg_heatmap_gcsf}
+plotDEGHeatmap(res_gcsf, counts = rld)
+```
+
+#### ZA versus CTL
+```{r plot_deg_heatmap_za}
+plotDEGHeatmap(res_za, counts = rld)
+```
+
+#### BOTH versus CTL
+```{r plot_deg_heatmap_both}
+plotDEGHeatmap(res_both, counts = rld)
+```
+
+## Top tables of differentially expressed genes {.tabset}
+
+```{r results_tables, results="hide"}
+resTbl_gcsf <- resultsTables(res_gcsf, lfc = lfc, dir = deDir)
+resTbl_za <- resultsTables(res_za, lfc = lfc, dir = deDir)
+resTbl_both <- resultsTables(res_both, lfc = lfc, dir = deDir)
+```
+
+DEG tables are sorted by BH-adjusted P value, and contain the following columns:
+
+- `ensgene`: [Ensembl][] gene identifier.
+- `baseMean`: Mean of the normalized counts per gene for all samples.
+- `log2FoldChange`: log2 fold change.
+- `lfcSE`: log2 standard error.
+- `stat`: Wald statistic.
+- `pvalue`: Walt test *P* value.
+- `padj`: BH adjusted Wald test *P* value (corrected for multiple comparisons; aka FDR).
+- `externalGeneName`: [Ensembl][] name (a.k.a. symbol).
+- `description`: [Ensembl][] description.
+- `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
+
+Only the top 50 up- and down-regulated genes (arranged by log2 fold change) are shown.
+
+### GCSF versus CTL
+
+```{r top_tables_gcsf, results="asis"}
+topTables(resTbl_gcsf)
+```
+
+### ZA versus CTL
+
+```{r top_tables _za, results="asis"}
+topTables(resTbl_za)
+```
+
+### BOTH versus CTL 
+
+```{r top_tablesTGKO, results="asis"}
+topTables(resTbl_both)
+```
+
+
+# File downloads
+
+The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
+
+
+## Count matrices
+
+- [`normalizedCounts.csv.gz`](`r file.path(countsDir, "normalizedCounts.csv.gz")`): Use to evaluate individual genes and/or generate plots. These counts are normalized for the variation in sequencing depth across samples.
+- [`tpm.csv.gz`](`r file.path(countsDir, "tpm.csv.gz")`): Transcripts per million, scaled by length and also suitable for plotting.
+- [`rawCounts.csv.gz`](`r file.path(countsDir, "rawCounts.csv.gz")`): Only use to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized. Do not use this file for plotting genes.
+
+## Differentially expressed genes (DEG)
+
+All files can be found in this [folder](./results/differential_expression/). 
+
+\*all.csv.gz - statistics and annotations for all genes       
+\*deg.csv.gz - statistics and annotations for differentially expressed genes
+\*deg_lfc_down.csv.gz - statistics and annotations for differentially expressed genes that are up in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
+\*deg_lfc_up.csv.gz - statistics and annotations for differentially expressed genes that are down in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
+
+DEG tables are sorted by BH-adjusted P value, and contain the following columns:
+
+- `ensgene`: [Ensembl][] gene identifier.
+- `baseMean`: Mean of the normalized counts per gene for all samples.
+- `log2FoldChange`: log2 fold change.
+- `lfcSE`: log2 standard error.
+- `stat`: Wald statistic.
+- `pvalue`: Walt test *P* value.
+- `padj`: BH adjusted Wald test *P* value (corrected for multiple comparisons; aka FDR).
+- `externalGeneName`: [Ensembl][] name (a.k.a. symbol).
+- `description`: [Ensembl][] description.
+- `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
+
+
+
+```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
+```
