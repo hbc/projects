@@ -923,6 +923,15 @@ We're seeing strong correlations of PC1 with changes in body weight, bmi and a1c
 kable(degCovar$corMatrix)
 ```
 
+## Principal components for each sample
+
+```{r PCApatient}
+pca.filt <- prcomp(t(exprs(affyNorm.filt)))
+kable(pca.filt$x[,1:10])
+```
+
+
+
 ## Principal component gene loadings {.tabset}
 These are the top 50 genes that most affect each of the first 5 principal components.
 
