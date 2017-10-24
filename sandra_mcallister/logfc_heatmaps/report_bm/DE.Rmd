@@ -265,6 +265,145 @@ topTables(resTbl_both)
 ```
 
 
+## Functional Analyses
+
+### Heatmap of logFCs for genes in osteoclast differentiation pathway
+
+- used the gene symbols to match up with the stats calculated here by DESeq
+- had to drop some genes as they had NA results (too low expression) from DESeq for all comparisons ( Ifnb1 & Ppp3r2)
+
+I made two different plots for you to look at, the first plot is centered (the row mean subtracted from each value) and scaled (the result divided by the row standard deviation) by row, the second is unscaled. The main effect of this is that in the first plot, it is easier to see differences for individual rows (genes) but you can't compare beetween rows, the colors also do not represent the actual log2FCs anymore either. With the unscaled data, genes with smaller than typical differences can be swamped out but the values you do see are the actual log2FCs.
+
+```{r pathwayheatmap, fig.height=16, fig.width=3}
+library(pheatmap)
+library(RColorBrewer)
+
+stats_gcsf <- resTbl_gcsf$all
+stats_za <- resTbl_za$all
+stats_both <- resTbl_both$all
+
+pathway_symbols <- c("Csf1","Csf1r","Grb2","Mapk1","Mapk3","Pik3ca","Pik3cd","Pik3cb","Pik3r2","Pik3r1","Pik3r3","Akt1","Akt2","Akt3","Ifng","Ifngr1","Ifngr2","Stat1","Il1a","Il1b","Il1r1","Tnf","Tnfrsf1a","Tgfb1","Tgfb2","Tgfbr1","Tgfbr2","Tnfsf11","Tnfrsf11a","Tnfrsf11b","Traf2","Traf6","Lck","Fyn","Map3k14","Chuk","Relb","Nfkb2","Map3k7","Tab1","Tab2","Ikbkg","Ikbkb","Nfkbia","Rela","Nfkb1","Nfatc2","Nfatc1","Ifnb1","Map2k1","Map2k6","Mapk14","Mapk11","Mapk12","Mapk13","Map2k7","Mapk8","Mapk9","Mapk10","Fos","Fosb","Fosl2","Fosl1","Jun","Jund","Junb","Rac1","Nox1","Cyba","Ncf2","Ncf1","Ncf4","Btk","Tec","Oscar","Pira1","Lilra6","Pira4","Pira6","Pirb","Lilra5","Lilrb4a","Pira11","Gm14548","Pira2","Gm15448","Pira7","Fcgr1","Fcgr2b","Fcgr3","Fcgr4","Trem2","Sirpa","Sirpb1b","","Gm9733","Sirpb1a","Tyrobp","Syk","Blnk","Lcp2","Plcg2","Ppp3cc","Ppp3ca","Ppp3cb","Ppp3r1","Ppp3r2","Camk4","Creb1","Spi1","Mitf","Ctsk","Acp5","Calcr","Itgb3","Pparg","Ifnar1","Ifnar2","Jak1","Tyk2","Stat2","Irf9","Socs1","Socs3","Gab2","Fhl2","Cyld","Sqstm1") %>% as.data.frame()
+names(pathway_symbols) <- "symbol"
+
+pathway_stats_gcsf <- inner_join(pathway_symbols, stats_gcsf) %>% dplyr::select(symbol,log2FoldChange )
+pathway_stats_za <- inner_join(pathway_symbols, stats_za) %>% dplyr::select(symbol,log2FoldChange )
+pathway_stats_both <- inner_join(pathway_symbols, stats_both) %>% dplyr::select(symbol,log2FoldChange )
+
+pathway_stats_all <- Reduce(function(dtf1,dtf2) 
+  inner_join(dtf1,dtf2,by="symbol"), 
+  list(pathway_stats_gcsf, pathway_stats_za, pathway_stats_both))
+names(pathway_stats_all) <- c("symbol", "log2FC_GCSF", "log2FC_ZA", "log2FC_BOTH")
+pathway_stats_all <- pathway_stats_all %>% as.data.frame()
+
+row.names(pathway_stats_all) <- pathway_stats_all$symbol
+pathway_stats_all$symbol <- NULL
+
+
+pathway_stats_all <- pathway_stats_all[!(apply(pathway_stats_all, 1, function(x) all(is.na(x)))),]
+cat("#### row scaled")
+pheatmap(as.matrix(pathway_stats_all), scale="row", color = colorRampPalette(rev(brewer.pal(n = 8, name =  "RdBu")))(100), fontsize_row = 8)
+cat("#### Not row scaled")
+pheatmap(as.matrix(pathway_stats_all), color = colorRampPalette(rev(brewer.pal(n = 8, name =  "RdBu")))(100), fontsize_row = 8)
+```
+
+
+### Functional enrichment
+
+- from each comparisons, I took the top 150 DE genes (padj<0.1) as sorted by absolute log2FoldChange
+
+(I tried it with the top 500 (by absolute log2FC) from each comparison but the result was much noiser, with far more uninformative categories)
+
+
+Using this list of genes, a list of statistically enriched gene ontology (GO), [`Human Phenotype Ontology`][] (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR][] [@Reimand:2007].
+
+The full list of enriched categories can be downloaded below.
+
+Separate lists of the significant GO terms for each GO domain  (biological process, cellular component and molecular functions) were then used as input to [REViGO][] [@Supek:2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+```{r gprofiler, results='asis'}
+num <- 150
+padj_cutoff <- 0.1
+
+library(gProfileR)
+stats_gcsf <- stats_gcsf %>% mutate(abslog2FC=abs(log2FoldChange))
+stats_za <- stats_za %>% mutate(abslog2FC=abs(log2FoldChange))
+stats_both <- stats_both %>% mutate(abslog2FC=abs(log2FoldChange))
+
+gogenes_gcsf <- filter(stats_gcsf, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+gogenes_za <- filter(stats_za, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+gogenes_both <- filter(stats_both, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+
+gogenes_all <- c(gogenes_gcsf$symbol, gogenes_za$symbol, gogenes_both$symbol)
+
+# gprofileR
+gprofiler_results <- gprofiler(query = gogenes_all, organism = "mmusculus", ordered_query = F, 
+     exclude_iea = F, max_set_size = 0, correction_method = "fdr", hier_filtering = "none", 
+     domain_size = "annotated", custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", 
+                                                      "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+library(rio)
+export(gprofiler_results.simplified, file.path(deDir, "gprofiler_results_topDEgenes.xlsx"))
+
+# Revigo BP Parameters to change
+cutoff <- "0.7"  #Allowed values: '0.90' '0.70' '0.50' '0.40' 
+organism <- "Mus musculus"  #Allowed values: See organism.list below
+isPValue <- "yes"  #Allowed values: 'yes'  'no'
+whatIsBetter <- "higher"  #Allowed values: 'higher' 'lower' 'absolute' 'abs_log'
+measure <- "SIMREL"  #Allowed values: 'RESNIK' 'LIN' 'SIMREL' 'JIANG'
+
+# Do not change below
+organism.list <- list(`whole UniProt` = 0, `Homo sapiens` = 9606, `Mus musculus` = 10090, 
+                      `Rattus norvegicus` = 10116, `Bos taurus` = 9913, `Gallus gallus` = 9031, 
+                      `Danio rerio` = 7955, `Takifugu rubripes` = 31033, `Xenopus laevis` = 8355, 
+                      `Drosophila melanogaster` = 7227, `Caenorhabditis elegans` = 6239, `Arabidopsis thaliana` = 3702, 
+                      `Oryza sativa` = 39947, `Zea mays` = 4577, `Saccharomyces cerevisiae` = 4932, 
+                      `Schizosaccharomyces pombe` = 4896, `Dictyostelium discoideum` = 44689, 
+                      `Plasmodium falciparum` = 5833, `Chlamydomonas reinhardtii` = 3055, `Escherichia coli` = 83333, 
+                      `Bacillus subtilis` = 1423, `Pseudomonas aeruginosa` = 287, `Mycobacterium tuberculosis` = 1773, 
+                      `Mycoplasma genitalium` = 2097, `Synechocystis sp.` = 1148)
+organism.db <- as.character(organism.list[organism])
+
+
+domain="BP"
+cat("#### Biological Process")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+
+
+domain="CC"
+cat("#### Cellular Component")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+
+
+domain="MF"
+cat("#### Molecular Function")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+```
+
+
 # File downloads
 
 The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
@@ -298,7 +437,35 @@ DEG tables are sorted by BH-adjusted P value, and contain the following columns:
 - `description`: [Ensembl][] description.
 - `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
 
+## Functional Enrichments
 
+
+All files can be found in this [folder](./results/differential_expression/). 
+
+gprofiler_results_topDEgenes\*.xlsx
+
+Tables are sorted by pvalue and contain the followoing columns:
+
+- `term.id`: Functional term id (domain dependent)
+- `term.name`: Functional term name
+- `domain`: Functional database  
+    - `BP` - Gene Ontology Biological Process
+    - `MF` - Gene Ontology Molecular Function   
+    - `CC` - Gene Ontology Cellular Component  
+    - `tf` - transcription factor motif enrichment  
+    - `cor` - [CORUM][] protein complexes   
+    - `hp` - [`Human Phenotype Ontology`][]  
+    - `mi` - miRBase microRNA targets
+- `p.value` - multiple test adjusted pvalue
+- `term.size` - number of genes in the functional term
+- `query.size` - number of differentially expressed genes examined
+- `overlap.size` - number of differentially expressed genes in the functional term
+- `assoc.gene.ids` - gene ids of differentially expressed genes in the functional term
+
+[Corum]: http://mips.helmholtz-muenchen.de/corum/
+[REViGO]: http://revigo.irb.hr/
+[gprofileR]: http://biit.cs.ut.ee/gprofiler/
+[`Human Phenotype Ontology`]: https://human-phenotype-ontology.github.io/
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
