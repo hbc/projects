@@ -177,8 +177,25 @@ Before performing similarity analysis, we transform counts to log2, which acts t
 
 PCA [@Jolliffe:2002wx] is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is a way to look at how samples are clustering.
 
-```{r plot_pca, fig.height=12, fig.width=10}
+```{r plot_pca, fig.height=12, fig.width=10, results='asis'}
 plotPCA(bcb)
+
+bcb_cornea <- bcb[,which(colData(bcb)$tissue=="cornea")]
+bcb_skin <- bcb[,which(colData(bcb)$tissue=="skin")]
+bcb_es <- bcb[,which(colData(bcb)$tissue=="es")]
+bcb_total_cornea <- bcb[,which(colData(bcb)$tissue=="cornea" & colData(bcb)$facsSorted=="no")]
+bcb_sorted_cornea <- bcb[,which(colData(bcb)$tissue=="cornea" & colData(bcb)$facsSorted=="yes")]
+
+cat("### Skin samples only")
+plotPCA(bcb_skin)
+cat("### ES cell samples only")
+plotPCA(bcb_es)
+cat("### Cornea samples only")
+plotPCA(bcb_cornea)
+cat("### FACS sorted corena samples only")
+plotPCA(bcb_sorted_cornea)
+cat("### Total cornea samples only")
+plotPCA(bcb_total_cornea)
 ```
 
 
