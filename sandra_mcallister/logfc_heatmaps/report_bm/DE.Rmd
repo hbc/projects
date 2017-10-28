@@ -1,5 +1,5 @@
 ---
-title: "Differential Expression - Pairwise comparisons against control"
+title: "Differential Expression - Pairwise comparisons"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
@@ -45,23 +45,25 @@ lfc <- params$lfc
 outputDir <- params$outputDir
 countsDir <- file.path(outputDir, "results", "counts")
 deDir <- file.path(outputDir, "results", "differential_expression")
+
+source("functions.R")
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-
-
 ```{r dds, results="hide"}
+treatment <- colData(bcb)$treatment
+
 dds <- DESeqDataSetFromTximport(
     txi = txi(bcb),
     colData = colData(bcb),
-    design = design) %>%
-    DESeq
+    design = design) 
+dds$treatment <- relevel(dds$treatment, "CTL")
+
+dds <- DESeq(dds)
 rld <- rlog(dds)
 ```
-
-
 
 # Alpha level (FDR) cutoffs {.tabset}
 
@@ -76,15 +78,26 @@ alphaSummary(dds, contrast=c("treatment", "GCSF", "CTL"))
 ## ZA versus CTL
 
 ```{r alpha_summary_za, results="asis"}
-alphaSummary(dds, contrast=c("treatment", "GCSF", "ZA"))
+alphaSummary(dds, contrast=c("treatment", "ZA", "CTL"))
 ```
 
 ## BOTH versus CTL
 
 ```{r alpha_summary_both, results="asis"}
-alphaSummary(dds, contrast=c("treatment", "GCSF", "BOTH"))
+alphaSummary(dds, contrast=c("treatment", "BOTH", "CTL"))
 ```
 
+## BOTH versus GCSF
+
+```{r alpha_summary_bothgcsf, results="asis"}
+alphaSummary(dds, contrast=c("treatment", "BOTH", "GCSF"))
+```
+
+## BOTH versus ZA
+
+```{r alpha_summary_bothza, results="asis"}
+alphaSummary(dds, contrast=c("treatment", "BOTH", "ZA"))
+```
 
 # Results
 
@@ -151,6 +164,48 @@ resShrunken <- lfcShrink(
 res_both <- resShrunken
 ```
 
+```{r res_bothgcsf}
+contrast=c("treatment", "BOTH", "GCSF")
+resUnshrunken <- results(
+    dds,
+    contrast = contrast,
+    alpha = alpha)
+
+# DESeqResults with shrunken log2 fold changes (LFC)
+# help("lfcShrink", "DESeq2")
+# Only `coef` or `contrast` can be specified, not both
+# Use the correct `coef` number to modify from `resultsNames(dds)`
+resShrunken <- lfcShrink(
+    dds = dds,
+    # coef = 2,
+    contrast = contrast,
+    res = resUnshrunken)
+
+# Use shrunken LFC values by default
+res_bothgcsf <- resShrunken
+```
+
+```{r res_bothza}
+contrast=c("treatment", "BOTH", "ZA")
+resUnshrunken <- results(
+    dds,
+    contrast = contrast,
+    alpha = alpha)
+
+# DESeqResults with shrunken log2 fold changes (LFC)
+# help("lfcShrink", "DESeq2")
+# Only `coef` or `contrast` can be specified, not both
+# Use the correct `coef` number to modify from `resultsNames(dds)`
+resShrunken <- lfcShrink(
+    dds = dds,
+    # coef = 2,
+    contrast = contrast,
+    res = resUnshrunken)
+
+# Use shrunken LFC values by default
+res_bothza <- resShrunken
+```
+
 We performed the analysis using a BH adjusted *P* value cutoff of `r alpha` and a log fold-change (LFC) ratio cutoff of `r lfc`.
 
 ## Plots 
@@ -177,6 +232,17 @@ plotMA(res_za)
 plotMA(res_both)
 ```
 
+#### BOTH versus GCSF
+
+```{r plot_ma_bothgcsf}
+plotMA(res_bothgcsf)
+```
+
+#### BOTH versus ZA
+
+```{r plot_ma_bothza}
+plotMA(res_bothza)
+```
 
 ### Volcano {.tabset}
 
@@ -198,6 +264,18 @@ plotVolcano(res_za, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
 
 ```{r plot_volcano_both}
 plotVolcano(res_both, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
+```
+
+#### BOTH versus GCSF
+
+```{r plot_volcano_bothgcsf}
+plotVolcano(res_bothgcsf, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
+```
+
+#### BOTH versus ZA
+
+```{r plot_volcano_bothza}
+plotVolcano(res_bothza, lfc = lfc,alpha = alpha, ntop=20, histograms=FALSE)
 ```
 
 
@@ -223,12 +301,24 @@ plotDEGHeatmap(res_za, counts = rld)
 plotDEGHeatmap(res_both, counts = rld)
 ```
 
+#### BOTH versus GCSF
+```{r plot_deg_heatmap_bothgcsf}
+plotDEGHeatmap(res_bothgcsf, counts = rld)
+```
+
+#### BOTH versus ZA
+```{r plot_deg_heatmap_bothza}
+plotDEGHeatmap(res_bothza, counts = rld)
+```
+
 ## Top tables of differentially expressed genes {.tabset}
 
 ```{r results_tables, results="hide"}
 resTbl_gcsf <- resultsTables(res_gcsf, lfc = lfc, dir = deDir)
 resTbl_za <- resultsTables(res_za, lfc = lfc, dir = deDir)
 resTbl_both <- resultsTables(res_both, lfc = lfc, dir = deDir)
+resTbl_bothgcsf <- resultsTables(res_bothgcsf, lfc = lfc, dir = deDir)
+resTbl_bothza <- resultsTables(res_bothza, lfc = lfc, dir = deDir)
 ```
 
 DEG tables are sorted by BH-adjusted P value, and contain the following columns:
@@ -254,18 +344,151 @@ topTables(resTbl_gcsf)
 
 ### ZA versus CTL
 
-```{r top_tables _za, results="asis"}
+```{r top_tables_za, results="asis"}
 topTables(resTbl_za)
 ```
 
 ### BOTH versus CTL 
 
-```{r top_tablesTGKO, results="asis"}
+```{r top_tables_both, results="asis"}
 topTables(resTbl_both)
 ```
 
+### BOTH versus GCSF 
 
-## Functional Analyses
+```{r top_tables_bothgcsf, results="asis"}
+topTables(resTbl_bothgcsf)
+```
+
+### BOTH versus ZA 
+
+```{r top_tables_bothza, results="asis"}
+topTables(resTbl_bothza)
+```
+
+## Functional Analyses (for all pairwise comparisons)
+
+### GCSF versus CTL {.tabset}
+```{r gprofrevigo_gcsf, results='asis'}
+run_gprofiler_revigo(res_gcsf )
+```
+
+### ZA versus CTL {.tabset}
+```{r gprofrevigo_za, results='asis'}
+run_gprofiler_revigo(res_za )
+```
+
+### BOTH versus CTL {.tabset}
+```{r gprofrevigo_both, results='asis'}
+run_gprofiler_revigo(res_both )
+```
+
+### BOTH versus GCSF {.tabset}
+```{r gprofrevigo_bothgcsf, results='asis'}
+run_gprofiler_revigo(res_bothgcsf )
+```
+
+### BOTH versus ZA {.tabset}
+```{r gprofrevigo_bothza, results='asis'}
+run_gprofiler_revigo(res_bothza )
+```
+
+
+### Using top DE genes from all pairwise comparisons to control {.tabset}
+
+- from each comparisons, I took the top 150 DE genes (padj<0.1) as sorted by absolute log2FoldChange
+
+(I tried it with the top 500 (by absolute log2FC) from each comparison but the result was much noiser, with far more uninformative categories)
+
+
+Using this list of genes, a list of statistically enriched gene ontology (GO), [`Human Phenotype Ontology`][] (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR][] [@Reimand:2007].
+
+The full list of enriched categories can be downloaded below.
+
+Separate lists of the significant GO terms for each GO domain  (biological process, cellular component and molecular functions) were then used as input to [REViGO][] [@Supek:2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
+
+```{r gprofiler, results='asis'}
+num <- 150
+padj_cutoff <- 0.1
+
+library(gProfileR)
+stats_gcsf <- stats_gcsf %>% mutate(abslog2FC=abs(log2FoldChange))
+stats_za <- stats_za %>% mutate(abslog2FC=abs(log2FoldChange))
+stats_both <- stats_both %>% mutate(abslog2FC=abs(log2FoldChange))
+
+gogenes_gcsf <- filter(stats_gcsf, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+gogenes_za <- filter(stats_za, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+gogenes_both <- filter(stats_both, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
+
+gogenes_all <- c(gogenes_gcsf$symbol, gogenes_za$symbol, gogenes_both$symbol)
+
+# gprofileR
+gprofiler_results <- gprofiler(query = gogenes_all, organism = "mmusculus", ordered_query = F, 
+     exclude_iea = F, max_set_size = 0, correction_method = "fdr", hier_filtering = "none", 
+     domain_size = "annotated", custom_bg = "")
+
+allterms <- gprofiler_results$term.id
+GOs <- allterms[grep("GO:", allterms)]
+pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
+
+gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", 
+                                                      "p.value", "term.size", "query.size", "overlap.size", "intersection")]
+names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
+library(rio)
+export(gprofiler_results.simplified, file.path(deDir, "gprofiler_results_topDEgenes.xlsx"))
+
+# Revigo BP Parameters to change
+cutoff <- "0.7"  #Allowed values: '0.90' '0.70' '0.50' '0.40' 
+organism <- "Mus musculus"  #Allowed values: See organism.list below
+isPValue <- "yes"  #Allowed values: 'yes'  'no'
+whatIsBetter <- "higher"  #Allowed values: 'higher' 'lower' 'absolute' 'abs_log'
+measure <- "SIMREL"  #Allowed values: 'RESNIK' 'LIN' 'SIMREL' 'JIANG'
+
+# Do not change below
+organism.list <- list(`whole UniProt` = 0, `Homo sapiens` = 9606, `Mus musculus` = 10090, 
+                      `Rattus norvegicus` = 10116, `Bos taurus` = 9913, `Gallus gallus` = 9031, 
+                      `Danio rerio` = 7955, `Takifugu rubripes` = 31033, `Xenopus laevis` = 8355, 
+                      `Drosophila melanogaster` = 7227, `Caenorhabditis elegans` = 6239, `Arabidopsis thaliana` = 3702, 
+                      `Oryza sativa` = 39947, `Zea mays` = 4577, `Saccharomyces cerevisiae` = 4932, 
+                      `Schizosaccharomyces pombe` = 4896, `Dictyostelium discoideum` = 44689, 
+                      `Plasmodium falciparum` = 5833, `Chlamydomonas reinhardtii` = 3055, `Escherichia coli` = 83333, 
+                      `Bacillus subtilis` = 1423, `Pseudomonas aeruginosa` = 287, `Mycobacterium tuberculosis` = 1773, 
+                      `Mycoplasma genitalium` = 2097, `Synechocystis sp.` = 1148)
+organism.db <- as.character(organism.list[organism])
+
+
+domain="BP"
+cat("#### Biological Process")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+
+
+domain="CC"
+cat("#### Cellular Component")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+
+
+domain="MF"
+cat("#### Molecular Function")
+mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
+                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
+                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
+                  sep = " ")
+mytempfile <- tempfile()
+system2(command = "perl", args = mycommand, stdout = mytempfile)
+source(mytempfile)
+```
 
 ### Heatmap of logFCs for genes in osteoclast differentiation pathway
 
@@ -369,103 +592,6 @@ pheatmap(heatmap_data,
          annotation_colors = ann_colors, 
          cluster_rows = FALSE,
          scale="row")
-```
-
-
-### Functional enrichment
-
-- from each comparisons, I took the top 150 DE genes (padj<0.1) as sorted by absolute log2FoldChange
-
-(I tried it with the top 500 (by absolute log2FC) from each comparison but the result was much noiser, with far more uninformative categories)
-
-
-Using this list of genes, a list of statistically enriched gene ontology (GO), [`Human Phenotype Ontology`][] (HP) terms, and KEGG pathways (keg) was generated using the program [gprofileR][] [@Reimand:2007].
-
-The full list of enriched categories can be downloaded below.
-
-Separate lists of the significant GO terms for each GO domain  (biological process, cellular component and molecular functions) were then used as input to [REViGO][] [@Supek:2011], which collapsed redundant and semantically-related terms and output the most significantly enriched functional categories.
-
-```{r gprofiler, results='asis'}
-num <- 150
-padj_cutoff <- 0.1
-
-library(gProfileR)
-stats_gcsf <- stats_gcsf %>% mutate(abslog2FC=abs(log2FoldChange))
-stats_za <- stats_za %>% mutate(abslog2FC=abs(log2FoldChange))
-stats_both <- stats_both %>% mutate(abslog2FC=abs(log2FoldChange))
-
-gogenes_gcsf <- filter(stats_gcsf, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
-gogenes_za <- filter(stats_za, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
-gogenes_both <- filter(stats_both, padj<padj_cutoff) %>% arrange(desc(abslog2FC)) %>% .[1:num,]
-
-gogenes_all <- c(gogenes_gcsf$symbol, gogenes_za$symbol, gogenes_both$symbol)
-
-# gprofileR
-gprofiler_results <- gprofiler(query = gogenes_all, organism = "mmusculus", ordered_query = F, 
-     exclude_iea = F, max_set_size = 0, correction_method = "fdr", hier_filtering = "none", 
-     domain_size = "annotated", custom_bg = "")
-
-allterms <- gprofiler_results$term.id
-GOs <- allterms[grep("GO:", allterms)]
-pvals <- gprofiler_results$p.value[grep("GO:", allterms)]
-
-gprofiler_results.simplified <- gprofiler_results[, c("term.id", "term.name", 
-                                                      "p.value", "term.size", "query.size", "overlap.size", "intersection")]
-names(gprofiler_results.simplified) <- c("term.id", "term.name", "p.value", "term.size", "query.size", "overlap.size", "assoc.gene.ids")
-library(rio)
-export(gprofiler_results.simplified, file.path(deDir, "gprofiler_results_topDEgenes.xlsx"))
-
-# Revigo BP Parameters to change
-cutoff <- "0.7"  #Allowed values: '0.90' '0.70' '0.50' '0.40' 
-organism <- "Mus musculus"  #Allowed values: See organism.list below
-isPValue <- "yes"  #Allowed values: 'yes'  'no'
-whatIsBetter <- "higher"  #Allowed values: 'higher' 'lower' 'absolute' 'abs_log'
-measure <- "SIMREL"  #Allowed values: 'RESNIK' 'LIN' 'SIMREL' 'JIANG'
-
-# Do not change below
-organism.list <- list(`whole UniProt` = 0, `Homo sapiens` = 9606, `Mus musculus` = 10090, 
-                      `Rattus norvegicus` = 10116, `Bos taurus` = 9913, `Gallus gallus` = 9031, 
-                      `Danio rerio` = 7955, `Takifugu rubripes` = 31033, `Xenopus laevis` = 8355, 
-                      `Drosophila melanogaster` = 7227, `Caenorhabditis elegans` = 6239, `Arabidopsis thaliana` = 3702, 
-                      `Oryza sativa` = 39947, `Zea mays` = 4577, `Saccharomyces cerevisiae` = 4932, 
-                      `Schizosaccharomyces pombe` = 4896, `Dictyostelium discoideum` = 44689, 
-                      `Plasmodium falciparum` = 5833, `Chlamydomonas reinhardtii` = 3055, `Escherichia coli` = 83333, 
-                      `Bacillus subtilis` = 1423, `Pseudomonas aeruginosa` = 287, `Mycobacterium tuberculosis` = 1773, 
-                      `Mycoplasma genitalium` = 2097, `Synechocystis sp.` = 1148)
-organism.db <- as.character(organism.list[organism])
-
-
-domain="BP"
-cat("#### Biological Process")
-mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
-                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
-                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
-                  sep = " ")
-mytempfile <- tempfile()
-system2(command = "perl", args = mycommand, stdout = mytempfile)
-source(mytempfile)
-
-
-domain="CC"
-cat("#### Cellular Component")
-mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
-                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
-                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
-                  sep = " ")
-mytempfile <- tempfile()
-system2(command = "perl", args = mycommand, stdout = mytempfile)
-source(mytempfile)
-
-
-domain="MF"
-cat("#### Molecular Function")
-mycommand = paste("revigo.pl -goterms", paste(GOs, collapse = ","), "-gopvals", 
-                  paste(pvals, collapse = ","), "-cutoff", cutoff, "-organism", organism.db, 
-                  "-ispvalue", isPValue, "-whatisbetter", whatIsBetter, "-measure", measure, "-domain", domain,
-                  sep = " ")
-mytempfile <- tempfile()
-system2(command = "perl", args = mycommand, stdout = mytempfile)
-source(mytempfile)
 ```
 
 
