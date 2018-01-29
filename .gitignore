@@ -9,6 +9,9 @@
 *.html
 *.pdf
 *.pyc
+*png
+*rda
+*.Rproj
 build
 data
 data-raw
