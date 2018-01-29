@@ -1,9 +1,0 @@
-# Overview
-
-- Principal Investigator: Marcos Vidal Melo
-- Researcher: Marcos Vidal Melo
-- Experiment: RNAseq of lung damage in sheep
-
-
-
-* * *
