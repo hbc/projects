@@ -6,7 +6,7 @@ bibliography: bibliography.bib
 params:
     bcbFile: "data/bcb_sub_lung.rda"
     design: !r formula(~prepBatch + sampleclass)
-    contrast: !r c("sampleclass", "lung_notumor", "lung_distaltumor")
+    contrast: !r c("sampleclass",  "lung_distaltumor","lung_notumor",)
     alpha: 0.05
     lfc: 1
     outputDir: "."
@@ -112,8 +112,13 @@ plotVolcano(res, lfc = params$lfc)
 
 This plot shows only differentially expressed genes on a per-sample basis. We have scaled the data by row and used the `ward.D2` method for clustering [@WardJr:1963eu].
 
-```{r plot_deg_heatmap}
+```{r plot_deg_heatmap, fig.height=10, dev=c("png", "svg")}
 plotDEGHeatmap(res, counts = rld)
+
+top50res <-  subset(res, padj<0.05) %>% .[order(.$padj),] %>% .[1:50,]
+top50gene <- row.names(top50res)
+
+plotHeatmap(bcb, top50gene, normalized="rlog")
 ```
 
 
@@ -165,7 +170,45 @@ Only the top up- and down-regulated genes (arranged by log2 fold change) are sho
 topTables(resTbl)
 ```
 
+# Expression patterns{.tabset}
 
+```{r topgeneexpresionpatterns, results="asis"}
+top10res <-  subset(res, padj<0.05) %>% .[order(.$padj),] %>% .[1:10,]
+top10gene <- row.names(top10res)
+
+plots <- plotGene(bcb, top10gene, returnList=TRUE)
+
+n=1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+n=n+1
+cat(paste("##", plots[[n]]$labels$title))
+plots[[n]]
+```
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
