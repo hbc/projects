@@ -6,7 +6,7 @@ bibliography: bibliography.bib
 params:
     bcbFile: "data/bcb_sub_lung.rda"
     design: !r formula(~prepBatch + sampleclass)
-    contrast: !r c("sampleclass",  "lung_distaltumor","lung_notumor",)
+    contrast: !r c("sampleclass",  "lung_distaltumor","lung_notumor")
     alpha: 0.05
     lfc: 1
     outputDir: "."
