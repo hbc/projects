@@ -1,11 +1,13 @@
 # Version info: R 3.2.3, Biobase 2.30.0, GEOquery 2.40.0, limma 3.26.8
 # R scripts generated  Fri Feb 2 15:04:20 EST 2018
+# Derived from GEO2R
 
 ################################################################
 #   Differential expression analysis with limma
 library(Biobase)
 library(GEOquery)
 library(limma)
+library(rio)
 
 # load series and platform data from GEO
 
@@ -40,49 +42,31 @@ sml <- paste("G", sml, sep="")    # set group names
 fl <- as.factor(sml)
 gset$description <- fl
 design <- model.matrix(~ description + 0, gset)
+
+# > design
+# G0 G1
+# GSM2706387  0  1
+# GSM2706388  0  1
+# GSM2706389  0  1
+# GSM2706394  1  0
+# GSM2706395  1  0
+# GSM2706396  1  0
+# GSM2706397  1  0
+# GSM2706398  1  0
+
+## Here the G1 sampels are the N2 neutrophils and the GO are the N1s.
+## I set up the contrast so that positive fold changes are when a gene is higher in the N2s (i.e G1/G0 or N2/N1)
+
+
+
 colnames(design) <- levels(fl)
 fit <- lmFit(gset, design)
-cont.matrix <- makeContrasts(G1-G0, levels=design)
+cont.matrix <- makeContrasts(G0-G1, levels=design)
 fit2 <- contrasts.fit(fit, cont.matrix)
 fit2 <- eBayes(fit2, 0.01)
 tT <- topTable(fit2, adjust="fdr", sort.by="B", number=nrow(ex))
 
 tT <- subset(tT, select=c("ID","adj.P.Val","P.Value","t","B","logFC","Gene.symbol","Gene.title"))
-write.table(tT, file=stdout(), row.names=F, sep="\t")
+export(tT, file=file.path("data", "GSE101584_N2_over_N1.stats.csv"))
 
 
-################################################################
-#   Boxplot for selected GEO samples
-library(Biobase)
-library(GEOquery)
-
-# load series and platform data from GEO
-
-gset <- getGEO("GSE101584", GSEMatrix =TRUE, getGPL=FALSE)
-if (length(gset) > 1) idx <- grep("GPL6885", attr(gset, "names")) else idx <- 1
-gset <- gset[[idx]]
-
-# group names for all samples in a series
-gsms <- "XXXXXXX111XXXX00000"
-sml <- c()
-for (i in 1:nchar(gsms)) { sml[i] <- substr(gsms,i,i) }
-sml <- paste("G", sml, sep="")  set group names
-
-# eliminate samples marked as "X"
-sel <- which(sml != "X")
-sml <- sml[sel]
-gset <- gset[ ,sel]
-
-# order samples by group
-ex <- exprs(gset)[ , order(sml)]
-sml <- sml[order(sml)]
-fl <- as.factor(sml)
-labels <- c("N2","N1")
-
-# set parameters and draw the plot
-palette(c("#f4dfdf","#dfeaf4", "#AABBCC"))
-dev.new(width=4+dim(gset)[[2]]/5, height=6)
-par(mar=c(2+round(max(nchar(sampleNames(gset)))/2),4,2,1))
-title <- paste ("GSE101584", '/', annotation(gset), " selected samples", sep ='')
-boxplot(ex, boxwex=0.6, notch=T, main=title, outline=FALSE, las=2, col=fl)
-legend("topleft", labels, fill=palette(), bty="n")
