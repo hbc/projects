@@ -28,28 +28,16 @@ deconDir <- file.path(params$outputDir, "results", "deconvolution")
 # Load bcbioRNASeq object
 bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
-
-bcbName_immgen_basic <- load(params$bcbFile_immgen_basic)
-bcb_immgen_basic <- get(bcbName_immgen_basic)
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-```{r subset_bcbs, include=FALSE}
-bcb_immgen_basic <- bcb_immgen_basic[,which(colData(bcb_immgen_basic)$sex=="female")]
-```
 
 
 ```{r counts, include=FALSE}
-
 tpm <- tpm(bcb) %>% as.data.frame()
-tpm_immgen <- tpm(bcb_immgen_basic) %>% as.data.frame()
-
-
-
 rld <- counts(bcb, normalized="rlog")
-
 ```
 
 ## R Markdown
