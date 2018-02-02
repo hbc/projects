@@ -1,0 +1,73 @@
+---
+title: "Cell deconvolutions - Normal lungs and lungs with distal tumors"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+bibliography: bibliography.bib
+params:
+    bcbFile: "data/bcb_sub_lung.rda"
+    bcbFile_immgen_basic: "data/bcb_immgen_basic.rda"
+    outputDir: "."
+---
+
+```{r setup, message=FALSE}
+library(bcbioRNASeq)
+library(DeconRNASeq)
+
+
+# Shared R Markdown settings
+prepareRNASeqTemplate()
+if (file.exists("setup.R")) {
+    source("setup.R")
+}
+
+# Directory paths
+dataDir <- file.path(params$outputDir, "data")
+countsDir <- file.path(params$outputDir, "results", "counts")
+deconDir <- file.path(params$outputDir, "results", "deconvolution")
+
+# Load bcbioRNASeq object
+bcbName <- load(params$bcbFile)
+bcb <- get(bcbName, inherits = FALSE)
+
+bcbName_immgen_basic <- load(params$bcbFile_immgen_basic)
+bcb_immgen_basic <- get(bcbName_immgen_basic)
+```
+
+```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
+```
+
+```{r subset_bcbs, include=FALSE}
+bcb_immgen_basic <- bcb_immgen_basic[,which(colData(bcb_immgen_basic)$sex=="female")]
+```
+
+
+```{r counts, include=FALSE}
+
+tpm <- tpm(bcb) %>% as.data.frame()
+tpm_immgen <- tpm(bcb_immgen_basic) %>% as.data.frame()
+
+
+
+rld <- counts(bcb, normalized="rlog")
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
