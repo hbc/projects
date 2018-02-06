@@ -53,6 +53,9 @@ writeCounts(rawCounts, normalizedCounts, tpm, dir = countsDir)
 
 ## Total reads
 
+
+Total number of reads looks great.
+
 ```{r plot_total_reads}
 plotTotalReads(bcb)
 ```
@@ -71,12 +74,16 @@ plotMappedReads(bcb)
 
 The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts.
 
+The mapping rate is good, though may be too low in low_lps_9_24hr and high_lps_1_6hr.
+
 ```{r plot_mapping_rate}
 plotMappingRate(bcb)
 ```
 
 
 ## Number of genes detected
+
+We are detecting a good number of genes in all samples.
 
 ```{r plot_genes_detected}
 plotGenesDetected(bcb)
@@ -96,6 +103,8 @@ plotGeneSaturation(bcb)
 
 Ideally, at least 60% of total reads should map to exons.
 
+Here' the exonic mapping rates look pretty low, though as previously discussed this may be because of the poor annotation of the sheep genome (i.e. reads mapping to real genes may be seen as genomic in an incomplete annotation)
+
 ```{r plot_exonic_mapping_rate}
 plotExonicMappingRate(bcb)
 ```
@@ -105,6 +114,8 @@ plotExonicMappingRate(bcb)
 
 The majority of reads should map to exons and not introns.
 
+The reads taht aren't mapping to exons are not (excepting maybe low_lps_4_0hr) generally mapping to introns, which is suggests supports the theory about incomplete annotation causing low exonic rates.
+
 ```{r plot_intronic_mapping_rate}
 plotIntronicMappingRate(bcb)
 ```
@@ -112,7 +123,7 @@ plotIntronicMappingRate(bcb)
 
 ## rRNA mapping rate
 
-Samples should have a ribosomal RNA (rRNA) contamination rate below 10%.
+Samples should have a ribosomal RNA (rRNA) contamination rate below 10%. The rates here are terrific, as one would expect for polyA RNA.
 
 ```{r plot_rrna_mapping_rate}
 plotRRNAMappingRate(bcb)
@@ -120,6 +131,8 @@ plotRRNAMappingRate(bcb)
 
 
 ## 5'->3' bias
+
+There is little 5'->3' bias, suggesting little to no presence of RNA degradation.
 
 ```{r plot_53_bias}
 plot53Bias(bcb)
@@ -129,6 +142,8 @@ plot53Bias(bcb)
 ## Counts per gene
 
 Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different. The log10 TMM-normalized counts per gene normalization method [@Robinson:2010dd] equates the overall expression levels of genes between samples under the assumption that the majority of them are not differentially expressed. Therefore, by normalizing for total RNA expression by sample, we expect the spread of the log10 TMM-normalized counts per gene to be similar for every sample.
+
+All the samples look fairly similar here.
 
 ```{r plot_counts_per_gene}
 plotCountsPerGene(bcb)
@@ -189,6 +204,8 @@ When multiple factors may influence the results of a given experiment, it is use
 
 Here we are showing the correlational analysis of the rlog transformed count data's principal components with the metadata covariates of interest. Significant correlations (FDR < 0.1) are shaded from blue (anti-correlated) to orange (correlated), with non-significant correlations shaded in gray.
 
+With the exception of high_lps_1_0hr, the samples cluster fairly well by class, with the first principal component capturing treatment and the second capturing lps treatment.
+
 ```{r plot_pca_covariates}
 plotPCACovariates(bcb)
 ```
@@ -203,6 +220,18 @@ plotCorrelationHeatmap(bcb)
 ```
 
 
+Before continuing, I dropped the high_lps_1_6hr and low_lps_9_24hr samples due to their low mapping rates.
+
+```{r bsbsubset}
+mycoldata <- as.data.frame(colData(bcb))
+
+bcb_sub <- bcb[,which(!mycoldata$sampleName %in% c("high_lps_1_6hr", "low_lps_9_24hr"))]
+
+plotPCA(bcb_sub)
+plotCorrelationHeatmap(bcb_sub)
+```
+
+Clustering looks really promising.
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
 ```
