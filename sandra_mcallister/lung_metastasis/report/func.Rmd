@@ -245,7 +245,7 @@ egoMFSummary %>% datatable()
 
 ## Biological Process
 
-```{r dotplotBP, fig.width=8}
+```{r dotplotBP, fig.width=9}
 # Dotplot of top 25
 dotplot(egoBP, showCategory = 25)
 ```
@@ -293,7 +293,7 @@ In order to consider the potentially biological complexities in which a gene may
 
 ## Biological Process
 
-```{r cnetplotbp, fig.width=8, fig.height=8}
+```{r cnetplotbp, fig.width=6, fig.height=6}
 # Cnet plot with genes colored by fold changes for top 5 most significant GO
 # processes
 cnetplot(
@@ -301,7 +301,7 @@ cnetplot(
     categorySize = "pvalue",
     showCategory = 10,
     foldChange = foldChanges,
-    vertex.label.cex = 0.5)
+    vertex.label.cex = 0.5, cex=3)
 ```
 
 ## Cellular Componenet

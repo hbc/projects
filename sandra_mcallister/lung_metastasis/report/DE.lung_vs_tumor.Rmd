@@ -34,9 +34,13 @@ bcb <- get(bcbName, inherits = FALSE)
 # subset to second prep batch as all tumors were done in second batch
 mycolData <- colData(bcb) %>% as.data.frame()
 bcb_sub <- bcb_sub[,which(mycolData$sampleclass %in% c("primary_tumor", "lung_notumor"))]
-
 mycolData <- colData(bcb_sub) %>% as.data.frame()
 bcb_sub <- bcb_sub[,which(mycolData$prepBatch==2)]
+# drop low RIN value
+mycolData <- colData(bcb_sub) %>% as.data.frame()
+mycolData$numericrin <- as.numeric(as.character(mycolData$rin))
+bcb_sub <- bcb_sub[,which(mycolData$numericrin>3)]
+
 bcb <- bcb_sub
 
 bcb_sub_lungnotumor_tumor <- bcb

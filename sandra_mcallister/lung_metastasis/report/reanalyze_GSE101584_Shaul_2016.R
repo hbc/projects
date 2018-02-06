@@ -54,8 +54,8 @@ design <- model.matrix(~ description + 0, gset)
 # GSM2706397  1  0
 # GSM2706398  1  0
 
-## Here the G1 sampels are the N2 neutrophils and the GO are the N1s.
-## I set up the contrast so that positive fold changes are when a gene is higher in the N2s (i.e G1/G0 or N2/N1)
+## Here the G1 sampels are the N1 neutrophils () and the GO are the N2s.
+## I set up the contrast so that positive fold changes are when a gene is higher in the N1s (i.e G1/G0 or N1/N2)
 
 
 

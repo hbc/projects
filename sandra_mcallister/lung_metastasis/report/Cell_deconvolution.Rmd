@@ -5,13 +5,13 @@ date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
     bcbFile: "data/bcb_sub_lung.rda"
-    bcbFile_immgen_basic: "data/bcb_immgen_basic.rda"
     outputDir: "."
 ---
 
 ```{r setup, message=FALSE}
 library(bcbioRNASeq)
 library(DeconRNASeq)
+library(rio)
 
 
 # Shared R Markdown settings
@@ -22,40 +22,126 @@ if (file.exists("setup.R")) {
 
 # Directory paths
 dataDir <- file.path(params$outputDir, "data")
-countsDir <- file.path(params$outputDir, "results", "counts")
-deconDir <- file.path(params$outputDir, "results", "deconvolution")
 
 # Load bcbioRNASeq object
 bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
+
+
+kable(as.data.frame(colData(bcb)))
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-
+The idea here is to compare the ratio of cell signatures of N1 an dN2 neutrophils in our tumor, normal lung and lungs with distal tumors to see if there are any shifts.
 
 ```{r counts, include=FALSE}
 tpm <- tpm(bcb) %>% as.data.frame()
-rld <- counts(bcb, normalized="rlog")
+rowData <- rowData(bcb)
+
+annotated <- cbind(as.data.frame(tpm), as.data.frame(rowData))
+
 ```
 
-## R Markdown
+# Coffelt signatures
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Import top 50 differentially expressed genes from Coffelt et al., 2015 (Nature). (from extended Table 1).
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+Subset to genes with pvalues <0.1
 
-```{r cars}
-summary(cars)
+```{r signatures}
+signatures <- import("~/Orchestra/PIs/sandra_mcallister/lung_metastasis/meta/coffelt_2015_extended_table1_top50DEgenes.csv")
+
+pos_genes <- subset(signatures, pvalue<0.1 & direction=="positive")$ensemblid
+neg_genes <- subset(signatures, pvalue<0.1 & direction=="negative")$ensemblid
 ```
 
-## Including Plots
+Get the ratio of the geometric means for the signature genes for all samples in the dataset.
 
-You can also embed plots, for example:
+```{r geom_means}
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+tpm_pos <- tpm[pos_genes,] 
+tpm_pos <- tpm_pos[!apply(tpm_pos, 1, function(x) all(is.na(x))),]
+
+tpm_neg <- tpm[neg_genes,] 
+tpm_neg <- tpm_neg[!apply(tpm_neg, 1, function(x) all(is.na(x))),]
+
+negmeans <- tpm_neg %>% apply(., 2, function(x) gm_mean(x))
+posmeans <- tpm_pos %>% apply(., 2, function(x) gm_mean(x))
+ratios <- posmeans/negmeans %>% as.data.frame() 
+ratios <-rownames_to_column(ratios, var="sampleID")
+names(ratios) <- c("sampleID", "ratio")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Add group ids to data for plotting.
+- remove anything with a RIN below 3
+
+```{r annotateratios1}
+ratios_annot  <- inner_join(ratios, as.data.frame(colData(bcb)))
+
+# remove anything with a RIN below 2.5
+
+ratios_annot$rin <-   as.numeric(as.character(ratios_annot$rin))
+ratios_annot <- subset(ratios_annot, rin>3)
+
+p <- ggplot(ratios_annot, aes(x=sampleclass, y=ratio, color=sampleclass))+geom_boxplot()
+p +  geom_jitter(shape=16, size=3 , position=position_jitter(0.00))+ggtitle("Coffelt signature")
+
+t.test(subset(ratios_annot, ratios_annot$sampleclass=="lung_distaltumor" & ratios_annot$rin>3)$ratio,subset(ratios_annot, ratios_annot$sampleclass=="lung_notumor" & ratios_annot$rin>3)$ratio)
+
+```
+
+# Shaul signatures
+
+Import all the stats from the GEO2R recalculations and subset to genes with an adjusted pvalue of less than 0.05 and and lfc of `r lfc=2` `r lfc`
+
+```{r importsigsshaul}
+stats <- import(file.path(dataDir, "GSE101584_N2_over_N1.stats.csv"))
+
+lfc=2
+N1_stats <- subset(stats, adj.P.Val<0.05 & logFC>lfc)
+dim(N1_stats)
+N2_stats <- subset(stats, adj.P.Val<0.05 & logFC<(-lfc))
+dim(N2_stats)
+```
+
+
+Get the ratio of the geometric means for the signature genes for all samples in the dataset.
+
+
+```{r sub}
+N2_tpms <- left_join(N2_stats, annotated, by=c("Gene.symbol"="symbol")) %>% select(contains ("tumor"), contains("lung"))
+N2_tpms <- N2_tpms[!apply(N2_tpms, 1, function(x) all(is.na(x))),]
+
+N1_tpms <- left_join(N1_stats, annotated, by=c("Gene.symbol"="symbol")) %>% select(contains ("tumor"), contains("lung"))
+N1_tpms <- N1_tpms[!apply(N1_tpms, 1, function(x) all(is.na(x))),]
+
+N2means <- N2_tpms %>% apply(., 2, function(x) gm_mean(x))
+N1means <- N1_tpms %>% apply(., 2, function(x) gm_mean(x))
+ratios <- N2means/N1means %>% as.data.frame() 
+ratios <-rownames_to_column(ratios, var="sampleID")
+names(ratios) <- c("sampleID", "ratio")
+```
+
+Add group ids to data for plotting.
+- remove anything with a RIN below 3
+
+```{r annotateratios2}
+ratios_annot  <- inner_join(ratios, as.data.frame(colData(bcb)))
+
+# remove anything with a RIN below 2.5
+
+ratios_annot$rin <-   as.numeric(as.character(ratios_annot$rin))
+ratios_annot <- subset(ratios_annot, rin>3)
+
+p <- ggplot(ratios_annot, aes(x=sampleclass, y=ratio, color=sampleclass))+geom_boxplot()
+p+   geom_jitter(shape=16, size=3 , position=position_jitter(0.00))+ggtitle("Shaul signature")
+
+t.test(subset(ratios_annot, ratios_annot$sampleclass=="lung_distaltumor" & ratios_annot$rin>3)$ratio,subset(ratios_annot, ratios_annot$sampleclass=="lung_notumor" & ratios_annot$rin>3)$ratio)
+  
+```
+
