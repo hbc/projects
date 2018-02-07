@@ -4,13 +4,15 @@ author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
-    bcbFile: "data/bcb.rda"
+    bcbFile: "data/bcb_sub.rda"
     design: !r formula(~sheepID + timepointSampled)
-    contrast: !r c("timepointSampled","0", "24")
-    alpha: 0.1
+    contrast: !r c("timepointSampled", 0, 24)
+    alpha: 0.05
     lfc: 1
     outputDir: "."
 ---
+
+Data was subset to only the low LPS samples and any samples without paired time points removed.
 
 ```{r setup, message=FALSE}
 library(DESeq2)
@@ -25,19 +27,23 @@ if (file.exists("setup.R")) {
 # Directory paths
 dataDir <- file.path(params$outputDir, "data")
 countsDir <- file.path(params$outputDir, "results", "counts")
-deDir <- file.path(params$outputDir, "results", "differential_expression")
+deDir <- file.path(params$outputDir, "results", "differential_expression", "lowlps")
 
 # Load bcbioRNASeq object
 bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
 bcb <- bcb[,which(colData(bcb)$lpsLevel=="low")]
+mycoldata <- as.data.frame(colData(bcb))
 
+# remove non paird samples
+bcb <- bcb[, which(mycoldata$sheepID %in% mycoldata$sheepID[duplicated(mycoldata$sheepID)])]
+
+# mod interesting groups
+interestingGroups(bcb) <- "timepointSampled"
 ```
 
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
-
-
 
 ```{r dds, results="hide"}
 dds <- bcbio(bcb, "DESeqDataSet")
@@ -45,8 +51,6 @@ design(dds) <- params$design
 dds <- DESeq(dds)
 rld <- rlog(dds)
 ```
-
-
 
 # Alpha level (FDR) cutoffs
 
@@ -56,7 +60,7 @@ Let's take a look at the number of genes we get with different false discovery r
 alphaSummary(dds)
 ```
 
-
+There appears to be a very strong signal, but for consistency with the high LPS DE analysis, I picked an adjusted p-value cutoff of 0.05.
 
 # Results
 
@@ -83,11 +87,11 @@ resShrunken <- lfcShrink(
 
 # Use shrunken LFC values by default
 res <- resShrunken
-saveData(res, dir = dataDir)
+res_lowLPS <- res
+saveData(res_lowLPS, dir = dataDir)
 ```
 
-We performed the analysis using a BH adjusted *P* value cutoff of `r params$alpha` and a log fold-change (LFC) ratio cutoff of `r params$lfc`.
-
+We performed the analysis using a BH adjusted *P* value cutoff of `r params$alpha` and (sometimes) a log fold-change (LFC) ratio cutoff of `r params$lfc`.
 
 
 # Plots
@@ -100,13 +104,20 @@ An MA plot compares transformed counts on `M` (log ratio) and `A` (mean average)
 plotMA(res)
 ```
 
+There are ALOT of DE genes.
 
 ## Volcano
 
 A volcano plot compares significance (BH-adjusted *P* value) against fold change (log2) [@Cui:2003kh; @Li:2014fv]. Genes in the green box with text labels have an adjusted *P* value are likely to be the top candidate genes of interest.
 
+I plotted these in two ways, the first gives you a sense of the proportion of genes that are within the adjusted p-value and lfc cutoffs. The second is more visually appealing and doesn't have a hard cutoff on the y-axis.
+
 ```{r plot_volcano}
-plotVolcano(res, lfc = params$lfc)
+plotVolcano(res)
+
+myresults <- as.data.frame(res)
+myresults <- myresults %>% mutate(., DE=ifelse((padj<params$alpha) & abs(log2FoldChange)>params$lfc, "yes", "no"))
+ggplot(myresults, aes(x=log2FoldChange, y=-log10(padj), color=DE))+geom_point( alpha=0.6)+scale_color_manual( values=c("darkgrey", "purple"))
 ```
 
 
@@ -114,25 +125,18 @@ plotVolcano(res, lfc = params$lfc)
 
 This plot shows only differentially expressed genes on a per-sample basis. We have scaled the data by row and used the `ward.D2` method for clustering [@WardJr:1963eu].
 
+Once again, I plotted it two ways. The first plots the expression values for all DE genes (here only defined by their adjusted p-value) and the second, the top 50 DE genes (as sorted by adjusted p-value). The second plot lets us see some of the individual gene names. 
+
 ```{r plot_deg_heatmap}
 plotDEGHeatmap(res, counts = rld)
+
+top50res <-  subset(res, padj<0.05) %>% .[order(.$padj),] %>% .[1:50,]
+top50gene <- row.names(top50res)
+
+plotHeatmap(bcb, top50gene, normalized="rlog", title="Top 50 Differentially Expressed Genes" )
 ```
 
-
-
-# File downloads
-
-The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
-
-
-## Count matrices
-
-- [`normalizedCounts.csv.gz`](`r file.path(countsDir, "normalizedCounts.csv.gz")`): Use to evaluate individual genes and/or generate plots. These counts are normalized for the variation in sequencing depth across samples.
-- [`tpm.csv.gz`](`r file.path(countsDir, "tpm.csv.gz")`): Transcripts per million, scaled by length and also suitable for plotting.
-- [`rawCounts.csv.gz`](`r file.path(countsDir, "rawCounts.csv.gz")`): Only use to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized. Do not use this file for plotting genes.
-
-
-## Differentially expressed genes (DEG)
+# Differentially expressed genes (DEG) summary
 
 ```{r results_tables, results="asis"}
 resTbl <- resultsTables(
@@ -143,6 +147,11 @@ resTbl <- resultsTables(
     headerLevel = 3,
     dir = deDir)
 ```
+
+
+# Top tables
+
+Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
 
 DEG tables are sorted by BH-adjusted P value, and contain the following columns:
 
@@ -157,16 +166,28 @@ DEG tables are sorted by BH-adjusted P value, and contain the following columns:
 - `description`: [Ensembl][] description.
 - `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
 
-
-
-# Top tables
-
-Only the top up- and down-regulated genes (arranged by log2 fold change) are shown.
-
 ```{r top_tables, results="asis"}
 topTables(resTbl)
 ```
 
+# File downloads
+
+The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
+
+## Count matrices
+
+- [`normalizedCounts.csv.gz`](`r file.path(countsDir, "normalizedCounts.csv.gz")`): Use to evaluate individual genes and/or generate plots. These counts are normalized for the variation in sequencing depth across samples.
+- [`tpm.csv.gz`](`r file.path(countsDir, "tpm.csv.gz")`): Transcripts per million, scaled by length and also suitable for plotting.
+- [`rawCounts.csv.gz`](`r file.path(countsDir, "rawCounts.csv.gz")`): Only use to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized. Do not use this file for plotting genes.
+
+## Differentially expressed genes (DEG)
+
+All files can be found in this [folder](./results/differential_expression/). 
+
+\*all.csv.gz - statistics and annotations for all genes       
+\*deg.csv.gz - statistics and annotations for differentially expressed genes
+\*deg_lfc_down.csv.gz - statistics and annotations for differentially expressed genes that are up in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
+\*deg_lfc_up.csv.gz - statistics and annotations for differentially expressed genes that are down in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
 
 
 ```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}

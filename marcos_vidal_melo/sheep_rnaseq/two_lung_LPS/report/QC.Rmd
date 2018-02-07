@@ -218,7 +218,7 @@ Inter-correlation analysis (ICA) is another way to look at how well samples clus
 ```{r plot_correlation_heatmap, fig.height=8, fig.width=10}
 plotCorrelationHeatmap(bcb)
 ```
-
+  
 
 Before continuing, I dropped the high_lps_1_6hr and low_lps_9_24hr samples due to their low mapping rates.
 
@@ -229,6 +229,7 @@ bcb_sub <- bcb[,which(!mycoldata$sampleName %in% c("high_lps_1_6hr", "low_lps_9_
 
 plotPCA(bcb_sub)
 plotCorrelationHeatmap(bcb_sub)
+saveData(bcb_sub, dir="data")
 ```
 
 Clustering looks really promising.
