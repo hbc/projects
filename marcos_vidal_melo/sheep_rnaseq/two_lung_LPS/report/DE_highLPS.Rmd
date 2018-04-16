@@ -34,11 +34,14 @@ bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
 bcb <- bcb[,which(colData(bcb)$lpsLevel=="high")]
 mycoldata <- as.data.frame(colData(bcb))
+bcb <- bcb[,which(colData(bcb)$timepointSampled!=6)]
+
 
 # remove non paird samples
+mycoldata <- as.data.frame(colData(bcb))
 bcb <- bcb[, which(mycoldata$sheepID %in% mycoldata$sheepID[duplicated(mycoldata$sheepID)])]
 
-# mod interesting groups
+
 interestingGroups(bcb) <- "timepointSampled"
 ```
 

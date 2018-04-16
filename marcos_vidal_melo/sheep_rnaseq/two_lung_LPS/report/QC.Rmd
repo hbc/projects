@@ -22,6 +22,7 @@ bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
 interestingGroups(bcb) <- c("lpsLevel", "timepointSampled")
 
+
 # Directory paths
 outputDir <- params$outputDir
 dataDir <- file.path(outputDir, "data")

@@ -5,7 +5,7 @@ date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
     bcbFile: "data/bcb.rda"
-    design: !r formula(~batch + lpsLevel+sheepID + timepointSampled)
+    design: !r formula(~lpsLevel+sheepID + timepointSampled)
     contrast: !r c("timepointSampled","0", "24")
     alpha: 0.1
     lfc: 1
@@ -30,7 +30,7 @@ deDir <- file.path(params$outputDir, "results", "differential_expression")
 # Load bcbioRNASeq object
 bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
-bcb <- bcb[,which(colData(bcb)$lpsLevel=="high")]
+#bcb <- bcb[,which(colData(bcb)$lpsLevel=="high")]
 
 ```
 
