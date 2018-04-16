@@ -1,10 +1,10 @@
 ---
-title: "Functional Analysis - Normal lung versus lung with distal tumor"
+title: "Functional Analysis - OCP run 1 pairwise comparisons, without pvalue cutoffs"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
 params:
-    bcbFile: "data/bcb_sub_lung.rda"
+    bcbFile: "data/bcb_sub.rda"
     resFile: "data/res.rda"
     organism: "Mm"
     gspecies: "mmu"
@@ -245,10 +245,22 @@ egoMFSummary %>% datatable()
 
 ## Biological Process
 
-```{r dotplotBP, fig.width=9}
+```{r dotplotBP1, fig.width=7.5}
 # Dotplot of top 25
-dotplot(egoBP, showCategory = 25)
+dotplot(egoBP, showCategory = 13)
 ```
+
+```{r dotplotBP2, fig.width=8}
+# Dotplot of top 25
+dotplot(egoBP, showCategory = 13)
+```
+
+```{r dotplotBP3, fig.widt=9}
+# Dotplot of top 25
+dotplot(egoBP, showCategory = 13)
+```
+
+
 
 ## Cellular Componenet
 
@@ -289,7 +301,7 @@ enrichMap(egoMF, n = 50, vertex.label.cex = 0.5)
 
 # Gene map {.tabset}
 
-In order to consider the potentially biological complexities in which a gene may belong to multiple annotation categories and provide information of numeric changes if available
+In order to consider the potentially biological complexities in which a gene may belong to multiple annotation categories and provide information of numeric changes if available.
 
 ## Biological Process
 

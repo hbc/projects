@@ -34,14 +34,15 @@ kable(as.data.frame(colData(bcb)))
 ```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
 ```
 
-The idea here is to compare the ratio of cell signatures of N1 an dN2 neutrophils in our tumor, normal lung and lungs with distal tumors to see if there are any shifts.
+The idea here is to compare the ratio of neutrophil gene expression cell signatures (up or down in KEP cells from Coffelt paper) in our normal lung and lungs with distal tumors to see if there are any shifts.
+
+We use the TPM matrix from the bcbio run for this as it is library and gene size normalized. 
 
 ```{r counts, include=FALSE}
 tpm <- tpm(bcb) %>% as.data.frame()
 rowData <- rowData(bcb)
 
 annotated <- cbind(as.data.frame(tpm), as.data.frame(rowData))
-
 ```
 
 # Coffelt signatures
@@ -53,8 +54,13 @@ Subset to genes with pvalues <0.1
 ```{r signatures}
 signatures <- import("~/Orchestra/PIs/sandra_mcallister/lung_metastasis/meta/coffelt_2015_extended_table1_top50DEgenes.csv")
 
-pos_genes <- subset(signatures, pvalue<0.1 & direction=="positive")$ensemblid
-neg_genes <- subset(signatures, pvalue<0.1 & direction=="negative")$ensemblid
+kable(signatures)
+
+kepup_genes <- subset(signatures, pvalue<0.1 & direction=="positive")$ensemblid
+kepdown_genes <- subset(signatures, pvalue<0.1 & direction=="negative")$ensemblid
+
+
+kable(kepup_genes)
 ```
 
 Get the ratio of the geometric means for the signature genes for all samples in the dataset.
@@ -64,15 +70,15 @@ gm_mean = function(x, na.rm=TRUE){
   exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
 }
 
-tpm_pos <- tpm[pos_genes,] 
-tpm_pos <- tpm_pos[!apply(tpm_pos, 1, function(x) all(is.na(x))),]
+tpm_kepup <- tpm[kepup_genes,] 
+tpm_kepup <- tpm_kepup[!apply(tpm_kepup, 1, function(x) all(is.na(x))),]
 
-tpm_neg <- tpm[neg_genes,] 
-tpm_neg <- tpm_neg[!apply(tpm_neg, 1, function(x) all(is.na(x))),]
+tpm_kepdown <- tpm[kepdown_genes,] 
+tpm_kepdown <- tpm_kepdown[!apply(tpm_kepdown, 1, function(x) all(is.na(x))),]
 
-negmeans <- tpm_neg %>% apply(., 2, function(x) gm_mean(x))
-posmeans <- tpm_pos %>% apply(., 2, function(x) gm_mean(x))
-ratios <- posmeans/negmeans %>% as.data.frame() 
+kepdownmeans <- tpm_kepdown %>% apply(., 2, function(x) gm_mean(x))
+kepupmeans <- tpm_kepup %>% apply(., 2, function(x) gm_mean(x))
+ratios <- kepupmeans/kepdownmeans %>% as.data.frame() 
 ratios <-rownames_to_column(ratios, var="sampleID")
 names(ratios) <- c("sampleID", "ratio")
 ```
@@ -95,53 +101,4 @@ t.test(subset(ratios_annot, ratios_annot$sampleclass=="lung_distaltumor" & ratio
 
 ```
 
-# Shaul signatures
-
-Import all the stats from the GEO2R recalculations and subset to genes with an adjusted pvalue of less than 0.05 and and lfc of `r lfc=2` `r lfc`
-
-```{r importsigsshaul}
-stats <- import(file.path(dataDir, "GSE101584_N2_over_N1.stats.csv"))
-
-lfc=2
-N1_stats <- subset(stats, adj.P.Val<0.05 & logFC>lfc)
-dim(N1_stats)
-N2_stats <- subset(stats, adj.P.Val<0.05 & logFC<(-lfc))
-dim(N2_stats)
-```
-
-
-Get the ratio of the geometric means for the signature genes for all samples in the dataset.
-
-
-```{r sub}
-N2_tpms <- left_join(N2_stats, annotated, by=c("Gene.symbol"="symbol")) %>% select(contains ("tumor"), contains("lung"))
-N2_tpms <- N2_tpms[!apply(N2_tpms, 1, function(x) all(is.na(x))),]
-
-N1_tpms <- left_join(N1_stats, annotated, by=c("Gene.symbol"="symbol")) %>% select(contains ("tumor"), contains("lung"))
-N1_tpms <- N1_tpms[!apply(N1_tpms, 1, function(x) all(is.na(x))),]
-
-N2means <- N2_tpms %>% apply(., 2, function(x) gm_mean(x))
-N1means <- N1_tpms %>% apply(., 2, function(x) gm_mean(x))
-ratios <- N2means/N1means %>% as.data.frame() 
-ratios <-rownames_to_column(ratios, var="sampleID")
-names(ratios) <- c("sampleID", "ratio")
-```
-
-Add group ids to data for plotting.
-- remove anything with a RIN below 3
-
-```{r annotateratios2}
-ratios_annot  <- inner_join(ratios, as.data.frame(colData(bcb)))
-
-# remove anything with a RIN below 2.5
-
-ratios_annot$rin <-   as.numeric(as.character(ratios_annot$rin))
-ratios_annot <- subset(ratios_annot, rin>3)
-
-p <- ggplot(ratios_annot, aes(x=sampleclass, y=ratio, color=sampleclass))+geom_boxplot()
-p+   geom_jitter(shape=16, size=3 , position=position_jitter(0.00))+ggtitle("Shaul signature")
-
-t.test(subset(ratios_annot, ratios_annot$sampleclass=="lung_distaltumor" & ratios_annot$rin>3)$ratio,subset(ratios_annot, ratios_annot$sampleclass=="lung_notumor" & ratios_annot$rin>3)$ratio)
-  
-```
 
