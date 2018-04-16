@@ -1,0 +1,414 @@
+---
+title: "Differential Expression - OCP Pairwise comparisons with RUVseq batch correctoin"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+bibliography: bibliography.bib
+params:
+    bcbFile: "data/2018-04-12/bcb_sub.rda"
+    design: !r formula(~W1+W2+W3+ gcsf + za +gcsf:za)
+    contrast: !r c("treatment", "CTL", "BOTH")
+    alpha: 0.05
+    lfc: 0
+    outputDir: "."
+    ruv: "data/2018-04-12/ruv.rda"
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(DESeq2)
+library(bcbioRNASeq)
+library(tidyverse)
+library(knitr)
+
+# Shared RMarkdown settings
+prepareRNASeqTemplate()
+if (file.exists("setup.R")) {
+    source("setup.R")
+}
+
+# Load bcbioRNASeq object
+bcbName <- load(params$bcbFile)
+bcb <- get(bcbName, inherits = FALSE)
+
+ruvName <- load(params$ruv)
+ruv <- get(ruvName, inherits = FALSE)
+ruv_counts <- ruv$normalizedCounts
+ruv_counts <- ruv_counts[,row.names(colData(bcb))]
+# add ruvseq based adjustment factors to colData
+colData(bcb)$W1 <- ruv$W[,"W_1"]
+colData(bcb)$W2 <- ruv$W[,"W_2"]
+colData(bcb)$W3 <- ruv$W[,"W_3"]
+
+# subset everything to only OCP samples
+ruv_counts <- ruv_counts[,which(colData(bcb)$tissue=="OCP")]
+bcb <- bcb[,which(colData(bcb)$tissue=="OCP")]
+
+#drop unnecessary replicates - default to keeping replicate with most mapped reads
+mycoldata <- as.data.frame(colData(bcb))
+metrics <- metadata(bcb)$metrics %>% tibble::rownames_to_column("sampleName")
+mycoldata <- inner_join(mycoldata,metrics)
+singletids <- mycoldata %>% group_by(sampleid) %>% filter(mappedReads == max(mappedReads)) %>% ungroup() %>% select(sampleName) %>% unlist() %>% as.vector()
+
+ruv_counts <- ruv_counts[,which(mycoldata$sampleName %in% singletids)]
+bcb <- bcb[,which(mycoldata$sampleName %in% singletids)]
+
+# reorder by CTL, ZA, GCSF and BOTH
+bcb <- bcb[,c(6,7,13,14,15,16,17,8,9,10,11,12,1,2,3,4,5)]
+ruv_counts <- ruv_counts[,c(6,7,13,14,15,16,17,8,9,10,11,12,1,2,3,4,5)]
+
+# add in columns for regression
+temp <- colData(bcb)
+temp$gcsf <- ifelse(temp$treatment=="CTL", "NO", ifelse(temp$treatment=="ZA","NO", "YES"))
+temp$za <- ifelse(temp$treatment=="CTL", "NO", ifelse(temp$treatment=="GCSF","NO" , "YES"))
+colData(bcb) <- temp
+
+# Design formula
+# help("design", "DESeq2")
+design <- params$design
+
+# Contrast
+# help("results", "DESeq2")
+#   1. Design matrix parameter.
+#   2. Numerator for LFC (expt).
+#   3. Denominator for LFC (control).
+contrast <- params$contrast
+
+# Significance cutoffs
+alpha <- params$alpha
+lfc <- params$lfc
+
+# Directory paths
+outputDir <- params$outputDir
+countsDir <- file.path(outputDir, "results", "counts")
+deDir <- file.path(outputDir, "results", "differential_expression")
+
+source("functions.R")
+```
+
+```{r header, child="_header.Rmd", eval=file.exists("_header.Rmd")}
+```
+
+```{r dds, results="hide", warning=FALSE, message=FALSE}
+# have to drop the coldata out to a dataframe as colData(bcb) will only return factors, and deseq needs numeric values
+mycoldata <- colData(bcb)
+mycoldata$W1 <- mycoldata$W1 %>% as.character() %>% as.numeric()
+mycoldata$W2 <- mycoldata$W2 %>% as.character() %>% as.numeric()
+mycoldata$W3 <- mycoldata$W3 %>% as.character() %>% as.numeric()
+dds <- DESeqDataSetFromTximport(
+    txi = bcbio(bcb, "tximport"),
+    colData = mycoldata,
+    design = design) 
+
+dds <- DESeq(dds)
+rld <- rlog(dds)
+```
+
+# Alpha level (FDR) cutoffs {.tabset}
+
+Let's take a look at the number of genes we get with different false discovery rate (FDR) cutoffs. These tests subset *P* values that have been multiple test corrected using the Benjamini Hochberg (BH) method [@Benjamini:1995ws].
+
+## GCSF effects
+
+```{r alpha_summary_gcsf, results="asis"}
+alphaSummary(dds, name="gcsf_YES_vs_NO")
+```
+
+## ZA effects
+
+```{r alpha_summary_za, results="asis"}
+alphaSummary(dds, name="za_YES_vs_NO")
+```
+
+## GCSF:ZA non-additive effects
+- non-additive interactions of GCSF and ZA
+
+```{r alpha_summary_both, results="asis"}
+alphaSummary(dds, name="gcsfYES.zaYES")
+```
+
+# Results
+
+```{r res_gcsf}
+name="gcsf_YES_vs_NO"
+resUnshrunken <- results(
+    dds,
+    name = name,
+    alpha = alpha)
+
+# Use shrunken LFC values by default
+res_gcsf <- resUnshrunken
+```
+
+```{r res_za}
+name="za_YES_vs_NO"
+resUnshrunken <- results(
+    dds,
+    name = name,
+    alpha = alpha)
+
+# Use shrunken LFC values by default
+res_za <- resUnshrunken
+```
+
+```{r res_interaction}
+name="gcsfYES.zaYES"
+resUnshrunken <- results(
+    dds,
+    name = name,
+    alpha = alpha)
+
+# Use shrunken LFC values by default
+res_gcsfza <- resUnshrunken
+```
+
+`r lfc=0`
+
+We performed the analysis using a BH adjusted *P* value cutoff of `r alpha` and a log fold-change (LFC) ratio cutoff of `r lfc`.
+
+## Plots 
+
+### Heatmap {.tabset}
+
+This plot shows only differentially expressed genes on a per-sample basis. DE genes were those with an adjusted pvalue of less than `r alpha`. We have scaled the data by row and used the `ward.D2` method for clustering [@WardJr:1963eu]. 
+
+
+
+#### GCSF effects
+ - note that these are just genes that are affected by GCSF, without taking into account ZA or BOTH treatments
+ 
+```{r plot_deg_heatmap_gcsf, fig.height=12}
+order <- c("OCP_CTL_2",  "OCP_CTL_7", "OCP_GCSF_1", "OCP_GCSF_2", "OCP_GCSF_4", "OCP_GCSF_5", "OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_ZA_7", "OCP_ZA_8", "OCP_BOTH_1", "OCP_BOTH_2", "OCP_BOTH_3", "OCP_BOTH_4","OCP_BOTH_5")
+
+ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
+plotDEGHeatmapJH(bcb,res_gcsf, ruv_counts = ruv_counts_temp, cluster_cols=FALSE, gap = 6, title="GCSF Effects")
+```
+
+#### ZA effects
+ - note that these are just genes that are affected by ZA, without taking into account GCSF or BOTH treatments
+
+
+```{r plot_deg_heatmap_za, fig.height=12}
+order <- c("OCP_CTL_2",  "OCP_CTL_7",  "OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_ZA_7", "OCP_ZA_8", "OCP_GCSF_1", "OCP_GCSF_2", "OCP_GCSF_4", "OCP_GCSF_5","OCP_BOTH_1", "OCP_BOTH_2", "OCP_BOTH_3", "OCP_BOTH_4","OCP_BOTH_5")
+
+ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
+plotDEGHeatmapJH(bcb,res_za, ruv_counts = ruv_counts_temp,cluster_cols=FALSE, gap=7, title="ZA  Effects")
+```
+
+#### GCSF:ZA non-additive effects
+```{r plot_deg_heatmap_both, fig.height=12}
+order <- c("OCP_CTL_2",  "OCP_CTL_7",   "OCP_GCSF_1", "OCP_GCSF_2", "OCP_GCSF_4", "OCP_GCSF_5","OCP_BOTH_1", "OCP_BOTH_2", "OCP_BOTH_3", "OCP_BOTH_4","OCP_BOTH_5","OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_ZA_7", "OCP_ZA_8")
+ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
+plotDEGHeatmapJH(bcb,res_gcsfza, ruv_counts = ruv_counts_temp,cluster_cols=FALSE, gap=c(2,6,11), title="GCSF:ZA Non-Additive Effects")
+```
+
+## Top tables of differentially expressed genes {.tabset}
+
+```{r results_tables, results="hide"}
+resTbl_gcsf <- resultsTables(res_gcsf, lfc = lfc, dir = deDir, annotable = metadata(bcb)$annotable)
+resTbl_za <- resultsTables(res_za, lfc = lfc, dir = deDir, annotable = metadata(bcb)$annotable)
+resTbl_gcsfza <- resultsTables(res_gcsfza, lfc = lfc, dir = deDir, annotable = metadata(bcb)$annotable)
+```
+
+DEG tables are sorted by BH-adjusted P value, and contain the following columns:
+
+- `ensgene`: [Ensembl][] gene identifier.
+- `baseMean`: Mean of the normalized counts per gene for all samples.
+- `log2FoldChange`: log2 fold change.
+- `lfcSE`: log2 standard error.
+- `stat`: Wald statistic.
+- `pvalue`: Walt test *P* value.
+- `padj`: BH adjusted Wald test *P* value (corrected for multiple comparisons; aka FDR).
+- `externalGeneName`: [Ensembl][] name (a.k.a. symbol).
+- `description`: [Ensembl][] description.
+- `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
+
+Only the top 50 up- and down-regulated genes (arranged by log2 fold change for both up and down regulated genes) are shown.
+
+### GCSF effects
+```{r top_tables_gcsf, results="asis"}
+topTables(resTbl_gcsf)
+```
+
+### ZA effects
+```{r top_tables_za, results="asis"}
+topTables(resTbl_za)
+```
+
+### GCSF:ZA non-additive effects
+```{r top_tables_both, results="asis"}
+topTables(resTbl_gcsfza)
+```
+
+## Functional Analyses 
+
+Using the top 200 most significant genes (i.e. the top 200 genes as ranked by ascending adjusted pvalue) as input.
+
+```{r setenv}
+# set some perl system vars so the correct version of perl is used in the revigo.pl system calls
+Sys.setenv(PATH="/usr/local/Cellar/perl/5.26.1/bin/:$PATH")
+Sys.setenv(PERL5LIB="/usr/local/Cellar/perl/5.26.1/lib/perl5/site_perl/5.26.1/")
+```
+
+
+### GCSF effects
+```{r gprofrevigo_gcsf, results='asis'}
+run_gprofiler_revigo(res_gcsf, num_sig=200 )
+```
+
+### ZA effects
+```{r gprofrevigo_za, results='asis'}
+run_gprofiler_revigo(res_za, num_sig=200 )
+```
+
+### GCSF:ZA non-additive effects
+```{r gprofrevigo_both, results='asis'}
+run_gprofiler_revigo(res_gcsfza, num_sig=200 )
+```
+
+
+# Visualizing the non-additive genes
+
+```{r allstats}
+tb_gcsf <- res_gcsf %>% as.data.frame() %>% tibble::rownames_to_column(var = "ensgene") %>% as.tibble() 
+tb_za <- res_za %>% as.data.frame() %>% rownames_to_column(var = "ensgene") %>% as.tibble() 
+tb_gcsfza <- res_gcsfza %>% as.data.frame() %>% rownames_to_column(var = "ensgene") %>% as.tibble() %>% magrittr::set_colnames(sub("$", "_gcsfza", names(.)))
+
+tbl_all <- inner_join(tb_gcsf, tb_za, by="ensgene", suffix=c("_gcsf", "_za") )
+tbl_all <- inner_join(tbl_all, tb_gcsfza, by=c("ensgene"="ensgene_gcsfza"))
+```
+
+We can center all the sample class means against the CTL sample means (so anything below 0 has lower expression than the control samples) and scale them along the range the gene's values so that -1 represents the lowest value and 1 is the highest). This should let us see the sample class expression levels **relative** to control. Dropping the CTL column as well makes the plot nicer to look at. 
+
+```{r meansonly}
+genes_of_interest <- filter(tbl_all, padj_gcsfza<alpha) %>% dplyr::select(ensgene) %>% as.data.frame %>% unlist %>% as.vector()
+
+mean_values <-  assay(rld)[genes_of_interest,]  %>% 
+  as.data.frame %>%   
+  rownames_to_column(var="ensgene") %>% 
+  tbl_df() %>% 
+  rowwise() %>% 
+  transmute(CTL=mean(c(OCP_CTL_2_run1, OCP_CTL_7_run2)), meanCTL=mean(c(OCP_CTL_2_run1, OCP_CTL_7_run2)),
+            GCSF=mean(c(OCP_GCSF_1_run1, OCP_GCSF_2_run1, OCP_GCSF_4_run2, OCP_GCSF_5_run2)), 
+            ZA=mean(c(OCP_ZA_3_run1, OCP_ZA_5_run2, OCP_ZA_6_run2, OCP_ZA_7_run2, OCP_ZA_8_run2)), 
+            BOTH=mean(c(OCP_BOTH_1_run1, OCP_BOTH_2_run1, OCP_BOTH_3_run1, OCP_BOTH_4_run2, OCP_BOTH_5_run2)), ensgene=ensgene) %>% 
+  mutate(mydiff=diff(range(c(CTL, ZA, GCSF, BOTH)))) 
+
+
+mean_values <- gather(mean_values, sample, val, -ensgene, -meanCTL, -mydiff) %>% 
+  mutate(scaledval=(val-meanCTL)/mydiff) %>% 
+  dplyr::select(ensgene, scaledval, sample) %>% 
+  spread(sample, scaledval) %>% 
+  as.data.frame()
+
+rownames(mean_values) <- mean_values$ensgene
+mean_values$ensgene <- NULL
+
+mean_values$CTL <- NULL
+
+pheatmap(mean_values, 
+         border_color=NA,  
+         #cutree_rows = 8, 
+         main="CTL mean centered, range scaled", 
+         show_rownames = FALSE,
+         scale="none",
+         color = inferno(256))
+
+library(RColorBrewer)
+pheatmap(mean_values, 
+         border_color=NA,  
+         #cutree_rows = 8, 
+         main="CTL mean centered, range scaled", 
+         show_rownames = FALSE,
+         scale="none",
+         color = colorRampPalette(rev(brewer.pal(n=11, name =  "RdBu")))(100))
+```
+
+## Opposing effects of ZA and GCSF
+- do we have any genes that have affected in an additive but opposite manner by the GCSF and ZA treatments (so they cancel each other out in the combined treatment)
+
+```{r opposingeffects,fig.height=3}
+stats_all_opposing <- filter(tbl_all, padj_gcsf<alpha, padj_za<alpha, log2FoldChange_gcsf*log2FoldChange_za<0, padj_gcsfza>alpha)
+kable(inner_join(stats_all_opposing, bcb@metadata$annotable, by="ensgene"))
+#plotGeneHeatmap(bcb, genes=stats_all_opposing$ensgene)
+```
+
+None.
+
+## Effects of ZA that don't show up or are significantly changed in presence of GCSF
+
+- look for genes that are significant in both the ZA effect results and the GCSF:ZA non-additive effects results
+
+```{r zagone}
+stats_all_zachange <- filter(tbl_all, padj_za<alpha & padj_gcsfza<alpha)
+
+kable(dplyr::select(stats_all_zachange, -ends_with("_gcsf")) %>% inner_join(., bcb@metadata$annotable))
+
+plotGeneHeatmap(bcb, genes=stats_all_zachange$ensgene)
+```
+
+
+
+# File downloads
+
+The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
+
+
+## Count matrices
+
+- [`normalizedCounts.csv.gz`](`r file.path(countsDir, "normalizedCounts.csv.gz")`): Use to evaluate individual genes and/or generate plots. These counts are normalized for the variation in sequencing depth across samples.
+- [`tpm.csv.gz`](`r file.path(countsDir, "tpm.csv.gz")`): Transcripts per million, scaled by length and also suitable for plotting.
+- [`rawCounts.csv.gz`](`r file.path(countsDir, "rawCounts.csv.gz")`): Only use to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized. Do not use this file for plotting genes.
+
+## Differentially expressed genes (DEG)
+
+All files can be found in this [folder](./results/differential_expression/). 
+
+\*all.csv.gz - statistics and annotations for all genes       
+\*deg.csv.gz - statistics and annotations for differentially expressed genes
+\*deg_lfc_down.csv.gz - statistics and annotations for differentially expressed genes that are up in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
+\*deg_lfc_up.csv.gz - statistics and annotations for differentially expressed genes that are down in first listed sample class (i.e. if filename is 1_vs_2, genes are more highly expressed in 1)
+
+DEG tables are sorted by BH-adjusted P value, and contain the following columns:
+
+- `ensgene`: [Ensembl][] gene identifier.
+- `baseMean`: Mean of the normalized counts per gene for all samples.
+- `log2FoldChange`: log2 fold change.
+- `lfcSE`: log2 standard error.
+- `stat`: Wald statistic.
+- `pvalue`: Walt test *P* value.
+- `padj`: BH adjusted Wald test *P* value (corrected for multiple comparisons; aka FDR).
+- `externalGeneName`: [Ensembl][] name (a.k.a. symbol).
+- `description`: [Ensembl][] description.
+- `geneBiotype`: [Ensembl][] biotype (e.g. `protein_coding`).
+
+## Functional Enrichments
+
+
+All files can be found in this [folder](./results/differential_expression/). 
+
+gprofiler_results_topDEgenes\*.xlsx
+
+Tables are sorted by pvalue and contain the followoing columns:
+
+- `term.id`: Functional term id (domain dependent)
+- `term.name`: Functional term name
+- `domain`: Functional database  
+    - `BP` - Gene Ontology Biological Process
+    - `MF` - Gene Ontology Molecular Function   
+    - `CC` - Gene Ontology Cellular Component  
+    - `tf` - transcription factor motif enrichment  
+    - `cor` - [CORUM][] protein complexes   
+    - `hp` - [`Human Phenotype Ontology`][]  
+    - `mi` - miRBase microRNA targets
+- `p.value` - multiple test adjusted pvalue
+- `term.size` - number of genes in the functional term
+- `query.size` - number of differentially expressed genes examined
+- `overlap.size` - number of differentially expressed genes in the functional term
+- `assoc.gene.ids` - gene ids of differentially expressed genes in the functional term
+
+[Corum]: http://mips.helmholtz-muenchen.de/corum/
+[REViGO]: http://revigo.irb.hr/
+[gprofileR]: http://biit.cs.ut.ee/gprofiler/
+[`Human Phenotype Ontology`]: https://human-phenotype-ontology.github.io/
+
+```{r footer, child="_footer.Rmd", eval=file.exists("_footer.Rmd")}
+```

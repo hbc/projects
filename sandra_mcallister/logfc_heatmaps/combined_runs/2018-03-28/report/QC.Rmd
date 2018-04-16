@@ -1,0 +1,390 @@
+---
+title: "Quality Control"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+bibliography: bibliography.bib
+params:
+    bcb_file: "data/bcb.rda"
+    output_dir: "."
+---
+
+```{r setup, message=FALSE}
+# Last modified 2018-02-14
+bcbioRNASeq::prepareRNASeqTemplate()
+source("_setup.R")
+
+# Directory paths
+data_dir <- file.path(params$output_dir, "data", Sys.Date())
+results_dir <- file.path(params$output_dir, "results", "counts")
+invisible(mapply(
+    FUN = dir.create,
+    list(data_dir, results_dir),
+    MoreArgs = list(recursive = TRUE, showWarnings = FALSE)
+))
+
+# Load bcbioRNASeq object
+bcb_name <- load(params$bcb_file)
+bcb <- get(bcb_name, inherits = FALSE)
+stopifnot(is(bcb, "bcbioRNASeq"))
+validObject(bcb)
+
+interestingGroups(bcb) <- c("tissue", "treatment", "run")
+
+mycoldata <- as.data.frame(colData(bcb))
+library(rio)
+rindata <- import("rin_metadata.xlsx") 
+
+mycoldata <- as.data.frame(inner_join(mycoldata, rindata))
+colData(bcb)$rin <- mycoldata$rin
+```
+
+```{r header, child="_header.Rmd"}
+```
+
+
+
+```{r sample_metadata}
+sampleMetadata(bcb)
+```
+
+[bcbio][] run data was imported from **`r metadata(bcb)$uploadDir`**.
+
+
+
+# Count matrices
+
+```{r counts}
+raw_counts <- counts(bcb, normalized = FALSE)
+normalized_counts <- counts(bcb, normalized = TRUE)
+tpm <- counts(bcb, normalized = "tpm")
+saveData(raw_counts, normalized_counts, tpm, dir = data_dir)
+writeCounts(raw_counts, normalized_counts, tpm, dir = results_dir)
+```
+
+The results are saved as gzip-compressed comma separated values (CSV). Gzip compression is natively supported on [macOS][] and Linux-based operating systems. If you're running Windows, we recommend installing [7-Zip][]. CSV files can be opened in [Excel][] or [RStudio][].
+
+- [`normalized_counts.csv.gz`](`r file.path(results_dir, "normalized_counts.csv.gz")`): Use to evaluate individual genes and/or generate plots. These counts are normalized for the variation in sequencing depth across samples.
+- [`tpm.csv.gz`](`r file.path(results_dir, "tpm.csv.gz")`): Transcripts per million, scaled by length and also suitable for plotting.
+- [`raw_counts.csv.gz`](`r file.path(results_dir, "raw_counts.csv.gz")`): Only use to perform a new differential expression analysis. These counts will vary across samples due to differences in sequencing depth, and have not been normalized. Do not use this file for plotting genes.
+
+
+
+# Read metrics {.tabset}
+
+## Total reads
+
+```{r plot_total_reads}
+plotTotalReads(bcb_sub)
+```
+
+
+## Mapped reads
+
+The number of mapped reads should correspond to the number of total reads.
+
+```{r plot_mapped_reads}
+plotMappedReads(bcb_sub)
+```
+
+
+## Mapping rate
+
+The genomic mapping rate represents the percentage of reads mapping to the reference genome. Low mapping rates are indicative of sample contamination, poor sequencing quality or other artifacts.
+
+```{r plot_mapping_rate}
+plotMappingRate(bcb)
+```
+
+
+## Number of genes detected
+
+```{r plot_genes_detected}
+plotGenesDetected(bcb)
+```
+
+
+## Gene detection saturation
+
+We should observe a linear trend in the number of genes detected with the number of mapped reads, which indicates that the sample input was not overloaded.
+
+```{r plot_gene_saturation}
+plotGeneSaturation(bcb)
+```
+
+
+## Exonic mapping rate
+
+Ideally, at least 60% of total reads should map to exons.
+
+```{r plot_exonic_mapping_rate}
+plotExonicMappingRate(bcb)
+```
+
+
+## Intronic mapping rate
+
+The majority of reads should map to exons and not introns.
+
+```{r plot_intronic_mapping_rate}
+plotIntronicMappingRate(bcb)
+```
+
+
+## rRNA mapping rate
+
+Samples should have a ribosomal RNA (rRNA) contamination rate below 10%.
+
+```{r plot_rrna_mapping_rate}
+plotRRNAMappingRate(bcb)
+```
+
+
+## 5'->3' bias
+
+```{r plot_53_bias}
+plot53Bias(bcb)
+```
+
+
+## Counts per gene
+
+Generally, we expect similar count spreads for all genes between samples unless the library sizes or total RNA expression are different. The log10 TMM-normalized counts per gene normalization method [@Robinson:2010dd] equates the overall expression levels of genes between samples under the assumption that the majority of them are not differentially expressed. Therefore, by normalizing for total RNA expression by sample, we expect the spread of the log10 TMM-normalized counts per gene to be similar for every sample.
+
+```{r plot_counts_per_gene}
+plotCountsPerGene(bcb)
+```
+
+
+## Count density
+
+Generally, we expect similar count spreads for all genes between samples unless the total expressed RNA per sample is different.
+
+```{r plot_count_density}
+plotCountDensity(bcb)
+```
+
+
+
+# Fit modeling
+
+Several quality metrics are first assessed to explore the fit of the model, before differential expression analysis is performed.
+
+
+## Variance stabilization
+
+The plots below show the standard deviation of normalized counts (`normalized_counts`) using `log2()`, `rlog()`, and variance stabilizing (`vst()`) transformations by `rank(mean)`. The transformations greatly reduce the standard deviation, with `rlog()` stabilizing the variance best across the mean.
+
+```{r plot_mean_sd, fig.height=18, fig.width=6}
+plotMeanSD(bcb, orientation = "vertical")
+```
+
+
+## Dispersion
+
+The following plot shows the dispersion by mean of normalized counts. We expect the dispersion to decrease as the mean of normalized counts increases.
+
+```{r plot_disp_ests}
+plotDispEsts(bcb)
+```
+
+
+
+# Sample similarity analysis
+
+Before performing similarity analysis, we transform counts to log2, which acts to minimize large differences in sequencing depth and helps normalize all samples to a similar dynamic range. For RNA-seq count data, variance increases with the mean. Logarithmic transformation of normalized count values with a small pseudocount will account for large variations seen between the highest expressing genes so that these genes won't dominate the PCA plots. However, due to the strong noise among low count values due to Poisson, the general log2 transformation will amplify this noise, and instead, low count genes will now dominate the PCA plots. So instead, we use a transformation (`rlog()`) that gives similar results for high counts as a log2 transformation but also shrinks the values of low counts towards the genes’ average across samples. We do this with the `rlog()` function in the [DESeq2][] package [@DESeq2], which we will later use for differential gene expression analysis.
+
+
+## Principal component analysis (PCA)
+
+PCA [@Jolliffe:2002wx] is a multivariate technique that allows us to summarize the systematic patterns of variations in the data. PCA takes the expression levels for genes and transforms it in principal component space, reducing each sample into one point. Thereby, we can separate samples by expression variation, and identify potential sample outliers. The PCA plot is a way to look at how samples are clustering.
+
+```{r plot_pca}
+plotPCA(bcb)
+```
+
+### Drop outlier samples with poor mapping rate (<75%)
+
+BM_BOTH_2_run1
+OCP_BOTH_2_run2
+OCP_CTL_1_run1
+
+**drop samples with 
+
+```{r droppoormappingrate}
+bcb_sub <- bcb[,which(!metadata(bcb)$metric$mappedReads/metadata(bcb)$metric$totalReads<0.75)]
+
+plotPCA(bcb_sub)
+
+```
+
+
+```{r switch_check}
+tpm_sub <- counts(bcb_sub, normalized = "tpm")
+mycoldata <- as.data.frame(colData(bcb_sub))
+
+pcadata <- plotPCA(bcb_sub, interestingGroups=c("run", "tissue", "treatment", "repeated"), returnData=TRUE)
+pcadata$cd27 <- tpm_sub["ENSMUSG00000030336",]
+pcadata$csf1r <- tpm_sub["ENSMUSG00000024621",]
+pcadata$ckit <- tpm_sub["ENSMUSG00000005672",]
+
+library(ggrepel)
+
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=cd27 ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=csf1r ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=ckit ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+pcadata <- cbind(pcadata, metadata(bcb_sub)$metrics)
+
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=totalReads ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=rrnaRate ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=x5x3Bias ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+```
+
+### Drop samples with high rRNA rates
+
+```{r droprrna}
+bcb_sub <- bcb_sub[,which(!metadata(bcb_sub)$metrics$rrnaRate>0.1)]
+
+plotPCA(bcb_sub)
+
+tpm_sub <- counts(bcb_sub, normalized = "tpm")
+mycoldata <- as.data.frame(colData(bcb_sub))
+
+pcadata <- plotPCA(bcb_sub, interestingGroups=c("run", "tissue", "treatment", "repeated"), returnData=TRUE)
+pcadata$cd27 <- tpm_sub["ENSMUSG00000030336",]
+pcadata$csf1r <- tpm_sub["ENSMUSG00000024621",]
+pcadata$ckit <- tpm_sub["ENSMUSG00000005672",]
+pcadata <- cbind(pcadata, metadata(bcb_sub)$metrics)
+
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=cd27 ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=csf1r ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=ckit ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=totalReads ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=rrnaRate ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=x5x3Bias ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+```
+
+
+### Drop samples with low read number (less than 5 million)
+
+```{r droplowreadnumber}
+bcb_sub <- bcb_sub[,which(metadata(bcb_sub)$metrics$totalReads>5e6)]
+
+plotPCA(bcb_sub)
+
+tpm_sub <- counts(bcb_sub, normalized = "tpm")
+
+pcadata <- plotPCA(bcb_sub, interestingGroups=c("run", "tissue", "treatment", "repeated"), returnData=TRUE)
+pcadata$cd27 <- tpm_sub["ENSMUSG00000030336",]
+pcadata$csf1r <- tpm_sub["ENSMUSG00000024621",]
+pcadata$ckit <- tpm_sub["ENSMUSG00000005672",]
+pcadata <- cbind(pcadata, metadata(bcb_sub)$metrics)
+
+pcadata <- cbind(pcadata, as.data.frame(colData(bcb_sub)))
+pcadata$rin <- as.numeric(as.character(pcadata$rin))
+
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=cd27 ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=csf1r ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=ckit ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=totalReads ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=rrnaRate ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=x5x3Bias ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+ggplot(pcadata, aes(x=pc1,y=pc2,  label=name, color=rin ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()
+
+``` 
+
+
+#RUVseq (Batch correction)
+- using the [RUVseq][https://www.nature.com/articles/nbt.2931] replicate based method
+- remove batch variation using remaining replicate samples
+- do mds plots and PCA plots to look at clustering
+- adjusted the k value till all replicates overlapped with their respective replicates
+
+```{r ruvseq, results="asis"}
+temp <- as.data.frame(colData(bcb_sub))
+cat("**Replicate samples**")
+temp %>% group_by(sampleid) %>% filter(n()>1) %>% select(sampleID)
+
+library(RUVSeq)
+
+rlogMat <- counts(bcb_sub, normalized="rlog")
+
+reps = do.call(rbind, lapply(levels(colData(bcb_sub)$sampleid), function(x){
+    row = which(colData(bcb_sub)$sampleid==x)
+    if (length(row) < 2)
+        row = c(row, rep(-1, 2-length(row)))
+    return(row)
+}))
+reps <- subset(reps, reps[,2]!=-1) 
+ruv = RUVs(x = rlogMat, k = 3, scIdx = reps, isLog = TRUE)
+
+library(CHBUtils)
+
+mds(ruv$normalizedCounts, condition=paste(colData(bcb_sub)$tissue, colData(bcb_sub)$treatment, sep=":"))
+```
+
+## Subset batch corrected data to only the OCP samples.
+
+```{r ocponly}  
+
+ocp_coldata <- colData(bcb_sub) %>% as.data.frame() %>% filter(tissue=="OCP")
+mds(ruv$normalizedCounts[,grep("OCP", colnames(ruv$normalizedCounts))], condition=ocp_coldata$treatment)
+
+myPCAdata<- function(mydata, metadata, joincolumn) {
+  myPca <- prcomp(t(mydata))
+  tmpPCAData <- as.data.frame(myPca$x[, 1:2])
+  tmpPCAData <- tibble::rownames_to_column(tmpPCAData, var=joincolumn)
+  PCAData <- inner_join(tmpPCAData, metadata)
+  return(PCAData)
+}
+
+
+PCAplot.sd.df.pc1pc2 <- function(df=NULL){
+  myPca.core <- prcomp(t(df))
+  # SD of components
+  sdevdf <- data.frame(cbind(as.numeric(myPca.core$sdev),c(1:length(myPca.core$sdev))))
+  sdevdf$prop <-  sdevdf$X1/sum(sdevdf$X1)
+  sdevdf <- sdevdf[1:2,]
+  return(sdevdf)
+  }
+
+plotme <- myPCAdata(ruv$normalizedCounts[,grep("OCP", colnames(ruv$normalizedCounts))], ocp_coldata, "sampleName")
+mymetrics <- metadata(bcb_sub)$metrics %>% tibble::rownames_to_column(., var="sampleName")
+plotme <- inner_join(plotme, mymetrics)
+
+myprops <- PCAplot.sd.df.pc1pc2(df=ruv$normalizedCounts[,grep("OCP", colnames(ruv$normalizedCounts))])
+
+ggplot(plotme, aes(x=PC1, y=PC2, color=treatment))+geom_point(size=5)+scale_shape_manual(values=c(21:24))+ theme(legend.position="right")+
+  coord_fixed(ratio=myprops$prop[2]/myprops$prop[1])+
+  xlab(paste("PC1 - ", round(myprops$prop[1]*100,2), "%", sep=""))+
+  ylab(paste("PC2 - ", round(myprops$prop[2]*100,2), "%", sep=""))
+ggplot(plotme, aes(x=PC1,y=PC2,  label=sampleName, color=mappedReads ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()+
+  coord_fixed(ratio=myprops$prop[2]/myprops$prop[1])+
+  xlab(paste("PC1 - ", round(myprops$prop[1]*100,2), "%", sep=""))+
+  ylab(paste("PC2 - ", round(myprops$prop[2]*100,2), "%", sep=""))
+ggplot(plotme, aes(x=PC1,y=PC2,  label=sampleName, color=rrnaRate ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()+
+  coord_fixed(ratio=myprops$prop[2]/myprops$prop[1])+
+  xlab(paste("PC1 - ", round(myprops$prop[1]*100,2), "%", sep=""))+
+  ylab(paste("PC2 - ", round(myprops$prop[2]*100,2), "%", sep=""))
+ggplot(plotme, aes(x=PC1,y=PC2,  label=sampleName, color=x5x3Bias ))+geom_point(size=5,  stroke=2)+geom_text_repel(color="darkgrey")+  theme(legend.position="right")+scale_color_viridis()+
+  coord_fixed(ratio=myprops$prop[2]/myprops$prop[1])+
+  xlab(paste("PC1 - ", round(myprops$prop[1]*100,2), "%", sep=""))+
+  ylab(paste("PC2 - ", round(myprops$prop[2]*100,2), "%", sep=""))
+
+
+```
+
+
+
+
+The clustering isn't perfect but is a definite improvement over the previous results. The samples also don't appear to be overly clustering by read depth.
+
+```{r savedata}
+saveData(bcb_sub, dir="data/2018-04-12/")
+
+saveData(ruv, dir="data/2018-04-12/")
+```
+
+
+
+```{r footer, child="_footer.Rmd"}
+```
