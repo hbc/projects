@@ -52,7 +52,9 @@ Working directories, files and other variables necessary to the analysis.
 
 ```{r variables}
 ## Setup Data and Results directory variables
-baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+#baseDir <- file.path("/Volumes/orch/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+baseDir <- file.path("~/Orchestra/PIs/nicholas_stylopoulos/ns_microarray_covariate/")
+
 dataDir <- file.path(baseDir, "data", "RMASST_CHP")
 metaDir <- file.path(baseDir, "metadata")
 resultsDir <- file.path(baseDir, "results")
