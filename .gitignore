@@ -20,3 +20,7 @@ hbc
 metadata
 orchestra
 results
+*xlsx
+.gitignore
+*.RData
+*docx
