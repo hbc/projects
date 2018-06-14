@@ -226,7 +226,7 @@ plotGeneHeatmapJH <- function(
     counts_annots <- cbind(counts, annots)
     
    # counts_annots <- counts_annots %>% as.data.frame() %>% filter(!is.na(padj)) %>% group_by(symbol) %>%  filter(pvalue== min(pvalue)) %>% filter(log2FoldChange==max(log2FoldChange))
-    counts_annots <- select(counts_annots, -ensgene)  
+    counts_annots <- dplyr::select(counts_annots, -ensgene)  
     counts_annots <- counts_annots %>% filter(symbol!="") %>% as.data.frame()
     row.names(counts_annots) <-counts_annots$symbol
     counts_annots$symbol <- NULL

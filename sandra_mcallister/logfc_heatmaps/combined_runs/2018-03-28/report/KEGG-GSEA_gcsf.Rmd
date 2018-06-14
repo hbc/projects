@@ -1,0 +1,157 @@
+---
+title: "KEGG GSEA - GCSF"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+bibliography: bibliography.bib
+params:
+    bcb_file: "data/2018-04-12/bcb_sub.rda"
+    res_file: "data/2018-04-12/res_gcsf.rda"
+    organism: "Mm"
+    gspecies: "mmu"
+    species: "mouse"
+    lfc_threshold: 0
+    alpha: 0.1
+    data_dir: !r file.path("data", "2018-04-12")
+    results_dir: !r file.path("results", "2018-04-12", "functional_analysis")
+---
+
+```{r setup, message=FALSE}
+# Last modified 2018-05-08
+
+# Human
+# - organism: "Hs"
+# - gspecies: "hsa"
+# - species: "human"
+# 
+# Mouse
+# - organism: "Mm"
+# - gspecies: "mmu"
+# - species: "mouse"
+
+# Additional required packages =================================================
+org_db <- paste("org", params$organism, "eg", "db", sep = ".")
+packages <- c(
+    org_db,
+    "clusterProfiler",
+    "DOSE",
+    "pathview"
+)
+notInstalled <- setdiff(basename(packages), rownames(installed.packages()))
+if (length(notInstalled)) {
+    source("https://bioconductor.org/biocLite.R")
+    biocLite(pkgs = notInstalled)
+}
+invisible(lapply(
+    X = basename(packages),
+    FUN = library,
+    character.only = TRUE
+))
+
+# Prepare template =============================================================
+bcbioRNASeq::prepareRNASeqTemplate()
+source("_setup.R")
+
+# Load objects =================================================================
+bcb_name <- load(params$bcb_file)
+bcb <- get(bcb_name, inherits = FALSE)
+stopifnot(is(bcb, "bcbioRNASeq"))
+invisible(validObject(bcb))
+
+res_name <- load(params$res_file)
+res <- get(res_name, inherits = FALSE)
+stopifnot(is(res, "DESeqResults"))
+invisible(validObject(res))
+```
+
+```{r header, child="_header.Rmd"}
+```
+
+# KEGG enrichment analysis
+
+## Map gene IDs to Entrez IDs
+
+[Entrez][] IDs are required for [Kyoto Encyclopedia of Genes and Genomes (KEGG)][KEGG] analysis. Here we are defining 1:1 mappings of the [Ensembl][] gene IDs to [Entrez][] IDs. For genes that map to multiple [Entrez][] IDs, we are using the oldest [Entrez][] ID to define the 1:1 mapping.
+
+```{r entrez}
+annots <- metadata(bcb)$annotable %>% as.data.frame()
+# some ensemblids have multiple entrezids, which are nested in the annotable output
+# unnest them and there will be rows which are identical except for the entrez ids
+annots <- unnest(annots)
+
+entrez_res <- res %>% 
+  as.data.frame %>% 
+  tibble::rownames_to_column("ensgene") %>% 
+  inner_join(., annots, by="ensgene") %>% 
+  filter(!is.na(entrez)) %>% 
+  arrange(entrez) %>% 
+  filter(!is.na(entrez))
+
+# the inner_join will only join if there is a matching ensemblid between sources, but will match every occurrence, resulting in semi-duplicated rows (except for the ensembl or entrez ids)
+# there may be duplicate ensemblids, with different entrez ids for each - these just leave alone, they will have identical stats
+# there will also be duplicate entrez ids, with different ensembl ids for each - these will have different stats, for these choose the oldest ensemblid (i.e. the lowest EntrezID)
+entrez_res <- entrez_res %>% tbl_df() %>%  group_by(entrez) %>% slice(which.min(entrez)) %>% as.data.frame()
+rownames(entrez_res) <- entrez_res$entrez
+
+# Extract the  fold changes for plotting
+entrez_lfc_vec <- entrez_res$log2FoldChange
+names(entrez_lfc_vec) <- rownames(entrez_res)
+# Sort from upregulated to downregulated
+entrez_lfc_vec <- sort(entrez_lfc_vec, decreasing = TRUE)
+
+# Extract the snrs
+entrez_snr_vec <- entrez_res$log2FoldChange/entrez_res$lfcSE
+names(entrez_snr_vec) <- rownames(entrez_res)
+# Sort from upregulated to downregulated
+entrez_snr_vec <- sort(entrez_snr_vec, decreasing = TRUE)
+
+```
+
+## KEGG GSEA analysis
+
+[GSEA][] analysis is performed with the [clusterProfiler][] tool using KEGG gene sets and using the log2 fold changes as input. By using the log2 fold changes as the input, we are identifying pathways with genes that exhibit coordinated fold changes that are larger than might be expected by chance. The significant pathways can be visualized using the log2 fold changes with the Pathview tool.
+
+Gene set enrichment analysis tools use ranked lists of genes (here ranked by signal to noise (log2FC/log2FC_standarderror) without using a threshold. This allows the tools to use more information to identify enriched biological processes. The [introduction to gene set enrichment analysis](http://www.ncbi.nlm.nih.gov/pmc/articles/PMC1239896) goes into more detail about some of the advantages of this approach. By using the signal to noise ratio as the input, we are identifying pathways with genes that exhibit coordinated fold changes that are larger than might be expected by chance, while still downgrading noisier signals.
+
+Here we used an adjusted pvalue of `r params$alpha` as a cutoff. 
+
+```{r kegg_gsea, warnings=FALSE, error=FALSE}
+# help("gseKEGG", "clusterProfiler")
+gsea_kegg <- gseKEGG(
+    geneList = entrez_snr_vec,
+    organism = tolower(params$gspecies)
+)
+gsea_kegg_result <- gsea_kegg %>%
+    slot("result") %>%
+    as_tibble() %>%
+    camel()
+saveData(gsea_kegg, dir = params$data_dir)
+
+library(rio)
+export(gsea_kegg_result, file=file.path(params$results_dir,  paste(paste("gcsf_gsea_kegg_clusterprofiler_padj",params$alpha,"lfc", params$lfc_threshold, sep = "_"), "xlsx", sep=".")))
+
+coreEnrichmentSymbols <- apply(gsea_kegg_result, 1, function(x){
+  entrezs <- str_split(x[11], "/")
+  entrezs <- entrezs %>% unlist() 
+  symbols <- annots$symbol[match(entrezs,annots$entrez)]
+  symbols <- paste(symbols, collapse="/")
+  return(symbols)
+})
+gsea_kegg_result <- cbind(gsea_kegg_result, coreEnrichmentSymbols)
+
+
+gsea_kegg_result
+```
+
+
+```{r footer, child="_footer.Rmd"}
+```
+
+
+
+[clusterProfiler]: https://doi.org/doi:10.18129/B9.bioc.clusterProfiler
+[Ensembl]: https://www.ensembl.org
+[Entrez]: https://www.ncbi.nlm.nih.gov/gquery
+[GO]: http://www.geneontology.org
+[GSEA]: http://software.broadinstitute.org/gsea
+[KEGG]: http://www.genome.jp/kegg
+[pathview]: https://doi.org/doi:10.18129/B9.bioc.pathview

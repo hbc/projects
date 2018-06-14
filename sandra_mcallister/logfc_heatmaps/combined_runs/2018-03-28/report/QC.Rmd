@@ -337,7 +337,6 @@ myPCAdata<- function(mydata, metadata, joincolumn) {
   return(PCAData)
 }
 
-
 PCAplot.sd.df.pc1pc2 <- function(df=NULL){
   myPca.core <- prcomp(t(df))
   # SD of components
@@ -369,11 +368,7 @@ ggplot(plotme, aes(x=PC1,y=PC2,  label=sampleName, color=x5x3Bias ))+geom_point(
   coord_fixed(ratio=myprops$prop[2]/myprops$prop[1])+
   xlab(paste("PC1 - ", round(myprops$prop[1]*100,2), "%", sep=""))+
   ylab(paste("PC2 - ", round(myprops$prop[2]*100,2), "%", sep=""))
-
-
 ```
-
-
 
 
 The clustering isn't perfect but is a definite improvement over the previous results. The samples also don't appear to be overly clustering by read depth.

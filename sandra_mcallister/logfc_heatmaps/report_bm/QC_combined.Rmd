@@ -20,6 +20,7 @@ if (file.exists("setup.R")) {
 # Load bcbioRNASeq object
 bcbName <- load(params$bcbFile)
 bcb <- get(bcbName, inherits = FALSE)
+interestingGroups(bcb) <- "treatment"
 
 # Directory paths
 outputDir <- params$outputDir
@@ -207,7 +208,7 @@ Drop BOTH2 (mapping rate), CTL3 and ZA1 (rRNA rate).
 
 ```{r dropoutliers}
 outlier_samples <- c("CTL3", "ZA1", "BOTH2")
-nonoutlier_samples <- which(!(colData(bcb)$sampleID %in% outlier_samples))
+nonoutlier_samples <- which(!(colData(bcb)$sampleName %in% outlier_samples))
 bcb_combined_sub <- bcb[,nonoutlier_samples]
 saveData(bcb_combined_sub, dir="data")
 ```

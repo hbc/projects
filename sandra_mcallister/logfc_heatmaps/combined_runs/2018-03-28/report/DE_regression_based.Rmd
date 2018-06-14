@@ -1,5 +1,5 @@
 ---
-title: "Differential Expression - OCP Pairwise comparisons with RUVseq batch correctoin"
+title: "Differential Expression - OCP regression based comparisons with RUVseq batch correction"
 author: "`r getOption('author')`"
 date: "`r Sys.Date()`"
 bibliography: bibliography.bib
@@ -18,6 +18,8 @@ library(DESeq2)
 library(bcbioRNASeq)
 library(tidyverse)
 library(knitr)
+library(pathview)
+library(rio)
 
 # Shared RMarkdown settings
 prepareRNASeqTemplate()
@@ -46,7 +48,7 @@ bcb <- bcb[,which(colData(bcb)$tissue=="OCP")]
 mycoldata <- as.data.frame(colData(bcb))
 metrics <- metadata(bcb)$metrics %>% tibble::rownames_to_column("sampleName")
 mycoldata <- inner_join(mycoldata,metrics)
-singletids <- mycoldata %>% group_by(sampleid) %>% filter(mappedReads == max(mappedReads)) %>% ungroup() %>% select(sampleName) %>% unlist() %>% as.vector()
+singletids <- mycoldata %>% group_by(sampleid) %>% filter(mappedReads == max(mappedReads)) %>% ungroup() %>% dplyr::select(sampleName) %>% unlist() %>% as.vector()
 
 ruv_counts <- ruv_counts[,which(mycoldata$sampleName %in% singletids)]
 bcb <- bcb[,which(mycoldata$sampleName %in% singletids)]
@@ -136,6 +138,8 @@ resUnshrunken <- results(
 
 # Use shrunken LFC values by default
 res_gcsf <- resUnshrunken
+saveData(res_gcsf, dir = file.path(outputDir, "data", "2018-04-12"))
+
 ```
 
 ```{r res_za}
@@ -147,6 +151,8 @@ resUnshrunken <- results(
 
 # Use shrunken LFC values by default
 res_za <- resUnshrunken
+saveData(res_za, dir = file.path(outputDir, "data", "2018-04-12"))
+
 ```
 
 ```{r res_interaction}
@@ -158,6 +164,7 @@ resUnshrunken <- results(
 
 # Use shrunken LFC values by default
 res_gcsfza <- resUnshrunken
+saveData(res_gcsfza, dir = file.path(outputDir, "data", "2018-04-12"))
 ```
 
 `r lfc=0`
@@ -175,11 +182,12 @@ This plot shows only differentially expressed genes on a per-sample basis. DE ge
 #### GCSF effects
  - note that these are just genes that are affected by GCSF, without taking into account ZA or BOTH treatments
  
-```{r plot_deg_heatmap_gcsf, fig.height=12}
+```{r plot_deg_heatmap_gcsf, fig.height=14}
 order <- c("OCP_CTL_2",  "OCP_CTL_7", "OCP_GCSF_1", "OCP_GCSF_2", "OCP_GCSF_4", "OCP_GCSF_5", "OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_ZA_7", "OCP_ZA_8", "OCP_BOTH_1", "OCP_BOTH_2", "OCP_BOTH_3", "OCP_BOTH_4","OCP_BOTH_5")
 
 ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
 plotDEGHeatmapJH(bcb,res_gcsf, ruv_counts = ruv_counts_temp, cluster_cols=FALSE, gap = 6, title="GCSF Effects")
+plotDEGHeatmapJH(bcb,res_gcsf, ruv_counts = ruv_counts_temp, cluster_cols=FALSE, gap = 6, title="GCSF Effects - log2FC>1", lfc=1)
 ```
 
 #### ZA effects
@@ -191,13 +199,16 @@ order <- c("OCP_CTL_2",  "OCP_CTL_7",  "OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_
 
 ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
 plotDEGHeatmapJH(bcb,res_za, ruv_counts = ruv_counts_temp,cluster_cols=FALSE, gap=7, title="ZA  Effects")
+plotDEGHeatmapJH(bcb,res_za, ruv_counts = ruv_counts_temp, cluster_cols=FALSE, gap = 7, title="ZA Effects - log2FC>1", lfc=1)
 ```
 
 #### GCSF:ZA non-additive effects
-```{r plot_deg_heatmap_both, fig.height=12}
+```{r plot_deg_heatmap_both, fig.height=16}
 order <- c("OCP_CTL_2",  "OCP_CTL_7",   "OCP_GCSF_1", "OCP_GCSF_2", "OCP_GCSF_4", "OCP_GCSF_5","OCP_BOTH_1", "OCP_BOTH_2", "OCP_BOTH_3", "OCP_BOTH_4","OCP_BOTH_5","OCP_ZA_3", "OCP_ZA_5", "OCP_ZA_6", "OCP_ZA_7", "OCP_ZA_8")
 ruv_counts_temp <- ruv_counts[,as.vector(match(order, sub("_run[0-9]", "", colnames(ruv_counts)))) ] %>% as.data.frame()
 plotDEGHeatmapJH(bcb,res_gcsfza, ruv_counts = ruv_counts_temp,cluster_cols=FALSE, gap=c(2,6,11), title="GCSF:ZA Non-Additive Effects")
+
+plotDEGHeatmapJH(bcb,res_gcsfza, ruv_counts = ruv_counts_temp,cluster_cols=FALSE, gap=c(2,6,11), title="GCSF:ZA Non-Additive Effects", lfc=1)
 ```
 
 ## Top tables of differentially expressed genes {.tabset}
@@ -281,7 +292,7 @@ We can center all the sample class means against the CTL sample means (so anythi
 ```{r meansonly}
 genes_of_interest <- filter(tbl_all, padj_gcsfza<alpha) %>% dplyr::select(ensgene) %>% as.data.frame %>% unlist %>% as.vector()
 
-mean_values <-  assay(rld)[genes_of_interest,]  %>% 
+mean_values <-  ruv_counts[genes_of_interest,]  %>% 
   as.data.frame %>%   
   rownames_to_column(var="ensgene") %>% 
   tbl_df() %>% 
@@ -307,7 +318,7 @@ mean_values$CTL <- NULL
 pheatmap(mean_values, 
          border_color=NA,  
          #cutree_rows = 8, 
-         main="CTL mean centered, range scaled", 
+         main="CTL mean centered, range scaled, batch corrected values", 
          show_rownames = FALSE,
          scale="none",
          color = inferno(256))
@@ -316,7 +327,7 @@ library(RColorBrewer)
 pheatmap(mean_values, 
          border_color=NA,  
          #cutree_rows = 8, 
-         main="CTL mean centered, range scaled", 
+         main="CTL mean centered, range scaled, batch corrected values", 
          show_rownames = FALSE,
          scale="none",
          color = colorRampPalette(rev(brewer.pal(n=11, name =  "RdBu")))(100))
@@ -337,13 +348,97 @@ None.
 
 - look for genes that are significant in both the ZA effect results and the GCSF:ZA non-additive effects results
 
-```{r zagone}
+```{r zagone, fig.height=12}
 stats_all_zachange <- filter(tbl_all, padj_za<alpha & padj_gcsfza<alpha)
 
 kable(dplyr::select(stats_all_zachange, -ends_with("_gcsf")) %>% inner_join(., bcb@metadata$annotable))
 
-plotGeneHeatmap(bcb, genes=stats_all_zachange$ensgene)
+plotGeneHeatmapJH(bcb, ruv_counts = ruv_counts, genes=stats_all_zachange$ensgene)
 ```
+
+
+# Pathway visualizations
+- viewing differential expression values in context of KEGG pathway for the osteoclast differentiation pathway (hsa04380)
+
+```{r pathwayvis, warning=FALSE, message=FALSE, error=FALSE, results="hide"}
+library(pathview)
+library(dplyr)
+
+fc_za <- dplyr::filter(tb_za, padj<0.05) %>% dplyr::select(ensgene,log2FoldChange) %>% as.data.frame()
+fc_za <- inner_join(fc_za, metadata(bcb)$annotable, by="ensgene") %>% dplyr::select(entrez, log2FoldChange)
+fc_za <- fc_za %>% filter(!is.na(entrez)) %>% 
+  mutate(entrez=sub("c\\(", "", entrez)) %>% 
+  mutate(entrez=gsub("\\)", "", entrez)) %>% 
+  separate(entrez,into=c("one","two","three"), sep=", " ) %>% 
+  gather(x, entrez, one, two, three) %>% 
+  dplyr::select(-x) %>% 
+  filter(!is.na(entrez))
+fold_changes_za <- setNames( fc_za$log2FoldChange, as.character(fc_za$entrez))
+
+pathview(gene.data = fold_changes_za,
+         pathway.id = "04380",
+         species = "mouse", 
+         limit = list(gene = 2, cpd = 1), 
+         out.suffix="za"
+         )
+
+fc_gcsf <- dplyr::filter(tb_gcsf, padj<0.05) %>% dplyr::select(ensgene,log2FoldChange) %>% as.data.frame()
+fc_gcsf <- inner_join(fc_gcsf, metadata(bcb)$annotable, by="ensgene") %>% dplyr::select(entrez, log2FoldChange)
+fc_gcsf <- fc_gcsf %>% filter(!is.na(entrez)) %>% 
+  mutate(entrez=sub("c\\(", "", entrez)) %>% 
+  mutate(entrez=gsub("\\)", "", entrez)) %>% 
+  separate(entrez,into=c("one","two","three"), sep=", " ) %>% 
+  gather(x, entrez, one, two, three) %>% 
+  dplyr::select(-x) %>% 
+  filter(!is.na(entrez))
+fold_changes_gcsf <- setNames( fc_gcsf$log2FoldChange, as.character(fc_gcsf$entrez))
+
+pathview(gene.data = fold_changes_gcsf,
+         pathway.id = "04380",
+         species = "mouse", 
+         limit = list(gene = 2, cpd = 1), 
+         out.suffix="gcsf"
+         )
+
+fc_gcsfza <- dplyr::filter(tb_gcsfza, padj_gcsfza<0.05) %>% dplyr::select(ensgene_gcsfza,log2FoldChange_gcsfza) %>% as.data.frame()
+names(fc_gcsfza) <- c("ensgene","log2FoldChange" )
+fc_gcsfza <- inner_join(fc_gcsfza, metadata(bcb)$annotable, by="ensgene") %>% dplyr::select(entrez, log2FoldChange)
+fc_gcsfza <- fc_gcsfza %>% filter(!is.na(entrez)) %>% 
+  mutate(entrez=sub("c\\(", "", entrez)) %>% 
+  mutate(entrez=gsub("\\)", "", entrez)) %>% 
+  separate(entrez,into=c("one","two","three"), sep=", " ) %>% 
+  gather(x, entrez, one, two, three) %>% 
+  dplyr::select(-x) %>% 
+  filter(!is.na(entrez))
+fold_changes_gcsfza <- setNames( fc_gcsfza$log2FoldChange, as.character(fc_gcsfza$entrez))
+
+pathview(gene.data = fold_changes_gcsfza,
+         pathway.id = "04380",
+         species = "mouse", 
+         limit = list(gene = 2, cpd = 1), 
+         out.suffix="gcsfza"
+         )
+```
+
+## ZA effects on osteoclast differentiation pathway
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics('./mmu04380.za.png')
+```
+
+## GCSF effects on osteoclast differentiation pathway
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics('./mmu04380.gcsf.png')
+```
+
+## GCSF:ZA interaction effects on osteoclast differentiation pathway
+
+```{r echo=FALSE, out.width='100%'}
+knitr::include_graphics('./mmu04380.gcsfza.png')
+```
+
+
 
 
 
