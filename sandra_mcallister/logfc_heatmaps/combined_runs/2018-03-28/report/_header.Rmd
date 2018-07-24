@@ -1,9 +1,0 @@
-# Overview
-
-- Principal Investigator: Sandra McAllister
-- Researcher: Jessalyn Ubellacker
-- Experiment: GCSF and ZA effects on OCP populations RNA-seq
-
-
-
-* * *

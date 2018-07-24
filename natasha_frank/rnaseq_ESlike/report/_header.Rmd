@@ -1,9 +1,0 @@
-# Overview
-
-- Principal Investigator: Natasha Frank
-- Researcher: Yuzuru Sasamoto 
-- Experiment: RNAseq of effects of ABCB5 on stem-ness of cells
-
-
-
-* * *

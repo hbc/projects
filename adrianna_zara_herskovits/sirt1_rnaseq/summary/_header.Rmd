@@ -1,9 +1,0 @@
-# Overview
-
-- Principal Investigator: Adrianna Zara Herskovits
-- Researcher: John Hutchinson
-- Experiment: RNAseq of Sirt1 effects in motor neurons
-
-
-
-* * *

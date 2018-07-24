@@ -1,7 +1,0 @@
-.DS_Store
-*.tar
-scripts/cache
-scripts/figure
-scripts/*.md
-scripts/*.html
-data/
